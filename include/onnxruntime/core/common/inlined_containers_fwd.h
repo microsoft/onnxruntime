@@ -14,19 +14,19 @@
 // C4324: structure was padded due to alignment specifier
 // Usage of alignas causes some internal padding in places.
 #pragma warning(disable : 4324)
-#endif // _MSC_VER
+#endif  // _MSC_VER
 
 #include <absl/container/inlined_vector.h>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
-#endif // _MSC_VER
+#endif  // _MSC_VER
 
 #else
 
 #include <vector>
 
-#endif // DISABLE_ABSEIL
+#endif  // DISABLE_ABSEIL
 
 // Forward declarations for contexts where abseil can not be compiled and
 // not really needed but we want to have it in the headers that are included
@@ -65,6 +65,8 @@ struct CalculateInlinedVectorDefaultInlinedElements {
   // 1. There is at least one inlined element.
   // 2. `sizeof(InlinedVector<T>) <= kPreferredInlinedVectorSizeof` unless
   // it contradicts 1.
+  // we introduce a inlined vector of std function, the size of std function
+  // is 80 on windows, so bump to 128.
   static constexpr size_t kPreferredInlinedVectorSizeof = 128;
 
   // static_assert that sizeof(T) is not "too big".
@@ -118,7 +120,7 @@ template <typename T,
           typename Allocator = std::allocator<T>>
 using InlinedVector = std::vector<T, Allocator>;
 
-#endif // DISABLE_ABSEIL
+#endif  // DISABLE_ABSEIL
 
 template <typename T,
           typename Allocator = std::allocator<T>>
@@ -131,8 +133,7 @@ class InlinedHashMap;
 template <typename T, typename Allocator = std::allocator<T>>
 class NodeHashSet;
 
-template <typename Key, typename Value, 
+template <typename Key, typename Value,
           typename Allocator = std::allocator<std::pair<const Key, Value>>>
 class NodeHashMap;
-}
-
+}  // namespace onnxruntime

@@ -45,11 +45,10 @@ constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 
-
 constexpr size_t kAllocAlignment = 256;
 
 class IAllocator;
-std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator> allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator>& allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 // forward declaration
 class SessionState;
@@ -87,7 +86,7 @@ class IAllocator {
   }
 
   /**
-  * Calculate the memory size for an array. The size is bounds checked using SafeInt.
+   * Calculate the memory size for an array. The size is bounds checked using SafeInt.
    * \tparam alignment must be power of 2
    * \param nmemb Number of members or elements in the array
    * \param size Size of each element
@@ -120,8 +119,8 @@ class IAllocator {
   }
 
   /**
- * allocate memory for an array which has nmemb items of data, each size bytes long
- */
+   * allocate memory for an array which has nmemb items of data, each size bytes long
+   */
   template <size_t alignment>
   void* AllocArrayWithAlignment(size_t nmemb, size_t size) {
     size_t len;
@@ -135,6 +134,9 @@ class IAllocator {
      @param allocator The allocator.
      @param count_or_bytes The exact bytes to allocate if T is void, otherwise the number of elements to allocate.
      @param use_reserve If true, call Reserve() instead of Alloc() to allocate memory.
+     @param stream Which stream instance allocated chunk will be used with.
+     @param wait_fn If the allocator want to dynamic reuse a chunk from another stream, use this wait_fn to sync on
+                    the target stream to make the reuse safe.
      @returns std::unique_ptr with allocated memory and deleter.
   */
   template <typename T>
@@ -149,7 +151,7 @@ class IAllocator {
     size_t alloc_size = count_or_bytes;
 
     // if T is not void, 'count_or_bytes' == number of items so allow for that
-    if constexpr(!std::is_void<T>::value) {
+    if constexpr (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
       if (!CalcMemSizeForArray(
@@ -158,7 +160,7 @@ class IAllocator {
       }
     }
 
-    std::function<void*(size_t)> alloc_fn = GetAllocationFn(allocator, use_reserve, stream, wait_fn);
+    std::function<void*(size_t)> alloc_fn = GetAllocationFn(allocator, use_reserve, stream, std::move(wait_fn));
 
     // allocate
     T* p = static_cast<T*>(alloc_fn(alloc_size));

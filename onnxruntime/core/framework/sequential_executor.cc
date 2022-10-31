@@ -406,7 +406,7 @@ class KernelScope {
 #endif
 };
 
-onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
+onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx, const bool& terminate_flag) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
@@ -419,10 +419,10 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
   }
   // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
-                                     *ctx.GetExecutionFrame(),
+                                     ctx.GetExecutionFrame(),
                                      *p_kernel,
                                      ctx.GetLogger(),
-                                     ctx.TerminateFlag(),
+                                     terminate_flag,
                                      ctx.GetDeviceStream(stream_idx));
   onnxruntime::Status status;
   auto& logger = ctx.GetLogger();
@@ -432,7 +432,6 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     auto session_scope = ctx.GetSessionScope();
     ORT_ENFORCE(session_scope, "session scope uninitialized");
     KernelScope kernel_scope(*session_scope, kernel_ctx, *p_kernel);
-    // ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
     ORT_TRY {
 #ifdef ENABLE_TRAINING
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
@@ -476,7 +475,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     // If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     ctx.GetSessionState().GetMemoryProfiler()->CreateEvents("dynamic activations_" + std::to_string(ctx.GetSessionState().GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-                                                ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+                                                            ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
     const auto msg_string = ss.str();
     LOGS(logger, ERROR) << msg_string;
@@ -493,7 +492,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
                                    const DeviceStreamCollection& device_streams,
-                                   const bool* terminate_flag,
+                                   const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
@@ -517,7 +516,6 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                        logger,
                        device_streams,
                        single_thread_mode);
-  ctx.SetTerminateFlag(terminate_flag);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
     auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
@@ -527,7 +525,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
 
-  SessionScope session_scope(session_state, *reinterpret_cast<const ExecutionFrame*>(ctx.GetExecutionFrame()));
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame());
   ctx.SetSessionScope(&session_scope);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
@@ -539,16 +537,16 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       // so don't need to invoke CompleteTask here
       // ctx.CompleteTask();
     } else {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
-        RunSince(i, ctx, 0);
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag]() {
+        RunSince(i, ctx, terminate_flag, 0);
       });
     }
   }
 
   ctx.WaitAll();
   ORT_RETURN_IF_ERROR(ctx.TaskStatus());
-  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
-  if (ctx.GetExecutionFrame()->HasMemoryPatternPlanner()) {
+  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame().GetOutputs(fetches));
+  if (ctx.GetExecutionFrame().HasMemoryPatternPlanner()) {
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
@@ -559,7 +557,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
     if (all_tensors) {
       MemoryPatternGroup mem_patterns;
-      ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GeneratePatterns(mem_patterns));
+      ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame().GeneratePatterns(mem_patterns));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
@@ -574,18 +572,17 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
-                                          const bool* terminate_flag,
+                                          const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
-  ctx.SetTerminateFlag(terminate_flag);
   auto* execution_plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
-  SessionScope session_scope(session_state, *reinterpret_cast<const ExecutionFrame*>(ctx.GetExecutionFrame()));
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame());
   ctx.SetSessionScope(&session_scope);
 
   ctx.SetOrtValueCache(std::move(cache));
@@ -594,10 +591,10 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (!execution_plan->execution_plan[i]->steps_.empty()) {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag]() {
         auto* range = ctx.GetCurrentRange();
         size_t start = !range ? 0 : range->stream_pc_range[i].first;
-        RunSince(i, ctx, start);
+        RunSince(i, ctx, terminate_flag, start);
       });
     }
   }
@@ -607,7 +604,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   }
 
   ORT_RETURN_IF_ERROR(ctx.TaskStatus());
-  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
+  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame().GetOutputs(fetches));
   return Status::OK();
 }
 #endif

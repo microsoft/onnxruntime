@@ -485,15 +485,15 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
 
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
-                                    const gsl::span<const int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
+                                    gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
 Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
@@ -586,8 +586,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
-std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator> allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__GetAllocationFn(allocator, use_reserve, stream, wait_fn); }
-
+std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator>& allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__GetAllocationFn(allocator, use_reserve, stream, wait_fn); }
 
 #ifdef ENABLE_TRAINING
 namespace contrib {

@@ -958,7 +958,7 @@ struct ProviderHostImpl : ProviderHost {
   Status SparseTensor__Copy(const SparseTensor* p, const DataTransferManager& dtm, SparseTensor& dst) override { return p->Copy(dtm, dst); }
 #endif
 
-  std::function<void*(size_t)> Allocator__GetAllocationFn(std::shared_ptr<IAllocator> allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) override { return GetAllocationFn(allocator, use_reserve, stream, wait_fn); }
+  std::function<void*(size_t)> Allocator__GetAllocationFn(std::shared_ptr<IAllocator>& allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) override { return GetAllocationFn(allocator, use_reserve, stream, wait_fn); }
 
   // TensorSeq(wrapped)
   MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept override { return p->DataType(); }
@@ -1807,7 +1807,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
   API_IMPL_BEGIN
 #ifdef USE_CANN
   onnxruntime::ProviderOptions options =
-    onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
+      onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
 

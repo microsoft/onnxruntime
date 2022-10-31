@@ -118,7 +118,7 @@ class StaticQuantConfig(QuantConfig):
                         Default is False which quantizes floating-point weight and feeds it to solely inserted
                         DeQuantizeLinear node. If True, it remains floating-point weight and inserts both
                         QuantizeLinear/DeQuantizeLinear nodes to weight.
-                    OpTypesToExcludeOutputQuantizatioin = list of op type :
+                    OpTypesToExcludeOutputQuantization = list of op type :
                         Default is []. If any op type is specified, it won't quantize the output of ops with this
                         specific op types.
                     DedicatedQDQPair = True/False :
@@ -304,7 +304,7 @@ def quantize_static(
                     Default is False which quantizes floating-point weight and feeds it to solely inserted
                     DeQuantizeLinear node. If True, it remains floating-point weight and inserts both
                     QuantizeLinear/DeQuantizeLinear nodes to weight.
-                OpTypesToExcludeOutputQuantizatioin = list of op type :
+                OpTypesToExcludeOutputQuantization = list of op type :
                     Default is []. If any op type is specified, it won't quantize the output of ops with this
                     specific op types.
                 DedicatedQDQPair = True/False :

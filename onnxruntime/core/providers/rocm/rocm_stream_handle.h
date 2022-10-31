@@ -35,13 +35,13 @@ struct RocmStream : Stream {
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;
-  bool release_cpu_buffer_on_cuda_stream_{true};
+  bool release_cpu_buffer_on_rocm_stream_{true};
 };
 
 void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
                                const OrtDevice::DeviceType device_type,
                                AllocatorPtr cpu_allocator,
-                               bool release_cpu_buffer_on_cuda_stream,
+                               bool release_cpu_buffer_on_rocm_stream,
                                hipStream_t external_stream,
                                bool use_existing_stream,
                                miopenHandle_t external_miopen_handle,

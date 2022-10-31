@@ -164,7 +164,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     typedef typename onnxruntime::rocm::ToHipType<T>::MappedType HipT;
     const auto alpha = onnxruntime::rocm::Consts<HipT>::One;
     const auto beta = onnxruntime::rocm::Consts<HipT>::Zero;
-    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(context->GetComputeStream());
     miopenStatus_t fusion_status = miopenStatusNotInitialized;
 
     if (should_try_fusion_api) {
@@ -243,7 +243,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     }
     if (Base::s_.post_slicing_required) {
       ORT_RETURN_IF_ERROR(onnxruntime::rocm::SliceOutUnwantedOutputSection(
-          this->Stream(),
+          this->Stream(context),
           Base::s_.y_data,
           Base::s_.y_dims_with_adjusted_pads,
           Base::s_.Y->MutableDataRaw(),

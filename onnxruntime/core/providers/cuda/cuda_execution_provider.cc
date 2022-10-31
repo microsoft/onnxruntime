@@ -53,7 +53,7 @@ class Memcpy final : public OpKernel {
       // TODO: support aysnc copy for sparse tensor
 
       // sync the stream frist, since it is a sync memory copy
-      cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle));
+      cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
       if (X_type->IsSparseTensorType()) {
         const auto* X = ctx->Input<SparseTensor>(0);
         ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");

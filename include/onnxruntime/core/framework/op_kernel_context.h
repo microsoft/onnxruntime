@@ -3,7 +3,7 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
-struct Stream;
+class Stream;
 namespace concurrency {
 class ThreadPool;
 }
@@ -149,7 +149,7 @@ class OpKernelContext {
   Return the compute stream associated with the EP that the kernel is partitioned to.
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
-  virtual Stream* GetComputeStream() const {
+  [[nodiscard]] virtual Stream* GetComputeStream() const {
     return stream_;
   }
 
@@ -181,7 +181,6 @@ class OpKernelContext {
   }
 
  protected:
-
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;

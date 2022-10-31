@@ -727,6 +727,17 @@ class OpTester {
   enum class ExpectResult { kExpectSuccess,
                             kExpectFailure };
 
+  OpTester& Config(const SessionOptions& sess_options);
+  OpTester& Config(ExpectResult expect_result, const std::string& expected_failure_string);
+  OpTester& ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types);
+  OpTester& Config(const RunOptions* run_options);
+  OpTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers);
+  OpTester& Config(const Graph::ResolveOptions& resolve_options);
+
+  void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,
+                     size_t* number_of_shared_pre_packed_weights_counter = nullptr);
+
+  // [[deprecated("Use builder pattern Config* and RunWithConfig")]]
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
@@ -734,6 +745,7 @@ class OpTester {
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
            const Graph::ResolveOptions& resolve_options = {});
 
+  // [[deprecated("Use builder pattern Config* and RunWithConfig")]]
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
@@ -833,6 +845,19 @@ class OpTester {
                                      const std::vector<std::string>& output_names,
                                      const std::string& provider_type,
                                      bool allow_released_onnx_opset_only = true);
+
+  struct RunContext {
+    SessionOptions session_options{};
+    ExpectResult expect_result{ExpectResult::kExpectSuccess};
+    std::string expected_failure_string{};
+    std::unordered_set<std::string> excluded_provider_types = {};
+    const RunOptions* run_options{};
+    bool run_with_specified_eps{false};
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers{};
+    Graph::ResolveOptions resolve_options{};
+  };
+
+  RunContext ctx_{};
 
   const char* op_;
   std::vector<Data> input_data_;
@@ -946,6 +971,22 @@ class OpTester {
   }
 
  private:
+  // Execute the model for a single execution providers combination
+  void ExecuteModelForEps(
+      std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,
+      onnxruntime::Model& model,
+      SessionOptions sess_options,
+      onnxruntime::test::OpTester::ExpectResult expect_result,
+      const std::string& expected_failure_string,
+      const onnxruntime::RunOptions* run_options,
+      const std::unordered_map<std::string, OrtValue>& feeds,
+      const std::vector<std::string>& output_names,
+      const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+      bool try_assign_ep_for_nodes,
+      bool allow_released_onnx_opset_only,
+      size_t* number_of_pre_packed_weights_counter,
+      size_t* number_of_shared_pre_packed_weights_counter);
+
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name,
                   const SeqTensors<T>* seq_tensors,

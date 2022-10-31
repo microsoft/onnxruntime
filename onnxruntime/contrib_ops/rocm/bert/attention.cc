@@ -66,14 +66,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int past_sequence_length = 0;
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
 
-  rocblas_handle rocblas = RocblasHandle();
+  rocblas_handle rocblas = GetRocblasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
+  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size, context->GetComputeStream());
 
   typedef typename ToHipType<T>::MappedType HipT;
   HipT one = ToHipType<T>::FromFloat(1.0f);
@@ -97,10 +97,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size,
                                                    sequence_length, past_sequence_length);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
           device_prop,
-          Stream(),
+          Stream(context),
           rocblas,
           element_size,
           batch_size,

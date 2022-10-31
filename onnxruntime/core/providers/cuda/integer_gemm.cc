@@ -21,7 +21,7 @@ Status GemmInt8(int m, int n, int k,
   ORT_ENFORCE(a != nullptr && b != nullptr && c != nullptr, "input matrix should not be null");
   ORT_ENFORCE(cuda_kernel != nullptr, "kernel is null");
 
-  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:

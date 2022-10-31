@@ -50,7 +50,7 @@ void* CUDAAllocator::Alloc(size_t size) {
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
-    //BFCArena was updated recently to handle the exception and adjust the request size
+    // BFCArena was updated recently to handle the exception and adjust the request size
     CUDA_CALL_THROW(cudaMalloc((void**)&p, size));
   }
   return p;

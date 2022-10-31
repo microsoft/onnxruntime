@@ -41,9 +41,8 @@ class RocmKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* = nullptr) const {
-    // TODO: stream is not used yet
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
+    return provider_->GetScratchBuffer<T>(count_or_bytes, stream, WaitRocmNotificationOnDevice);
   }
 
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
@@ -60,22 +59,20 @@ class RocmKernel : public OpKernel {
     return provider_->AllocateBufferOnCPUPinned<T>(count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* /*TODO*/= nullptr) const {
-    provider_->AddDeferredReleaseCPUPtr(p);
+  inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {
+    ORT_ENFORCE(ort_stream->GetDevice().Type() == OrtDevice::GPU);
+    auto* rocm_ep_stream = static_cast<RocmStream*>(ort_stream);
+    rocm_ep_stream->EnqueDeferredCPUBuffer(p);
   }
 
   const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); }
-
-  inline hipStream_t Stream() const { return static_cast<hipStream_t>(provider_->GetComputeStream()); }
 
   inline hipStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
     return stream ? static_cast<hipStream_t>(stream->handle) : nullptr;
   }
 
-  inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
-    return ctx->GetComputeStream();
-  }
+  bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
 
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
@@ -107,17 +104,14 @@ class RocmKernel : public OpKernel {
       count_ = count;
     }
 
-    Status CopyToGpu() {
+    Status CopyToGpu(onnxruntime::Stream* stream) {
       if (cpu_pinned_copy_) {
-        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice, op_kernel_->Stream()));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
+        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_, stream);
+        hipStream_t rocm_stream = stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice,
+                                           rocm_stream));
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
-      return Status::OK();
-    }
-
-    Status CopyToGpu(onnxruntime::Stream* /*stream*/) {
-      // TODO:
       return Status::OK();
     }
 
@@ -177,11 +171,6 @@ class RocmKernel : public OpKernel {
   inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream* stream) const {
     auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(src.Location().device, dst.Location().device);
     return gpu_data_transfer->CopyTensorAsync(src, dst, stream);
-  }
-
-  static hipStream_t GetRocmStreamFromContext(OpKernelContext* context) {
-    auto* stream = context->GetComputeStream();
-    return stream ? static_cast<hipStream_t>(stream->handle) : nullptr;
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }

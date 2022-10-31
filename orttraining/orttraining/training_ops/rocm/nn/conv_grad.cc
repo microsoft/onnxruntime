@@ -334,20 +334,20 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* dW = context->Output(1, W->Shape());
   Tensor* dB = context->Output(2, {W->Shape()[0]});
   ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW));
-  if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient());
-  if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient());
+  if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient(context->GetComputeStream()));
+  if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient(context->GetComputeStream()));
   if (dB) ORT_RETURN_IF_ERROR(ComputeBiasGradient());
   return Status::OK();
 }
 
 template <typename T>
-Status ConvGrad<T>::ComputeInputGradient() const {
+Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
   return AlgoIterator<T_BwdDataAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
         const auto zero = Consts<HipT>::Zero;
-        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory);
+        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardData(
             args_.handle, &one, args_.y_tensor, args_.dy_data, args_.w_desc, args_.w_data, args_.conv_desc,
 	    algo_perf.bwd_data_algo, &zero, args_.x_tensor, args_.dx_data, workspace.get(), algo_perf.memory));
@@ -356,13 +356,13 @@ Status ConvGrad<T>::ComputeInputGradient() const {
 }
 
 template <typename T>
-Status ConvGrad<T>::ComputeWeightGradient() const {
+Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
   return AlgoIterator<T_BwdFilterAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
         const auto zero = Consts<HipT>::Zero;
-        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory);
+        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardWeights(
             args_.handle, &one, args_.y_tensor, args_.dy_data, args_.x_tensor, args_.x_data, args_.conv_desc,
 	    algo_perf.bwd_weights_algo, &zero, args_.w_desc, args_.dw_data, workspace.get(), algo_perf.memory));

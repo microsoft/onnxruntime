@@ -90,7 +90,6 @@ class AllocationPlanTestUtility {
   // The free list has been re-implmented.
   // remove those checkers first.
   // TODO: add the tests for new release plan.
-
 };
 
 typedef std::unordered_map<const onnxruntime::NodeArg*, TensorShapeProto*> ShapeMap;
@@ -108,9 +107,9 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
   ShapeMap* shape_map_;
 };
 
-class ParalllelPlannerTestContext : public SequentialPlannerTestContext {
+class ParallelPlannerTestContext : public SequentialPlannerTestContext {
  public:
-  ParalllelPlannerTestContext(ShapeMap* shape_map) : SequentialPlannerTestContext(shape_map) {
+  ParallelPlannerTestContext(ShapeMap* shape_map) : SequentialPlannerTestContext(shape_map) {
   }
   bool IsParallelExecutionEnabled() const override { return true; }
   ExecutionOrder GetExecutionOrder() const override { return ExecutionOrder::DEFAULT; }
@@ -289,7 +288,7 @@ class PlannerTest : public ::testing::Test {
         return nullptr;
       }
 
-      virtual void RegisterWaitFn(const OrtDevice::DeviceType /*notification_ep_type*/, const OrtDevice::DeviceType /*ep_type*/, WaitNotificationFn /*fn*/) override{}
+      virtual void RegisterWaitFn(const OrtDevice::DeviceType /*notification_ep_type*/, const OrtDevice::DeviceType /*ep_type*/, WaitNotificationFn /*fn*/) override {}
 
       virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType /*ep_type*/, CreateStreamFn /*f*/) override {}
     };
@@ -297,12 +296,11 @@ class PlannerTest : public ::testing::Test {
     onnxruntime::GraphViewer graph_viewer{graph_};
     status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                           execution_providers_, MockStreamHandleRegsitry(),/* {{kCpuExecutionProvider, 1}}, {},*/
+                                           MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
                                            "", DefaultLoggingManager().DefaultLogger(), plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    //AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
-
+    // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {
@@ -314,17 +312,17 @@ class PlannerTest : public ::testing::Test {
   void CheckFreed(int /*step_number*/, std::initializer_list<std::string> /*freed_items*/) {
     // TODO: add the checker for new implementation of release plan
     //// create set and check equality
-    //std::unordered_set<int> expected;
-    //for (auto& name : freed_items) {
-    //  int id;
-    //  index(name, id);
-    //  expected.insert(id);
-    //}
-    //std::unordered_set<int> plan_result;
-    //auto& step_plan = plan_->execution_plan[step_number];
-    //for (int i = step_plan.free_from_index; i <= step_plan.free_to_index; ++i)
-    //  plan_result.insert(plan_->to_be_freed[i]);
-    //EXPECT_EQ(plan_result, expected) << "Freed items incorrect for step " << step_number;
+    // std::unordered_set<int> expected;
+    // for (auto& name : freed_items) {
+    //   int id;
+    //   index(name, id);
+    //   expected.insert(id);
+    // }
+    // std::unordered_set<int> plan_result;
+    // auto& step_plan = plan_->execution_plan[step_number];
+    // for (int i = step_plan.free_from_index; i <= step_plan.free_to_index; ++i)
+    //   plan_result.insert(plan_->to_be_freed[i]);
+    // EXPECT_EQ(plan_result, expected) << "Freed items incorrect for step " << step_number;
   }
 
  protected:
@@ -1042,9 +1040,9 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
 
   EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::CPU);
 
-  //TODO: test para exe plan on subgraph supported
-  //const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
-  //EXPECT_EQ(para_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
+  // TODO: test para exe plan on subgraph supported
+  // const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
+  // EXPECT_EQ(para_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
 TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInMainGraph) {
@@ -1134,9 +1132,9 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
 
   EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
 
-  //TODO: test para exe plan on subgraph supported
-  //const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
-  //EXPECT_EQ(para_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
+  // TODO: test para exe plan on subgraph supported
+  // const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
+  // EXPECT_EQ(para_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
 /*
@@ -1601,7 +1599,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   const auto& main_graph_session_state = sess.GetSessionState();
   const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
-  //const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
+  //const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
   //auto& per_value_plans = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetPerAllocPlan();
   auto* exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetExecutionPlan();
   auto& per_value_plans = exe_plan->GetAllocationPlan();

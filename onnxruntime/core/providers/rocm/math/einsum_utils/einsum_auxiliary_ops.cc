@@ -26,7 +26,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
   // There are no string tensors in Einsum's case - so safely use memcpy
   HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        hipMemcpyDeviceToDevice,
-                                       static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream())));
+                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
 
   return Status::OK();
 }
@@ -35,7 +35,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
   return rocm::Transpose::DoTranspose(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
-                                      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+                                      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream(),
                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
                                       permutation, input, output, input_shape_override);
 }
@@ -82,7 +82,8 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
   return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
-                                              true, nullptr/*TODO*/, input_shape_override);
+                                              true, static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,
+                                              input_shape_override);
 }
 
 // ROCM EP specific Diagonal helper
@@ -124,7 +125,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   DiagonalImpl(
-      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream(),
       input.DataRaw(),
       input.Shape().GetDims().size(),
       first_dim,

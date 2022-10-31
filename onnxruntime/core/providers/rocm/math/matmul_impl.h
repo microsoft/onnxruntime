@@ -19,7 +19,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
                   const T* left_x_data, const T* right_x_data, T* output_y_data,
                   const TensorShape& left_shape, const TensorShape& right_shape,
                   bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
-                  const float t_alpha, const float t_zero);
+                  const float t_alpha, const float t_zero, onnxruntime::Stream* stream);
 
 }  // namespace rocm
 }  // namespace onnxruntime

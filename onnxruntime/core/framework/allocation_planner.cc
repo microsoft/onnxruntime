@@ -135,7 +135,10 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
   BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
                            barrier_id{id} {}
 
-  Status Execute(ExecutionContext* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t /*stream_idx*/,
+                 const bool& /*terminate_flag*/,
+                 bool& continue_flag) override {
     continue_flag = ctx->DecCountDownBarrier(barrier_id);
     return Status::OK();
   }
@@ -156,12 +159,15 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    wait_handle(handle),
                                                                    notification_idx(idx) {}
 
-  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t stream_idx,
+                 const bool& /*terminate_flag*/,
+                 bool& continue_flag) override {
     ORT_ENFORCE(wait_handle, "WaitOnEPStep.wait_handle is null");
     wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
     // update streams clock status
     if (ctx->GetDeviceStream(stream_idx)) {
-      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->stream_clock_);
+      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->GetStreamSyncTable());
     }
     LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
     continue_flag = true;
@@ -184,7 +190,10 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
   LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
                                       node_index{index} {}
 
-  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t stream_idx,
+                 const bool& terminate_flag,
+                 bool& continue_flag) override {
     if (!continue_flag) {
       LOGS(ctx->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
@@ -196,7 +205,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
       return Status::OK();
     }
 #endif
-    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx);
+    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx, terminate_flag);
     continue_flag = status.IsOK();
     return status;
   }
@@ -216,7 +225,10 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
   ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
                                                                    notification_idx(notification_index) {}
 
-  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t stream_idx,
+                 const bool& /*terminate_flag*/,
+                 bool& continue_flag) override {
     if (ctx->GetNotification(notification_idx)) {
       ctx->GetNotification(notification_idx)->ActivateAndUpdate();
     }
@@ -240,8 +252,11 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
   TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
                                                       trigger_point_index(trigger_point_index) {}
 
-  Status Execute(ExecutionContext* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
-    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode());
+  Status Execute(ExecutionContext* ctx,
+                 size_t /*stream_idx*/,
+                 const bool& terminate_flag,
+                 bool& continue_flag) override {
+    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode(), terminate_flag);
     continue_flag = true;
     return Status::OK();
   }
@@ -276,8 +291,7 @@ class PlannerImpl {
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
-  Status CreatePlan(const ExecutionProviders& execution_providers,
-                    const IStreamCommandHandleRegistry& stream_handle_registry,
+  Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
                     /*const ProviderStreamMap& provider_stream_map,
                     const OpStreamMap& op_stream_map,*/
                     const std::string& partition_config_file,
@@ -941,7 +955,6 @@ class PlannerImpl {
 
         auto outputs = pnode->OutputDefs();
         auto num_outputs = outputs.size();
-        // bool has_external_outputs = HasExternalOutputs(*pnode);
         for (size_t i = 0; i < num_outputs; ++i) {
           auto* node_output = outputs[i];
           if (!node_output->Exists()) continue;
@@ -1276,7 +1289,6 @@ class PlannerImpl {
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
-                // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                 allocation_plan[output_idx_global].reused_buffer = reusable_input;
@@ -1366,10 +1378,6 @@ class PlannerImpl {
             }
 
             const auto* downstream_shape = context_->GetShape(*downstream_arg);
-            // if (!(*downstream_shape == *shape)) {
-            //   node_iter = next(node_iter);
-            //   continue;
-            // }
             if (!SameSize(*downstream_shape, *downstream_arg, *shape, *node_output)) {
               node_iter = next(node_iter);
               continue;
@@ -1399,7 +1407,6 @@ class PlannerImpl {
               }
             }
             if (all_covered) {
-              // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
               std::cout << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
               allocation_plan[downstream_value].alloc_kind = AllocKind::kReuse;
               allocation_plan[downstream_value].reused_buffer = output_idx_global;
@@ -1447,7 +1454,7 @@ class PlannerImpl {
 
   Status ComputeReusePlan() {
     auto* backup_context = context_;
-    ParalllelPlannerContext parallel_context;
+    ParallelPlannerContext parallel_context;
     if (!IsSingleStream()) {
       // use parallel execution context to generate a baseline first (no memory sharing)
       context_ = &parallel_context;
@@ -1553,12 +1560,6 @@ class PlannerImpl {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
-          // std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as input" << std::endl;
-          // auto* shape = ort_value_info_[reused].p_def_site->Shape();
-          // for (int i = 0; i < shape->dim_size(); ++i) {
-          //  std::cout << shape->dim().at(i).dim_value() << " ";
-          //}
-          // std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
           ort_value_info_[current].is_inplace_reuse = true;
 #ifdef ENABLE_TRAINING
@@ -1574,12 +1575,6 @@ class PlannerImpl {
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
-          // std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as remote tensor" << std::endl;
-          // auto* shape = ort_value_info_[reused].p_def_site->Shape();
-          // for (int i = 0; i < shape->dim_size(); ++i) {
-          //  std::cout << shape->dim().at(i).dim_value() << " ";
-          //}
-          // std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
         } else {
           // otherwise: allocate a new buffer for this output
@@ -1872,14 +1867,11 @@ class PlannerImpl {
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
-    // int node_cnt = 0;
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
         node_stream_map_[node_index] = i;
-        // node_cnt++;
       }
     }
-    // std::cout << "total node partitioned: " << node_cnt << std::endl;
     num_logic_streams_ = stream_nodes_.size();
   }
 
@@ -2224,14 +2216,13 @@ class PlannerImpl {
 #endif
 };
 
-Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
-                               const IStreamCommandHandleRegistry& stream_handle_registry,
+Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
                                /*const ProviderStreamMap& provider_stream_map,
                                const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers, partition_config_file);
+  PartitionIntoStreams(logger, execution_providers_, partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2243,7 +2234,7 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
-  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers, stream_handle_registry));
+  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
 
   // build value_node_map
   for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -2297,7 +2288,6 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-    const ExecutionProviders& execution_providers,
     const IStreamCommandHandleRegistry& stream_handle_registry,
     const std::string& partition_config_file,
     const logging::Logger& logger,
@@ -2310,8 +2300,7 @@ Status SequentialPlanner::CreatePlan(
                       outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
-  return planner.CreatePlan(execution_providers,
-                            stream_handle_registry,
+  return planner.CreatePlan(stream_handle_registry,
                             /*provider_stream_map,
                             op_stream_map,*/
                             partition_config_file,
@@ -2321,8 +2310,6 @@ Status SequentialPlanner::CreatePlan(
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 InlinedHashMap<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartition"}, NodePartitionerType::DummyPartition}};
-
-// INodePartitioner::INodePartitioner(const std::string& configuration_file, const logging::Logger& logger) : configuration_file_(configuration_file, logger) {}
 
 class DummyPartitioner : public INodePartitioner {
  public:
@@ -2530,13 +2517,10 @@ std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const 
     }
   }  // else means configuration will not be written to a file
   std::unique_ptr<INodePartitioner> node_partitioner;
-  switch (partitioner_type) {
-    case INodePartitioner::NodePartitionerType::DummyPartition:
-      node_partitioner.reset(new DummyPartitioner(logger, cfg_file));
-      break;
-    default:
-      break;
+  if (partitioner_type == INodePartitioner::NodePartitionerType::DummyPartition) {
+    node_partitioner.reset(new DummyPartitioner(logger, cfg_file));
   }
+
   return node_partitioner;
 }
 

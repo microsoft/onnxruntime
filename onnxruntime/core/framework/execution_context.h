@@ -1,77 +1,59 @@
 #pragma once
 #include "core/common/logging/logging.h"
+#include "core/framework/device_stream_collection.h"
+#include "core/framework/execution_frame.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/basic_types.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/memory_info.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
 
 namespace onnxruntime {
 class SessionState;
-class IExecutionFrame;
-class ExecutionFrame;
-
-using OrtValueIndex = int;
-
-struct ReleasePlan {
-  std::unique_ptr<std::atomic_int[]> value_ref_counts_;
-};
-
-class DeviceStreamCollectionImpl;
-class DeviceStreamCollection {
- public:
-  DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
-  ~DeviceStreamCollection();
-  void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
-  void SetDeviceStream(size_t, Stream* stream);
-  const std::vector<Stream*>& GetStreams() const;
-  size_t NumStreams() const;
-  Status CleanUp();
-
- private:
-  std::unique_ptr<DeviceStreamCollectionImpl> impl_;
-};
-
-/*
- * LIMITATION:
- * CountDownBarrier is only for scenario that the v is set
- * to the # of consumers and each consumer calls Dec() exactly once.
- */
-class CountDownBarrier {
- public:
-  CountDownBarrier() : v_{0} {};
-
-  void Set(int32_t v) {
-    ORT_ENFORCE(v >= 0);
-    v_.store(v, std::memory_order_relaxed);
-  }
-
-  bool Dec() {
-    return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
-  }
-
-  int32_t Get() { return v_.load(std::memory_order_relaxed); }
-
-  void Inc() {
-    ++v_;
-  }
-
- private:
-  std::atomic_int_fast32_t v_;
-};
 
 class SessionScope;
 typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
-// execution context that support to execute a command on stream.
-// The notifications got instantiated when execution context is constructed.
-// TODO: if we merge the notifications to execution frame, we might don't need this.
+// Execution context that support to execute a command on stream.
+// It is composed by following components:
+// 1. a execution frame
+// 2. a collection of device stream instances that kernels can launch to.
+// 3. a set of notification instances needed to perform synchronization in current execution plan.
 class ExecutionContext {
  public:
+  /*
+   * LIMITATION:
+   * CountDownBarrier is only for scenario that the v is set
+   * to the # of consumers and each consumer calls Dec() exactly once.
+   */
+  class CountDownBarrier {
+   public:
+    CountDownBarrier() : v_{0} {};
+
+    void Set(int32_t v) {
+      ORT_ENFORCE(v >= 0);
+      v_.store(v, std::memory_order_relaxed);
+    }
+
+    bool Dec() {
+      return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
+    }
+
+    int32_t Get() { return v_.load(std::memory_order_relaxed); }
+
+    void Inc() {
+      ++v_;
+    }
+
+   private:
+    std::atomic_int_fast32_t v_;
+  };
+
   ExecutionContext(const SessionState& sess_state,
                    int32_t num_streams,
                    gsl::span<const size_t> notification_owners,
@@ -88,36 +70,35 @@ class ExecutionContext {
 
   const logging::Logger& GetLogger() const;
 
-  ExecutionFrame* GetExecutionFrame();
+  ExecutionFrame& GetExecutionFrame();
 
   synchronize::Notification* GetNotification(size_t idx);
 
-  const bool* TerminateFlag() const;
-
   void SetLogger(const logging::Logger& current_logger) {
-    logger = &current_logger;
+    logger_ = &current_logger;
   }
-
-  void SetTerminateFlag(const bool* terminate_flag) {
-    terminate_flag_ = terminate_flag;
-  }
-
+  // Get status of the execution.
+  // if one of the stream got non-OK status, the whole task status will be set as that non-OK status.
   const Status& TaskStatus() const;
-
+  // Decrease the count of a given barrier.
   bool DecCountDownBarrier(size_t barrier_id);
-
+  // The execution mode:
+  // 1. single thread mode: all the streams will be launched using current host thread.
+  // 2. multi-threads mode: use inter-op thread pool to schedule the N streams.
   bool SingleThreadMode() const { return single_thread_mode_; }
-
+  // Get the Stream instance for a given logic sequence.
+  // return nullptr if the device of given logic sequence doesn't register stream support.
   Stream* GetDeviceStream(size_t idx);
-
+  // Decrease the count of remaining job by 1.
   void CompleteTask();
-
+  // Increase the count of remaining job by 1.
   void AddTask();
-
+  // This is only used under multi-threads mode.
+  // blocked until all the jobs scheduled into inter-op thread pool complete.
   void WaitAll();
-
+  // If one of the stream got non-OK status, update the status in the context.
   void SetStatus(Status& status);
-
+  // Release the OrtValues after a step, based on the execution plan.
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
 
 #ifdef ENABLE_TRAINING
@@ -160,15 +141,14 @@ class ExecutionContext {
 #endif
 
  private:
-  const SessionState* session_state;
-  std::unique_ptr<ExecutionFrame> frame;
-  const logging::Logger* logger;
-  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications;
-  std::unique_ptr<ReleasePlan> release_plan;
+  const SessionState* session_state_;
+  ExecutionFrame frame_;
+  const logging::Logger* logger_;
+  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications_;
+  std::unique_ptr<std::atomic_int[]> release_plan_;
   const DeviceStreamCollection& device_stream_map_;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
-  const bool* terminate_flag_ = nullptr;
   Status task_status_{Status::OK()};
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
@@ -183,8 +163,11 @@ class ExecutionContext {
 
 using NotificationIndex = size_t;
 
-void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since);
+// Execute the stream at index 'stream_idx' with execution context 'ctx', from step 'since'.
+void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_flag, size_t since);
+// Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(ExecutionContext& ctx,
                         size_t trigger,
-                        bool single_thread_mode);
+                        bool single_thread_mode,
+                        const bool& terminate_flag);
 }  // namespace onnxruntime

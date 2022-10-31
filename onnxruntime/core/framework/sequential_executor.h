@@ -26,7 +26,7 @@ class DeviceStreamCollection;
 typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
-onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx);
+onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx, const bool& terminate_flag);
 
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
@@ -34,7 +34,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
                                    const DeviceStreamCollection& device_streams,
-                                   const bool* terminate_flag,
+                                   const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode);
 
@@ -45,7 +45,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
-                                          const bool* terminate_flag,
+                                          const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache);

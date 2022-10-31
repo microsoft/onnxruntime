@@ -777,7 +777,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_se
         return
 
     if conv_algo_search is not None:
-        os.environ["CONV_ALGO_SEARCH"] = conv_algo_search
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
 
     device = "cuda"
     N, seq_len, C_in, C_out, kernel_size = 32, 128, 1536, 1536, 3
@@ -820,7 +820,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_se
     assert actual_conv_algo_search == expected_conv_algo_search
 
     if conv_algo_search is not None:
-        del os.environ["CONV_ALGO_SEARCH"]
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
 def _run_gradient_correctness_transpose(perm, shape):
@@ -1689,6 +1689,41 @@ def test_aten_group_norm():
     _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
     _test_helpers.assert_values_are_close(ort_y.grad, pt_y.grad)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+
+@pytest.mark.parametrize("input_rank", (3, 4, 5))
+@pytest.mark.parametrize("use_factor", (True, False))
+def test_aten_upsample_nearest(input_rank, use_factor):
+    class _NeuralNetUpsampleNearest(torch.nn.Module):
+        def __init__(self):
+            super(_NeuralNetUpsampleNearest, self).__init__()
+
+        def forward(self, input):
+            return (
+                torch.nn.functional.interpolate(input, scale_factor=2.0, mode="nearest")
+                if use_factor
+                else torch.nn.functional.interpolate(input, size=12, mode="nearest")
+            )
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleNearest().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    input_size = [2 * (dim + 1) for dim in range(input_rank)]
+    pt_input = torch.randn(input_size, dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
 def test_gradient_correctness_cast_chain():
@@ -4126,7 +4161,6 @@ def test_ortmodule_string_inputs_are_ignored():
     with pytest.warns(UserWarning) as warning_record:
         out = ort_model(x, "hello")
 
-    assert len(warning_record) == 2
     assert (
         "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
         in warning_record[1].message.args[0]

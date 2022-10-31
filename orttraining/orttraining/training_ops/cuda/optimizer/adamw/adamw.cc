@@ -32,7 +32,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status AdamWOptimizer::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor, onnxruntime::Stream* stream)
     const {
-  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_tensor.MutableDataRaw(),
                                        source_tensor.DataRaw(),
                                        source_tensor.SizeInBytes(),

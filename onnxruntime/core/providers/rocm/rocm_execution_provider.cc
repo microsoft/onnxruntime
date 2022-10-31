@@ -79,7 +79,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -90,7 +89,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -116,27 +114,27 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)});
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
+        // make it stream aware
+        true,
+        // enable cross stream sharing?
+        false);
 
     // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
   }
 }
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit,
-                                                          ArenaExtendStrategy arena_extend_strategy, ROCMExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                          OrtArenaCfg* default_memory_arena_cfg) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t /*stream*/, size_t /*gpu_mem_limit*/,
+                                                          ArenaExtendStrategy /*arena_extend_strategy*/, ROCMExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
+                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
   HIP_CALL_THROW(hipSetDevice(device_id));
-  stream_ = stream;
 
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
 
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
   MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
-
-  // ROCM malloc/free is expensive so always use an arena
-  allocator_ = CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -156,6 +154,40 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+std::optional<std::string> LoadEnv(const std::string& name, const std::unordered_set<std::string>& valid_values) {
+  ORT_ENFORCE(!valid_values.empty());
+  auto env = onnxruntime::GetEnvironmentVar(name);
+  if (env.empty()) {
+    return std::nullopt;
+  }
+
+  LOGS_DEFAULT(WARNING) << "Environment variable "<< name << " is used. It is reserved for internal testing prupose. "
+                           "End users should opt for provider options or session options and must not rely on it.";
+
+  if (valid_values.find(env) == valid_values.cend()) {
+    std::ostringstream oss;
+    auto it = valid_values.cbegin();
+    oss << *it++;
+    while(it != valid_values.cend()) {
+      oss << ", " << *it++;
+    }
+    ORT_THROW("Value of environment variable ", name," must be ",oss.str(), ", but got ", env);
+  }
+
+  return env;
+}
+
+void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
+  std::optional<std::string> env;
+
+  env = LoadEnv("ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"});
+  const bool env_tunable_op_enabled = env == "1";
+  if (env.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLED is set to " << env_tunable_op_enabled;
+    info.tunable_op.enabled = env_tunable_op_enabled;
+  }
+}
+
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
@@ -170,25 +202,25 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   if (info.has_user_compute_stream) {
     external_stream_ = true;
+    use_ep_level_unified_stream_ = true;
     stream_ = static_cast<hipStream_t>(info.user_compute_stream);
   } else {
     if (info.external_allocator_info.UseExternalAllocator()) {
+      use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
     } else {
-      HIP_CALL_THROW(hipStreamCreateWithFlags(&stream_, hipStreamNonBlocking));
+      stream_ = nullptr;
     }
   }
 
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
+
+  OverrideTunableOpInfoByEnv(info_);
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
-  // Prevent memory leak when people don't call
-  // OnRunStart and OnRunEnd when calling HipKernel's.
-  ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
-
   // clean up thread local context caches
   {
     std::lock_guard<OrtMutex> lock(context_state_.mutex);
@@ -202,6 +234,20 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   if (!external_stream_ && stream_) {
     HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+void ROCMExecutionProvider::EnableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = true;
+}
+
+void ROCMExecutionProvider::DisableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = false;
+}
+
+bool ROCMExecutionProvider::IsTunableOpEnabled() const {
+  return info_.tunable_op.enabled;
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
@@ -226,7 +272,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.gpu_mem_limit,
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
                                                    info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
@@ -264,117 +310,18 @@ void ROCMExecutionProvider::ReleasePerThreadContext() const {
 }
 
 AllocatorPtr ROCMExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  // Pinned memory allocator is shared between threads, but ROCM memory allocator is per-thread or it may cause result changes
-  // A hypothesis is that arena allocator is not aligned with ROCM output cache, and data from different kernel writes may
-  // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
-    return GetPerThreadContext().GetAllocator();
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    auto rocm_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    if (!rocm_alloc) {
+      return CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
+    }
   }
+  return IExecutionProvider::GetAllocator(id, mem_type);
 }
 
 Status ROCMExecutionProvider::Sync() const {
   HIP_RETURN_IF_ERROR(hipDeviceSynchronize());
-  return Status::OK();
-}
-
-void ROCMExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
-  // when not running in InferenceSession (e.g. Test)
-  // it's OK to not remember the deferred release ptr
-  // as the actual memory will be cleaned in arena allocator dtor
-
-  // This function should only record pointers returned by
-  // AllocateBufferOnCPUPinned.
-
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  hipStream_t stream = static_cast<hipStream_t>(GetComputeStream());
-  auto it = deferred_release_buffer_pool_.find(stream);
-  if (it != deferred_release_buffer_pool_.end()) {
-    it->second.push_back(p);
-  } else {
-    deferred_release_buffer_pool_[stream] = {p};
-  }
-}
-
-struct CpuBuffersInfo {
-  // This struct stores the information needed
-  // to release CPU buffers allocated for GPU kernels.
-  // It's used to enqueue their release after
-  // associated GPU kernels in a GPU stream.
-
-  // This is a CPU allocator in GPU EP.
-  // It must be the one used to allocate the
-  // following pointers.
-  AllocatorPtr allocator;
-  // buffers[i] is the i-th pointer added by
-  // AddDeferredReleaseCPUPtr for a specific
-  // GPU stream. For example, this fields
-  // should contain all values in
-  // deferred_release_buffer_pool_[my_stream]
-  // when release my_stream's buffers.
-  std::vector<void*> buffers;
-};
-
-void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {
-  // The passed-in raw_info is a unmanaged pointer from
-  // std::unique_ptr<CpuBuffersInfo>.release().
-  // We rewrap raw_info as std::unique_ptr<CpuBuffersInfo> so that
-  // it will be cleaned up automatically at the end of this function.
-  std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
-  cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
-  for (auto ptr: cpu_buffers_info->buffers) {
-    cpu_buffers_info->allocator->Free(ptr);
-  }
-}
-
-Status ROCMExecutionProvider::EnqueueDeferredRelease() {
-  // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
-  // They have to be released outside GPU kernels because they must be alive
-  // during asynchronous GPU computation even after the CPU part (e.g,
-  // RocmKernel::ComputeInternal) already return.
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  for (auto it = deferred_release_buffer_pool_.begin(); it != deferred_release_buffer_pool_.end(); ++it) {
-    // it->first: a ROCM stream.
-    // it->second: CPU buffers associated with kernels running on it->first.
-    // This iteration enqueues a callback to release all buffers
-    // in it->second on it->first.
-
-    auto stream = it->first;
-    auto& buffers = it->second;
-    // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
-    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
-    // This allocator must be the same to the allocator
-    // used in AllocateBufferOnCPUPinned.
-    cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    cpu_buffers_info->buffers = buffers;
-    // Release the ownership of cpu_buffers_info so that the underlying
-    // object will keep alive until the end of ReleaseCpuBufferCallback.
-    // TODO(wechi): CUDA deprecates cudaStreamAddCallback and
-    // uses another API, cudaLaunchHostFunc(which can be
-    // captured in CUDA graph). Once AMD adds similar feature,
-    // we should replace the following line with
-    //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
-    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
-      // Release memory asynchronously to avoid blocking the compute stream.
-      HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
-    } else {
-
-      // Per
-      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
-      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
-      // are using the host memory.
-      HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));
-      // hipHostFree and all other GPU APIs cannot be called by hipStreamAddCallback per spec.
-      // So we just do synchrous release.
-      ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
-    }
-  }
-  // All buffers are scheduled for release.
-  // Let's clear releated information so that
-  // those buffers won't be released twice in
-  // the next EnqueueDeferredRelease call.
-  deferred_release_buffer_pool_.clear();
   return Status::OK();
 }
 
@@ -385,13 +332,8 @@ Status ROCMExecutionProvider::OnRunStart() {
 }
 
 Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
-  // Enqueue deferred CPU memory release on related streams.
-  // This will release all deferred-release CPU buffers allocated
-  // before calling OnRunEnd.
-  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-
   if (sync_stream) {
-    HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+    HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream_));
   }
 
   // In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
@@ -402,18 +344,6 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
     ReleasePerThreadContext();
   }
 
-  return Status::OK();
-}
-
-Status ROCMExecutionProvider::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      HIP_RETURN_IF_ERROR(hipStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<hipStream_t>(stream);
-  }
   return Status::OK();
 }
 

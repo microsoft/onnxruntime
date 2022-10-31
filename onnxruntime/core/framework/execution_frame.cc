@@ -340,7 +340,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                                const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state,
-                               const std::vector<Stream*>* device_streams)
+                               gsl::span<Stream*> device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
@@ -483,13 +483,11 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
   return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
 }
 
-Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
-  //auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
-  //auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetTheExecutionPlan()->GetValueToStreamMap();
+Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
   const auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetExecutionPlan()->GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
-  if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
-    return (*device_streams_)[it->second];
+  if (it != value_to_stream_map.end() && it->second < device_streams_.size()) {
+    return device_streams_[it->second];
   }
   return nullptr;
 }
@@ -561,7 +559,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     if (stream_aware_alloc && current_stream) {
       // the reused memory must from same EP
       auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-          current_stream->device.Type(), current_stream->device.Type());
+          current_stream->GetDevice().Type(), current_stream->GetDevice().Type());
       return stream_aware_alloc->AllocOnStream(len, current_stream, wait_handle);
     } else {
       return alloc->Alloc(len);
@@ -684,10 +682,6 @@ Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlva
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
-  /*
-  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
-  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  */
   const auto& alloc_plan = session_state_.GetPerAllocPlan();
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
@@ -840,7 +834,7 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
   }
 }
 
-//do not call this in ParallExecutionPlan
+// do not call this in ParallExecutionPlan
 Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
   ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(ort_value_idx));
   TraceFree(ort_value_idx);
@@ -848,12 +842,6 @@ Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
-  /*
-  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
-  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
-  return alloc_plan[ort_value_idx];
-  */
   return session_state_.GetPerAllocPlan()[ort_value_idx];
 }
 
@@ -873,7 +861,7 @@ void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
   }
 }
 
-//do not call this in ParallExecutionPlan
+// do not call this in ParallExecutionPlan
 void ExecutionFrame::TraceFree(int ort_value_idx) {
   // don't trace free on output tensors.
   if (planner_.has_value() && !IsOutput(ort_value_idx)) {

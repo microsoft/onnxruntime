@@ -99,13 +99,21 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // The following vector contains any activation tensors that must be allocated sequentially.
   std::vector<OrtValueIndex> activation_allocation_order;
 
+  // A execution step in the execution step.
+  // we explicitly encoding the cross-stream synchronization
+  // in the execution pan, so we wwill mainly have following
+  // types of steps:
+  // 1. Kernel Launch
+  // 2. Activate notification
+  // 3. Wait on a notificaiton
   class ExecutionStep {
    public:
     virtual ~ExecutionStep() {}
-    virtual Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) = 0;
+    virtual Status Execute(ExecutionContext* ctx, size_t stream_idx, const bool& terminate_flag, bool& continue_flag) = 0;
     virtual std::string Dump() const = 0;
   };
-
+  // LogicStream is a sequence of execution steps that can be executed independetly.
+  // The steps within a sequence are executed in order, and happened on the same device.
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
@@ -115,11 +123,17 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
    public:
     LogicStream(const OrtDevice& device) : device_(device) {}
   };
-
+  // a execution plan is composed by multiple logic stream.
+  // by default all the nodes with the same device will be group in to the same stream.
   InlinedVector<std::unique_ptr<LogicStream>> execution_plan;
-
+  // the map from ort_value index to the logic stream index.
   InlinedHashMap<size_t, size_t> value_to_stream_map;
 
+  // If a tensor is consumed by multiple logic streams,
+  // we can't static predict when will this tensor can be
+  // released. So we design this ref-count based release plan.
+  // if the ref count is 1, we still can static determin when
+  // the tensor can be released.
   struct ReleaseAction {
     size_t value_index;
     // 0 - no release needed
@@ -134,9 +148,11 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // indexed by node index
   // elements in node_release_list[i] is the index in release_actions.
   std::vector<std::vector<size_t>> node_release_list;
-
+  // for each notification, what is the stream-idx of the its owner.
   std::vector<size_t> notification_owners;
-
+  // key: notification index.
+  // value:  {stream_idx, step_idx}
+  // giving a notificaiton, we used this map to figure out what is the downstream steps it need to trigger.
   InlinedHashMap<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
 
   size_t num_barriers{0};

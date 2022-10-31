@@ -4,6 +4,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/stream_handles.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
@@ -112,10 +113,10 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
 
-std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator> alloc, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator>& alloc, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   if (use_reserve)
     return [alloc](size_t size) { return alloc->Reserve(size); };
-  return [alloc, stream, wait_fn](size_t size) { 
+  return [alloc, stream, wait_fn](size_t size) {
     if (alloc->Info().alloc_type == OrtArenaAllocator) {
       BFCArena* arena_ptr = static_cast<BFCArena*>(alloc.get());
       auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();

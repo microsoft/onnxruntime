@@ -21,7 +21,7 @@ class OpKernelContextInternal : public OpKernelContext {
                                    IExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const bool* terminate_flag,
+                                   const bool& terminate_flag,
                                    Stream* stream)
       : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
         session_state_(session_state),
@@ -69,11 +69,11 @@ class OpKernelContextInternal : public OpKernelContext {
     return implicit_input_values_;
   }
 
-  const bool* GetTerminateFlag() const noexcept { return terminate_flag_; }
+  const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
  private:
   const SessionState& session_state_;
-  const bool* terminate_flag_;
+  const bool& terminate_flag_;
   std::vector<const OrtValue*> implicit_input_values_;
 };
 

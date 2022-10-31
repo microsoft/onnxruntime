@@ -70,7 +70,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
                   const T* left_x_data, const T* right_x_data, T* output_y_data,
                   const TensorShape& left_shape, const TensorShape& right_shape,
                   bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
-                  const float t_alpha, const float t_zero) {
+                  const float t_alpha, const float t_zero, onnxruntime::Stream* stream) {
   typedef typename ToHipType<T>::MappedType HipT;
 
   const HipT alpha = ToHipType<T>::FromFloat(t_alpha);
@@ -88,8 +88,8 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
     BlasOp transA = transa ? BlasOp::Trans : BlasOp::NonTrans;
     BlasOp transB = transb ? BlasOp::Trans : BlasOp::NonTrans;
     return tunable::blas::column_major::Gemm(
-        false, op->Stream(),
-        op->RocblasHandle(), transB, transA, static_cast<int64_t>(helper.N()),
+        op->IsTunableOpEnabled(), static_cast<hipStream_t>(stream->handle),
+        op->GetRocblasHandle(static_cast<RocmStream*>(stream)), transB, transA, static_cast<int64_t>(helper.N()),
         static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.K()), t_alpha,
         reinterpret_cast<const HipT*>(right_x_data), ldb,
         reinterpret_cast<const HipT*>(left_x_data), lda, t_zero,
@@ -98,7 +98,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
                                       transa, transb, trans_batch_a, trans_batch_b,
                                       stride_A, stride_B, stride_C, batch_count)) {
     ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-        op->RocblasHandle(), transB, transA, static_cast<int>(helper.N()),
+        op->GetRocblasHandle(static_cast<RocmStream*>(stream)), transB, transA, static_cast<int>(helper.N()),
         static_cast<int>(helper.M()), static_cast<int>(helper.K()), &alpha,
         reinterpret_cast<const HipT*>(right_x_data), ldb, stride_B,
         reinterpret_cast<const HipT*>(left_x_data), lda, stride_A, &zero,
@@ -121,14 +121,14 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
   MatMulComputeHelper::OffsetToArrays(
       reinterpret_cast<HipT*>(output_y_data),
       helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(stream));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(stream));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(stream));
 
   // note that onnxruntime OrtValue is row major, while rocblas is column major,
   // so swap left/right operands
   ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
-      op->RocblasHandle(), transB, transA, static_cast<int>(helper.N()),
+      op->GetRocblasHandle(static_cast<RocmStream*>(stream)), transB, transA, static_cast<int>(helper.N()),
       static_cast<int>(helper.M()), static_cast<int>(helper.K()), &alpha,
       right_arrays.GpuPtr(), ldb,
       left_arrays.GpuPtr(), lda, &zero,
@@ -149,7 +149,8 @@ template Status MatMulImpl<float>(const RocmKernel* op,
                                   bool trans_batch_a,
                                   bool trans_batch_b,
                                   const float t_alpha,
-                                  const float t_zero);
+                                  const float t_zero,
+                                  onnxruntime::Stream* stream);
 template Status MatMulImpl<double>(const RocmKernel* op,
                                    MatMulComputeHelper& helper,
                                    const double* left_x_data,
@@ -162,7 +163,8 @@ template Status MatMulImpl<double>(const RocmKernel* op,
                                    bool trans_batch_a,
                                    bool trans_batch_b,
                                    const float t_alpha,
-                                   const float t_zero);
+                                   const float t_zero,
+                                   onnxruntime::Stream* stream);
 template Status MatMulImpl<MLFloat16>(const RocmKernel* op,
                                       MatMulComputeHelper& helper,
                                       const MLFloat16* left_x_data,
@@ -175,7 +177,8 @@ template Status MatMulImpl<MLFloat16>(const RocmKernel* op,
                                       bool trans_batch_a,
                                       bool trans_batch_b,
                                       const float t_alpha,
-                                      const float t_zero);
+                                      const float t_zero,
+                                      onnxruntime::Stream* stream);
 template Status MatMulImpl<BFloat16>(const RocmKernel* op,
                                      MatMulComputeHelper& helper,
                                      const BFloat16* left_x_data,
@@ -188,7 +191,8 @@ template Status MatMulImpl<BFloat16>(const RocmKernel* op,
                                      bool trans_batch_a,
                                      bool trans_batch_b,
                                      const float t_alpha,
-                                     const float t_zero);
+                                     const float t_zero,
+                                     onnxruntime::Stream* stream);
 
 }  // namespace rocm
 }  // namespace onnxruntime

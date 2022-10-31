@@ -1,71 +1,135 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #pragma once
 
 #include <functional>
 #include <unordered_map>
 #include "core/framework/ortdevice.h"
+#include "core/common/status.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
 // this opaque handle could be anything the target device generated.
-// it could be a cuda event, or a cpu notification implementation
+// it could be a cuda event, or a npu notification implementation
 using NotificationHandle = void*;
 // it can be either a cuda stream, or even nullptr for device doesn't have stream support like cpu.
 using StreamHandle = void*;
 
-// a stream abstraction which hold an opaque handle, and a reference to which EP instance this stream belong to.
-// it need to be EP instance as we might have different stream on different EP with same type.
-// i.e. different cuda stream on different GPU.
 namespace synchronize {
-struct Notification;
+class Notification;
 }
 
-struct Stream {
-  StreamHandle handle;
-  const OrtDevice& device;
-  uint64_t timestamp{0};
-  // TODO: do we really need it to be a dynamic map?
-  std::unordered_map<Stream*, uint64_t> other_stream_clock;
+// a stream abstraction which hold an opaque handle, and a reference to which OrtDevice instance this stream belong to.
+// it need to be OrtDevice instance as we might have different stream on different OrtDevice with same type.
+// i.e. different cuda stream on different GPU.
+class Stream {
+ public:
+  Stream(StreamHandle h, const OrtDevice& d) : handle_(h), device_(d) {}
 
-  Stream(StreamHandle h, const OrtDevice& d) : handle(h), device(d) {}
-
-  uint64_t BumpTimeStampAndReturn() {
-    return ++timestamp;
-  }
-
-  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
-    for (auto& kv : clock) {
-      auto it = other_stream_clock.find(kv.first);
-      if (it == other_stream_clock.end())
-        other_stream_clock.insert(kv);
-      else
-        other_stream_clock[kv.first] = std::max(it->second, kv.second);
-    }
-  }
-
-  virtual ~Stream() {}
+  virtual ~Stream() = default;
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
     return {};
   };
+  // block the host thread until all the tasks in the stream finished.
   virtual void Flush(){};
-  virtual Status CleanUpOnRunEnd() = 0;
+  // The framework may reuse the stream instance for multiple iterations.
+  // This is the API that provide a chance to let the device stream cleanup
+  // resource at the end of a iteration.
+  virtual Status CleanUpOnRunEnd() { return Status::OK(); };
+
+  StreamHandle GetHandle() const { return handle_; }
+
+  const OrtDevice& GetDevice() const { return device_; }
+
+  // We use the timestamp based vector clocks to optimize the resource sharing
+  // between different streams.
+  // Each stream maintain following data structure:
+  // 1. Current timestamp
+  // 2. A lookup table that for a given stream, what is its timestamp when the
+  //    last synchronization happened with current stream.
+  // 3. When a notificaiton is activated, it take a snapshot of current stream's
+  //    lookup table.
+  // 4. When synchronization happened (current stream wait on a notification),
+  //    update its lookup table with the table snapshot in notificaiton.
+  // The memory reusing strategy is:
+  // A kernel in current stream is safe to reuse another stream's memory chunk
+  // as long as the reused chunk's timestamp is less than the last synchonized
+  // timestamp recorded in the lookup table.
+
+  // Get the current timestamp
+  uint64_t GetCurrentTimestamp() const { return timestamp_; }
+
+  // return the timestamp when the last synchronization happened between target stream and current stream.
+  // return 0 if no synchonization happened.
+  uint64_t GetLastSyncTimestampWithTargetStream(Stream* target_stream) const {
+    auto it = other_stream_clock_.find(target_stream);
+    return it == other_stream_clock_.end() ? 0 : it->second;
+  }
+
+  // make a copy of the current stream lookup table.
+  // this is used to create a snapshot of the stream lookup table in notificaiton.
+  void CloneCurrentStreamSyncTable(std::unordered_map<Stream*, uint64_t>& output) const {
+    std::copy(other_stream_clock_.begin(), other_stream_clock_.end(), std::inserter(output, output.end()));
+  }
+
+  // bump the current timestamp
+  // When a notification get activated, bump the snapshot in its owner.
+  uint64_t BumpTimeStampAndReturn() {
+    return ++timestamp_;
+  }
+
+  // update the stream lookup table with the snapshot saved in notification.
+  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
+    for (const auto& kv : clock) {
+      auto it = other_stream_clock_.find(kv.first);
+      if (it == other_stream_clock_.end()) {
+        other_stream_clock_.insert(kv);
+      } else {
+        other_stream_clock_[kv.first] = std::max(it->second, kv.second);
+      }
+    }
+  }
+
+ protected:
+  StreamHandle handle_;
+  const OrtDevice& device_;
+  uint64_t timestamp_{0};
+  // TODO: use inline container.
+  // currently this class is header only, but abseil doesn't compile with nvcc
+  // we need to add new symbol to provider_bridge and hide abseil from the header.
+  std::unordered_map<Stream*, uint64_t> other_stream_clock_{};
 };
 
 namespace synchronize {
-struct Notification {
-  // which stream create this notificaiton.
-  Stream* stream;
-  std::unordered_map<Stream*, uint64_t> stream_clock_;
+// an object which record the status of the stream, and can be wait on from another stream.
+class Notification {
+ public:
+  explicit Notification(Stream* s) : stream_(s) {}
+  virtual ~Notification() = default;
 
-  Notification(Stream* s) : stream(s) {}
-  virtual ~Notification() {}
-
+  // this api will perform three operations:
+  // 1. activate the notification on device, for example, record an event on GPU.
+  // 2. take a snapshot of the timestamp lookup table in current stream.
+  // 3. bump the timestamp for current stream.
   void ActivateAndUpdate() {
     Activate();
-    stream_clock_ = stream->other_stream_clock;
-    stream_clock_[stream] = stream->BumpTimeStampAndReturn();
+    stream_->CloneCurrentStreamSyncTable(stream_clock_);
+    stream_clock_[stream_] = stream_->BumpTimeStampAndReturn();
   }
 
+  // return the timestamp lookup table saved in the notificaiton.
+  const std::unordered_map<Stream*, uint64_t>& GetStreamSyncTable() {
+    return stream_clock_;
+  }
+
+ protected:
   virtual void Activate() = 0;
+  // which stream create this notification.
+  Stream* stream_;
+  // TODO: use inline container.
+  // currently this class is header only, but abseil doesn't compile with nvcc
+  // we need to add new symbol to provider_bridge and hide abseil from the header.
+  std::unordered_map<Stream*, uint64_t> stream_clock_{};
 };
 }  // namespace synchronize
 
@@ -80,16 +144,16 @@ using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 // make it interface so we can pass it through shared library based execution providers
 class IStreamCommandHandleRegistry {
  public:
-  virtual ~IStreamCommandHandleRegistry() {}
+  virtual ~IStreamCommandHandleRegistry() = default;
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  virtual WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_ower_device_type, const OrtDevice::DeviceType executor_device_type) const = 0;
-
-  virtual CreateStreamFn GetCreateStreamFn(const OrtDevice::DeviceType execution_device_type) const = 0;
-
-  virtual void RegisterWaitFn(const OrtDevice::DeviceType notification_device_type, const OrtDevice::DeviceType device_type, WaitNotificationFn fn) = 0;
-
-  virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
+  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type, OrtDevice::DeviceType executor_device_type) const = 0;
+  // Get the stream creation function registered on the given device type.
+  [[nodiscard]] virtual CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType execution_device_type) const = 0;
+  // register a wait methond which will be invoked when we wait a notification (created by 'notification_device_type' device) on a stream at 'device_type' device.
+  virtual void RegisterWaitFn(OrtDevice::DeviceType notification_device_type, OrtDevice::DeviceType device_type, WaitNotificationFn fn) = 0;
+  // register a handle about how to create stream on given device type.
+  virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
 
 }  // namespace onnxruntime

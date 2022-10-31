@@ -41,6 +41,14 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
   ~MIGraphXExecutionProvider() = default;
 
+#ifdef MIGRAPHX_STREAM_SYNC
+  Status Sync() const override;
+
+  Status OnRunStart() override;
+
+  Status OnRunEnd(bool sync_stream) override;
+#endif
+
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_lookup*/) const override;
@@ -53,8 +61,6 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
-
-  void* GetComputeStream() const { return static_cast<void*>(stream_); }  // TODO: this function should be deleted
 
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
@@ -73,6 +79,8 @@ private:
   std::unordered_map<std::string, bool> map_no_input_shape_;
 
   AllocatorPtr allocator_;
+  miopenHandle_t external_miopen_handle_ = nullptr;
+  rocblas_handle external_rocblas_handle_ = nullptr;
 };
 
 }

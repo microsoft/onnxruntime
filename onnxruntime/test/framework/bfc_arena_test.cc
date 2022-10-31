@@ -349,7 +349,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   // add stream2 to stream 1 depenency
   auto stream1_notification_a = stream1.CreateNotification(1);
   stream1_notification_a->ActivateAndUpdate();
-  stream2.UpdateStreamClock(stream1_notification_a->stream_clock_);
+  stream2.UpdateStreamClock(stream1_notification_a->GetStreamSyncTable());
   auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
   // it should pick the first chunk
   EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);

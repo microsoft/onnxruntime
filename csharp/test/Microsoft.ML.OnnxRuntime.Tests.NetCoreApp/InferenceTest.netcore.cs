@@ -215,7 +215,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         private static Func<DirectoryInfo, IEnumerable<DirectoryInfo>> getOpsetDirectories = delegate (DirectoryInfo modelsDirInfo)
         {
-            return modelsDirInfo.EnumerateDirectories("opset*", new EnumerationOptions(){RecurseSubdirectories = true});
+            return modelsDirInfo.EnumerateDirectories("opset*", SearchOption.AllDirectories);
         };
 
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
@@ -359,7 +359,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
-                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." },
+                { "BERT-Squad-int8", "training domain"},
+                { "YOLOv3-12-int8", "training_domain"}
             };
 
             // The following models fails on nocontribops win CI

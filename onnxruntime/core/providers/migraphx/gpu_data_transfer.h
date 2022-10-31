@@ -8,12 +8,6 @@
 
 namespace onnxruntime {
 
-enum HIPStreamType : int {
-  kHipStreamDefault = 0,
-  kHipStreamCopyIn,
-  kHipStreamCopyOut,
-  kTotalHipStreams,
-};
 
 class GPUDataTransfer : public IDataTransfer {
  public:
@@ -21,18 +15,8 @@ class GPUDataTransfer : public IDataTransfer {
   ~GPUDataTransfer() {};
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
-
-  //common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
   common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream* stream) const override;
-
-  hipStream_t GetStream(int queue_id) const {
-    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalHipStreams);
-    return streams_[queue_id];
-  }
-
- private:
-  bool do_copy_in_default_stream_;
-  hipStream_t streams_[kTotalHipStreams];
 };
 
 }  // namespace onnxruntime
