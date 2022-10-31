@@ -254,7 +254,7 @@ namespace Dml
         bool hasInputsToBind = false;
         std::vector<DML_BUFFER_BINDING> inputBufferBindings(inputBindings.size());
 
-        for (gsl::index i = 0; i < inputBindings.size(); i++)
+        for (size_t i = 0; i < inputBindings.size(); i++)
         {
             if (inputBindings[i].Buffer)
             {
@@ -669,7 +669,7 @@ namespace Dml
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
 
         // Get the list of nodes that should stay on the CPU
-        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, toplogicalOrder);
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, toplogicalOrder, false);
 
         for (size_t nodeIndex : toplogicalOrder)
         {

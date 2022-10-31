@@ -99,7 +99,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   // flatten the adjacent dimensions which are contiguous
   // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
-  InlinedVector<size_t> new_permutations(permutations.cbegin(), permutations.cend());
+  InlinedVector<size_t> new_permutations(permutations.begin(), permutations.end());
   TensorShapeVector new_input_dims = ToShapeVector(input_dims);
   TensorShapeVector new_output_dims = ToShapeVector(output_dims);
 

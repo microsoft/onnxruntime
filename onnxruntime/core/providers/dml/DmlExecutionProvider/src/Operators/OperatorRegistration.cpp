@@ -326,7 +326,7 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListQuanti
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListIsNan = { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Bool };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListIsInf = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::Bool };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListConstantOfShape = { SupportedTensorDataTypes::Int64, SupportedTensorDataTypes::AllScalars };
-constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListWhere = { SupportedTensorDataTypes::Bool, SupportedTensorDataTypes::Scalars8to32 };
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListWhere = { SupportedTensorDataTypes::Bool, SupportedTensorDataTypes::AllScalars };
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListOneHot = /* indices, depth, values */ { SupportedTensorDataTypes::Ints32to64, SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::AllScalars };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLogicalComparison7 = /* A&B,C */ { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Bool };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLogicalComparison9 = /* A&B,C */ { SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64, SupportedTensorDataTypes::Bool };
@@ -513,8 +513,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  Exp,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Log,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Log,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  Abs,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Abs,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  Abs,                                typeNameListDefault,            supportedTypeListSigned,                DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Abs,                                typeNameListDefault,            supportedTypeListSigned,                DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Ceil,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Ceil,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Floor,                              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -562,8 +562,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      13, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantize,              DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  DequantizeLinear,                   typeNameListTwo,                supportedTypeListQuantize,              DmlGraphSupport::Supported)},
-    {REG_INFO(      9,  Sign,                               typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Sign,                               typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
+    {REG_INFO(      9,  Sign,                               typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Sign,                               typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
     {REG_INFO(      9,  IsNaN,                              typeNameListTwo,                supportedTypeListIsNan,                 DmlGraphSupport::Supported)},
     {REG_INFO(     13,  IsNaN,                              typeNameListTwo,                supportedTypeListIsNan,                 DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Sinh,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},

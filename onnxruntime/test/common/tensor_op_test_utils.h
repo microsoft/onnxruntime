@@ -6,7 +6,7 @@
 #include <random>
 #include <type_traits>
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
@@ -23,7 +23,7 @@ namespace detail {
 inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64_t> strides = {}) {
   int64_t size = 1;
   if (strides.empty()) {
-    size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    size = std::accumulate(dims.begin(), dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
   } else {
     ORT_ENFORCE(dims.size() == strides.size());
     for (size_t dim = 0; dim < dims.size(); ++dim) {

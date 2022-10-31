@@ -1448,6 +1448,10 @@ namespace OperatorHelper
             return std::equal(a.begin(), a.end(), b.begin(), b.end());
         };
 
+        auto as_span = [](std::initializer_list<uint32_t> il) {
+            return gsl::make_span(il.begin(), il.size());
+        };
+
         std::array<uint32_t, 3> componentRanks;
         if (m_components.size() > componentRanks.size())
         {
@@ -1498,29 +1502,32 @@ namespace OperatorHelper
         struct RecognizedOperatorInfo
         {
             RecognizedOperatorType recognizedOperatorType;
-            std::initializer_list<const uint32_t> componentRanks;
-            std::initializer_list<const uint32_t> labelIndices;
+            std::initializer_list<uint32_t> componentRanks;
+            std::initializer_list<uint32_t> labelIndices;
         };
 
         const RecognizedOperatorInfo recognizedOperators[] = {
-            {RecognizedOperatorType::MatMul,           {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
-            {RecognizedOperatorType::MatMul,           {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
-            {RecognizedOperatorType::MatMul,           {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeA, {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
-            {RecognizedOperatorType::MatMulTransposeA, {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
-            {RecognizedOperatorType::MatMulTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeB, {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
-            {RecognizedOperatorType::MatMulTransposeB, {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
-            {RecognizedOperatorType::MatMulTransposeB, {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
-            {RecognizedOperatorType::MatMulTransposeB, {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
-            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 0}}, // ij->i
-            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 1}}, // ij->j
+            {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
+            {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
+            {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
+            {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
+            {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeB,     {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
+            {RecognizedOperatorType::MatMulTransposeB,     {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
+            {RecognizedOperatorType::MatMulTransposeB,     {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
+            {RecognizedOperatorType::MatMulTransposeB,     {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
+            {RecognizedOperatorType::MatMulNhcw,           {4,4,4},{0,1,2,3, 0,3,2,4, 0,1,2,4}}, // aibj,ajbk->aibk
+            {RecognizedOperatorType::MatMulNhcwTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,3,2,4}}, // ajbi,ajbk->aibk
+            {RecognizedOperatorType::MatMulNhcwTransposeB, {4,4,4},{0,1,2,3, 0,4,2,3, 0,1,2,4}}, // aibj,akbj->aibk
+            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 0}}, // ij->i
+            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 1}}, // ij->j
         };
 
         // For each recognized operator, compare the labels-per-component and label indices.
         for (auto& recognizedOperator : recognizedOperators)
         {
-            if (equals(m_labelIndices, recognizedOperator.labelIndices)
+            if (equals(m_labelIndices, as_span(recognizedOperator.labelIndices))
             &&  m_components.size() == recognizedOperator.componentRanks.size())
             {
                 for (size_t i = 0; i < m_components.size(); ++i)
@@ -1528,7 +1535,7 @@ namespace OperatorHelper
                     componentRanks[i] = m_components[i].GetDimensionCount();
                 }
 
-                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), recognizedOperator.componentRanks))
+                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), as_span(recognizedOperator.componentRanks)))
                 {
                     return recognizedOperator.recognizedOperatorType;
                 }
@@ -1595,7 +1602,10 @@ namespace OperatorHelper
     {
         return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB;
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB;
     }
 
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

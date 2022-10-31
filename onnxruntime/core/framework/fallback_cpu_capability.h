@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
-
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
 #include "core/graph/graph_viewer.h"
@@ -20,6 +19,7 @@ namespace onnxruntime {
   */
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                     const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                    gsl::span<const NodeIndex> tentative_nodes);
+                                                    gsl::span<const NodeIndex> tentative_nodes,
+                                                    bool requires_matching_kernel = true);
 
 }  // namespace onnxruntime
