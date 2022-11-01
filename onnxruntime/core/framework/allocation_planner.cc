@@ -1865,10 +1865,9 @@ class PlannerImpl {
 
   void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                             const std::string& partition_config_file) {
-    auto partitioner = IGraphPartitioner::CreateNodePartitioner(logger, partition_config_file);
-    auto status = partitioner->GetStatus();
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
+    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
@@ -2310,7 +2309,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TODO: update the keyword in the config file
-InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DummyPartition"}, GraphPartitioningStrategy::DeviceBasedPartition}};
+InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
@@ -2323,13 +2322,14 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
     }
   }
   void DumpPartition() const;
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
+  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
 
  private:
   void Initialize();
+  void Reset();
   int num_streams_{};
   std::map<OrtDevice::DeviceType, int> max_streams_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
@@ -2351,9 +2351,10 @@ line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream o
 line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
 */
 
-#define EXIT_ON_ERR(err)                             \
-  status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err); \
-  if_stream.close();                                 \
+#define EXIT_ON_ERR(warning)         \
+  LOGS(logger_, WARNING) << warning; \
+  Reset();                           \
+  if_stream.close();                 \
   return;
 
 void DeviceBasedPartitioner::Initialize() {
@@ -2404,6 +2405,12 @@ void DeviceBasedPartitioner::Initialize() {
   }
 }
 
+void DeviceBasedPartitioner::Reset() {
+  num_streams_ = 0;
+  max_streams_.clear();
+  node_names_by_stream_.clear();
+}
+
 void DeviceBasedPartitioner::DumpPartition() const {
   if (configuration_file_.empty()) {
     return;
@@ -2427,12 +2434,9 @@ void DeviceBasedPartitioner::DumpPartition() const {
   }
 }
 
-void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
-                                            const ExecutionProviders& execution_providers,
-                                            std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
-  if (!status_.IsOK()) {
-    return;  // input configuration has errors, do nothing
-  }
+Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                              const ExecutionProviders& execution_providers,
+                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
 
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
@@ -2485,6 +2489,7 @@ void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& grap
       stream_nodes[node_stream_map[node_name]].push_back(node_index);
     }
   }
+  return Status::OK();
 }
 
 InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, char splitor) {
@@ -2498,7 +2503,7 @@ InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, cha
   return columns;
 }
 
-std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
+std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) {
   std::string cfg_file = configuration_file;
   IGraphPartitioner::GraphPartitioningStrategy partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!cfg_file.empty()) {
@@ -2517,12 +2522,12 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(cons
       of_stream.close();
     }
   }  // else means configuration will not be written to a file
-  std::unique_ptr<IGraphPartitioner> node_partitioner;
+  std::unique_ptr<IGraphPartitioner> graph_partitioner;
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
-    node_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
+    graph_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
   }
 
-  return node_partitioner;
+  return graph_partitioner;
 }
 
 }  // namespace onnxruntime
