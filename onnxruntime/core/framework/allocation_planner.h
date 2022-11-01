@@ -102,7 +102,6 @@ class IGraphPartitioner {
   IGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
   const logging::Logger& logger_;
   std::string configuration_file_{};
-  Status status_{};
 };
 
 class SequentialPlanner {

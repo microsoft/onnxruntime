@@ -2333,6 +2333,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 
  private:
   void Initialize();
+  void Reset();
   int num_streams_{};
   std::map<OrtDevice::DeviceType, int> max_streams_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
@@ -2354,9 +2355,10 @@ line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream o
 line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
 */
 
-#define EXIT_ON_ERR(err)                             \
-  status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err); \
-  if_stream.close();                                 \
+#define EXIT_ON_ERR(warning)         \
+  LOGS(logger_, WARNING) << warning; \
+  Reset();                           \
+  if_stream.close();                 \
   return;
 
 void DeviceBasedPartitioner::Initialize() {
@@ -2407,6 +2409,12 @@ void DeviceBasedPartitioner::Initialize() {
   }
 }
 
+void DeviceBasedPartitioner::Reset() {
+  num_streams_ = 0;
+  max_streams_.clear();
+  node_names_by_stream_.clear();
+}
+
 void DeviceBasedPartitioner::DumpPartition() const {
   if (configuration_file_.empty()) {
     return;
@@ -2433,9 +2441,6 @@ void DeviceBasedPartitioner::DumpPartition() const {
 Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                               const ExecutionProviders& execution_providers,
                                               std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
-  if (!status_.IsOK()) {
-    return status_;
-  }
 
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
