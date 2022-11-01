@@ -2,8 +2,8 @@ name: Linux_CI
 on:
   push:
     branches:
-      - master
       - main
+      - zhanyi/skipci
     paths-ignore:
       - docs/**
       - README.md
