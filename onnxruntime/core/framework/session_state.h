@@ -186,7 +186,7 @@ class SessionState {
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
 
-  const std::vector<AllocPlanPerValue>& GetPerAllocPlan() const;
+  const std::vector<AllocPlanPerValue>& GetPerValueAllocPlan() const;
 
   /**
   Get the logger for this session.

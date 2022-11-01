@@ -54,7 +54,7 @@ class DeviceStreamCollectionImpl {
     return Status::OK();
   }
 
-  void SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
+  void AddDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
     ORT_ENFORCE(idx < num_streams_);
     device_streams_[idx] = stream.get();
     owned_streams_.emplace_back(std::move(stream));
@@ -85,8 +85,8 @@ DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const Session
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 
-void DeviceStreamCollection::SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
-  impl_->SetDeviceStream(idx, std::move(stream));
+void DeviceStreamCollection::AddDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
+  impl_->AddDeviceStream(idx, std::move(stream));
 }
 
 void DeviceStreamCollection::SetDeviceStream(size_t idx, Stream* stream) {

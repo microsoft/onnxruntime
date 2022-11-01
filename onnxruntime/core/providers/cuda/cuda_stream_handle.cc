@@ -7,7 +7,7 @@
 namespace onnxruntime {
 
 struct CudaNotification : public synchronize::Notification {
-  CudaNotification(Stream* s) : Notification(s) {
+  CudaNotification(Stream& s) : Notification(s) {
     CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
   }
 
@@ -18,7 +18,7 @@ struct CudaNotification : public synchronize::Notification {
 
   void Activate() override {
     // record event with cudaEventBlockingSync so we can support sync on host with out busy wait.
-    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream_->GetHandle())));
+    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream_.GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {
@@ -70,7 +70,7 @@ CudaStream::~CudaStream() {
 }
 
 std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/) {
-  return std::make_unique<CudaNotification>(this);
+  return std::make_unique<CudaNotification>(*this);
 }
 
 void CudaStream::Flush() {

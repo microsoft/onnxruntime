@@ -302,7 +302,7 @@ TEST(BFCArenaTest, TestBackoffDoesntHang) {
 
 struct NotificationMock : public synchronize::Notification {
  public:
-  NotificationMock(Stream* s) : Notification(s) {}
+  NotificationMock(Stream& s) : Notification(s) {}
   void Activate() override {}
 };
 
@@ -310,7 +310,7 @@ struct StreamMock : public Stream {
  public:
   StreamMock(const OrtDevice& device) : Stream(nullptr, device) {}
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
-    return std::make_unique<NotificationMock>(this);
+    return std::make_unique<NotificationMock>(*this);
   }
   void Flush() override {}
   Status CleanUpOnRunEnd() override { return Status::OK(); }

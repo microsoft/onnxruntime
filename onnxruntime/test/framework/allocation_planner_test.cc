@@ -1600,7 +1600,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   const auto& main_graph_session_state = sess.GetSessionState();
   const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
   //const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
-  //auto& per_value_plans = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetPerAllocPlan();
+  //auto& per_value_plans = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetPerValueAllocPlan();
   auto* exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetExecutionPlan();
   auto& per_value_plans = exe_plan->GetAllocationPlan();
   InlinedHashMap<std::string, std::string> reuse_pairs;

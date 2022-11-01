@@ -32,10 +32,6 @@ class IStreamCommandHandleRegistry;
 
 using KernelCreateInfoMap = std::unordered_map<onnxruntime::NodeIndex, gsl::not_null<const KernelCreateInfo*>>;
 using SubgraphsKernelCreateInfoMaps = std::unordered_map<std::string, KernelCreateInfoMap>;
-// Specify how many logic streams for each provider type
-using ProviderStreamMap = InlinedHashMap<std::string, int>;
-// Each set contains ops which should be grouped in an independent logic stream
-using OpStreamMap = std::vector<std::vector<std::string>>;
 
 // ISequentialPlannerContext abstracts how the planner accesses information (such as inferred shape)
 // to do the planning.
