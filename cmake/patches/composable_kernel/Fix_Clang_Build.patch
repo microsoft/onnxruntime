@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5655ba17..c6a10fe0 100644
+index 5655ba17..1252d1ea 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
@@ -39,7 +39,16 @@ index 5655ba17..c6a10fe0 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -263,9 +242,6 @@ rocm_package_setup_component(tests
+@@ -83,8 +62,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+     message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
+ endif()
+ message(STATUS "Build with HIP ${HIP_VERSION}")
+-link_libraries(hip::device)
+-add_compile_definitions(__HIP_PLATFORM_HCC__=1)
+ 
+ ## tidy
+ include(EnableCompilerWarnings)
+@@ -263,9 +240,6 @@ rocm_package_setup_component(tests
  )
  
  add_subdirectory(library)
@@ -49,7 +58,7 @@ index 5655ba17..c6a10fe0 100644
  
  #Create an interface target for the include only files and call it "composablekernels"
  include(CMakePackageConfigHelpers)
-@@ -291,11 +267,3 @@ rocm_install(FILES
+@@ -291,11 +265,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
