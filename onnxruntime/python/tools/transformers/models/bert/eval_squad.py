@@ -14,6 +14,7 @@
 import argparse
 import csv
 import os
+
 try:
     from importlib.metadata import PackageNotFoundError, version
 except ImportError:
