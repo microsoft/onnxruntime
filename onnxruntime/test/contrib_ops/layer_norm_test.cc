@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
@@ -32,7 +32,8 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
                           int64_t axis = -1,
                           int64_t keep_dims = 1,
                           bool no_bias = false,
-                          int opset = 9) {
+                          int opset = 9,
+                          bool has_optional_outputs = true) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -71,16 +72,31 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   test.AddOutput<float>("output", n_x_m_dims, Y_data);
 
   // the Main and InvStdDev outputs are training specific
-  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
+  if (has_optional_outputs && op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
     test.AddOutput<float>("mean", stats_dims, mean_data);
   }
-  test.AddOutput<float>("var", stats_dims, var_data);
+
+  if (has_optional_outputs) {
+    test.AddOutput<float>("var", stats_dims, var_data);
+  }
 
 #ifdef USE_CUDA
   test.CompareWithCPU(kCudaExecutionProvider);
 #elif USE_ROCM
   test.CompareWithCPU(kRocmExecutionProvider);
+#elif USE_DML
+  test.CompareWithCPU(kDmlExecutionProvider);
 #endif
+}
+
+static void TestLayerNormNoOptionalOutputs(const std::vector<int64_t>& x_dims,
+                                           const std::string& op,
+                                           optional<float> epsilon,
+                                           int64_t axis = -1,
+                                           int64_t keep_dims = 1,
+                                           bool no_bias = false,
+                                           int opset = 9) {
+  TestLayerNorm(x_dims, op, epsilon, axis, keep_dims, no_bias, opset, false);
 }
 
 TEST(CudaKernelTest, LayerNorm_NullInput) {
@@ -88,9 +104,19 @@ TEST(CudaKernelTest, LayerNorm_NullInput) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
+TEST(CudaKernelTest, LayerNorm_NullInputNoOptionalOutputs) {
+  const std::vector<int64_t> X_dims{0, 20, 128};
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_SmallSizeTensorNoOptionalOutputs) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxis) {
@@ -99,14 +125,30 @@ TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxis) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis);
 }
 
+TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxisNoOptionalOutputs) {
+  const std::vector<int64_t> X_dims{4, 20, 8, 16};
+  constexpr int64_t axis = -2;
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default, axis);
+}
+
 TEST(CudaKernelTest, LayerNorm_MidSizeTensor) {
   std::vector<int64_t> X_dims{8, 80, 768};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
+TEST(CudaKernelTest, LayerNorm_MidSizeTensorNoOptionalOutputs) {
+  std::vector<int64_t> X_dims{8, 80, 768};
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
 TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
   std::vector<int64_t> X_dims{16, 512, 1024};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_LargeSizeTensorNoOptionalOutputs) {
+  std::vector<int64_t> X_dims{16, 512, 1024};
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBias) {
@@ -117,9 +159,22 @@ TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBias) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis, keep_dims, no_bias);
 }
 
+TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBiasNoOptionalOutputs) {
+  std::vector<int64_t> X_dims{8, 80, 768};
+  constexpr int64_t axis = -1;
+  constexpr int64_t keep_dims = 1;
+  constexpr bool no_bias = true;
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default, axis, keep_dims, no_bias);
+}
+
 TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensorNoOptionalOutputs) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestLayerNormNoOptionalOutputs(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor_IntermediateAxis) {
@@ -128,9 +183,20 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor_IntermediateAxis) {
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default, axis);
 }
 
+TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor_IntermediateAxisNoOptionalOutputs) {
+  const std::vector<int64_t> X_dims{4, 20, 8, 16};
+  constexpr int64_t axis = -2;
+  TestLayerNormNoOptionalOutputs(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default, axis);
+}
+
 TEST(CudaKernelTest, SimplifiedLayerNorm_MidSizeTensor) {
   std::vector<int64_t> X_dims{8, 80, 768};
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_MidSizeTensorNoOptionalOutputs) {
+  std::vector<int64_t> X_dims{8, 80, 768};
+  TestLayerNormNoOptionalOutputs(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
@@ -138,12 +204,22 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 
+TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensorNoOptionalOutputs) {
+  std::vector<int64_t> X_dims{16, 512, 1024};
+  TestLayerNormNoOptionalOutputs(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
 // TODO: Generate the ROCM implementation of ONNX LayerNorm
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_DML)
 // LayerNormalization is an ONNX operator in opset 17. It uses the same implementation so this is just a sanity check.
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_Opset17) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, -1, 1, false, 17);
+}
+
+TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_Opset17NoOptionalOutputs) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestLayerNormNoOptionalOutputs(X_dims, LAYER_NORM_OP, k_epsilon_default, -1, 1, false, 17);
 }
 #endif
 

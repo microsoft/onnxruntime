@@ -6,19 +6,25 @@
 namespace Dml
 {
 
+template <bool simplified>
 class DmlOperatorLayerNormalization : public DmlOperator
 {
 public:
     DmlOperatorLayerNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
+        std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1};
+
+        if (!simplified)
+        {
+            kernelInputIndices.push_back(2);
+        }
 
         // Initialize Input, Scale and Bias tensors with same dimension count as Input tensor
         // because DML MVN1 has a validation which requires all 3 needs to have same dimension count
         // due to historical artifact.
         DmlOperator::Initialize(
-            kernelCreationContext, 
+            kernelCreationContext,
             kernelInputIndices,
             std::nullopt,
             std::nullopt,
@@ -39,7 +45,7 @@ public:
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];
         operatorDesc.ScaleTensor = &inputDescs[1];
-        operatorDesc.BiasTensor = inputDescs[2].Desc != nullptr ? &inputDescs[2] : nullptr;
+        operatorDesc.BiasTensor = (!simplified && inputDescs[2].Desc != nullptr) ? &inputDescs[2] : nullptr;
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.Axes = onnxAxes.data();
         operatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
@@ -52,14 +58,12 @@ public:
     }
 };
 
-void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+void CALLBACK QuerySimplifiedLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
     *isSupported = false;
 
-    // Mean and InvStdDev are not supported outputs.
-    // If only Scale tensor is present then fall back to CPU. This is temporary until 
-    // DML1.9.2 or DML1.10 gets released.
-    if (context->GetInputCount() < 3 || context->GetOutputCount() > 1) 
+    // InvStdDev is not a supported output. This is temporary until DML1.9.2 or DML1.10 gets released.
+    if (context->GetOutputCount() > 1)
     {
         return;
     }
@@ -67,7 +71,23 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
     *isSupported = true;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization);
+void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    *isSupported = false;
+
+    // Mean and InvStdDev are not supported outputs.
+    // If only Scale tensor is present then fall back to CPU. This is temporary until
+    // DML1.9.2 or DML1.10 gets released.
+    if (context->GetInputCount() < 3 || context->GetOutputCount() > 1)
+    {
+        return;
+    }
+
+    *isSupported = true;
+}
+
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(SimplifiedLayerNormalization, DmlOperatorLayerNormalization<true>);
 
 } // namespace Dml
