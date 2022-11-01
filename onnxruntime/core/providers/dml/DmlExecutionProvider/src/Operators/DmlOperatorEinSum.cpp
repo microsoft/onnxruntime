@@ -76,11 +76,11 @@ public:
                 constexpr std::array<uint32_t, 4> labelIndices = {0, 2, 1, 3};
 
                 assert(m_inputTensorDescs.size() >= 2);
-                for (uint32_t i = 0; i < 2; ++i)
+                for (uint32_t inputIndex = 0; inputIndex < 2; ++inputIndex)
                 {
-                    TensorDesc& tensorDesc = m_inputTensorDescs[i];
+                    TensorDesc& tensorDesc = m_inputTensorDescs[inputIndex];
                     auto originalStrides = tensorDesc.GetStrides();
-                    std::vector<uint32_t> inputSizes = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(i);
+                    std::vector<uint32_t> inputSizes = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(inputIndex);
                     std::vector<uint32_t> inputStrides(inputSizes.size());
 
                     // If there were no strides, compute them based in descending packed order
@@ -98,12 +98,12 @@ public:
 
                     std::vector<uint32_t> newStrides(inputStrides.size());
                     std::vector<uint32_t> newSizes(inputStrides.size());
-                    for (size_t i = 0, dimensionCount = inputStrides.size(); i < dimensionCount; ++i)
+                    for (size_t dim = 0, dimensionCount = inputStrides.size(); dim < dimensionCount; ++dim)
                     {
-                        uint32_t labelIndex = labelIndices[i];
+                        uint32_t labelIndex = labelIndices[dim];
                         assert(labelIndex < inputStrides.size());
-                        newSizes[i] = inputSizes[labelIndex];
-                        newStrides[i] = inputStrides[labelIndex];
+                        newSizes[dim] = inputSizes[labelIndex];
+                        newStrides[dim] = inputStrides[labelIndex];
                     }
 
                     // Override the initial input tensor with the new strides.
@@ -115,10 +115,10 @@ public:
                 std::vector<uint32_t> newOutputSizes(outputSizes.size());
                 assert(outputSizes.size() == labelIndices.size());
 
-                for (size_t i = 0; i < outputSizes.size(); ++i)
+                for (size_t dim = 0; dim < outputSizes.size(); ++dim)
                 {
-                    uint32_t labelIndex = labelIndices[i];
-                    newOutputSizes[i] = outputSizes[labelIndex];
+                    uint32_t labelIndex = labelIndices[dim];
+                    newOutputSizes[dim] = outputSizes[labelIndex];
                 }
 
                 m_outputTensorDescs.front() = TensorDesc(m_outputTensorDescs.front().GetDmlDataType(), newOutputSizes, std::nullopt, 0);
