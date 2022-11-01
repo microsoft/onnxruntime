@@ -112,7 +112,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
     auto& execution_plan = plan.execution_plan[i];
     out << " Start logic stream : " << i << "on device: " << execution_plan->device_.Type() << std::endl;
     for (auto& step : execution_plan->steps_) {
-      out << step->Dump() << std::endl;
+      out << step->ToString() << std::endl;
     }
     out << "End logic stream : " << i << std::endl;
   }
@@ -144,7 +144,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  std::string Dump() const override {
+  std::string ToString() const override {
     std::stringstream ss;
     ss << "Set a barrier with id: " << barrier_id << ", count: " << 2 << ". ";
     return ss.str();
@@ -176,7 +176,7 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  std::string Dump() const override {
+  std::string ToString() const override {
     std::stringstream ss;
     ss << "WaitOnEPStep: wait on notification with id: " << notification_idx << ". ";
     return ss.str();
@@ -213,7 +213,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
     return status;
   }
 
-  std::string Dump() const override {
+  std::string ToString() const override {
     std::stringstream ss;
     ss << "Launch kernel with node id: " << node_index << ". ";
     return ss.str();
@@ -241,7 +241,7 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  virtual std::string Dump() const override {
+  virtual std::string ToString() const override {
     std::stringstream ss;
     ss << "ActivateNotificationStep: activate notification with id: " << notification_idx << ". ";
     return ss.str();
@@ -266,7 +266,7 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  virtual std::string Dump() const override {
+  virtual std::string ToString() const override {
     std::stringstream ss;
     ss << "TriggerDownstreamStep: trigger downstream of trigger point: " << trigger_point_index << ". ";
     return ss.str();
@@ -297,8 +297,6 @@ class PlannerImpl {
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                    /*const ProviderStreamMap& provider_stream_map,
-                    const OpStreamMap& op_stream_map,*/
                     const std::string& partition_config_file,
                     const logging::Logger& logger);
 
@@ -2222,8 +2220,6 @@ class PlannerImpl {
 };
 
 Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                               /*const ProviderStreamMap& provider_stream_map,
-                               const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
   // 1. partition graph into streams

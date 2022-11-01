@@ -15,9 +15,9 @@ class DeviceStreamCollection {
  public:
   DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
   ~DeviceStreamCollection();
-  // Set the device stream instance at given index.
+  // Add the device stream instance at given index.
   // and set the current collection as the owner of the device stream.
-  void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
+  void AddDeviceStream(size_t, std::unique_ptr<Stream> stream);
   // user an external device stream instance at given index.
   // the current collection is not the owner.
   // this is mainly used in subgraph execution, when we want the

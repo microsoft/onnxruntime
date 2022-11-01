@@ -109,7 +109,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   size_t output_elements = (size_t)shape.Size();
   Tensor* output = context->Output(0, shape);
 
-  cublasHandle_t cublas = DefaultCublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
   cublasLtHandle_t cublasLt = CublasLtHandle();
   cudaStream_t stream = Stream(context);
   CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));

@@ -682,7 +682,7 @@ Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlva
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
-  const auto& alloc_plan = session_state_.GetPerAllocPlan();
+  const auto& alloc_plan = session_state_.GetPerValueAllocPlan();
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
 
@@ -842,7 +842,7 @@ Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
-  return session_state_.GetPerAllocPlan()[ort_value_idx];
+  return session_state_.GetPerValueAllocPlan()[ort_value_idx];
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
