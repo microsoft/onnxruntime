@@ -51,7 +51,6 @@ RoctracerActivityBuffer::~RoctracerActivityBuffer() {
   }
 }
 
-
 // Implementation of RoctracerManager
 RoctracerManager& RoctracerManager::GetInstance() {
   static RoctracerManager instance;
@@ -80,6 +79,14 @@ void RoctracerManager::StartLogging() {
     return;
   }
 
+  // Enable activity logging in the HIP_OPS/HCC_OPS domain.
+  roctracer_properties_t hcc_cb_properties;
+  memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
+  hcc_cb_properties.buffer_size = sc_activity_buffer_size;
+  hcc_cb_properties.buffer_callback_fun = ActivityCallback;
+  roctracer_open_pool_expl(&hcc_cb_properties, &activity_pool_);
+  roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HIP_OPS, activity_pool_);
+
   // Enable selective activity and API callbacks for the HIP APIs
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
@@ -91,13 +98,6 @@ void RoctracerManager::StartLogging() {
     roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid);
   }
 
-  // Enable activity logging in the HCC domain.
-  roctracer_properties_t hcc_cb_properties;
-  memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
-  hcc_cb_properties.buffer_size = sc_activity_buffer_size;
-  hcc_cb_properties.buffer_callback_fun = ActivityCallback;
-  roctracer_open_pool_expl(&hcc_cb_properties, &activity_pool_);
-  roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HIP_OPS, activity_pool_);
   roctracer_start();
   logging_enabled_ = true;
 }

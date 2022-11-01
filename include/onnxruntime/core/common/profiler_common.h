@@ -66,8 +66,32 @@ struct EventRecord {
     : cat(other.cat), pid(other.pid), tid(other.tid), name(std::move(other.name)),
       ts(other.ts), dur(other.dur), args(std::move(other.args)) {}
 
-  EventRecord& operator = (const EventRecord& other);
-  EventRecord& operator = (EventRecord&& other);
+  EventRecord& operator = (const EventRecord& other) {
+    if (&other == this) {
+      return *this;
+    }
+    cat = other.cat;
+    pid = other.pid;
+    tid = other.tid;
+    name = other.name;
+    ts = other.ts;
+    dur = other.dur;
+    args = other.args;
+    return *this;
+  }
+
+  EventRecord& operator = (EventRecord&& other) {
+    if (&other == this) {
+      return *this;
+    }
+    cat = other.cat;
+    pid = other.pid;
+    tid = other.tid;
+    std::swap(name, other.name);
+    dur = other.dur;
+    std::swap(args, other.args);
+    return *this;
+  }
 
   EventCategory cat;
   int pid;

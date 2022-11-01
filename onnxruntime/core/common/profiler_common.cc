@@ -48,32 +48,5 @@ std::string demangle(const std::string& name) {
   return demangle(name.c_str());
 }
 
-EventRecord& EventRecord::operator = (const EventRecord& other) {
-  if (&other == this) {
-    return *this;
-  }
-  cat = other.cat;
-  pid = other.pid;
-  tid = other.tid;
-  name = other.name;
-  ts = other.ts;
-  dur = other.dur;
-  args = other.args;
-  return *this;
-}
-
-EventRecord& EventRecord::operator = (EventRecord&& other) {
-  if (&other == this) {
-    return *this;
-  }
-  cat = other.cat;
-  pid = other.pid;
-  tid = other.tid;
-  std::swap(name, other.name);
-  dur = other.dur;
-  std::swap(args, other.args);
-  return *this;
-}
-
 }  // namespace profiling
 }  // namespace onnxruntime
