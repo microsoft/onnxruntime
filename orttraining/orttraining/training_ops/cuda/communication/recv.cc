@@ -108,7 +108,7 @@ void Recv::ReceiveData(
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #else
-  AddDeferredReleaseCPUPtr(buffer.release());
+  AddDeferredReleaseCPUPtr(buffer.release(), context->GetComputeStream());
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
