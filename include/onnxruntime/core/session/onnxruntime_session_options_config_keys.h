@@ -47,9 +47,15 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "1"
 static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quant_qdq";
 
-// string consist of pairs of "uint64,uint64", e.g. "uint64,uint64;uint64,uint64;uint64,uint64;..."
-// 1.For each pair, the first uint64 stands for processor group, the second represents processor mask.
-//   For example, if want to let a thread run on the first two processors of the second processor group, the pair is "1,3";
-//   to let it run on the forth processor of the first group, the pair is "0,8".
-// 2. The number of pairs must equal to intra_op_num_threads MINUS ONE, since we will not set affinity on the main thread.
-static const char* const kOrtSessionOptionsConfigThreadGroupAffinities = "session.thread_group_affinities";
+// Only works on windows system for release(1.7.3)
+// Set thread affinity for intra thread pool threads.
+// affinity_string is of format:
+// "group,processor_mask;group,processor_mask;group,processor_mask;..."
+// "group" is an ordinal number of a processor group,
+// "processor_mask" is a bitmask of processors that a thread is expected to attach to.
+// e.g., processor 1 and 2 in group 1 will be represented as:
+// 0,3
+// where processor 2 and 4 in group 2 will be set to:
+// 1,10
+// the number of "group,processor_mask" pair should be intra_op_num_threads - 1, since ort will skip setting affinity for the main thread
+static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";

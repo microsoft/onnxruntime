@@ -244,16 +244,18 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              to.affinity_vec_len == 0;
 
       //////////////////////////// start to read group affinity //////////////////////////////
-      auto affinity_string = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigThreadGroupAffinities, "");
+      auto affinity_string = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpThreadAffinities, "");
 #ifdef _WIN32
-      ORT_ENFORCE(onnxruntime::concurrency::ExtractAffinityFromString(affinity_string.c_str(), to.group_affinities),
+      ORT_ENFORCE(onnxruntime::concurrency::ExtractAffinityFromString(affinity_string.c_str(), to.thread_affinities),
                   "failed to extract affinity, invalid affinity string");
-      if (!to.group_affinities.empty()) {
-        ORT_ENFORCE((to.thread_pool_size - 1) == static_cast<int>(to.group_affinities.size()),
+      if (!to.thread_affinities.empty()) {
+        ORT_ENFORCE((to.thread_pool_size - 1) == static_cast<int>(to.thread_affinities.size()),
                     "number of affinities must equal to thread_pool_size minus 1");
       }
 #else
-      ORT_ENFORCE(affinity_string.empty(), "Group affinity setting only works for windows!");
+      if (!affinity_string.empty()) {
+        LOGS(*session_logger_, WARNING) << "Group affinity setting only works on windows for this release!";
+      }
 #endif
       //////////////////////////// done reading group affinity //////////////////////////////
       thread_pool_ =

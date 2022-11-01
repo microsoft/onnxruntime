@@ -31,7 +31,7 @@ struct OrtThreadPoolParams {
 
 #ifdef _WIN32
   // group affinity setting for each thread except main
-  onnxruntime::GroupAffinities group_affinities;
+  onnxruntime::ThreadAffinities thread_affinities;
 #endif
 };
 
@@ -51,7 +51,7 @@ enum class ThreadPoolType : uint8_t {
   INTER_OP
 };
 
-bool ExtractAffinityFromString(const char*, GroupAffinities&);
+bool ExtractAffinityFromString(const char*, ThreadAffinities&);
 
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
                                              ThreadPoolType tpool_type);
