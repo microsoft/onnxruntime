@@ -112,6 +112,7 @@ struct IGenerationParameters {
   float temperature = 1.0f;
   float top_p = 0.0f;
   float filter_value;
+  int seed = 0;
 
   // Parameters from inputs
   int min_length;

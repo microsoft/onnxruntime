@@ -501,7 +501,8 @@ __global__ void sampleMultinomialOnce(
     scalar_t* sampled,
     scalar_t* dist,
     int stride_dist, // dist->stride(0)
-    int stride_categories // dist->stride(1)
+    int stride_categories, // dist->stride(1)
+    curandState_t* curandstate
 ) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
@@ -535,7 +536,8 @@ __global__ void sampleMultinomialOnce(
       // CUDA_KERNEL_ASSERT(sum > accZero);
       foundPos = 0;
       smem[0] = sum;
-      smem[1] = sampled[curDist];
+      //smem[1] = sampled[curDist];
+      smem[1] = static_cast<accscalar_t>(curand_uniform(curandstate + blockIdx.x));
     }
     __syncthreads();
     sum = smem[0];
@@ -620,8 +622,10 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int64_t* d_output,
                                     int batch_size,
                                     int vocab_size,
-                                    cudaStream_t stream)
+                                    cudaStream_t stream,
+                                    curandState_t* curandstate)
 {
+  // Store the props in class variables
   int device;
   cudaGetDevice(&device);
   cudaDeviceProp props;
@@ -648,7 +652,8 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_sampled,
                                                 d_input,
                                                 vocab_size,
-                                                batch_size);
+                                                batch_size,
+                                                curandstate);
   } else {
     printf("Please add more cases for block size");
   }

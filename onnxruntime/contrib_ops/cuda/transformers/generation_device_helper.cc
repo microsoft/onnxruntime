@@ -627,12 +627,16 @@ Status GreedySearchProcessLogits(
                                                                    parameters->batch_size);
 
     // multinomial sampling
+    // bugbug: move curandState initialization out of the loop
+    curandState state;
+    curand_init(static_cast<unsigned long long>(parameters->seed), 0, 0, &state);
     cuda::TorchMultinomialKernelLauncher(d_softmaxed_score_buffer,
                                          d_sampled,
                                          d_indices,
                                          parameters->batch_size,
                                          parameters->vocab_size,
-                                         cuda_stream);
+                                         cuda_stream,
+                                         &state);
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
                                          d_indices,

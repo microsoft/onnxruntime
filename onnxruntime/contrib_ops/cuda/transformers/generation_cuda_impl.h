@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <cuda_fp16.h>
+#include <curand_kernel.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -99,7 +100,8 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int64_t* d_output,
                                     int batch_size,
                                     int vocab_size,
-                                    cudaStream_t stream);
+                                    cudaStream_t stream,
+                                    curandState_t* curandstate);
 
 }  // namespace cuda
 }  // namespace contrib

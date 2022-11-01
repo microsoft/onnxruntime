@@ -473,8 +473,7 @@ Status GreedySearchProcessLogits(
                          next_token_probs_value);
     const Tensor& input = next_token_probs_value.Get<Tensor>();
 
-    float seed = 0.f;
-    std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+    std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(parameters->seed)};
     Tensor sampled_idx;
     ORT_RETURN_IF_ERROR(MultinomialComputeShared<int64_t>(allocator,
                                                           input,
