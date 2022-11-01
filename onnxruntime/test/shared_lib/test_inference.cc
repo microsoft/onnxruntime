@@ -667,44 +667,22 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   std::vector<std::vector<int64_t>> expected_dims;
   std::vector<std::vector<int64_t>> expected_lens;
 
-  // input 0
-  {
-    std::string_view input_data = "hello";
+  // Local function that adds an input and initializes the corresponding expected output.
+  auto add_input = [&ort_inputs, &expected_dims, &expected_lens, &allocator](std::string_view str) {
     std::array<int64_t, 1> input_dims = {1};
     Ort::Value& ort_value = ort_inputs.emplace_back(
         Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
                                  ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
 
     expected_dims.push_back({1});
-    expected_lens.push_back({static_cast<int64_t>(input_data.size())});
-    ort_value.FillStringTensorElement(input_data.data(), 0);
-  }
+    expected_lens.push_back({static_cast<int64_t>(str.size())});
+    ort_value.FillStringTensorElement(str.data(), 0);
+  };
 
-  // input 1
-  {
-    std::string_view input_data = "";
-    std::array<int64_t, 1> input_dims = {1};
-    Ort::Value& ort_value = ort_inputs.emplace_back(
-        Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
-                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
-
-    expected_dims.push_back({1});
-    expected_lens.push_back({static_cast<int64_t>(input_data.size())});
-    ort_value.FillStringTensorElement(input_data.data(), 0);
-  }
-
-  // input 2
-  {
-    std::string_view input_data = "123";
-    std::array<int64_t, 1> input_dims = {1};
-    Ort::Value& ort_value = ort_inputs.emplace_back(
-        Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
-                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
-
-    expected_dims.push_back({1});
-    expected_lens.push_back({static_cast<int64_t>(input_data.size())});
-    ort_value.FillStringTensorElement(input_data.data(), 0);
-  }
+  // Set inputs.
+  add_input("hello");
+  add_input("");
+  add_input("123");
 
   std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
   std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
