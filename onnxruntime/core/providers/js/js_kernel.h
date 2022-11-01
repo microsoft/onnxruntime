@@ -16,6 +16,22 @@ namespace js {
 #define JSEP_INIT_KERNEL(x) EM_ASM({ Module.jsepCreateKernel(#x, $0, undefined); }, this)
 #define JSEP_INIT_KERNEL_ATTRIBUTE(x, a, ...) EM_ASM({ Module.jsepCreateKernel(#x, $0, a); }, this, __VA_ARGS__)
 
+#define JSEP_KERNEL_IMPL(classname, x)                       \
+class classname : public JsKernel {                          \
+public:                                                      \
+    classname(const OpKernelInfo& info) : JsKernel(info) {   \
+        JSEP_INIT_KERNEL(x);                                 \
+    }                                                        \
+};
+
+#define JSEP_CLASS_IMPL_ATTRIBUTE(classname, x, a, ...)      \
+class classname : public JsKernel {                          \
+public:                                                      \
+    classname(const OpKernelInfo& info) : JsKernel(info) {   \
+        JSEP_INIT_KERNEL_ATTRIBUTE(x, a, __VA_ARGS__);       \
+    }                                                        \
+};
+
 class JsKernel : public OpKernel {
  public:
   explicit JsKernel(const OpKernelInfo& info)

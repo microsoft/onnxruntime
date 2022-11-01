@@ -6,39 +6,22 @@
 namespace onnxruntime {
 namespace js {
 
-class AbsImpl : public JsKernel {
-public:
-    AbsImpl(const OpKernelInfo& info) : JsKernel(info) {
-        JSEP_INIT_KERNEL(Abs);
-    }
-};
+#define JSEP_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)              \
+  ONNX_OPERATOR_KERNEL_EX(                                                         \
+      OP_TYPE, kOnnxDomain, VERSION, kJsExecutionProvider,                         \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
+      KERNEL_CLASS);
+
+#define JSEP_ELEMENTWISE_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                             \
+      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kJsExecutionProvider,                      \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),               \
+      KERNEL_CLASS);
 
 
-// class kJsExecutionProvider_Abs_kOnnxDomain_ver1_14;
-// template <> KernelCreateInfo BuildKernelCreateInfo<kJsExecutionProvider_Abs_kOnnxDomain_ver1_14>() {
-//     return KernelCreateInfo(
-//         KernelDefBuilder()
-//         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-//         .SetName("Abs")
-//         .SetDomain(kOnnxDomain)
-//         .SinceVersion(1, 14)
-//         .Provider(kJsExecutionProvider).Build(),
-//         static_cast<KernelCreatePtrFn>(
-//             [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-//                 out = std::make_unique<AbsImpl>(info);
-//                 return Status::OK();
-//             })
-//         );
-// }
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Abs,
-    kOnnxDomain,
-    1,
-    14,
-    kJsExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    AbsImpl);
+JSEP_KERNEL_IMPL(Abs, Abs)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(Abs, 1, 13, float, Abs)
+JSEP_ELEMENTWISE_KERNEL(Abs, 14, float, Abs)
 
 }  // namespace js
 }  // namespace onnxruntime
