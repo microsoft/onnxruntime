@@ -1,3 +1,6 @@
+extends:
+  template: templates/general_trigger.yml
+
 resources:
   repositories:
   - repository: manylinux
