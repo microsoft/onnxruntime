@@ -15,11 +15,11 @@ const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
   "hipMemcpy2D",
   "hipMemcpyAsync",
   "hipMemcpy2DAsync",
-  "hipMemcpyWithStream"
+  "hipMemcpyWithStream",
   "hipLaunchKernel",
   "hipMemset",
   "hipMemsetAsync",
-  "hipExtModuleLaunchKernel"
+  "hipExtModuleLaunchKernel",
 };
 
 // Implementation of RoctracerActivityBuffer
@@ -128,12 +128,12 @@ void RoctracerManager::StopLogging() {
     return;
   }
 
-  roctracer_stop();
-  roctracer_flush_activity();
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
-  roctracer_close_pool();
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
+  roctracer_stop();
+  roctracer_flush_activity();
+  roctracer_close_pool();
 
   logging_enabled_ = false;
   Clear();
@@ -416,7 +416,8 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
         // we have one or more pending events, map them to the client
         MapEventsToClient(current_record->external_id, std::move(pending_it->second));
         events_pending_client_mapping.erase(current_record->correlation_id);
-
+        // no additional events to be mapped for this record
+        continue;
       } else if (current_record->domain == ACTIVITY_DOMAIN_HIP_OPS) {
         if (current_record->op == 1 && current_record->kind == HipOpMarker) {
           // this is just a marker, ignore it.
