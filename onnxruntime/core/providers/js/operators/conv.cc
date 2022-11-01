@@ -10,39 +10,30 @@ namespace onnxruntime {
 namespace js {
 
 #define REGISTER_KERNEL_TYPED(T)                                                           \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      Conv,                                                                                \
-      kMSInternalNHWCDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kJsExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);                                                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
-      kMSInternalNHWCDomain,                                                                         \
+      kMSInternalNHWCDomain,                                                               \
       11,                                                                                  \
       T,                                                                                   \
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Conv,                                                                                \
+      kOnnxDomain,                                                               \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                         \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      Conv,                                                                                \
+      kOnnxDomain,                                                               \
+      11,                                                                                  \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                         \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Conv<T>);
-
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
-    Conv,
-    kMSInternalNHWCDomain,
-    1, 10,
-    T,
-    kOnnxDomain,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),
-    Conv<float>);
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    Conv,
-    kMSInternalNHWCDomain,
-    11,
-    T,
-    kOnnxDomain,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),
-    Conv<float>);
 
 
 
