@@ -119,7 +119,6 @@ private:
   uint64_t next_client_id_ = 1;
   bool logging_enabled_ = false;
   std::mutex roctracer_manager_mutex_;
-  roctracer_pool_t* activity_pool_;
 
   // The api calls to track
   static const std::vector<std::string> hip_api_calls_to_trace;

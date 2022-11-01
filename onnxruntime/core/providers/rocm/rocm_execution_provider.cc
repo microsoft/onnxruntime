@@ -376,7 +376,7 @@ void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, voi
   }
 }
 
-Status ROCMExecutionProvider::EnqueueDeferredRelease() {
+Status ROCMExecutionProvider::EnqueueDeferredRelease(bool actually_defer) {
   // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
   // They have to be released outside GPU kernels because they must be alive
   // during asynchronous GPU computation even after the CPU part (e.g,
@@ -404,8 +404,12 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // we should replace the following line with
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
     if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
-      // Release memory asynchronously to avoid blocking the compute stream.
-      HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      if (actually_defer) {
+        // Release memory asynchronously to avoid blocking the compute stream.
+        HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      } else {
+        ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
+      }
     } else {
 
       // Per
@@ -436,9 +440,10 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
   // Enqueue deferred CPU memory release on related streams.
   // This will release all deferred-release CPU buffers allocated
   // before calling OnRunEnd.
-  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-
-  if (sync_stream) {
+  if (!sync_stream) {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
+  } else {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease(/* actually_defer = */ false));
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
   }
 

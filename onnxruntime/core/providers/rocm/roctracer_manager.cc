@@ -79,13 +79,15 @@ void RoctracerManager::StartLogging() {
     return;
   }
 
-  // Enable activity logging in the HIP_OPS/HCC_OPS domain.
+  // The following line shows up in all the samples, I do not know
+  // what the point is, but without it, the roctracer APIs don't work.
+  roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
+
   roctracer_properties_t hcc_cb_properties;
   memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
   hcc_cb_properties.buffer_size = sc_activity_buffer_size;
   hcc_cb_properties.buffer_callback_fun = ActivityCallback;
-  roctracer_open_pool_expl(&hcc_cb_properties, &activity_pool_);
-  roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HIP_OPS, activity_pool_);
+  roctracer_open_pool(&hcc_cb_properties);
 
   // Enable selective activity and API callbacks for the HIP APIs
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
@@ -98,6 +100,9 @@ void RoctracerManager::StartLogging() {
     roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid);
   }
 
+  // Enable activity logging in the HIP_OPS/HCC_OPS domain.
+  roctracer_enable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
+
   roctracer_start();
   logging_enabled_ = true;
 }
@@ -109,10 +114,10 @@ void RoctracerManager::StopLogging() {
   }
 
   roctracer_stop();
-  roctracer_flush_activity_expl(activity_pool_);
+  roctracer_flush_activity();
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
-  roctracer_close_pool_expl(activity_pool_);
+  roctracer_close_pool();
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
   logging_enabled_ = false;
 }
