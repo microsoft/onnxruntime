@@ -11,7 +11,7 @@ namespace onnxruntime {
 class BufferDeleter {
  public:
   BufferDeleter() = default;
-  BufferDeleter(AllocatorPtr alloc)
+  explicit BufferDeleter(AllocatorPtr alloc)
       : alloc_(std::move(alloc)) {}
 
   void operator()(void* p) const {
@@ -28,7 +28,7 @@ class BufferDeleter {
   // A weak_ptr may be a choice to reduce the impact, but that require to
   // change our current allocator mgr to use shared_ptr. Will revisit it
   // later.
-  AllocatorPtr alloc_;
+  AllocatorPtr alloc_{nullptr};
 };
 
 using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
