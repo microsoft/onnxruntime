@@ -4,6 +4,11 @@ on:
     branches:
       - master
       - main
+    paths-ignore:
+      - docs/**
+      - README.md
+      - CONTRIBUTING.md
+      - BUILD.md
   pull_request:
 
 jobs:
