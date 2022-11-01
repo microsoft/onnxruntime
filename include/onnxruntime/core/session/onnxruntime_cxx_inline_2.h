@@ -636,16 +636,40 @@ inline std::string OrtSession::GetInputName(size_t index) const {
   return string_allocator;
 }
 
+inline std::vector<std::string> OrtSession::GetInputNames() const {
+  std::vector<std::string> out;
+  for (size_t i = 0, count = GetInputCount(); i < count; i++) {
+    out.emplace_back(GetInputName(i));
+  }
+  return out;
+}
+
 inline std::string OrtSession::GetOutputName(size_t index) const {
   Ort::StringAllocator string_allocator;
   Ort::ThrowOnError(Ort::api->SessionGetOutputName(this, index, &string_allocator, &string_allocator.out));
   return string_allocator;
 }
 
+inline std::vector<std::string> OrtSession::GetOutputNames() const {
+  std::vector<std::string> out;
+  for (size_t i = 0, count = GetOutputCount(); i < count; i++) {
+    out.emplace_back(GetOutputName(i));
+  }
+  return out;
+}
+
 inline std::string OrtSession::GetOverridableInitializerName(size_t index) const {
   Ort::StringAllocator string_allocator;
   Ort::ThrowOnError(Ort::api->SessionGetOverridableInitializerName(this, index, &string_allocator, &string_allocator.out));
   return string_allocator;
+}
+
+inline std::vector<std::string> OrtSession::GetOverridableInitializerNames() const {
+  std::vector<std::string> out;
+  for (size_t i = 0, count = GetOverridableInitializerCount(); i < count; i++) {
+    out.emplace_back(GetOverridableInitializerName(i));
+  }
+  return out;
 }
 
 inline std::string OrtSession::EndProfiling() {

@@ -3,19 +3,44 @@
 
 // Summary: The Ort C++ API is a header only wrapper around the Ort C API.
 //
-// The C++ API turns the C API into C++ objects with methods and destructors.
+// This header turns the C API opaque types into C++ objects with methods and destructors.
 // For the methods, values are returned directly and exceptions are thrown in case of errors. Standard C++ practices
 // like std::unique_ptr are used to show ownership.
 // 
-// As the C++ types are the C types, it is very easy to use both the C++ wrappers and C API interchangeably. This could
-// be useful for anyone having a custom OrtAllocator vs the wrapper's use of std::string and the default C++ allocator.
-// 
-// Technical explanation on how it works: The C types are still opaque types, this header defines the opaque types
-// in a way that allows the compiler to call methods on them and destroy them, but they are never constructed/copied/etc
-// by value. They can only be created by other API methods, never by make_unique or new (it won't work, so do not worry
-// about accidentally doing the wrong thing).
+// As this just gives a definition of the C opaque types, it is simple to interop with the C API as the types match.
+// Interop can be useful for advanced usage like a custom OrtAllocator.
 
-/* Example usage:
+/* 
+Technical explanation on how it works:
+
+The C header onnxruntime_c_api.h declares a type and some functions:
+struct OrtSession;
+ 
+This type is not defined, only declared, as it is opaque.
+ 
+This C++ header (this file) defines that same type:
+ 
+struct OrtSession {
+
+  static std::unique_ptr<OrtSession> Create(...); // Calls C API CreateSession(...) to construct a new OrtSession
+ 
+  size_t GetInputCount() const {
+    size_t out;
+    Ort::ThrowOnError(Ort::api->SessionGetInputCount(this, &out)); // Calls C API here, and throws a const OrtStatus* on error
+    return out;
+  }
+ 
+  // This enables delete to work as expected, so an OrtSession* can be held in a std::unique_ptr or deleted directly.
+  static void operator delete(void* p) { Ort::api->ReleaseSession(reinterpret_cast<OrtSession*>(p)); }
+ 
+  Ort::Abstract make_abstract; // Ensures this type cannot be directly constructed or copied by value
+};
+
+It is still an opaque type, there is no way to construct it by value, but it now acts like a C++ type in useful ways.
+The methods on it wrap the equivalent C API methods for, and deleting a pointer to this type will release the data
+behind it (equivalent to calling the OrtRelease* method).
+
+Example usage:
 
 NOTE: The std::unique_ptr<t>s could just be 'auto', it's expanded for clarity
 
@@ -24,17 +49,17 @@ std::unique_ptr<OrtEnv> p_env=OrtEnv::Create(ORT_LOGGING_LEVEL_WARNING, "test");
 
 std::unique_ptr<OrtMemoryInfo> p_memory_info = OrtMemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 std::unique_ptr<OrtValue> p_input_tensor = OrtValue::CreateTensor<float>(*p_memory_info, input_image_.data(), input_image_.size(), input_shape_.data(), input_shape_.size());
-std::unique_ptr<OrtValue> _output_tensor = OrtValue::CreateTensor<float>(*p_memory_info, results_.data(), results_.size(), output_shape_.data(), output_shape_.size());
+std::unique_ptr<OrtValue> p_output_tensor = OrtValue::CreateTensor<float>(*p_memory_info, results_.data(), results_.size(), output_shape_.data(), output_shape_.size());
 
 std::unique_ptr<OrtSession> p_session_ = OrtSession::Create(*p_env, L"model.onnx", nullptr)};
 
-const char *input_names[] = { "Input3" };
-const char *output_names[] = { "Plus214_Output_0" };
+const char *input_names[] = { "Example Input Name" };
+const char *output_names[] = { "Example Output Name" };
 
-OrtValue *input=p_input_tensor_.get();
-OrtValue *output=p_output_tensor_.get();
+OrtValue* inputs[] = { p_input_tensor.get() };
+OrtValue* outputs[] = { p_output_tensor.get() };
 
-p_session_->Run(nullptr, input_names, &input, 1, output_names, &output, 1);
+p_session_->Run(nullptr, input_names, inputs, std::size(inputs), output_names, outputs, std::size(outputs));
 
 */
 
@@ -384,6 +409,10 @@ struct OrtSession {
    */
   std::string GetInputName(size_t index) const;
 
+  /** \brief Get all input names
+  */
+  std::vector<std::string> GetInputNames() const;
+
   /** \brief Returns a copy of output name at then specified index.
    *
    * \param index must less than the value returned by GetOutputCount()
@@ -391,12 +420,20 @@ struct OrtSession {
    */
   std::string GetOutputName(size_t index) const;
 
+  /** \brief Get all output names
+  */
+  std::vector<std::string> GetOutputNames() const;
+
   /** \brief Returns a copy of the overridable initializer name at then specified index.
    *
    * \param index must less than the value returned by GetOverridableInitializerCount()
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetOverridableInitializerName(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
+
+  /** \brief Get all overridable initializer names
+  */
+  std::vector<std::string> GetOverridableInitializerNames() const;
 
   /** \brief Returns a copy of the profiling file name.
    *
