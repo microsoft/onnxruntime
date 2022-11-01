@@ -43,7 +43,7 @@ struct MIGraphXFuncState {
 class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
-  ~MIGraphXExecutionProvider() = default;
+  ~MIGraphXExecutionProvider();
 
 #ifdef MIGRAPHX_STREAM_SYNC
   Status Sync() const override;

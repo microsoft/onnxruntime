@@ -119,6 +119,26 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   if (!dump_model_ops_env.empty()) {
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
+
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&external_rocblas_handle_));
+  ROCBLAS_CALL_THROW(rocblas_set_stream(external_rocblas_handle_, stream_));
+
+  MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
+  MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
+}
+
+MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
+  try {
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(external_rocblas_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "rocblas_destroy_handle threw:" << ex.what();
+  }
+
+  try {
+    MIOPEN_CALL_THROW(miopenDestroy(external_miopen_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
+  }
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
