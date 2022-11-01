@@ -4,6 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cub/util_type.cuh"
+#include <cub/cub.cuh>
 #include <cub/device/device_segmented_radix_sort.cuh>
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 
@@ -300,7 +301,7 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
       old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
 
-// bugbug: merge those kernels into one
+// TODO: merge those kernels into one
 template <typename T>
 size_t GetTempStorageSize(const T *d_keys_in,
                           const int* d_values_in,
@@ -341,7 +342,7 @@ template size_t GetTempStorageSize(
   int num_segments,
   cudaStream_t stream);
 
-// bugbug: merge to one kernel
+// TODO: merge to one kernel
 __global__ void SetupParamsKernel(int* d_values_in,
                                   int* d_offsets,
                                   int batch_size,
@@ -489,6 +490,170 @@ template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                                        int batch_size,
                                        int vocab_size,
                                        cudaStream_t stream);
+
+
+// Ref: https://github.com/pytorch/pytorch/blob/release/1.13/aten/src/ATen/native/cuda/MultinomialKernel.cu
+template <typename scalar_t, typename accscalar_t, unsigned TPB>
+__global__ void sampleMultinomialOnce(
+    int64_t* dest,
+    int distributions,
+    int categories,
+    scalar_t* sampled,
+    scalar_t* dist,
+    int stride_dist, // dist->stride(0)
+    int stride_categories // dist->stride(1)
+) {
+  using BlockReduce = cub::BlockReduce<float, TPB>;
+  __shared__ typename BlockReduce::TempStorage tmp_storage;
+
+  extern __shared__  unsigned char my_smem[];
+  __shared__ bool found;
+  __shared__ unsigned foundPos;
+  accscalar_t *smem = reinterpret_cast<accscalar_t *>(my_smem);
+  accscalar_t accZero = static_cast<accscalar_t>(0);
+  scalar_t zero = static_cast<scalar_t>(0);
+  for (int curDist = blockIdx.x;
+       curDist < distributions; curDist += gridDim.x) {
+    // Each block handles one distribution
+    // First pass, find the total sum of the distribution
+    accscalar_t sum = accZero;
+    scalar_t val;
+    for (int cat = threadIdx.x; cat < categories; cat += blockDim.x) {
+      val = dist[curDist * stride_dist + cat * stride_categories];
+      // CUDA_KERNEL_ASSERT(!at::_isnan(val));
+      // CUDA_KERNEL_ASSERT(!_isinf(val));
+      // CUDA_KERNEL_ASSERT(!(val < zero));
+      sum = sum + static_cast<accscalar_t>(val);
+    }
+    // threadIdx.x == 0 has the sum value from this
+    // sum = cuda_utils::BlockReduceSum(sum, smem);
+    sum = BlockReduce(tmp_storage).Reduce(sum, cub::Sum());
+    // Broadcast sum and sample value
+    if (threadIdx.x == 0) {
+      // Make sure the sum of our distribution didn't overflow
+      // CUDA_KERNEL_ASSERT(!_isinf(val));
+      // CUDA_KERNEL_ASSERT(sum > accZero);
+      foundPos = 0;
+      smem[0] = sum;
+      smem[1] = sampled[curDist];
+    }
+    __syncthreads();
+    sum = smem[0];
+    scalar_t sample = static_cast<scalar_t>(smem[1]);
+    __syncthreads();
+    if (sum == accZero) {
+      // Choose the first element
+      if (threadIdx.x == 0) {
+        dest[curDist] = 0;
+      }
+      continue;
+    }
+    int chunks = (categories + (int)blockDim.x - 1) / blockDim.x;
+    accscalar_t prevHighProb = accZero;
+    found = false;
+    for (int chunk = 0; chunk < chunks && !found; ++chunk) {
+      // All threads in bounds load a value
+      int cat = chunk * blockDim.x + threadIdx.x;
+      accscalar_t dist_val = cat < categories ?
+                             static_cast<accscalar_t>(dist[curDist * stride_dist + cat * stride_categories]) / sum :
+                             accZero;
+      smem[threadIdx.x] = dist_val;
+      __syncthreads();
+      // Perform an inclusive prefix sum of the shared memory contents
+      for (int offset = 1; offset < blockDim.x; offset *= 2) {
+        accscalar_t val = accZero;
+        if (threadIdx.x >= offset) {
+          val = smem[threadIdx.x - offset] + smem[threadIdx.x];
+        }
+        __syncthreads();
+        if (threadIdx.x >= offset) {
+          smem[threadIdx.x] = val;
+        }
+        __syncthreads();
+      }
+      // Each thread will check to see if the sample falls in its
+      // bucket
+      scalar_t curBucket =
+          static_cast<scalar_t>(smem[threadIdx.x] + prevHighProb);
+      scalar_t prevBucket = static_cast<scalar_t>(
+          threadIdx.x == 0 ? prevHighProb
+                          : smem[threadIdx.x - 1] + prevHighProb);
+      bool inBucket =
+          (cat < categories) &&
+          (!(sample >= curBucket) &&
+          (sample >= prevBucket) &&
+          (dist_val > zero));
+      if (inBucket) {
+        // We're done; we have the sample
+        // Torch indices are 1-based
+        atomicMax(&foundPos, cat);
+        found = true;
+      }
+      // Store the previous scan's high value for future use
+      prevHighProb = prevHighProb + smem[blockDim.x - 1];
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      if (found) {
+          dest[curDist] = foundPos;
+      } else {
+        // This should address a rare bug where we don't select a valid index. This likely occurs when
+        // due to floating point arithmetic rounding errors, our cumulative sum does not add up to 1, but
+        // and our uniform sample is greater than this value. In this case we likely have unitialized memory
+        // in dest[curDist]. So basically we will loop through the distribution and pick the largest index
+        // where the distribution is non-zero. This is obviously terribly inefficient, but due to the
+        // rarity in which this occurs, this should not be an issue.
+        for (int cat = categories - 1; cat >= 0; --cat) {
+          if (dist[curDist * stride_dist + cat * stride_categories] > zero) {
+            dest[curDist] = cat;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Only support n_sample = 1
+void TorchMultinomialKernelLauncher(float* d_input,
+                                    float* d_sampled,
+                                    int64_t* d_output,
+                                    int batch_size,
+                                    int vocab_size,
+                                    cudaStream_t stream)
+{
+  int device;
+  cudaGetDevice(&device);
+  cudaDeviceProp props;
+  cudaGetDeviceProperties(&props, device);
+
+  int numSM = props.multiProcessorCount;
+  int maxThreads = props.maxThreadsPerBlock;
+  int warp_size = 32; //at::cuda::warp_size();
+  int requiredWarps = (vocab_size + warp_size - 1) / warp_size;
+  int requiredThreads = std::min(maxThreads, requiredWarps * warp_size);
+  int requiredShared = requiredThreads * sizeof(float);
+
+  // bugbug: randomize d_sampled
+
+  dim3 block(requiredThreads);
+  dim3 grid(std::min(batch_size, numSM * 4));
+
+  if (block.x == 1024) {
+    const int block_size = 1024;
+    sampleMultinomialOnce<float, float, block_size>
+      <<<grid, block, requiredShared, stream>>>(d_output,
+                                                batch_size,
+                                                vocab_size,
+                                                d_sampled,
+                                                d_input,
+                                                vocab_size,
+                                                batch_size);
+  } else {
+    printf("Please add more cases for block size");
+  }
+}
+
 
 
 }  // namespace cuda

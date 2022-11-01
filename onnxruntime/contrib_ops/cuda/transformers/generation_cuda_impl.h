@@ -94,6 +94,13 @@ void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                               int vocab_size,
                               cudaStream_t stream);
 
+void TorchMultinomialKernelLauncher(float* d_input,
+                                    float* d_sampled,
+                                    int64_t* d_output,
+                                    int batch_size,
+                                    int vocab_size,
+                                    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

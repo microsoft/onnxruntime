@@ -560,7 +560,9 @@ Status GreedySearchProcessLogits(
     size_t bytes = SafeInt<size_t>(sizeof(int)) * 2 * parameters->batch_size * parameters->vocab_size +
                    SafeInt<size_t>(sizeof(int)) * (parameters->batch_size + 1) +
                    SafeInt<size_t>(sizeof(CudaT)) * parameters->batch_size * parameters->vocab_size +
-                   SafeInt<size_t>(2 * sizeof(float) * parameters->batch_size * parameters->vocab_size);
+                   SafeInt<size_t>(2 * sizeof(float) * parameters->batch_size * parameters->vocab_size) +
+                   SafeInt<size_t>(sizeof(float)) * parameters->batch_size +
+                   SafeInt<size_t>(sizeof(int64_t)) * parameters->batch_size;
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr workspace_buffer(data, BufferDeleter(allocator));
     int* d_index_buffer_in = reinterpret_cast<int*>(workspace_buffer.get());
@@ -569,6 +571,8 @@ Status GreedySearchProcessLogits(
     CudaT* d_sorted_score_buffer = reinterpret_cast<CudaT*>(d_offset_buffer + parameters->batch_size + 1);
     float* d_sorted_softmaxed_score_buffer = reinterpret_cast<float*>(d_sorted_score_buffer + parameters->batch_size * parameters->vocab_size);
     float* d_softmaxed_score_buffer = d_sorted_softmaxed_score_buffer + parameters->batch_size * parameters->vocab_size;
+    float* d_sampled = d_softmaxed_score_buffer + 2 * parameters->batch_size * parameters->vocab_size;
+    int64_t* d_indices = reinterpret_cast<int64_t*>(d_sampled + parameters->batch_size);
 
     size_t temp_storage_bytes = cuda::GetTempStorageSize<CudaT>(reinterpret_cast<CudaT*>(next_token_scores.data()),
                                                                 d_index_buffer_in,
@@ -623,8 +627,19 @@ Status GreedySearchProcessLogits(
                                                                    parameters->batch_size);
 
     // multinomial sampling
+    cuda::TorchMultinomialKernelLauncher(d_softmaxed_score_buffer,
+                                         d_sampled,
+                                         d_indices,
+                                         parameters->batch_size,
+                                         parameters->vocab_size,
+                                         cuda_stream);
 
-
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
+                                         d_indices,
+                                         greedy_state->next_tokens_cpu.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   } else {
     // next_tokens = torch.argmax(scores, dim=-1)
     int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
