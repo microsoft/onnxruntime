@@ -2,18 +2,21 @@
     width: 100%;
   }
   
-  .side-bar {
-    @include mq(lg) {
-      width: $nav-width;
-    }
+.side-bar {
+  @include mq(lg) {
+    width: $nav-width;
   }
+}
+
+.site-footer {
+  color: #717072
+}
   
-  .main {
-    @include mq(lg) {
-      margin-left: $nav-width;
-    }
-    
-  }
+.main {
+  @include mq(lg) {
+    margin-left: $nav-width;
+  }  
+}
 
 content blockquote {
   background: #f9f9f9;
