@@ -444,7 +444,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
             }
 
             if (buffer != nullptr) {
-              buffers_[location] = BufferUniquePtr(buffer, alloc);
+              buffers_[location] = BufferUniquePtr(buffer, BufferDeleter(alloc));
             }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
             // Record activation memory pattern
