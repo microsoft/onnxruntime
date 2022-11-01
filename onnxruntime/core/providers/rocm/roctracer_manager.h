@@ -128,3 +128,6 @@ private:
   // The api calls to track
   static const std::vector<std::string> hip_api_calls_to_trace;
 };
+
+} /* end namespace profiling */
+} /* end namespace onnxruntime*/
