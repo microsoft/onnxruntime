@@ -8,7 +8,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/optional.h"
@@ -288,7 +288,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           gsl::as_bytes(gsl::make_span(values)),
                            gsl::make_span(indices),
                            CheckParams(), dim_params);
   }
@@ -338,7 +338,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCsrTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           gsl::as_bytes(gsl::make_span(values)),
                            gsl::make_span(inner_indices),
                            gsl::make_span(outer_indices),
                            CheckParams(), dim_params);
@@ -1218,7 +1218,7 @@ inline std::vector<int64_t> GetShapeVector(const TensorShape& shape) {
   std::vector<int64_t> result;
   const auto dims = shape.GetDims();
   result.resize(dims.size());
-  result.assign(dims.cbegin(), dims.cend());
+  result.assign(dims.begin(), dims.end());
   return result;
 }
 

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {

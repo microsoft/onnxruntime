@@ -1,9 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 
 #include <functional>
 #include <string>
 #include <vector>
 
+#include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "core/util/math_cpuonly.h"
@@ -91,14 +95,14 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
   std::vector<uint8_t> B_data = random.Uniform<uint8_t>(B_dims, 240, 255);
 
   std::vector<float> A_scale = random.Uniform<float>(
-      std::array<int64_t, 1>{1}, -0.1f, 0.1f);
+      AsSpan<int64_t>({1}), -0.1f, 0.1f);
   std::vector<uint8_t> A_zero_point{245};
 
-  std::vector<float> B_scale = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> B_scale = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
-  std::vector<uint8_t> B_zero_point = random.Uniform<uint8_t>(B_dims.back(), 240, 250);
+  std::vector<uint8_t> B_zero_point = random.Uniform<uint8_t>(AsSpan({B_dims.back()}), 240, 250);
 
-  std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   std::vector<OrtValue> baseline_fetches;
 
@@ -204,11 +208,11 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeMatMul) {
 
   std::vector<uint8_t> B_data = random.Uniform<uint8_t>(B_dims, 240, 255);
 
-  std::vector<float> B_scale = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> B_scale = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
-  std::vector<uint8_t> B_zero_point = random.Uniform<uint8_t>({B_dims.back()}, 240, 250);
+  std::vector<uint8_t> B_zero_point = random.Uniform<uint8_t>(AsSpan({B_dims.back()}), 240, 250);
 
-  std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   std::vector<OrtValue> baseline_fetches;
 

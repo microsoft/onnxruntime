@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace cuda {

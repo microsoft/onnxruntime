@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "gsl/gsl"
+#include "core/common/gsl.h"
+#include "core/common/narrow.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/utils.h"
@@ -103,7 +104,7 @@ struct ExtentAxisCounters {
     axis_ = indices_.size();
 
     // If a tensor has a shape, but one of the axes is 0 in size, there are no elements, so nothing to iterate
-    if (std::find(extents.cbegin(), extents.cend(), 0) != extents.cend())
+    if (std::find(extents.begin(), extents.end(), 0) != extents.end())
       running_ = false;
   }
 
@@ -207,7 +208,7 @@ struct SliceIteratorBase {
     last_batching_axis_ = dims_size - 1;
 
     // Check if inner dimension is copied as a block in its entirety
-    if (dims_size > 1 && inner_step_ == 1 && inner_extent_ == gsl::narrow<size_t>(dims[dims_size - 1])) {
+    if (dims_size > 1 && inner_step_ == 1 && inner_extent_ == narrow<size_t>(dims[dims_size - 1])) {
       for (size_t dim = dims_size - 2;; dim--) {
         if (dim < steps_size && steps[dim] != 1) {
           break;

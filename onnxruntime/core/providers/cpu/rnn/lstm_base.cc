@@ -3,6 +3,7 @@
 
 #include "lstm_base.h"
 #include "uni_directional_lstm.h"
+#include "core/common/narrow.h"
 //TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
@@ -39,9 +40,9 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
 
   const auto& X_shape = X.Shape();
 
-  int seq_length = gsl::narrow<int>(X_shape[0]);
-  int batch_size = gsl::narrow<int>(X_shape[1]);
-  int input_size = gsl::narrow<int>(X_shape[2]);
+  int seq_length = narrow<int>(X_shape[0]);
+  int batch_size = narrow<int>(X_shape[1]);
+  int input_size = narrow<int>(X_shape[2]);
 
   Status status = ValidateInputs(X, B, sequence_lens, initial_h, initial_c, P);
   ORT_RETURN_IF_ERROR(status);
@@ -208,8 +209,8 @@ Status LSTMBase::ValidateInputs(const Tensor& X,
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
-    if (std::any_of(sequence_len_entries.cbegin(),
-                    sequence_len_entries.cend(),
+    if (std::any_of(sequence_len_entries.begin(),
+                    sequence_len_entries.end(),
                     [seq_length](int len) { return len < 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,

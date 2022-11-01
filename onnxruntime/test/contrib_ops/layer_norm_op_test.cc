@@ -44,6 +44,11 @@ TEST(LayerNormTest, BERTLayerNorm) {
 }
 
 TEST(LayerNormTest, BERTLayerNorm_NoBias) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
   OpTester tester("LayerNormalization", 1 /*opset_version*/);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);

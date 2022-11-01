@@ -7,8 +7,6 @@
 #include <unordered_set>
 #include <string>
 
-#include "gsl/gsl"
-
 namespace onnxruntime {
 namespace {
 
