@@ -1278,15 +1278,6 @@ if (onnxruntime_USE_ROCM)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
   set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
 
-  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
-  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
-  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
-  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
-  # example, the CMAKE_PREFIX_PATH might be improperly configured.
-  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
-    message(FATAL_ERROR "HIP Language is not properly configured.")
-  endif()
-
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cc"
