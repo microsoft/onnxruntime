@@ -458,7 +458,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
           break;
 
         default:
-          break;
+          continue;
         }
       } else {
         // ignore the superfluous event: this is probably a HIP API callback, which
