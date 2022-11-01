@@ -44,7 +44,9 @@ def get_package_version(package_name: str):
         return None
 
 
-def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, provider="CUDAExecutionProvider"):
+def load_onnx_model(
+    model_id: str, onnx_path: Optional[str] = None, use_gpu: bool = True, provider="CUDAExecutionProvider"
+):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
 
@@ -258,12 +260,20 @@ def parse_arguments(argv=None):
         help="Optional onnx model path. If not specified, optimum will be used to export onnx model for testing.",
     )
 
+<<<<<<< HEAD
+=======
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="Allow GPU RUN.")
+>>>>>>> 5488d4e72f... Fix formatting
     parser.add_argument(
         "--provider",
         required=False,
         default="CUDAExcecutionProvider",
         help="Select which Execution Provider to use for runs.",
     )
+<<<<<<< HEAD
+=======
+
+>>>>>>> 5488d4e72f... Fix formatting
 
     args = parser.parse_args(argv)
 
