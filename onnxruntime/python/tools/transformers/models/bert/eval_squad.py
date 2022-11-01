@@ -44,7 +44,7 @@ def get_package_version(package_name: str):
         return None
 
 
-def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: bool = True):
+def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: bool = True, provider="CUDAExecutionProvider"):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
 
@@ -64,7 +64,7 @@ def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: boo
 
         if use_gpu:
             model.device = torch.device("cuda")
-            model.model = ORTModel.load_model(onnx_path, "CUDAExecutionProvider")
+            model.model = ORTModel.load_model(onnx_path, provider)
         else:
             model.model = ORTModel.load_model(onnx_path)
     else:
@@ -195,7 +195,7 @@ def main():
         tokenizer.model_max_length = sequence_length
         tokenizer.doc_stride = min(sequence_length // 2, 128)
 
-        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.use_gpu)
+        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.use_gpu, args.provider)
         print(ort_model.config)
         if sequence_length > ort_model.config.max_position_embeddings:
             raise RuntimeError("sequence length should not be larger than {ort_model.config.max_position_embeddings}")
@@ -212,7 +212,7 @@ def main():
             squad_v2_format=True,
         )
 
-        result["provider"] = "CUDAExecutionProvider" if args.use_gpu else "CPUExecutionProvider"
+        result["provider"] = args.provider if args.use_gpu else "CPUExecutionProvider"
         result["disable_fused_attention"] = disable_fused_attention
         result["pretrained_model_name"] = pretrained_model_name
         result["onnx_path"] = onnx_path
@@ -259,10 +259,16 @@ def parse_arguments(argv=None):
         help="Optional onnx model path. If not specified, optimum will be used to export onnx model for testing.",
     )
 
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="Use CUDA execution provider.")
-    parser.set_defaults(use_gpu=False)
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="Allow GPU RUN.")
+    parser.add_argument("--provider", required=False, default="CUDAExcecutionProvider", help="Select which Execution Provider to use for runs.")
+
 
     args = parser.parse_args(argv)
+
+    if args.provider is not None:
+        args.use_gpu = True
+    else:
+        args.use_gpu = False
 
     return args
 
