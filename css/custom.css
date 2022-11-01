@@ -67,7 +67,7 @@ header.scrolled .navbar-custom .navbar-nav .nav-link{
     color: #1a1a1a;
 }
 .navbar-custom .navbar-nav .nav-item:not(:last-child) .nav-link{
-    border-right: 2px solid #0B5CA2;
+    border-right: 2px solid #2470d5;
 }
 header.scrolled .navbar-custom .navbar-nav .nav-item:not(:last-child) .nav-link{
     border-right: 2px solid #1a1a1a;
