@@ -96,8 +96,9 @@ inline void CheckpointState::SaveCheckpoint(const TrainingSession& session,
 
 inline void TrainingSession::ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path,
                                                        const std::vector<std::string>& graph_output_names) {
-  std::vector<const char*> output_names(graph_output_names.size(), nullptr);
-  for (auto& output_name : graph_output_names) {
+  std::vector<const char*> output_names;
+  output_names.reserve(graph_output_names.size());
+  for (const auto& output_name : graph_output_names) {
     output_names.push_back(output_name.c_str());
   }
   ThrowOnError(GetTrainingApi().ExportModelForInferencing(
