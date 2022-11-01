@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
@@ -208,7 +208,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<typename gsl::span<T>::index_type>(shape_.Size()));
+    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(shape_.Size()));
   }
 
   void* MutableDataRaw(MLDataType type) {

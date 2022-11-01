@@ -51,7 +51,7 @@ void ConvertToCsr(gsl::span<const T> input_span,
   const auto dense_size = rows * cols;
   ASSERT_EQ(input_span.size(), static_cast<size_t>(dense_size));
 
-  const int64_t nnz = std::count_if(input_span.cbegin(), input_span.cend(),
+  const int64_t nnz = std::count_if(input_span.begin(), input_span.end(),
                                     [](T v) { return v != T(0); });
 
   std::vector<T> values;
@@ -97,7 +97,7 @@ void ConvertToCoo(gsl::span<const T> input_span,
   const auto dense_size = rows * cols;
   ASSERT_EQ(input_span.size(), static_cast<size_t>(dense_size));
 
-  const int64_t nnz = std::count_if(input_span.cbegin(), input_span.cend(),
+  const int64_t nnz = std::count_if(input_span.begin(), input_span.end(),
                                     [](T v) { return v != T(0); });
 
   std::vector<T> values;

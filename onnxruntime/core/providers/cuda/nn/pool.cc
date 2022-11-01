@@ -177,7 +177,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
-  TensorShapeVector x_dims_cudnn(x_dims.cbegin(), x_dims.cend());
+  TensorShapeVector x_dims_cudnn(x_dims.begin(), x_dims.end());
   TensorShapeVector y_dims_cudnn(y_dims);
   if (kernel_shape.size() < 2) {
     // cudnn only takes 4D or 5D input, so pad dimensions if needed

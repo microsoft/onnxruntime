@@ -111,16 +111,16 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(outputs.size(), 1U);
 }
 
-void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
-  ASSERT_NEAR(expected, output, atol);
-  ASSERT_NEAR(expected, output, rtol * std::abs(expected));
-}
-
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
 const int64_t total_step_count = 100;
 const float initial_lr = 1e-3f;
 const int64_t resume_step = total_step_count / 2;
+
+void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
+  ASSERT_NEAR(expected, output, atol);
+  ASSERT_NEAR(expected, output, rtol * std::abs(expected));
+}
 
 void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t total_step_count,
                     int64_t warmup_step_count) {

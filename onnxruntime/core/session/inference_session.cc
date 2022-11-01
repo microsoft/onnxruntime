@@ -1632,7 +1632,7 @@ common::Status InferenceSession::ValidateInputs(gsl::span<const std::string> fee
     }
 
     auto expected_type = iter->second.ml_data_type;
-    auto& input_ml_value = feeds.at(i);
+    auto& input_ml_value = feeds[i];
     if (input_ml_value.IsTensor()) {
       if (!expected_type->IsTensorType()
 #if !defined(DISABLE_OPTIONAL_TYPE)

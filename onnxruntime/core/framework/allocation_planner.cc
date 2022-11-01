@@ -844,10 +844,10 @@ class PlannerImpl {
           const auto& name = input.Name();
 
           bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
                                                  [&name](const NodeArg* value) {
                                                    return value && value->Name() == name;
-                                                 }) != outer_scope_node_args_.cend();
+                                                 }) != outer_scope_node_args_.end();
           bool is_subgraph = (parent_node_ != nullptr);
 
           // If it's a graph input or outer scope node arg, set its plan.
@@ -859,7 +859,7 @@ class PlannerImpl {
 
             if (!is_implicit_input) {
               OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(exec_provider->GetDeviceId(), mem_type)->Info());
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level

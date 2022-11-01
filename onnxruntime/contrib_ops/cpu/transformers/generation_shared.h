@@ -4,7 +4,7 @@
 #pragma once
 
 #include <utility>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 

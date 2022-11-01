@@ -5,6 +5,8 @@
 
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 
+#include "core/common/span_utils.h"
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -257,8 +259,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
       bool increase_position = (iteration_counter > 1);
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids, increase_position,
-                                      beam_next_tokens.as_span<const int32_t>(),
-                                      beam_indices.as_span<const int32_t>()));
+                                      ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+                                      ReinterpretAsSpan<const int32_t>(beam_indices)));
     }
     fetches.clear();
   }
@@ -282,7 +284,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   if (output_scores != nullptr) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
     gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
-    assert(target.length() == source.length());
+    assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 

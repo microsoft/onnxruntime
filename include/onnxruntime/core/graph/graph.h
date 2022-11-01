@@ -29,12 +29,13 @@
 #pragma warning(pop)
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
+#include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
@@ -935,8 +936,8 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
-                   gsl::make_span(input_args.begin(), input_args.end()),
-                   gsl::make_span(output_args.begin(), output_args.end()),
+                   AsSpan(input_args),
+                   AsSpan(output_args),
                    attributes, domain);
   }
 
@@ -949,7 +950,7 @@ class Graph {
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
                    input_args,
-                   gsl::make_span(output_args.begin(), output_args.end()),
+                   AsSpan(output_args),
                    attributes, domain);
   }
 
@@ -961,7 +962,7 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
-                   gsl::make_span(input_args.begin(), input_args.end()),
+                   AsSpan(input_args),
                    output_args,
                    attributes, domain);
   }
@@ -1153,7 +1154,7 @@ class Graph {
   void SetInputs(gsl::span<const NodeArg* const> inputs);
 
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
-    SetInputs(gsl::make_span(inputs));
+    SetInputs(AsSpan(inputs));
   }
 
   const Model& GetModel() const {
@@ -1171,7 +1172,7 @@ class Graph {
   void SetOutputs(gsl::span<const NodeArg* const> outputs);
 
   void SetOutputs(std::initializer_list<const NodeArg*> outputs) {
-    SetOutputs(gsl::make_span(outputs.begin(), outputs.end()));
+    SetOutputs(AsSpan(outputs));
   }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1232,7 +1233,7 @@ class Graph {
   }
 
   void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
-    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes));
+    UpdateConsumerNodes(node_arg_name, AsSpan(nodes));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
