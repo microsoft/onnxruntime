@@ -1988,7 +1988,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
     // info all execution providers InferenceSession:Run ended
     for (auto* xp : exec_providers_to_stop) {
-      auto status = xp->OnRunEnd(/*sync_stream*/ true);
+      auto status = xp->OnRunEnd(run_options.synchronize_execution_providers);
       ORT_CHECK_AND_SET_RETVAL(status);
     }
 

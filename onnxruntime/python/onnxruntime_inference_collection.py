@@ -286,6 +286,19 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+    def run_with_ortvaluevector(self, run_options, feed_names, feeds, fetch_names, fetches, fetch_devices):
+        """
+        Compute the predictions similar to other run_*() methods but with minimal C++/Python conversion overhead.
+
+        :param run_options: See :class:`onnxruntime.RunOptions`.
+        :param feed_names: list of input names.
+        :param feeds: list of input OrtValue.
+        :param fetch_names: list of output names.
+        :param fetches: list of output OrtValue.
+        :param fetch_devices: list of output devices.
+        """
+        self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
+
 
 class InferenceSession(Session):
     """
@@ -542,6 +555,9 @@ class IOBinding:
         if not isinstance(outputs, C.OrtValueVector):
             raise TypeError("get_outputs() must return an instance of type 'OrtValueVector'.")
         return [OrtValue(ortvalue) for ortvalue in outputs]
+
+    def get_outputs_as_ortvaluevector(self):
+        return self._iobinding.get_outputs()
 
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
