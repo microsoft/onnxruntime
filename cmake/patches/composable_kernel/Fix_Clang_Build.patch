@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 3e1174ec..65648cb7 100644
+index 5655ba17..c6a10fe0 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
@@ -11,7 +11,7 @@ index 3e1174ec..65648cb7 100644
  
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
  
-@@ -36,27 +36,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -41,27 +41,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -39,7 +39,7 @@ index 3e1174ec..65648cb7 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -245,9 +224,6 @@ rocm_package_setup_component(tests
+@@ -263,9 +242,6 @@ rocm_package_setup_component(tests
  )
  
  add_subdirectory(library)
@@ -49,7 +49,7 @@ index 3e1174ec..65648cb7 100644
  
  #Create an interface target for the include only files and call it "composablekernels"
  include(CMakePackageConfigHelpers)
-@@ -273,11 +249,3 @@ rocm_install(FILES
+@@ -291,11 +267,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -62,7 +62,7 @@ index 3e1174ec..65648cb7 100644
 -    HEADER_ONLY
 -)
 diff --git a/include/ck/ck.hpp b/include/ck/ck.hpp
-index fcaec592..8ea06421 100644
+index 92018aac..2ada620c 100644
 --- a/include/ck/ck.hpp
 +++ b/include/ck/ck.hpp
 @@ -126,7 +126,9 @@
@@ -76,7 +76,7 @@ index fcaec592..8ea06421 100644
  
  // hack: have underlying assumption that need to be satsified, otherwise it's a bug
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index 6f3f900b..594d983d 100644
+index c206c4dc..6ca1ec11 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 @@ -1,5 +1,6 @@
@@ -86,13 +86,3 @@ index 6f3f900b..594d983d 100644
      add_library(${INSTANCE_NAME} OBJECT ${ARGN})
      target_compile_features(${INSTANCE_NAME} PUBLIC)
      set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-diff --git a/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt
-index 5dc20332..78eedca5 100644
---- a/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt
-+++ b/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt
-@@ -1,4 +1,4 @@
--add_library(device_grouped_conv3d_fwd_instance
-+add_instance_library(device_grouped_conv3d_fwd_instance
-    device_grouped_conv3d_fwd_xdl_gndhwc_gkzyxc_gndhwk_bf16_instance.cpp
-    device_grouped_conv3d_fwd_xdl_gndhwc_gkzyxc_gndhwk_f16_instance.cpp
-    device_grouped_conv3d_fwd_xdl_gndhwc_gkzyxc_gndhwk_f32_instance.cpp

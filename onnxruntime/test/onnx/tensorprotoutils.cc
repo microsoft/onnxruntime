@@ -6,7 +6,6 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/gsl>
 
 #include "mem_buffer.h"
 #include "core/common/safeint.h"

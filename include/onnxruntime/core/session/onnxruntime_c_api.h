@@ -129,7 +129,6 @@ extern "C" {
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT and ORT_EXPORT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  GSL_SUPPRESS(r .11)                  \
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
@@ -3643,6 +3642,13 @@ struct OrtCustomOp {
   // Returns the characteristics of the input & output tensors
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the memory type of the input tensors. This API allows the custom op
+  // to place the inputs on specific devices. By default, it returns
+  // OrtMemTypeDefault, which means the input is placed on the default device for
+  // the execution provider. If the inputs need to be with different memory tyeps,
+  // this function can be overriden to return the specific memory types.
+  OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
 
 /*

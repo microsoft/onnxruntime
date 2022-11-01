@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "nchwc_ops.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -53,7 +55,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
     // elements, so that operations involving a smaller number of channels will
     // process more rows per worker.
     constexpr ptrdiff_t worker_goal = 48 * 1024;
-    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / nchwc_channels, 1);
+    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / narrow<ptrdiff_t>(nchwc_channels), 1);
     worker_count = std::max<ptrdiff_t>(total_work / work_per_worker, 1);
   } else {
     // Each iteration produces one spatial_size chunk of NCHWc blocks.
@@ -196,7 +198,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
     // If the output was not allocated inplace with the sum tensor, then copy here.
     const auto* sum_data = Sum->Data<float>();
     if (y_data != sum_data) {
-      memcpy(y_data, sum_data, sum_shape.Size() * sizeof(float));
+      memcpy(y_data, sum_data, SafeInt<size_t>(sum_shape.Size()) * sizeof(float));
     }
   }
 
@@ -257,27 +259,27 @@ std::vector<float> NchwcUpsample::ComputeInterpolation(int64_t input_length,
                                                        int64_t output_length,
                                                        int64_t scale) const {
   std::vector<float> interpolation;
-  interpolation.resize(output_length);
+  interpolation.resize(narrow<size_t>(output_length));
 
   if (scale == 1) {
     // Identity map for unscaled.
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] = static_cast<float>(o);
+      interpolation[narrow<size_t>(o)] = static_cast<float>(o);
     }
   } else if (transformation_mode_ == TransformationMode::ALIGN_CORNERS) {
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] =
+      interpolation[narrow<size_t>(o)] =
           static_cast<float>(o) * static_cast<float>(input_length - 1) / static_cast<float>(output_length - 1);
     }
   } else if (transformation_mode_ == TransformationMode::HALF_PIXEL) {
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] =
+      interpolation[narrow<size_t>(o)] =
           std::max(0.0f, (static_cast<float>(o) + 0.5f) / static_cast<float>(scale) - 0.5f);
     }
   } else {
     // Default to TransformationMode::ASYMMETRIC.
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] = static_cast<float>(o) / static_cast<float>(scale);
+      interpolation[narrow<size_t>(o)] = static_cast<float>(o) / static_cast<float>(scale);
     }
   }
 
@@ -321,12 +323,12 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     const auto interpolation_w = ComputeInterpolation(input_w, output_w, scales_[3]);
 
     const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
-    const ptrdiff_t total_work = ((batch_count * nchwc_channels) / nchwc_block_size) * output_h;
+    const ptrdiff_t total_work =((SafeInt<ptrdiff_t>(batch_count) * nchwc_channels) / nchwc_block_size) * output_h;
     // Partition the work with the goal of generating the following number of
     // elements, so that operations involving a smaller number of columns will
     // process more rows per worker.
     constexpr ptrdiff_t worker_goal = 16 * 1024;
-    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / (output_w * nchwc_block_size), 1);
+    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal /  (SafeInt<ptrdiff_t>(output_w) * nchwc_block_size), 1);
     ptrdiff_t worker_count = std::max<ptrdiff_t>(total_work / work_per_worker, 1);
 
     auto upsample_worker = [&](ptrdiff_t batch) {
@@ -352,7 +354,7 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
               static_cast<size_t>(input_h),
               static_cast<size_t>(input_w),
               static_cast<size_t>(output_w),
-              interpolation_h[row_index],
+              interpolation_h[narrow<size_t>(row_index)],
               interpolation_w.data(),
               x_channel_base,
               y_row);

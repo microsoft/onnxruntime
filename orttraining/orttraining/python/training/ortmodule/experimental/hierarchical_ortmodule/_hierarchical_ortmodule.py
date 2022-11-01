@@ -112,7 +112,7 @@ class HierarchicalORTModule(torch.nn.Module):
         # those nn.Module's with their recorded inputs.
         # NOTE that if a module is not called from forward(), it will fail to be captured by this hook.
         def recursive_hook(module):
-            # We cannot skip module in whitelist because it's possible that a module is called multiple times
+            # We cannot skip module in allowlist because it's possible that a module is called multiple times
             # so that we still need to know the number of different input sets and use _IteratedORTModule to handle it.
             handle_pool.append(module.register_forward_pre_hook(record_args))
             for _, sub_module in module._modules.items():

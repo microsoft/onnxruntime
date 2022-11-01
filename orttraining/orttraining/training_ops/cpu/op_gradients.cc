@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "op_gradients.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
+#include "orttraining/training_ops/cpu/op_gradients.h"
+
+#include "core/common/gsl.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
-#include <unsupported/Eigen/SpecialFunctions>
-#include "core/util/math.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/tensor/transpose.h"
-#include "gsl/gsl"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 namespace contrib {
@@ -210,5 +211,44 @@ Status TanhGrad<T>::Compute(OpKernelContext* context) const {
   dx = dy * (1 - y * y);
   return Status::OK();
 }
+
+ONNX_OPERATOR_KERNEL_EX(QuickGeluGrad, kMSDomain, 1, kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        QuickGeluGrad<float>);
+
+template <typename T>
+Status QuickGeluGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  const T* dY_data = dY.template Data<T>();
+  auto& X = *context->Input<Tensor>(1);
+  const T* X_data = X.template Data<T>();
+  auto& dX = *context->Output(0, dY.Shape());
+  T* dX_data = dX.template MutableData<T>();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  int64_t elem_count = dY.Shape().Size();
+  constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
+  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+  concurrency::ThreadPool::TryBatchParallelFor(
+      tp, static_cast<int32_t>(task_count),
+      [&](ptrdiff_t task_idx) {
+        const auto start = task_idx * length_per_task;
+        const T* p_dy = dY_data + start;
+        const T* p_x = X_data + start;
+        T* p_dx = dX_data + start;
+        int64_t count = std::min(length_per_task, elem_count - start);
+        for (int64_t i = 0; i < count; i++) {
+          p_dx[i] = p_x[i] * alpha_;
+        }
+
+        MlasComputeLogistic(p_dx, p_dx, count);
+
+        for (int64_t i = 0; i < count; i++) {
+          p_dx[i] = p_dy[i] * p_dx[i] * (1.f + alpha_ * p_x[i] * (1.f - p_dx[i]));
+        }
+      },
+      0);
+  return Status::OK();
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime

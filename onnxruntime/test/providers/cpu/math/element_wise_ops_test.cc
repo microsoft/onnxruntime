@@ -882,7 +882,7 @@ TEST(MathOpTest, Exp_float) {
   test.AddOutput<float>("Y", dims,
                         {1.0f, std::exp(1.0f),
                          std::exp(2.0f), std::exp(10.0f)});
-  test.SetOutputRelErr("Y", 1e-7f);
+  test.SetOutputRelErr("Y", 2e-7f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 

@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+
 #include "core/providers/cpu/math/gemm.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
@@ -125,7 +128,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
   math::Gemm<T>(trans_a, trans_b,
-                M, N, K,
+                narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K),
                 alpha,
                 a_data,
                 b_data,
@@ -241,7 +244,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
               c_data, c_shape, y_data, thread_pool);
 
-  ComputeActivation(y_data, M * N, thread_pool);
+  ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
 
   return Status::OK();
 }
@@ -296,7 +299,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
         thread_pool);
   }
 
-  ComputeActivation(y_data, M * N, thread_pool);
+  ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
 
   return Status::OK();
 }

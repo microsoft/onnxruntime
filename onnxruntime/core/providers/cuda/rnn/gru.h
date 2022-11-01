@@ -4,7 +4,7 @@
 #pragma once
 
 #include "cudnn_rnn_base.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <cudnn.h>
 

@@ -35,8 +35,8 @@ void Fill(hipStream_t stream, T* output, T value, int64_t count) {
 template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
  public:
-  ConstantBufferImpl(T val) : val_(val), buffer_(nullptr), count_(0) {
-  }
+  ConstantBufferImpl(T val) : buffer_(nullptr), count_(0), val_(val) {}
+
   ~ConstantBufferImpl() {
     if (buffer_)
       HIP_CALL_THROW(hipFree(buffer_));

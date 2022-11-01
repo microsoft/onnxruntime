@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cpu/activation/activations_grad.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push)
