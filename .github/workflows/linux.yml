@@ -1,6 +1,6 @@
 name: Linux_CI
 on:
-  push:
+  pull_request:
     branches:
       - main
       - zhanyi/skipci
@@ -9,7 +9,7 @@ on:
       - README.md
       - CONTRIBUTING.md
       - BUILD.md
-  pull_request:
+
 
 jobs:
   Onnxruntime-TVM:
