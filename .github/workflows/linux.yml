@@ -19,7 +19,6 @@ on:
       - CONTRIBUTING.md
       - BUILD.md
 
-
 jobs:
   Onnxruntime-TVM:
     runs-on: ubuntu-latest
