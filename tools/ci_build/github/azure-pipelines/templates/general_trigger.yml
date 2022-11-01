@@ -4,7 +4,7 @@ trigger:
     include:
     - main
     - rel-*
-    - zhanyi*
+    - zhanyi/skipci
   paths:
     exclude:
     - docs/**
@@ -16,7 +16,7 @@ pr:
     include:
     - main
     - rel-*
-    - zhanyi*
+    - zhanyi/skipci
   paths:
     exclude:
     - docs/**
