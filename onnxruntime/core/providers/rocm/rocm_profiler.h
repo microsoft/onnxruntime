@@ -47,7 +47,4 @@ class RocmProfiler final : public EpProfiler {
 }
 }
 
-
-
-
 #endif
