@@ -124,7 +124,6 @@ void RoctracerManager::Clear()
 }
 
 void RoctracerManager::StopLogging() {
-  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   if (!logging_enabled_) {
     return;
   }

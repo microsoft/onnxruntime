@@ -74,7 +74,6 @@ public:
   void DeregisterClient(uint64_t client_handle);
 
   void StartLogging();
-  void StopLogging();
   void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events);
 
   bool PushCorrelation(uint64_t client_handle, uint64_t external_correlation_id);
@@ -99,7 +98,7 @@ private:
                                            const ApiCallRecord& call_record, EventRecord& event);
   void MapEventToClient(uint64_t external_correlation_id, EventRecord&& event);
   void MapEventsToClient(uint64_t external_correlation_id, Events&& events);
-
+  void StopLogging();
   void Clear();
 
   // Some useful constants for processing activity buffers
