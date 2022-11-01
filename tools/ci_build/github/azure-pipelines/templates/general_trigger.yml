@@ -1,0 +1,25 @@
+# filter documentation change
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+    - zhanyi*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+    - zhanyi*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
