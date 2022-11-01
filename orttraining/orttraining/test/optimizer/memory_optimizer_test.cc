@@ -26,7 +26,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-#include "orttraining/core/optimizer/memory_alleviation.h"
+#include "orttraining/core/optimizer/memory_optimizer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -36,7 +36,7 @@ namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/recompute/")
 
-TEST(MemoryAlleviationTests, GeluRecompute) {
+TEST(MemoryOptimizerTests, GeluRecompute) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "recompute_gelu.onnx";
   std::shared_ptr<Model> model;
@@ -62,7 +62,7 @@ TEST(MemoryAlleviationTests, GeluRecompute) {
   const std::string alleviation_config("Gelu+:1:-1");
   const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryAlleviation>(alleviation_config, alleviation_level), TransformerLevel::Level2));
+      std::make_unique<MemoryOptimizer>(alleviation_config, alleviation_level), TransformerLevel::Level2));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
@@ -90,7 +90,7 @@ TEST(MemoryAlleviationTests, GeluRecompute) {
   ASSERT_EQ(original_gelu_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
 }
 
-TEST(MemoryAlleviationTests, TileRecompute) {
+TEST(MemoryOptimizerTests, TileRecompute) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "recompute_tile.onnx";
   std::shared_ptr<Model> model;
@@ -106,7 +106,7 @@ TEST(MemoryAlleviationTests, TileRecompute) {
   const std::string alleviation_config("Tile+:1:-1");
   const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryAlleviation>(alleviation_config, alleviation_level), TransformerLevel::Level2));
+      std::make_unique<MemoryOptimizer>(alleviation_config, alleviation_level), TransformerLevel::Level2));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 

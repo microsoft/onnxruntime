@@ -67,7 +67,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "orttraining/core/optimizer/memory_alleviation.h"
+#include "orttraining/core/optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 
@@ -287,11 +287,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
 #ifdef ENABLE_TRAINING
-      const std::string enable_memory_alleviation =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryAlleviationEnabler, "");
+      const std::string enable_memory_optimizer =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
       const std::string probe_level =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryAlleviationProbeLevel, "0");
-      transformers.emplace_back(std::make_unique<MemoryAlleviation>(enable_memory_alleviation, probe_level));
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
+      transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
 #endif
 
 #ifdef MLAS_TARGET_AMD64_IX86

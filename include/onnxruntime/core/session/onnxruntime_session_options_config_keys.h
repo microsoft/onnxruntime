@@ -64,16 +64,17 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 #ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of
-// <subgraph string : alleviation strategy : number of subgraph to apply>.
+// <subgraph string : optimization strategy : number of subgraph to apply>.
 // For example, "Gelu+Cast+:1:0,Dropout:1:1".
-//   "alleviation strategy" currently has valid values: 0 - disabled, 1 - recompute.
-//   "number of subgraph to apply" is used to control how many subgraphs to apply alleviation, to avoid "oversaving"
+//   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
+//   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
+//   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
 //    the memory.
-static const char* const kOrtSessionOptionsMemoryAlleviationEnabler = "optimization.enable_memory_alleviation";
+static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
 
 // Specifies the level for detecting subgraphs for memory footprint reduction.
 // The value should be an integer. The default value is 0.
-static const char* const kOrtSessionOptionsMemoryAlleviationProbeLevel = "optimization.memory_alleviation_probe_level";
+static const char* const kOrtSessionOptionsMemoryOptimizerProbeLevel = "optimization.enable_memory_probe_recompute_level";
 #endif
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".

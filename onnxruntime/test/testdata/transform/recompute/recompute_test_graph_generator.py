@@ -1,8 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""This file is used to generate test data for MemoryAlleviation tests in
-   onnxruntime/test/optimizer/memory_alleviation_test.cc.
+"""This file is used to generate test data for MemoryOptimizer tests in
+   onnxruntime/test/optimizer/memory_optimizer_test.cc.
 
    Be noticed, after run this script, manually rename recompute_XXXX_execution_model_training.onnx to
    recompute_XXXX.onnx
