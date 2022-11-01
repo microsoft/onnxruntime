@@ -162,6 +162,37 @@ void MyCustomKernelWithOptionalInput::Compute(OrtKernelContext* context) {
   }
 }
 
+MyCustomKernelWithVariadicIO::MyCustomKernelWithVariadicIO(const OrtKernelInfo* info) {
+  Ort::ConstKernelInfo kinfo(info);
+
+  this->num_inputs_ = kinfo.GetInputCount();
+
+  // Show how to use KernelInfo APIs to enforce expected input shapes on kernel/session creation.
+  for (int64_t i = 0; i < this->num_inputs_; ++i) {
+    Ort::KernelIOInfo input_info = kinfo.GetInputInfo(i);
+    Ort::ConstTensorTypeAndShapeInfo type_info = input_info.GetTypeInfo().GetTensorTypeAndShapeInfo();
+
+    if (type_info.GetDimensionsCount() != 1) {
+      ORT_CXX_API_THROW("Input can only have a dimension of 1", OrtErrorCode::ORT_INVALID_GRAPH);
+    }
+  }
+}
+
+void MyCustomKernelWithVariadicIO::Compute(OrtKernelContext* context) {
+  Ort::KernelContext kcontext(context);
+
+  std::array<const int64_t, 1> output_shape = {1};
+
+  // Each output is set to the length of the corresponding input string.
+  for (int64_t i = 0; i < this->num_inputs_; ++i) {
+    auto input = kcontext.GetInput(i);
+    auto output = kcontext.GetOutput(i, output_shape.data(), output_shape.size());
+    int64_t* str_len_ptr = output.GetTensorMutableData<int64_t>();
+
+    *str_len_ptr = input.GetStringTensorElementLength(0);
+  }
+}
+
 void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
   // Setup inputs
   Ort::KernelContext ctx(context);
