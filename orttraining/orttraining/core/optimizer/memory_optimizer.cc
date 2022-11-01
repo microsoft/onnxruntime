@@ -167,6 +167,33 @@ int64_t MemoryOptimizer::PrepareForTransformation(const Graph& graph,
   return yield_op_order_in_topological_sort;
 }
 
+Status MemoryOptimizer::GetStashedActivationCandidates(const Graph& graph,
+                                                       const InlinedHashMap<std::string, std::pair<bool, bool>>&
+                                                           fw_op_output_arg_used_map,
+                                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                                           candidate_output_args_map,
+                                                       const logging::Logger& logger) const {
+  for (auto& kv : fw_op_output_arg_used_map) {
+    // used by fw and bw, then it is a candidates.
+    if (kv.second.first && kv.second.second) {
+      const Node* n = graph.GetProducerNode(kv.first);
+      ORT_ENFORCE(n, "Activation should have a producer node");
+      size_t k = 0;
+      for (k = 0; k < n->OutputDefs().size(); ++k) {
+        if (n->OutputDefs()[k]->Name().compare(kv.first) == 0) {
+          break;
+        }
+      }
+
+      candidate_output_args_map[n].push_back(k);
+      LOGS(logger, VERBOSE) << "Find candidate output named [" << kv.first << "] of Node " << n->Name() << "("
+                            << n->OpType() << ")";
+    }
+  }
+
+  return Status::OK();
+}
+
 bool MemoryOptimizer::ModifyGraph(Graph& graph,
                                   const InlinedHashMap<NodeIndex, size_t>&
                                       node_index_to_its_order_in_topological_sort_map,
@@ -665,33 +692,6 @@ void MemoryOptimizer::CheckNodeForRecompute(const Node& node,
   subgraph_stores.AddSubGraphInstance(&node, nodes_in_topological_order, subgraph_desc);
 
   return;
-}
-
-Status MemoryOptimizer::GetStashedActivationCandidates(const Graph& graph,
-                                                       const InlinedHashMap<std::string, std::pair<bool, bool>>&
-                                                           fw_op_output_arg_used_map,
-                                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
-                                                           candidate_output_args_map,
-                                                       const logging::Logger& logger) const {
-  for (auto& kv : fw_op_output_arg_used_map) {
-    // used by fw and bw, then it is a candidates.
-    if (kv.second.first && kv.second.second) {
-      const Node* n = graph.GetProducerNode(kv.first);
-      ORT_ENFORCE(n, "Activation should have a producer node");
-      size_t k = 0;
-      for (k = 0; k < n->OutputDefs().size(); ++k) {
-        if (n->OutputDefs()[k]->Name().compare(kv.first) == 0) {
-          break;
-        }
-      }
-
-      candidate_output_args_map[n].push_back(k);
-      LOGS(logger, VERBOSE) << "Find candidate output named [" << kv.first << "] of Node " << n->Name() << "("
-                            << n->OpType() << ")";
-    }
-  }
-
-  return Status::OK();
 }
 
 Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
