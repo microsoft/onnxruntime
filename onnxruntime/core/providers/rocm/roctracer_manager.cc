@@ -15,9 +15,11 @@ const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
   "hipMemcpy2D",
   "hipMemcpyAsync",
   "hipMemcpy2DAsync",
+  "hipMemcpyWithStream"
   "hipLaunchKernel",
   "hipMemset",
   "hipMemsetAsync",
+  "hipExtModuleLaunchKernel"
 };
 
 // Implementation of RoctracerActivityBuffer
@@ -193,8 +195,7 @@ void RoctracerManager::ApiCallback(uint32_t domain, uint32_t cid, const void* ca
   }
 }
 
-static inline std::string PointerToHexString(const void* ptr)
-{
+static inline std::string PointerToHexString(const void* ptr) {
   std::ostringstream sstr;
   sstr << std::hex << ptr;
   return sstr.str();
@@ -332,6 +333,31 @@ void RoctracerManager::CreateEventForMemcpy2DRecord(const roctracer_record_t* re
   };
 }
 
+void RoctracerManager::CreateEventForExtModuleLaunchKernel(const roctracer_record_t* record, uint64_t start_time_ns,
+                                                           const ApiCallRecord& call_record, EventRecord& event) {
+  auto const& launch_args = call_record.api_data_;
+  auto name = hipKernelNameRef(launch_args.args.hipExtModuleLaunchKernel.f);
+  std::unordered_map<std::string, std::string> args {
+    {"stream", PointerToHexString((void*)launch_args.args.hipExtModuleLaunchKernel.hStream)},
+    {"grid_x", std::to_string(launch_args.args.hipExtModuleLaunchKernel.globalWorkSizeX)},
+    {"grid_y", std::to_string(launch_args.args.hipExtModuleLaunchKernel.globalWorkSizeY)},
+    {"grid_z", std::to_string(launch_args.args.hipExtModuleLaunchKernel.globalWorkSizeZ)},
+    {"block_x", std::to_string(launch_args.args.hipExtModuleLaunchKernel.localWorkSizeX)},
+    {"block_y", std::to_string(launch_args.args.hipExtModuleLaunchKernel.localWorkSizeY)},
+    {"block_z", std::to_string(launch_args.args.hipExtModuleLaunchKernel.localWorkSizeZ)},
+  };
+
+  new (&event) EventRecord {
+    /* cat = */ EventCategory::KERNEL_EVENT,
+    /* pid = */ -1,
+    /* tid = */ -1,
+    /* name = */ std::move(name),
+    /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+    /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
+    /* args = */ std::move(args)
+  };
+}
+
 void RoctracerManager::MapEventsToClient(uint64_t external_correlation_id, Events&& events) {
   auto client_it = external_correlation_id_to_client_.find(external_correlation_id);
   if (client_it == external_correlation_id_to_client_.end()) {
@@ -402,12 +428,17 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
 
         case HIP_API_ID_hipMemcpy:
         case HIP_API_ID_hipMemcpyAsync:
+        case HIP_API_ID_hipMemcpyWithStream:
           CreateEventForMemcpyRecord(current_record, start_time_ns, call_record, event);
           break;
 
         case HIP_API_ID_hipMemcpy2D:
         case HIP_API_ID_hipMemcpy2DAsync:
           CreateEventForMemcpy2DRecord(current_record, start_time_ns, call_record, event);
+          break;
+
+        case HIP_API_ID_hipExtModuleLaunchKernel:
+          CreateEventForExtModuleLaunchKernel(current_record, start_time_ns, call_record, event);
           break;
 
         default:

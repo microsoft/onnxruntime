@@ -95,6 +95,8 @@ private:
                                   const ApiCallRecord& call_record, EventRecord& event);
   void CreateEventForMemcpy2DRecord(const roctracer_record_t* record, uint64_t start_time_ns,
                                     const ApiCallRecord& call_record, EventRecord& event);
+  void CreateEventForExtModuleLaunchKernel(const roctracer_record_t* record, uint64_t start_time_ns,
+                                           const ApiCallRecord& call_record, EventRecord& event);
   void MapEventToClient(uint64_t external_correlation_id, EventRecord&& event);
   void MapEventsToClient(uint64_t external_correlation_id, Events&& events);
 
