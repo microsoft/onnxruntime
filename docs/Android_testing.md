@@ -6,11 +6,11 @@ See [Android build instructions](https://www.onnxruntime.ai/docs/how-to/build.ht
 
 If using Android Studio this is included in the base install.
 
-If using sdkmanager install the emulator by running 
+If using sdkmanager install the emulator by running
   - `sdkmanager[.bat] --install "emulator"`
 
-The emulator will emulate the Android device not its processor, so you need to build onnxruntime 
-with an ABI that's valid for the host machine, and install a system image that matches. 
+The emulator will emulate the Android device not its processor, so you need to build onnxruntime
+with an ABI that's valid for the host machine, and install a system image that matches.
 For example you can emulate a Pixel 3 device on an Intel 64-bit host, but it will require a binary built against x86_64
 rather than the arm64-v8a ABI of the real device.
 
@@ -26,7 +26,7 @@ Once created the emulator can be started using the 'play' button in AVD Manager.
 
 ### sdkmanager
 
-First install a system image. Use `sdkmanager --list` to see the available system images. 
+First install a system image. Use `sdkmanager --list` to see the available system images.
 
 e.g. `sdkmanager --install "system-images;android-27;default;x86_64`
 
@@ -43,7 +43,7 @@ Use ADB to copy files and execute commands
 
 https://developer.android.com/studio/command-line/adb
 
-ADB is located in the 'platform-tools' folder of the SDK directory. 
+ADB is located in the 'platform-tools' folder of the SDK directory.
 
 Copy onnx_test_runner and the directory of the model to test (in ONNX test directory format) to /data/local/tmp.
 
@@ -52,16 +52,16 @@ adb push <onnxruntime repo>/build/<platform>/<config>/onnx_test_runner /data/loc
 adb push <onnxruntime repo>/build/<platform>/<config>/testdata/transform/gemm_activation_fusion /data/local/tmp/
 ```
 
-e.g. on Windows that might be 
+e.g. on Windows that might be
 ```
 <Android SDK path>\platform-tools\adb.exe push <onnxruntime repo>\build\Windows\Debug\onnx_test_runner /data/local/tmp/testdata
 <Android SDK path>\platform-tools\adb.exe push <onnxruntime repo>\build\Windows\Debug\testdata\transform\gemm_activation_fusion /data/local/tmp/
 ```
 
-You may need to change permissions to make onnx_test_runner executable: 
+You may need to change permissions to make onnx_test_runner executable:
 `<Android SDK path>\platform-tools\adb.exe shell chmod +x /data/local/tmp/onnx_test_runner`
 
-Run onnx_test_runner with the model directory: 
+Run onnx_test_runner with the model directory:
 `<Android SDK path>\platform-tools\adb.exe shell 'cd /data/local/tmp && ./onnx_test_runner gemm_activation_fusion'`
 
 The output should look something like this:
@@ -79,3 +79,5 @@ result:
                 Failed:
 Failed Test Cases:
 ```
+
+test commit1
