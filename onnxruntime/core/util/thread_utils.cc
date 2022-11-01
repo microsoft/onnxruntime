@@ -36,6 +36,7 @@ ThreadAffinities GetDefaultThreadAffinities() {
   }
 
   WORD group_id = 0;
+  static constexpr WORD max_group_id = std::numeric_limits<WORD>::max();
   ThreadAffinities thread_affinities;
   // size of KAFFINITY varies, must not exceed boundary
   int64_t num_bit_in_affinity_ = sizeof(KAFFINITY) << 3;
@@ -50,14 +51,18 @@ ThreadAffinities GetDefaultThreadAffinities() {
     }
     for (int64_t j = 0; j < static_cast<int>(processorInfos[i].Group.ActiveGroupCount); ++j) {
       const auto& groupInfo = processorInfos[i].Group.GroupInfo[j];
-      LOGS_DEFAULT(WARNING) << "Discovered process group: " << group_id << ", active processor mask: " << groupInfo.ActiveProcessorMask;
-      KAFFINITY processor_affinity = 3UL;
+      LOGS_DEFAULT(INFO) << "Discovered process group: " << group_id << ", active processor mask: " << groupInfo.ActiveProcessorMask;
+      KAFFINITY thread_affinity = 3UL;
       // allow only one thread for every two logical processors
       int64_t num_of_physical_cores = groupInfo.ActiveProcessorCount >> 1;
-      int64_t max_num_thread_cur_group = max_num_thread_per_group <= num_of_physical_cores ? max_num_thread_per_group : num_of_physical_cores;
+      int64_t max_num_thread_cur_group = std::min( max_num_thread_per_group, num_of_physical_cores);
       for (int64_t k = 0; k < max_num_thread_cur_group; ++k) {
-        thread_affinities.push_back({static_cast<int64_t>(group_id), static_cast<int64_t>(processor_affinity)});
-        processor_affinity <<= 2;
+        thread_affinities.push_back({static_cast<int64_t>(group_id), static_cast<int64_t>(thread_affinity)});
+        thread_affinity <<= 2;
+      }
+      if (group_id == max_group_id) {
+        // preventing overflow
+        return std::move(thread_affinities);
       }
       group_id++;
     }
@@ -117,12 +122,17 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size <= 0) {  // default
 #ifdef _WIN32
     to.thread_affinities = GetDefaultThreadAffinities();
-    options.thread_pool_size = static_cast<int>(to.thread_affinities.size());
-    LOGS_DEFAULT(WARNING) << "setting default affinity, thread_pool size (including the main thread): " << options.thread_pool_size;
-    for (int i = 0; i < options.thread_pool_size - 1; ++i) {
-      LOGS_DEFAULT(WARNING) << "sub-thread " << i << " affnity set to: group "
-                            << to.thread_affinities[i].first << " with processor bitmask "
-                            << to.thread_affinities[i].second;
+    if (to.thread_affinities.empty()) {
+      options.thread_pool_size = std::thread::hardware_concurrency() >> 1;
+      LOGS_DEFAULT(WARNING) << "Failed to initialize default thread affinity setting";
+    } else {
+      options.thread_pool_size = static_cast<int>(to.thread_affinities.size());
+      LOGS_DEFAULT(INFO) << "setting default affinity, thread_pool size (including the main thread): " << options.thread_pool_size;
+      for (int i = 0; i < options.thread_pool_size - 1; ++i) {
+        LOGS_DEFAULT(INFO) << "sub-thread " << i << " affnity set to: group "
+                           << to.thread_affinities[i].first << " with processor bitmask "
+                           << to.thread_affinities[i].second;
+      }
     }
 #else
     cpu_list = Env::Default().GetThreadAffinityMasks();
@@ -137,11 +147,11 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     ORT_ENFORCE(static_cast<int>(options.thread_affinities.size()) == options.thread_pool_size - 1,
                 "Invalid thread options, number of group affinities must equal to options.thread_pool_size - 1");
     to.thread_affinities = options.thread_affinities;
-    LOGS_DEFAULT(WARNING) << "applying non-default affinity:" << std::endl;
+    LOGS_DEFAULT(INFO) << "applying non-default affinity:" << std::endl;
     for (int i = 0; i < options.thread_pool_size - 1; ++i) {
-      LOGS_DEFAULT(WARNING) << "sub-thread " << i << " affnity set to: group "
-                            << to.thread_affinities[i].first << " with processor bitmask "
-                            << to.thread_affinities[i].second;
+      LOGS_DEFAULT(INFO) << "sub-thread " << i << " affnity set to: group "
+                         << to.thread_affinities[i].first << " with processor bitmask "
+                         << to.thread_affinities[i].second;
     }
 #else
     LOGS_DEFAULT(WARNING) << "Setting thread affinity not implemented for POSIX";
