@@ -15,7 +15,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
-#include "core/framework/execution_context.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -526,14 +525,6 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
-    const auto msg_string = ss.str();
-    LOGS(logger, ERROR) << msg_string;
-    return Status(status.Category(), status.Code(), msg_string);
-  }
-  ctx.RecycleNodeInputs(idx);
-  LOGS(logger, INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
-  return Status::OK();
-}
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());
 

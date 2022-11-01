@@ -23,11 +23,11 @@ struct EinsumRocmAssets {
   explicit EinsumRocmAssets(rocblas_handle rocblas_handle,
                             const ROCMExecutionProvider* rocm_ep,
                             Stream* ort_stream) : rocblas_handle_(rocblas_handle),
-                                                  rocm_ep_(roc_ep),
+                                                  rocm_ep_(rocm_ep),
                                                   ort_stream_(ort_stream) {}
 
   hipStream_t GetRocmStream() {
-    return ort_stream_ ? static_cast<hipStream_t>(ort_stream_->handle) : nullptr;
+    return ort_stream_ ? static_cast<hipStream_t>(ort_stream_->GetHandle()) : nullptr;
   }
 
   rocblas_handle rocblas_handle_;

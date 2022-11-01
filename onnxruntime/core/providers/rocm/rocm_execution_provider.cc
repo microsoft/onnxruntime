@@ -125,7 +125,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   }
 }
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t /*stream*/, size_t /*gpu_mem_limit*/,
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t /*gpu_mem_limit*/,
                                                           ArenaExtendStrategy /*arena_extend_strategy*/, ROCMExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
                                                           OrtArenaCfg* /*default_memory_arena_cfg*/) {
   HIP_CALL_THROW(hipSetDevice(device_id));

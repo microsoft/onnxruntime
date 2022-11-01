@@ -24,18 +24,18 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
     if (src_device.Type() == OrtDevice::GPU) {
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
-        HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToDevice));
-        HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr));
+        HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToDevice));
+        HIP_CALL_THROW(hipStreamSynchronize(nullptr));
       }
     } else {
       // copy from other CPU memory to GPU, this is blocking
-      HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
-      HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr)); // TODO: still need stream sync? since already blocking
+      HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
+      HIP_CALL_THROW(hipStreamSynchronize(nullptr)); // TODO: still need stream sync? since already blocking
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     // copying from GPU to CPU memory, this is blocking
-    HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToHost));
-    HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr)); // TODO: still need stream sync? since already blocking
+    HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToHost));
+    HIP_CALL_THROW(hipStreamSynchronize(nullptr)); // TODO: still need stream sync? since already blocking
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);

@@ -365,8 +365,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
 #ifdef USE_ROCM
-    hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_ROCM().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;

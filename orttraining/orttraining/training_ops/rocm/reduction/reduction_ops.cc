@@ -128,15 +128,15 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
   ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES));
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));
-  MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-  MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
+  MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(GetMiopenHandle(ctx), reduce_desc, input_tensor, output_tensor, &indices_bytes));
+  MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(GetMiopenHandle(ctx), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
   IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes, ctx->GetComputeStream());
   IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes, ctx->GetComputeStream());
 
   const auto one = Consts<float>::One;
   const auto zero = Consts<float>::Zero;
   auto temp_Y = GetScratchBuffer<float>(output_count, ctx->GetComputeStream());
-  MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(),
+  MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(GetMiopenHandle(ctx),
                                             reduce_desc,
                                             indices_rocm.get(),
                                             indices_bytes,

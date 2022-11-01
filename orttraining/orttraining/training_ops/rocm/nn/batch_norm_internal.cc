@@ -124,7 +124,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   //     running_var = (1 - momentum_) * unbiased_batch_var + momentum_ * running_var
   // This is inconsistent with BatchNormalization Onnx spec, which uses population variance (biased).
   MIOPEN_RETURN_IF_ERROR(miopenBatchNormalizationForwardTraining(
-      MiopenHandle(),
+      GetMiopenHandle(p_op_kernel_context),
       miopen_batch_norm_mode_,
       &alpha,
       &beta,

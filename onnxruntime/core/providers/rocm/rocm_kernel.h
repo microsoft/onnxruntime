@@ -69,7 +69,7 @@ class RocmKernel : public OpKernel {
 
   inline hipStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
-    return stream ? static_cast<hipStream_t>(stream->handle) : nullptr;
+    return stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
   }
 
   bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
@@ -160,6 +160,10 @@ class RocmKernel : public OpKernel {
 
   inline miopenHandle_t GetMiopenHandle(OpKernelContext* ctx) const {
     return GetMiopenHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  }
+
+  inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
+    return ctx->GetComputeStream();
   }
 
  protected:

@@ -10,12 +10,15 @@
 #include "migraphx_execution_provider_utils.h"
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
-#include "migraphx_call.h"
+//#include "migraphx_call.h"
 #include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
 #include <iterator>
+
+// TODO: find a better way to share this
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)

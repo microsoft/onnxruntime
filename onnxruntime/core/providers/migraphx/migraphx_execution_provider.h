@@ -11,6 +11,10 @@
 
 #include <map>
 #include "migraphx_inc.h"
+// TODO: find a better way to share this
+//#include "core/providers/cuda/rocm_stream_handle.h"
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
 
 namespace onnxruntime {
 

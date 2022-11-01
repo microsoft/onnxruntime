@@ -23,7 +23,7 @@ Status GemmInt8(int m, int n, int k,
   ORT_ENFORCE(a != nullptr && b != nullptr && c != nullptr, "input matrix should not be null");
   ORT_ENFORCE(rocm_kernel != nullptr, "kernel is null");
 
-  hipStream_t stream = ort_stream ? static_cast<hipStream_t>(ort_stream->handle) : nullptr;
+  hipStream_t stream = ort_stream ? static_cast<hipStream_t>(ort_stream->GetHandle()) : nullptr;
 
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:

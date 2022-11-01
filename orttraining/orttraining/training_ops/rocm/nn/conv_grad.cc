@@ -231,7 +231,7 @@ template<> Status AlgoIterator<T_BwdFilterAlgo>::OnlyDefaultAlgorithm(const Conv
 
 template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
-                                Tensor* dW) const {
+                                Tensor* dW, miopenHandle_t miopen_handle) const {
   const TensorShape& x_shape = x.Shape();
   auto x_dims = x_shape.AsShapeVector();
   args_.x_data = reinterpret_cast<const HipT*>(x.template Data<T>());
@@ -305,7 +305,7 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
       args_.params.dilation[i] = static_cast<int>(dilations[i]);
     }
     args_.params.groups = conv_attrs_.group;
-    args_.handle = MiopenHandle();
+    args_.handle = miopen_handle;
     ORT_RETURN_IF_ERROR(args_.w_desc.Set(w_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.x_tensor.Set(x_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.y_tensor.Set(dy_dims, args_.params.data_type));
@@ -333,7 +333,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, X->Shape());
   Tensor* dW = context->Output(1, W->Shape());
   Tensor* dB = context->Output(2, {W->Shape()[0]});
-  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW));
+  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW, GetMiopenHandle(context)));
   if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient(context->GetComputeStream()));
   if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient(context->GetComputeStream()));
   if (dB) ORT_RETURN_IF_ERROR(ComputeBiasGradient());

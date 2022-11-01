@@ -95,7 +95,7 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   }
 
   MIOPEN_RETURN_IF_ERROR(miopenBatchNormalizationBackward(
-      MiopenHandle(),
+      GetMiopenHandle(ctx),
       miopen_batch_norm_mode_,
       &alpha,
       &beta,

@@ -55,7 +55,7 @@ class ConvGrad final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW) const;
+  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW, miopenHandle_t miopen_handle) const;
   mutable ConvArgs args_;
   ConvAttributes conv_attrs_;
 

@@ -20,7 +20,7 @@ struct RocmNotification : public synchronize::Notification {
   }
 
   void wait_on_device(Stream& device_stream) {
-    ORT_ENFORCE(device_stream.device.Type() == OrtDevice::GPU);
+    ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU);
     // launch a wait command to the rocm stream
     HIP_CALL_THROW(hipStreamWaitEvent(static_cast<hipStream_t>(device_stream.GetHandle()), event_, 0));
   };
@@ -88,7 +88,7 @@ struct CpuBuffersInfo {   // TODO: should be moved to base class
   size_t n_buffers;
 };
 
-static void ReleaseCpuBufferCallback(void* raw_info) {  // TODO: should be moved to base class
+static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {  // TODO: should be moved to base class
   auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
   for (size_t i = 0; i < info->n_buffers; ++i) {
     info->allocator->Free(info->buffers[i]);
