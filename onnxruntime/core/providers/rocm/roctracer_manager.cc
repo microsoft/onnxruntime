@@ -161,7 +161,6 @@ bool RoctracerManager::PushCorrelation(uint64_t client_handle, uint64_t external
 void RoctracerManager::PopCorrelation(uint64_t& popped_external_correlation_id) {
   std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   roctracer_activity_pop_external_correlation_id(&popped_external_correlation_id);
-  external_correlation_id_to_client_.erase(popped_external_correlation_id);
 }
 
 void RoctracerManager::ActivityCallback(const char* begin, const char* end, void* arg) {
