@@ -17,6 +17,7 @@
 
 #include "core/providers/cpu/nn/conv.h"
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
@@ -274,9 +275,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         math::Gemm<float>(
             CblasNoTrans,
             CblasNoTrans,
-            gsl::narrow<ptrdiff_t>(M / conv_attrs_.group),
-            gsl::narrow<ptrdiff_t>(output_image_size),
-            gsl::narrow<ptrdiff_t>(kernel_dim),
+            narrow<ptrdiff_t>(M / conv_attrs_.group),
+            narrow<ptrdiff_t>(output_image_size),
+            narrow<ptrdiff_t>(kernel_dim),
             1,
             W->Data<float>() + group_id * W_offset,
             col_buffer_data,
@@ -285,7 +286,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             thread_pool);
       }
 
-      MlasActivation(&activation_, Ydata, Bdata, gsl::narrow<size_t>(M), gsl::narrow<size_t>(output_image_size), gsl::narrow<size_t>(output_image_size));
+      MlasActivation(&activation_, Ydata, Bdata, narrow<size_t>(M), narrow<size_t>(output_image_size), narrow<size_t>(output_image_size));
 
       Xdata += X_offset * conv_attrs_.group;
       Ydata += Y_offset * conv_attrs_.group;

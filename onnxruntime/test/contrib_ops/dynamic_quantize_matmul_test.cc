@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -41,7 +42,7 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
   });
 
   int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
-  std::vector<float> B_scale = random.Uniform<float>({b_scale_zp_size}, -0.1f, 0.1f);
+  std::vector<float> B_scale = random.Uniform<float>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
   std::vector<T> B_zero_point(b_scale_zp_size);
   std::for_each(B_zero_point.begin(),
                 B_zero_point.end(),
@@ -49,7 +50,7 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
                   zp = static_cast<T>(random.Uniform<int32_t>(std::array<int64_t, 1>{1}, std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0]);
                 });
 
-  std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("A", A_dims, A_data);

@@ -833,58 +833,58 @@ class PlannerImpl {
                                  pnode->GetExecutionProviderType());
         }
 
-        bool is_implicit_input = false;
+      bool is_implicit_input = false;
 
-        // Add location information if applicable for the provided input def
-        auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                              &set_node_arg_has_explicit_consumer,
-                              &map_implicitly_consumed_node_arg_to_ep,
-                              &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
-                              this](const NodeArg& input, size_t arg_idx) {
-          const auto& name = input.Name();
+      // Add location information if applicable for the provided input def
+      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+                            &set_node_arg_has_explicit_consumer,
+                            &map_implicitly_consumed_node_arg_to_ep,
+                            &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
+                            this](const NodeArg& input, size_t arg_idx) {
+        const auto& name = input.Name();
 
-          bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
-                                                 [&name](const NodeArg* value) {
-                                                   return value && value->Name() == name;
-                                                 }) != outer_scope_node_args_.cend();
-          bool is_subgraph = (parent_node_ != nullptr);
+        bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
+        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
+                                               [&name](const NodeArg* value) {
+                                                 return value && value->Name() == name;
+                                               }) != outer_scope_node_args_.end();
+        bool is_subgraph = (parent_node_ != nullptr);
 
-          // If it's a graph input or outer scope node arg, set its plan.
-          // NOTE: Copy nodes should have already been added if a graph input is fed as input
-          // to nodes assigned to different providers.
+        // If it's a graph input or outer scope node arg, set its plan.
+        // NOTE: Copy nodes should have already been added if a graph input is fed as input
+        // to nodes assigned to different providers.
 
-          if (is_graph_input || is_outer_scope_arg) {
-            OrtValueIndex index = Index(name);
+        if (is_graph_input || is_outer_scope_arg) {
+          OrtValueIndex index = Index(name);
 
-            if (!is_implicit_input) {
-              OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(exec_provider->GetDeviceId(), mem_type)->Info());
-              set_node_arg_has_explicit_consumer.insert(index);
-            } else {  // implicit input
-              // Only process an implicit input if there are explicit consumers at this graph level
-              // If there is an explicit consumer, the location MUST be where it is consumed
-              // and not where it is located in the outer scope.
-              // It is okay if we process a node consuming this arg as an implicit input
-              // ahead of a node that is an explicit consumer, because we will just reset
-              // this location in the 'if' branch above.
+          if (!is_implicit_input) {
+            OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+            set_node_arg_has_explicit_consumer.insert(index);
+          } else {  // implicit input
+            // Only process an implicit input if there are explicit consumers at this graph level
+            // If there is an explicit consumer, the location MUST be where it is consumed
+            // and not where it is located in the outer scope.
+            // It is okay if we process a node consuming this arg as an implicit input
+            // ahead of a node that is an explicit consumer, because we will just reset
+            // this location in the 'if' branch above.
 
-              // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
-              // then set its location to be its corresponding location in the outer scope.
-              // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
-              // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
-              if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
-                auto iter = outer_scope_node_arg_to_location_map_.find(name);
-                bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
+            // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
+            // then set its location to be its corresponding location in the outer scope.
+            // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
+            // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
+            if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
+              auto iter = outer_scope_node_arg_to_location_map_.find(name);
+              bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
 
-                if (!is_graph_input) {
-                  // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
-                  // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
-                  // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
-                  // called in FinalizeSessionStateImpl() in SessionState.
-                  ORT_ENFORCE(found_in_outer_scope_location_map,
-                              "There is no location for this node arg in the outer scope location map");
-                }
+              if (!is_graph_input) {
+                // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
+                // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
+                // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
+                // called in FinalizeSessionStateImpl() in SessionState.
+                ORT_ENFORCE(found_in_outer_scope_location_map,
+                            "There is no location for this node arg in the outer scope location map");
+              }
 
                 if (found_in_outer_scope_location_map) {
                   plan_.SetLocation(static_cast<size_t>(index), iter->second);

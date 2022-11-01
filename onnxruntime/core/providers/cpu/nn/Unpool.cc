@@ -7,6 +7,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "core/providers/cpu/nn/unpool.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include <cmath>
 
@@ -91,11 +92,11 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, shape);
   auto* Y_data = Y->MutableData<float>();
-  auto out = gsl::make_span(Y_data, gsl::narrow<size_t>(Y->Shape().Size()));
+  auto out = gsl::make_span(Y_data, narrow<size_t>(Y->Shape().Size()));
   std::fill_n(out.data(), out.size(), 0.f);
 
   for (auto cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
-    out[gsl::narrow<size_t>(I_data[gsl::narrow<size_t>(cur_elem)])] = X_data[gsl::narrow<size_t>(cur_elem)];
+    out[narrow<size_t>(I_data[narrow<size_t>(cur_elem)])] = X_data[narrow<size_t>(cur_elem)];
   }
 
   return Status::OK();

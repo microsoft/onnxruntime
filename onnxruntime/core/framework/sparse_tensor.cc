@@ -3,13 +3,14 @@
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
-#include "core/framework/data_types.h"
 #include "core/framework/sparse_tensor.h"
+
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
-
-#include "core/common/safeint.h"
 
 using namespace onnxruntime::common;
 
@@ -48,7 +49,7 @@ inline std::vector<std::reference_wrapper<const Tensor>> MakeListConst(const T&.
 void CopyStrings(const Tensor& src_t, Tensor& dst_t) {
   auto src_span = src_t.DataAsSpan<std::string>();
   std::string* dst = dst_t.MutableData<std::string>();
-  std::copy(src_span.cbegin(), src_span.cend(), dst);
+  std::copy(src_span.begin(), src_span.end(), dst);
 }
 
 Status CopyData(const IDataTransfer* data_transfer,
@@ -224,7 +225,7 @@ Status SparseTensor::AllocateBuffer(int64_t buffer_size, size_t num_values) {
       // We own the buffer, so we must properly construct strings. Neither of the Tensors
       // we construct on top of the buffer own it. We are constructing empty strings, hopefully
       // nothrow and no buffer allocation
-      utils::ConstructStrings(data_ptr.get(), gsl::narrow<int64_t>(num_values));
+      utils::ConstructStrings(data_ptr.get(), narrow<int64_t>(num_values));
     }
     p_data_ = data_ptr.release();
   }
@@ -250,7 +251,7 @@ SparseTensor::CooView SparseTensor::AsCoo() const {
 }
 
 std::vector<int64_t> SparseTensor::GetCooIndexDims(size_t values_count, size_t index_size) const {
-  std::vector<int64_t> index_dims{gsl::narrow<int64_t>(values_count)};
+  std::vector<int64_t> index_dims{narrow<int64_t>(values_count)};
   if (values_count * 2 == index_size) {
     // 2-D COO index
     index_dims.push_back(2);
@@ -309,14 +310,14 @@ Status SparseTensor::MakeCooStrings(size_t string_count, const char* const* stri
 SparseTensor::CooMutator SparseTensor::MakeCooData(size_t values_count, size_t index_count) {
   ORT_ENFORCE(Format() == SparseFormat::kUndefined, "Sparse format must not be set. Already contains format: ", Format());
   ORT_ENFORCE(allocator_ != nullptr, "This method should follow a call to constructor that supplies the allocator");
-  const auto num_values = gsl::narrow<int64_t>(values_count);
+  const auto num_values = narrow<int64_t>(values_count);
   TensorShape values_shape{num_values};
   TensorShape index_shape(GetCooIndexDims(values_count, index_count));
   if (num_values > 0) {
     const auto data_size = SafeInt<size_t>(values_count) * ml_data_type_->Size();
     const auto index_size = SafeInt<size_t>(index_count) * sizeof(int64_t);
-    const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
-                                                                  gsl::narrow<int64_t>(index_size));
+    const auto required_buffer_size = CalculateRequiredBufferSize(narrow<int64_t>(data_size),
+                                                                  narrow<int64_t>(index_size));
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, values_count));
   }
   values_ = Tensor(DataType(), values_shape, p_data_, Location());
@@ -407,12 +408,12 @@ SparseTensor::CsrMutator SparseTensor::MakeCsrData(size_t values_count,
   if (values_count > 0) {
     const auto data_size = SafeInt<size_t>(values_count) * ml_data_type_->Size();
     const auto index_size = (SafeInt<size_t>(inner_index_count) + outer_index_count) * sizeof(int64_t);
-    const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
-                                                                  gsl::narrow<int64_t>(index_size));
+    const auto required_buffer_size = CalculateRequiredBufferSize(narrow<int64_t>(data_size),
+                                                                  narrow<int64_t>(index_size));
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, values_count));
   }
 
-  const auto num_values = gsl::narrow<int64_t>(values_count);
+  const auto num_values = narrow<int64_t>(values_count);
   values_ = Tensor(DataType(), {num_values}, p_data_, Location());
 
   auto* inner_index_start = reinterpret_cast<int64_t*>(IndicesStart(values_.SizeInBytes()));
@@ -478,7 +479,7 @@ Status SparseTensor::MakeBlockSparseStrings(const TensorShape& values_shape, con
                                             const TensorShape& indices_shape, const int32_t* indices_data) {
   ORT_RETURN_IF_NOT(IsDataTypeString(), "Expecting data type to be set as string");
   auto mutator = MakeBlockSparseData(values_shape, indices_shape);
-  auto string_count = gsl::narrow<size_t>(values_shape.Size());
+  auto string_count = narrow<size_t>(values_shape.Size());
   if (string_count > 0) {
     auto& dst_values = mutator.Values();
     auto& dst_indices = mutator.Indices();
@@ -495,8 +496,8 @@ SparseTensor::BlockSparseMutator SparseTensor::MakeBlockSparseData(const TensorS
   if (values_shape.Size() > 0) {
     const auto data_size = SafeInt<int64_t>(values_shape.Size()) * ml_data_type_->Size();
     const auto index_size = SafeInt<int64_t>(indices_shape.Size()) * sizeof(int32_t);
-    const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
-                                                                  gsl::narrow<int64_t>(index_size));
+    const auto required_buffer_size = CalculateRequiredBufferSize(narrow<int64_t>(data_size),
+                                                                  narrow<int64_t>(index_size));
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, static_cast<size_t>(data_size / ml_data_type_->Size())));
   }
 

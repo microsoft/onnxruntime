@@ -5,7 +5,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "gsl/gsl"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
 namespace onnxruntime {
@@ -23,7 +22,7 @@ class Reshape final : public CudaKernel {
     if (shapeTensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     if (shapeTensor->Shape().NumDimensions() != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "A shape tensor must be a vector tensor, got ", shapeTensor->Shape().NumDimensions(), " dimensions");
     auto data_span = shapeTensor->template DataAsSpan<int64_t>();
-    TensorShapeVector shape(data_span.cbegin(), data_span.cend());
+    TensorShapeVector shape(data_span.begin(), data_span.end());
     const Tensor* X = context->Input<Tensor>(0);
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const TensorShape& X_shape = X->Shape();

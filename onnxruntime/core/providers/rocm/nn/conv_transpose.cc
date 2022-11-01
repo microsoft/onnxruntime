@@ -68,8 +68,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
-    bool input_dims_changed = (s_.last_x_dims.GetDims() != gsl::make_span(x_dims));
-    bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
+    bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
+    bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
     if (input_dims_changed || w_dims_changed) {
       if (input_dims_changed)
         s_.last_x_dims = gsl::make_span(x_dims);

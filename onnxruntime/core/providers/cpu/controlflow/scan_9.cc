@@ -21,7 +21,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
