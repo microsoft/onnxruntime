@@ -286,14 +286,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
 
-#ifdef ENABLE_TRAINING
-      const std::string enable_memory_optimizer =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
-      const std::string probe_level =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
-      transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
-#endif
-
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {
         transformers.emplace_back(std::make_unique<Avx2WeightS8ToU8Transformer>(cpu_ep));
@@ -322,6 +314,19 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
 #endif
+
+#ifdef ENABLE_TRAINING
+      // Put memory optimization transformer in level 3 (which is done after most of fusions are done) by intention.
+      // Imagine some recompute nodes are added and put as local low priority, while most of graph transformations did
+      // not maintain the node priority when doing fusion or node replacements, so we need to put memory optimization
+      // as late as possible to make sure it can set the correct node priority.
+      const std::string enable_memory_optimizer =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
+      const std::string probe_level =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
+      transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
+#endif
+
     } break;
 
     default:

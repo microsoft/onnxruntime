@@ -62,9 +62,9 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   const std::string alleviation_config("Gelu+:1:-1");
   const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, alleviation_level), TransformerLevel::Level2));
+      std::make_unique<MemoryOptimizer>(alleviation_config, alleviation_level), TransformerLevel::Level3));
 
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Gemm"] == 5);
@@ -106,9 +106,9 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   const std::string alleviation_config("Tile+:1:-1");
   const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, alleviation_level), TransformerLevel::Level2));
+      std::make_unique<MemoryOptimizer>(alleviation_config, alleviation_level), TransformerLevel::Level3));
 
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Tile"] == 2);
