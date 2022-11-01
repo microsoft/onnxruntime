@@ -1,10 +1,14 @@
 name: Linux_CI
 on:
-  push:
-    branches:
-      - master
-      - main
   pull_request:
+    branches:
+      - main
+      - zhanyi/skipci
+    paths-ignore:
+      - docs/**
+      - README.md
+      - CONTRIBUTING.md
+      - BUILD.md
 
 jobs:
   Onnxruntime-TVM:
