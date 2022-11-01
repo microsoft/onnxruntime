@@ -3,7 +3,7 @@
 
 // import * as binaryOps from './ops/binary-op';
 // import {concat, parseConcatAttributes} from './ops/concat';
-// import {conv, parseConvAttributes} from './ops/conv';
+import {conv, parseConvAttributes} from './ops/conv';
 // import {gather, parseGatherAttributes} from './ops/gather';
 // import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 // import {matMul, parseMatMulAttributes} from './ops/matmul';
@@ -33,7 +33,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['Cast', '', '6+', cast, parseCastAttributes],
   //['Ceil', '', '6+', unaryOps.ceil], ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
   //['Clip', '', '11+', unaryOps.clipV11], ['Concat', '', '4+', concat, parseConcatAttributes],
-  //['Conv', '', '1+', conv, parseConvAttributes], ['Cos', '', '7+', unaryOps.cos], ['Div', '', '7+', binaryOps.div],
+  ['Conv', [conv, parseConvAttributes]],  //['Cos', '', '7+', unaryOps.cos], ['Div', '', '7+', binaryOps.div],
   // ['Dropout', '', '7+', unaryOps.identity],
   // ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   // ['Equal', '', '7+', binaryOps.equal],
