@@ -67,12 +67,17 @@ uint64_t RoctracerManager::RegisterClient() {
   std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   auto res = next_client_id_++;
   per_client_events_by_ext_correlation_.insert({res, {}});
+  ++num_active_clients_;
   return res;
 }
 
 void RoctracerManager::DeregisterClient(uint64_t client_handle) {
   std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   per_client_events_by_ext_correlation_.erase(client_handle);
+  --num_active_clients_;
+  if (num_active_clients_ == 0) {
+    StopLogging();
+  }
 }
 
 void RoctracerManager::StartLogging() {
@@ -109,6 +114,15 @@ void RoctracerManager::StartLogging() {
   logging_enabled_ = true;
 }
 
+void RoctracerManager::Clear()
+{
+  unprocessed_activity_buffers_.clear();
+  api_call_args_.clear();
+  external_correlation_id_to_client_.clear();
+  roctracer_correlation_to_external_correlation_.clear();
+  per_client_events_by_ext_correlation_.clear();
+}
+
 void RoctracerManager::StopLogging() {
   std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   if (!logging_enabled_) {
@@ -121,7 +135,9 @@ void RoctracerManager::StopLogging() {
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
   roctracer_close_pool();
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
+
   logging_enabled_ = false;
+  Clear();
 }
 
 void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_time,
@@ -444,6 +460,10 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
         default:
           break;
         }
+      } else {
+        // ignore the superfluous event: this is probably a HIP API callback, which
+        // we've had to enable to receive external correlation ids
+        continue;
       }
 
       // map the event to the right client

@@ -22,15 +22,13 @@ RocmProfiler::~RocmProfiler() {
   manager.DeregisterClient(client_handle_);
 }
 
-bool RocmProfiler::StartProfiling()
-{
+bool RocmProfiler::StartProfiling() {
   auto& manager = RoctracerManager::GetInstance();
   manager.StartLogging();
   return true;
 }
 
-void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
-{
+void RocmProfiler::EndProfiling(TimePoint start_time, Events& events) {
   auto& manager = RoctracerManager::GetInstance();
   std::map<uint64_t, Events> event_map;
   manager.Consume(client_handle_, start_time, event_map);
@@ -47,8 +45,15 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
     }
 
     if (event_iter != event_end && event_iter->ts == ts) {
+      uint64_t increment = 1;
       for (auto& evt : map_iter.second) {
         evt.args["op_name"] = event_iter->args["op_name"];
+
+        // roctracer timestamps don't use Jan 1 1970 as an epoch,
+        // not sure what epoch it uses, but we adjust the timestamp
+        // here to something sensible.
+        evt.ts = event_iter->ts + increment;
+        ++increment;
       }
       merged_events.emplace_back(*event_iter);
       ++event_iter;
@@ -64,14 +69,12 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
   std::swap(events, merged_events);
 }
 
-void RocmProfiler::Start(uint64_t id)
-{
+void RocmProfiler::Start(uint64_t id) {
   auto& manager = RoctracerManager::GetInstance();
   manager.PushCorrelation(client_handle_, id);
 }
 
-void RocmProfiler::Stop(uint64_t id)
-{
+void RocmProfiler::Stop(uint64_t id) {
   auto& manager = RoctracerManager::GetInstance();
   uint64_t unused;
   manager.PopCorrelation(unused);
