@@ -1,14 +1,5 @@
 name: Linux_CI
 on:
-  push:
-    branches:
-      - main
-      - zhanyi/skipci
-    paths-ignore:
-      - docs/**
-      - README.md
-      - CONTRIBUTING.md
-      - BUILD.md
   pull_request:
     branches:
       - main
