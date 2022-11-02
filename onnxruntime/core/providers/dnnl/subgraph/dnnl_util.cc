@@ -30,32 +30,31 @@ bool GetGPUInfo(GPUInfo gpu_info) {
   static bool gpuRuntimeFound = false;
   static bool gpuBF16Supported = false;
 #ifdef DNNL_GPU_RUNTIME
-  if (DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL ||
-      DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL) {
-    std::call_once(flag1, []() {
-      dnnl::engine gpu_engine;
-      if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-        gpu_engine = dnnl::engine(dnnl::engine::kind::gpu, 0);
-      }
-      if (gpu_engine) {
-        gpuRuntimeFound = true;
-        // attempt to make a dnnl::matmul::desc. If we are able to successfully make a bf16 matmul::desc
-        // assume the GPU supports all BF16 operations.
-        auto src0_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
-        auto src1_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
-        auto dst_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
-        auto matmul_d = dnnl::matmul::desc(src0_md, src1_md, dst_md);
-        try {
-          auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, gpu_engine);
-          gpuBF16Supported = true;
-        } catch(const dnnl::error& e) {
-          if (e.status == dnnl_unimplemented) {
-            gpuBF16Supported = false;
-          }
+#if (DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL) || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL)
+  std::call_once(flag1, []() {
+    dnnl::engine gpu_engine;
+    if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+      gpu_engine = dnnl::engine(dnnl::engine::kind::gpu, 0);
+    }
+    if (gpu_engine) {
+      gpuRuntimeFound = true;
+      // attempt to make a dnnl::matmul::desc. If we are able to successfully make a bf16 matmul::desc
+      // assume the GPU supports all BF16 operations.
+      auto src0_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
+      auto src1_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
+      auto dst_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
+      auto matmul_d = dnnl::matmul::desc(src0_md, src1_md, dst_md);
+      try {
+        auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, gpu_engine);
+        gpuBF16Supported = true;
+      } catch(const dnnl::error& e) {
+        if (e.status == dnnl_unimplemented) {
+          gpuBF16Supported = false;
         }
       }
-        });
-  }
+    }
+    });
+#endif // (DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL) || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL)
 #endif  // defined(DNNL_GPU_RUNTIME)
   switch (gpu_info)
   {

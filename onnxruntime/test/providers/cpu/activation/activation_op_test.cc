@@ -337,16 +337,10 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif  //USE_CUDA || USE_ROCM || USE_DNNL
 
-
+#if defined(USE_DNNL)
 TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
-#ifdef USE_CUDA
-  int min_cuda_architecture = 530;
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
-    return;
-  }
-#endif
 #ifdef USE_DNNL
    if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
@@ -369,16 +363,12 @@ TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
   test.AddInput<BFloat16>("X", dims, bf_X);
   test.AddOutput<BFloat16>("Y", dims, bf_Y);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#elif USE_DNNL
+#ifdef USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif //USE_CUDA || USE_ROCM || USE_DNNL
+#endif  // USE_DNNL
 
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
