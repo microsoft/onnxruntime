@@ -108,12 +108,12 @@ class Profiler {
   static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
     global_max_num_events_.store(new_max_num_events);
   }
-  
+
   void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
     if (ep_profiler) {
       ep_profilers_.push_back(std::move(ep_profiler));
       if (enabled_) {
-        ep_profilers_.back()->StartProfiling();
+        ep_profilers_.back()->StartProfiling(profiling_start_time_);
       }
     }
   }
