@@ -5,7 +5,7 @@
 namespace onnxruntime {
 
 struct RocmNotification : public synchronize::Notification {
-  RocmNotification(Stream* s) : Notification(s) {
+  RocmNotification(Stream& s) : Notification(s) {
     HIP_CALL_THROW(hipEventCreateWithFlags(&event_, hipEventDisableTiming));
   }
 
@@ -16,7 +16,7 @@ struct RocmNotification : public synchronize::Notification {
 
   void Activate() override {
     // record event with hipEventBlockingSync so we can support sync on host with out busy wait.
-    HIP_CALL_THROW(hipEventRecord(event_, static_cast<hipStream_t>(stream_->GetHandle())));
+    HIP_CALL_THROW(hipEventRecord(event_, static_cast<hipStream_t>(stream_.GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {
@@ -67,7 +67,7 @@ RocmStream::~RocmStream() {
 }
 
 std::unique_ptr<synchronize::Notification> RocmStream::CreateNotification(size_t /*num_consumers*/) {
-  return std::make_unique<RocmNotification>(this);
+  return std::make_unique<RocmNotification>(*this);
 }
 
 void RocmStream::Flush() {
