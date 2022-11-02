@@ -119,8 +119,8 @@ void RoctracerManager::Clear()
 {
   unprocessed_activity_buffers_.clear();
   api_call_args_.clear();
-  external_correlation_id_to_client_.clear();
-  roctracer_correlation_to_external_correlation_.clear();
+  unique_correlation_id_to_client_offset_.clear();
+  roctracer_correlation_to_unique_correlation_.clear();
   per_client_events_by_ext_correlation_.clear();
 }
 
@@ -171,22 +171,58 @@ void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_ti
   }
 }
 
-bool RoctracerManager::PushCorrelation(uint64_t client_handle, uint64_t external_correlation_id) {
+bool RoctracerManager::PushCorrelation(uint64_t client_handle,
+                                       uint64_t external_correlation_id,
+                                       TimePoint profiling_start_time) {
   std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
+
   auto it = per_client_events_by_ext_correlation_.find(client_handle);
   if (it == per_client_events_by_ext_correlation_.end()) {
+    // not a registered client, do nothing
     return false;
   }
-  roctracer_activity_push_external_correlation_id(external_correlation_id);
-  // assumption: correlation_ids are unique. This should generally work,
-  // because we use timestamps as correlation ids.
-  external_correlation_id_to_client_[external_correlation_id] = client_handle;
+
+  // external_correlation_id is simply the timestamp of this event,
+  // relative to profiling_start_time. i.e., it was computed as:
+  // external_correlation_id =
+  //      std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count()
+  //
+  // Because of the relative nature of the external_correlation_id, the same
+  // external_correlation_id can be reused across different clients, which then makes it
+  // impossible to recover the client from the external_correlation_id, which in turn
+  // makes it impossible to map events (which are tagged with external_correlation_id) to clients.
+  //
+  // To address these difficulties, we construct a new correlation_id (let's call it unique_cid)
+  // as follows:
+  // unique_cid =
+  //    external_correlation_id +
+  //    std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count()
+  // now, unique_cid is monotonically increasing with time, so it can be used to reliably map events to clients.
+  //
+  // Of course, clients expect lists of events to be returned (on a call to Consume()), that are
+  // still keyed on the external_correlation_id that they've specified here, so we need to remember the
+  // offset to be subtracted
+
+  uint64_t offset =
+    std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
+  auto unique_cid = external_correlation_id + offset;
+  roctracer_activity_push_external_correlation_id(unique_cid);
+
+  unique_correlation_id_to_client_offset_[unique_cid] = std::make_pair(client_handle, offset);
   return true;
 }
 
 void RoctracerManager::PopCorrelation(uint64_t& popped_external_correlation_id) {
   std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
-  roctracer_activity_pop_external_correlation_id(&popped_external_correlation_id);
+  uint64_t unique_cid;
+  roctracer_activity_pop_external_correlation_id(&unique_cid);
+  // lookup the offset and subtract it before returning popped_external_correlation_id to the client
+  auto client_it = unique_correlation_id_to_client_offset_.find(unique_cid);
+  if (client_it == unique_correlation_id_to_client_offset_.end()) {
+    popped_external_correlation_id = 0;
+    return;
+  }
+  popped_external_correlation_id = unique_cid - client_it->second.second;
 }
 
 void RoctracerManager::ActivityCallback(const char* begin, const char* end, void* arg) {
@@ -350,25 +386,37 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
   return true;
 }
 
-void RoctracerManager::MapEventsToClient(uint64_t external_correlation_id, Events&& events) {
-  auto client_it = external_correlation_id_to_client_.find(external_correlation_id);
-  if (client_it == external_correlation_id_to_client_.end()) {
+Events* RoctracerManager::GetEventListForUniqueCorrelationId(uint64_t unique_correlation_id) {
+  auto client_it = unique_correlation_id_to_client_offset_.find(unique_correlation_id);
+  if (client_it == unique_correlation_id_to_client_offset_.end()) {
     // :-( well, we tried really, really hard to map this event to a client.
-    return;
+    return nullptr;
   }
-  auto& event_list = per_client_events_by_ext_correlation_[client_it->second][client_it->first];
-  event_list.insert(event_list.end(),
-                    std::make_move_iterator(events.begin()),
-                    std::make_move_iterator(events.end()));
+
+  // See the comments on the PushCorrelation method for an explanation of
+  // of this offset computation and why it's required.
+  auto const& client_handle_offset = client_it->second;
+  auto external_correlation = unique_correlation_id - client_handle_offset.second;
+
+  auto& event_list = per_client_events_by_ext_correlation_[client_handle_offset.first][external_correlation];
+  return &event_list;
 }
 
-void RoctracerManager::MapEventToClient(uint64_t external_correlation_id, EventRecord&& event) {
-  auto client_it = external_correlation_id_to_client_.find(external_correlation_id);
-  if (client_it == external_correlation_id_to_client_.end()) {
-    // :-( well, we tried really, really hard to map this event to a client.
-    return;
+void RoctracerManager::MapEventsToClient(uint64_t unique_correlation_id, Events&& events) {
+  auto p_event_list = GetEventListForUniqueCorrelationId(unique_correlation_id);
+  if (p_event_list != nullptr) {
+    p_event_list->insert(p_event_list->end(),
+                         std::make_move_iterator(events.begin()),
+                         std::make_move_iterator(events.end()));
   }
-  per_client_events_by_ext_correlation_[client_it->second][client_it->first].emplace_back(std::move(event));
+}
+
+void RoctracerManager::MapEventToClient(uint64_t unique_correlation_id, EventRecord&& event) {
+  auto p_event_list = GetEventListForUniqueCorrelationId(unique_correlation_id);
+
+  if (p_event_list != nullptr) {
+    p_event_list->emplace_back(std::move(event));
+  }
 }
 
 void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
@@ -382,7 +430,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
     for ( ; current_record < data_end; roctracer_next_record(current_record, &current_record)) {
       EventRecord event;
       if (current_record->domain == ACTIVITY_DOMAIN_EXT_API) {
-        roctracer_correlation_to_external_correlation_[current_record->correlation_id] = current_record->external_id;
+        roctracer_correlation_to_unique_correlation_[current_record->correlation_id] = current_record->external_id;
 
         // check for any events pending client mapping on this correlation
         auto pending_it = events_pending_client_mapping.find(current_record->correlation_id);
@@ -420,8 +468,8 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
       }
 
       // map the event to the right client
-      auto ext_corr_it = roctracer_correlation_to_external_correlation_.find(current_record->correlation_id);
-      if (ext_corr_it == roctracer_correlation_to_external_correlation_.end()) {
+      auto ext_corr_it = roctracer_correlation_to_unique_correlation_.find(current_record->correlation_id);
+      if (ext_corr_it == roctracer_correlation_to_unique_correlation_.end()) {
         // defer the processing of this event
         events_pending_client_mapping[current_record->correlation_id].emplace_back(std::move(event));
         continue;

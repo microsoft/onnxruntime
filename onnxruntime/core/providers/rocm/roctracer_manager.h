@@ -76,7 +76,7 @@ public:
   void StartLogging();
   void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events);
 
-  bool PushCorrelation(uint64_t client_handle, uint64_t external_correlation_id);
+  bool PushCorrelation(uint64_t client_handle, uint64_t external_correlation_id, TimePoint profiling_start_time);
   void PopCorrelation(uint64_t& popped_correlation_id);
   bool PopCorrelation();
 
@@ -87,6 +87,7 @@ private:
                               const TimePoint& start_time);
   bool CreateEventForActivityRecord(const roctracer_record_t* record, uint64_t start_time_ns,
                                     const ApiCallRecord& call_record, EventRecord& event);
+  Events* GetEventListForUniqueCorrelationId(uint64_t unique_correlation_id);
   void MapEventToClient(uint64_t external_correlation_id, EventRecord&& event);
   void MapEventsToClient(uint64_t external_correlation_id, Events&& events);
   void StopLogging();
@@ -101,11 +102,12 @@ private:
   std::mutex api_call_args_lock_;
   std::unordered_map<uint64_t, ApiCallRecord> api_call_args_;
 
-  // Keyed on external_correlation_id -> client_id/client_handle
-  std::unordered_map<uint64_t, uint64_t> external_correlation_id_to_client_;
+  // Keyed on unique_correlation_id -> (client_id/client_handle, offset)
+  // unique_correlation_id - offset == external_correlation_id
+  std::unordered_map<uint64_t, std::pair<uint64_t, uint64_t>> unique_correlation_id_to_client_offset_;
 
-  // Keyed on roctracer_correlation_id -> external_correlation_id
-  std::unordered_map<uint64_t, uint64_t> roctracer_correlation_to_external_correlation_;
+  // Keyed on roctracer_correlation_id -> unique_correlation_id
+  std::unordered_map<uint64_t, uint64_t> roctracer_correlation_to_unique_correlation_;
 
   // client_id/client_handle -> external_correlation_id -> events
   std::mutex event_list_mutex_;

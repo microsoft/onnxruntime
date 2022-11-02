@@ -31,7 +31,7 @@ class CudaProfiler final : public EpProfiler {
     return *this;
   }
   ~CudaProfiler();
-  bool StartProfiling() override;
+  bool StartProfiling(TimePoint profiling_start_time) override;
   void EndProfiling(TimePoint start_time, Events& events) override;
   void Start(uint64_t) override;
   void Stop(uint64_t) override;
@@ -72,7 +72,7 @@ namespace profiling {
 
 class CudaProfiler final : public EpProfiler {
  public:
-  bool StartProfiling() override { return true; }
+  bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override{};
   void Start(uint64_t) override{};
   void Stop(uint64_t) override{};
