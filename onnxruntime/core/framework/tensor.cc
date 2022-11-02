@@ -52,7 +52,7 @@ size_t Tensor::CalculateTensorStorageSize(MLDataType p_type,
 
     return len;
   }
-  return shape_size;
+  return static_cast<size_t>(shape_size);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
