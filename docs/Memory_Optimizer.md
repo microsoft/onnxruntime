@@ -1,9 +1,9 @@
-# Memory Optimizer For ONNX Runtime Training
+# Memory Optimizer for ONNX Runtime Training
 
 ## Introduction
 
 ONNX Runtime Training provides a capability trading node/subgraph recomputations for better memory efficiency.
-Specifically, a pre-defined recompute op list is defined, with which memory optimizer graph transformations will iterate the graph to find all eligible subgraphs to recompute.
+Specifically, a list of recomputable operators is pre-defined, with which memory optimizer graph transformer will iterate the graph to find all recomputable subgraph candidates.
 
 When training with ORTModule, by default, the graph transformer will scan the execution graph to find all eligible subgraphs to recompute, along with sizes that can save. Users can pick up some of the subgraphs to enable them by environment variables.
 
@@ -11,7 +11,7 @@ When training with ORTModule, by default, the graph transformer will scan the ex
 
 Classical scenarios include:
 
-- ORTModule training run a model with batch size B (for example 2^N), the memory bandwidth and compute are not fully saturated, while it hits OOM to run a bigger batch size (for example 2^(N+1)).
+- ORTModule run a model with batch size B (for example 2^N), the memory bandwidth and compute are not fully saturated, while it hits OOM to run a bigger batch size (for example 2^(N+1)).
 
 - For big models, ORTModule fails to run the minimum allowed batch size, so performance can be compromised for a successful run.
 
@@ -20,7 +20,7 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 ## Quick trial
 
 1. Make sure ONNX Runtime training wheel is installed and correctly configured.
-2. Integrate models using ORTModule, be noted log_level should be lower than INFO.
+2. Integrate models using ORTModule, be noted log_level should be equal or lower than INFO.
 	> ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
 3. Run the training as usual and redirect all outputs into log file; then stop it after training few steps.
 4. Check the logging file, search "Summary", you could possibly find something like this:
