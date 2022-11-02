@@ -114,6 +114,7 @@ void RoctracerManager::StartLogging() {
   logging_enabled_ = true;
 }
 
+// Requires: roctracer_manager_mutex_ must be held
 void RoctracerManager::Clear()
 {
   unprocessed_activity_buffers_.clear();
@@ -123,6 +124,7 @@ void RoctracerManager::Clear()
   per_client_events_by_ext_correlation_.clear();
 }
 
+// Requires: roctracer_manager_mutex_ must be held
 void RoctracerManager::StopLogging() {
   if (!logging_enabled_) {
     return;
@@ -142,6 +144,13 @@ void RoctracerManager::StopLogging() {
 void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_time,
                                std::map<uint64_t, Events>& events) {
   events.clear();
+  {
+    // Flush any pending activity records before starting
+    // to process the accumulated activity records.
+    std::lock_guard<std::mutex> lock_manager(roctracer_manager_mutex_);
+    roctracer_flush_activity();
+  }
+
   std::vector<RoctracerActivityBuffer> activity_buffers;
   {
     std::lock_guard<std::mutex> lock(unprocessed_activity_buffers_lock_);
