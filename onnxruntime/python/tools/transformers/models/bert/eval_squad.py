@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 #
 # This script evaluates accuracy of ONNX models for question-answering task on SQuAD data set.
-# Example to evaluate raw and optimized model for CUDA in Linux:
+# Example to evaluate raw and optimized model for GPU in Linux:
 #   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
 #   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu
 #   python3 -m onnxruntime.transformers.optimizer --output optimized.onnx --num_heads 12 --hidden_size 768 \
@@ -46,7 +46,7 @@ def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: boo
     Args:
         model_id (str): pretrained model name or checkpoint path
         onnx_path (Optional[str], optional): path of onnx model to evaluate. Defaults to None.
-        use_gpu (bool, optional): use CUDA execution provider or not. Defaults to True.
+        use_gpu (bool, optional): use GPU execution provider or not. Defaults to True.
 
     Returns:
         model: ORTModel for the onnx model
@@ -58,8 +58,12 @@ def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: boo
         model.latest_model_name = Path(onnx_path).name
 
         if use_gpu:
+            if torch.version.hip:
+                model.model = ORTModel.load_model(onnx_path, "ROCMExecutionProvider")
+            else:
+                model.model = ORTModel.load_model(onnx_path, "CUDAExecutionProvider")
+
             model.device = torch.device("cuda")
-            model.model = ORTModel.load_model(onnx_path, "CUDAExecutionProvider")
         else:
             model.model = ORTModel.load_model(onnx_path)
     else:
@@ -207,7 +211,13 @@ def main():
             squad_v2_format=True,
         )
 
-        result["provider"] = "CUDAExecutionProvider" if args.use_gpu else "CPUExecutionProvider"
+        gpu_ep = ''
+        if torch.version.hip:
+            gpu_ep = "ROCMExecutionProvider"
+        else:
+            gpu_ep = "CUDAExecutionProvider"
+
+        result["provider"] = gpu_ep if args.use_gpu else "CPUExecutionProvider"
         result["disable_fused_attention"] = disable_fused_attention
         result["pretrained_model_name"] = pretrained_model_name
         result["onnx_path"] = onnx_path
@@ -254,7 +264,7 @@ def parse_arguments(argv=None):
         help="Optional onnx model path. If not specified, optimum will be used to export onnx model for testing.",
     )
 
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="Use CUDA execution provider.")
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="Use GPU execution provider.")
     parser.set_defaults(use_gpu=False)
 
     args = parser.parse_args(argv)
