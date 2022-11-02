@@ -62,7 +62,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   profile_stream_file_ = ToUTF8String(file_name);
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->StartProfiling();
+    ep_profiler->StartProfiling(profiling_start_time_);
   }
 }
 
