@@ -110,7 +110,6 @@ private:
   std::unordered_map<uint64_t, uint64_t> roctracer_correlation_to_unique_correlation_;
 
   // client_id/client_handle -> external_correlation_id -> events
-  std::mutex event_list_mutex_;
   std::unordered_map<uint64_t, std::map<uint64_t, Events>> per_client_events_by_ext_correlation_;
   uint64_t next_client_id_ = 1;
   uint64_t num_active_clients_ = 0;

@@ -162,7 +162,6 @@ void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_ti
     // Ensure that at most one thread is working through the activity buffers at any time.
     std::lock_guard<std::mutex> lock_two(activity_buffer_processor_mutex_);
     ProcessActivityBuffers(activity_buffers, start_time);
-    std::lock_guard<std::mutex> lock(event_list_mutex_);
     auto it = per_client_events_by_ext_correlation_.find(client_handle);
     if (it == per_client_events_by_ext_correlation_.end()) {
       return;
@@ -413,7 +412,6 @@ void RoctracerManager::MapEventsToClient(uint64_t unique_correlation_id, Events&
 
 void RoctracerManager::MapEventToClient(uint64_t unique_correlation_id, EventRecord&& event) {
   auto p_event_list = GetEventListForUniqueCorrelationId(unique_correlation_id);
-
   if (p_event_list != nullptr) {
     p_event_list->emplace_back(std::move(event));
   }
