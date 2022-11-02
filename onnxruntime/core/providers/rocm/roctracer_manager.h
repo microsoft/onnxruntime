@@ -83,19 +83,10 @@ public:
 private:
   static void ActivityCallback(const char* begin, const char* end, void* arg);
   static void ApiCallback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
-  void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers, const TimePoint& start_time);
-
-  // Per-API (roughly) helpers for event construction.
-  void CreateEventForKernelRecord(const roctracer_record_t* record, uint64_t start_time_ns,
-                                  const ApiCallRecord& call_record, EventRecord& event);
-  void CreateEventForMemsetRecord(const roctracer_record_t* record, uint64_t start_time_ns,
-                                  const ApiCallRecord& call_record, EventRecord& event);
-  void CreateEventForMemcpyRecord(const roctracer_record_t* record, uint64_t start_time_ns,
-                                  const ApiCallRecord& call_record, EventRecord& event);
-  void CreateEventForMemcpy2DRecord(const roctracer_record_t* record, uint64_t start_time_ns,
+  void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
+                              const TimePoint& start_time);
+  bool CreateEventForActivityRecord(const roctracer_record_t* record, uint64_t start_time_ns,
                                     const ApiCallRecord& call_record, EventRecord& event);
-  void CreateEventForExtModuleLaunchKernel(const roctracer_record_t* record, uint64_t start_time_ns,
-                                           const ApiCallRecord& call_record, EventRecord& event);
   void MapEventToClient(uint64_t external_correlation_id, EventRecord&& event);
   void MapEventsToClient(uint64_t external_correlation_id, Events&& events);
   void StopLogging();
