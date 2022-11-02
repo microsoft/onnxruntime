@@ -44,6 +44,11 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events) {
       ++event_iter;
     }
 
+    // find the last event with the same timestamp.
+    while (event_iter != event_end && event_iter->ts == ts && (event_iter + 1)->ts == ts) {
+      ++event_iter;
+    }
+
     if (event_iter != event_end && event_iter->ts == ts) {
       uint64_t increment = 1;
       for (auto& evt : map_iter.second) {
