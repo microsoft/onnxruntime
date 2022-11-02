@@ -167,7 +167,7 @@ struct Abstract
 struct Allocator : OrtAllocator {
 
   static Allocator& GetWithDefaultOptions(); ///< ::OrtAllocator default instance that is owned by Onnxruntime
-  static std::unique_ptr<Allocator> Create(const OrtSession& session, const OrtMemoryInfo*);
+  static std::unique_ptr<Allocator> Create(const OrtSession& session, const OrtMemoryInfo& memory_info);
 
   void* Alloc(size_t size);
   void Free(void* p);
@@ -216,7 +216,7 @@ struct OrtEnv {
   OrtEnv& EnableTelemetryEvents();   ///< Wraps OrtApi::EnableTelemetryEvents
   OrtEnv& DisableTelemetryEvents();  ///< Wraps OrtApi::DisableTelemetryEvents
 
-  OrtEnv& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
+  OrtEnv& CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg& arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 
   static void operator delete(void* p) { Ort::api->ReleaseEnv(reinterpret_cast<OrtEnv*>(p)); }
   Ort::Abstract make_abstract;
@@ -231,7 +231,7 @@ struct OrtCustomOpDomain {
   static std::unique_ptr<OrtCustomOpDomain> Create(const char* domain);
 
   // This does not take ownership of the op, simply registers it.
-  void Add(const OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
+  void Add(const OrtCustomOp& op);  ///< Wraps CustomOpDomain_Add
 
   static void operator delete(void* p) { Ort::api->ReleaseCustomOpDomain(reinterpret_cast<OrtCustomOpDomain*>(p)); }
   Ort::Abstract make_abstract;
@@ -242,15 +242,15 @@ struct OrtCustomOpDomain {
  */
 struct OrtRunOptions {
 
-  static std::unique_ptr<OrtRunOptions> Create();                           ///< Wraps OrtApi::CreateRunOptions
+  static std::unique_ptr<OrtRunOptions> Create(); ///< Wraps OrtApi::CreateRunOptions
 
-  OrtRunOptions& SetRunLogVerbosityLevel(int);           ///< Wraps OrtApi::RunOptionsSetRunLogVerbosityLevel
+  OrtRunOptions& SetRunLogVerbosityLevel(int); ///< Wraps OrtApi::RunOptionsSetRunLogVerbosityLevel
   int GetRunLogVerbosityLevel() const;  ///< Wraps OrtApi::RunOptionsGetRunLogVerbosityLevel
 
-  OrtRunOptions& SetRunLogSeverityLevel(int);           ///< Wraps OrtApi::RunOptionsSetRunLogSeverityLevel
+  OrtRunOptions& SetRunLogSeverityLevel(int); ///< Wraps OrtApi::RunOptionsSetRunLogSeverityLevel
   int GetRunLogSeverityLevel() const;  ///< Wraps OrtApi::RunOptionsGetRunLogSeverityLevel
 
-  OrtRunOptions& SetRunTag(const char* run_tag);   ///< wraps OrtApi::RunOptionsSetRunTag
+  OrtRunOptions& SetRunTag(const char* run_tag); ///< wraps OrtApi::RunOptionsSetRunTag
   const char* GetRunTag() const;  ///< Wraps OrtApi::RunOptionsGetRunTag
 
   OrtRunOptions& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddRunConfigEntry
@@ -303,12 +303,12 @@ struct OrtSessionOptions {
   OrtSessionOptions& SetLogId(const char* logid);     ///< Wraps OrtApi::SetSessionLogId
   OrtSessionOptions& SetLogSeverityLevel(int level);  ///< Wraps OrtApi::SetSessionLogSeverityLevel
 
-  OrtSessionOptions& Add(OrtCustomOpDomain* custom_op_domain);  ///< Wraps OrtApi::AddCustomOpDomain
+  OrtSessionOptions& Add(OrtCustomOpDomain& custom_op_domain);  ///< Wraps OrtApi::AddCustomOpDomain
 
   OrtSessionOptions& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
   OrtSessionOptions& AddConfigEntry(const char* config_key, const char* config_value);                                      ///< Wraps OrtApi::AddSessionConfigEntry
-  OrtSessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
+  OrtSessionOptions& AddInitializer(const char* name, const OrtValue& ort_val);                                             ///< Wraps OrtApi::AddInitializer
   OrtSessionOptions& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<std::unique_ptr<OrtValue>>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
   OrtSessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
@@ -338,46 +338,33 @@ struct OrtSessionOptions {
 struct OrtModelMetadata {
 
   /** \brief Returns a copy of the producer name.
-   *
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetProducerName() const;  ///< Wraps OrtApi::ModelMetadataGetProducerName
 
   /** \brief Returns a copy of the graph name.
-   *
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetGraphName() const;  ///< Wraps OrtApi::ModelMetadataGetGraphName
 
   /** \brief Returns a copy of the domain name.
-   *
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetDomain() const;  ///< Wraps OrtApi::ModelMetadataGetDomain
 
   /** \brief Returns a copy of the description.
-   *
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetDescription() const;  ///< Wraps OrtApi::ModelMetadataGetDescription
 
   /** \brief Returns a copy of the graph description.
-   *
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetGraphDescription() const;  ///< Wraps OrtApi::ModelMetadataGetGraphDescription
 
   /** \brief Returns a vector of copies of the custom metadata keys.
-   *
-   * \return a instance std::vector of smart pointers that would deallocate the buffers when out of scope.
    */
   std::vector<std::string> GetCustomMetadataMapKeysAllocated() const;  ///< Wraps OrtApi::ModelMetadataGetCustomMetadataMapKeys
 
   /** \brief Looks up a value by a key in the Custom Metadata map
    *
    * \param key zero terminated string key to lookup
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  maybe nullptr if key is not found.
+   * \return Looked up value, may be an empty string if key is not found.
    */
   std::string LookupCustomMetadataMap(const char* key) const;  ///< Wraps OrtApi::ModelMetadataLookupCustomMetadataMap
 
@@ -395,8 +382,7 @@ struct OrtSession {
   static std::unique_ptr<OrtSession> Create(OrtEnv& env, const ORTCHAR_T* model_path, _In_opt_ const OrtSessionOptions* options);                                                             ///< Wraps OrtApi::CreateSession
   static std::unique_ptr<OrtSession> Create(OrtEnv& env, const ORTCHAR_T* model_path, _In_opt_ const OrtSessionOptions* options, OrtPrepackedWeightsContainer& prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
   static std::unique_ptr<OrtSession> Create(OrtEnv& env, const void* model_data, size_t model_data_length, _In_opt_ const OrtSessionOptions* options);                                        ///< Wraps OrtApi::CreateSessionFromArray
-  static std::unique_ptr<OrtSession> Create(OrtEnv& env, const void* model_data, size_t model_data_length, _In_opt_ const OrtSessionOptions* options,
-          OrtPrepackedWeightsContainer& prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer
+  static std::unique_ptr<OrtSession> Create(OrtEnv& env, const void* model_data, size_t model_data_length, _In_opt_ const OrtSessionOptions* options, OrtPrepackedWeightsContainer& prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer
 
   size_t GetInputCount() const;                   ///< Returns the number of model inputs
   size_t GetOutputCount() const;                  ///< Returns the number of model outputs
@@ -405,7 +391,6 @@ struct OrtSession {
   /** \brief Returns a copy of input name at the specified index.
    *
    * \param index must less than the value returned by GetInputCount()
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetInputName(size_t index) const;
 
@@ -416,7 +401,6 @@ struct OrtSession {
   /** \brief Returns a copy of output name at then specified index.
    *
    * \param index must less than the value returned by GetOutputCount()
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetOutputName(size_t index) const;
 
@@ -427,7 +411,6 @@ struct OrtSession {
   /** \brief Returns a copy of the overridable initializer name at then specified index.
    *
    * \param index must less than the value returned by GetOverridableInitializerCount()
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string GetOverridableInitializerName(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
 
@@ -436,8 +419,6 @@ struct OrtSession {
   std::vector<std::string> GetOverridableInitializerNames() const;
 
   /** \brief Returns a copy of the profiling file name.
-   *
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    */
   std::string EndProfiling();  ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
@@ -544,9 +525,9 @@ struct OrtMapTypeInfo {
 /// </summary>
 struct OrtTypeInfo {
 
-  const OrtTensorTypeAndShapeInfo* GetTensorTypeAndShapeInfo() const;  ///< Wraps OrtApi::CastTypeInfoToTensorInfo
-  const OrtSequenceTypeInfo* GetSequenceTypeInfo() const;              ///< Wraps OrtApi::CastTypeInfoToSequenceTypeInfo
-  const OrtMapTypeInfo* GetMapTypeInfo() const;                        ///< Wraps OrtApi::CastTypeInfoToMapTypeInfo
+  const OrtTensorTypeAndShapeInfo& GetTensorTypeAndShapeInfo() const;  ///< Wraps OrtApi::CastTypeInfoToTensorInfo
+  const OrtSequenceTypeInfo& GetSequenceTypeInfo() const;              ///< Wraps OrtApi::CastTypeInfoToSequenceTypeInfo
+  const OrtMapTypeInfo& GetMapTypeInfo() const;                        ///< Wraps OrtApi::CastTypeInfoToMapTypeInfo
 
   ONNXType GetONNXType() const;
 
@@ -612,7 +593,7 @@ struct OrtValue
    * \param shape_len The number of tensor shape dimensions.
    */
   template <typename T>
-  static std::unique_ptr<OrtValue> CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
+  static std::unique_ptr<OrtValue> CreateTensor(OrtAllocator& allocator, const int64_t* shape, size_t shape_len);
 
   /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
    * \param allocator The allocator to use.
@@ -620,7 +601,7 @@ struct OrtValue
    * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
-  static std::unique_ptr<OrtValue> CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+  static std::unique_ptr<OrtValue> CreateTensor(OrtAllocator& allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
   static std::unique_ptr<OrtValue> CreateMap(OrtValue& keys, OrtValue& values);       ///< Wraps OrtApi::CreateValue
   static std::unique_ptr<OrtValue> CreateSequence(std::vector<std::unique_ptr<OrtValue>>& values);  ///< Wraps OrtApi::CreateValue
@@ -638,7 +619,7 @@ struct OrtValue
   bool HasValue() const;  /// < Return true if OrtValue contains data and returns false if the OrtValue is a None
 
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
-  std::unique_ptr<OrtValue> GetValue(int index, OrtAllocator* allocator) const;
+  std::unique_ptr<OrtValue> GetValue(int index) const;
 
   /// <summary>
   /// This API returns a full length of string data contained within either a tensor or a sparse Tensor.
@@ -699,7 +680,7 @@ struct OrtValue
   /// This API returns information about the memory allocation used to hold data.
   /// </summary>
   /// <returns>Non owning instance of MemoryInfo</returns>
-  const OrtMemoryInfo* GetTensorMemoryInfo() const;
+  const OrtMemoryInfo& GetTensorMemoryInfo() const;
 
   /// <summary>
   /// The API copies UTF-8 encoded bytes for the requested string element
@@ -849,7 +830,7 @@ struct OrtValue
   /// <param name="values_param">values buffer information.</param>
   /// <param name="indices_data">coo indices buffer or nullptr for fully sparse data</param>
   /// <param name="indices_num">number of COO indices or 0 for fully sparse data</param>
-  void FillSparseTensorCoo(const OrtMemoryInfo* data_mem_info, const OrtSparseValuesParam& values_param,
+  void FillSparseTensorCoo(const OrtMemoryInfo& data_mem_info, const OrtSparseValuesParam& values_param,
                            const int64_t* indices_data, size_t indices_num);
 
   /// <summary>
@@ -863,7 +844,7 @@ struct OrtValue
   /// <param name="inner_indices_num">number of csr inner indices or 0 for fully sparse tensors</param>
   /// <param name="outer_indices_data">pointer to csr indices data or nullptr for fully sparse tensors</param>
   /// <param name="outer_indices_num">number of csr outer indices or 0</param>
-  void FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
+  void FillSparseTensorCsr(const OrtMemoryInfo& data_mem_info,
                            const OrtSparseValuesParam& values,
                            const int64_t* inner_indices_data, size_t inner_indices_num,
                            const int64_t* outer_indices_data, size_t outer_indices_num);
@@ -877,7 +858,7 @@ struct OrtValue
   /// <param name="values">values buffer information</param>
   /// <param name="indices_shape">indices shape. use {0} for fully sparse tensors</param>
   /// <param name="indices_data">pointer to indices data or nullptr for fully sparse tensors</param>
-  void FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_info,
+  void FillSparseTensorBlockSparse(const OrtMemoryInfo& data_mem_info,
                                    const OrtSparseValuesParam& values,
                                    const OrtShape& indices_shape,
                                    const int32_t* indices_data);
@@ -893,7 +874,7 @@ struct OrtValue
   /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
   /// <returns></returns>
   template <typename T>
-  static std::unique_ptr<OrtValue> CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const OrtShape& dense_shape,
+  static std::unique_ptr<OrtValue> CreateSparseTensor(const OrtMemoryInfo& info, T* p_data, const OrtShape& dense_shape,
     const OrtShape& values_shape);
 
   /// <summary>
@@ -912,7 +893,7 @@ struct OrtValue
   /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
   /// <param name="type">data type</param>
   /// <returns>Ort::Value instance containing SparseTensor</returns>
-  static std::unique_ptr<OrtValue> CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const OrtShape& dense_shape,
+  static std::unique_ptr<OrtValue> CreateSparseTensor(const OrtMemoryInfo& info, void* p_data, const OrtShape& dense_shape,
     const OrtShape& values_shape, ONNXTensorElementDataType type);
 
   /// <summary>
@@ -957,7 +938,7 @@ struct OrtIoBinding {
 
   void BindInput(const char* name, const OrtValue&);
   void BindOutput(const char* name, const OrtValue&);
-  void BindOutput(const char* name, const OrtMemoryInfo*);
+  void BindOutput(const char* name, const OrtMemoryInfo&);
   void ClearBoundInputs();
   void ClearBoundOutputs();
   void SynchronizeInputs();

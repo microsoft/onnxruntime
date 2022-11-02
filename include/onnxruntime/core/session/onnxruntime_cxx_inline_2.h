@@ -120,9 +120,9 @@ inline Allocator& Allocator::GetWithDefaultOptions() {
   return *static_cast<Allocator*>(p);
 }
 
-inline std::unique_ptr<Allocator> Allocator::Create(const OrtSession& sess, const OrtMemoryInfo* mem_info) {
+inline std::unique_ptr<Allocator> Allocator::Create(const OrtSession& sess, const OrtMemoryInfo& mem_info) {
   OrtAllocator* p;
-  ThrowOnError(api->CreateAllocator(&sess, mem_info, &p));
+  ThrowOnError(api->CreateAllocator(&sess, &mem_info, &p));
   return std::unique_ptr<Allocator>{static_cast<Ort::Allocator*>(p)};
 }
 
@@ -244,8 +244,8 @@ inline void OrtIoBinding::BindOutput(const char* name, const OrtValue& value) {
   Ort::ThrowOnError(Ort::api->BindOutput(this, name, &value));
 }
 
-inline void OrtIoBinding::BindOutput(const char* name, const OrtMemoryInfo* mem_info) {
-  Ort::ThrowOnError(Ort::api->BindOutputToDevice(this, name, mem_info));
+inline void OrtIoBinding::BindOutput(const char* name, const OrtMemoryInfo& mem_info) {
+  Ort::ThrowOnError(Ort::api->BindOutputToDevice(this, name, &mem_info));
 }
 
 inline void OrtIoBinding::ClearBoundInputs() {
@@ -319,8 +319,8 @@ inline OrtEnv& OrtEnv::DisableTelemetryEvents() {
   return *this;
 }
 
-inline OrtEnv& OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
-  Ort::ThrowOnError(Ort::api->CreateAndRegisterAllocator(this, mem_info, arena_cfg));
+inline OrtEnv& OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg& arena_cfg) {
+  Ort::ThrowOnError(Ort::api->CreateAndRegisterAllocator(this, &mem_info, &arena_cfg));
   return *this;
 }
 
@@ -330,8 +330,8 @@ inline std::unique_ptr<OrtCustomOpDomain> OrtCustomOpDomain::Create(const char* 
   return std::unique_ptr<OrtCustomOpDomain>{p};
 }
 
-inline void OrtCustomOpDomain::Add(const OrtCustomOp* op) {
-  Ort::ThrowOnError(Ort::api->CustomOpDomain_Add(this, op));
+inline void OrtCustomOpDomain::Add(const OrtCustomOp& op) {
+  Ort::ThrowOnError(Ort::api->CustomOpDomain_Add(this, &op));
 }
 
 inline std::unique_ptr<OrtRunOptions> OrtRunOptions::Create() {
@@ -470,8 +470,8 @@ inline OrtSessionOptions& OrtSessionOptions::SetLogSeverityLevel(int level) {
   return *this;
 }
 
-inline OrtSessionOptions& OrtSessionOptions::Add(OrtCustomOpDomain* custom_op_domain) {
-  Ort::ThrowOnError(Ort::api->AddCustomOpDomain(this, custom_op_domain));
+inline OrtSessionOptions& OrtSessionOptions::Add(OrtCustomOpDomain& custom_op_domain) {
+  Ort::ThrowOnError(Ort::api->AddCustomOpDomain(this, &custom_op_domain));
   return *this;
 }
 
@@ -480,8 +480,8 @@ inline OrtSessionOptions& OrtSessionOptions::AddConfigEntry(const char* config_k
   return *this;
 }
 
-inline OrtSessionOptions& OrtSessionOptions::AddInitializer(const char* name, const OrtValue* ort_val) {
-  Ort::ThrowOnError(Ort::api->AddInitializer(this, name, ort_val));
+inline OrtSessionOptions& OrtSessionOptions::AddInitializer(const char* name, const OrtValue& ort_val) {
+  Ort::ThrowOnError(Ort::api->AddInitializer(this, name, &ort_val));
   return *this;
 }
 
@@ -837,22 +837,22 @@ inline std::unique_ptr<OrtTypeInfo> OrtMapTypeInfo::GetMapValueType() const {
   return std::unique_ptr<OrtTypeInfo>{output};
 }
 
-inline const OrtTensorTypeAndShapeInfo* OrtTypeInfo::GetTensorTypeAndShapeInfo() const {
+inline const OrtTensorTypeAndShapeInfo& OrtTypeInfo::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
   Ort::ThrowOnError(Ort::api->CastTypeInfoToTensorInfo(this, &out));
-  return out;
+  return *out;
 }
 
-inline const OrtSequenceTypeInfo* OrtTypeInfo::GetSequenceTypeInfo() const {
+inline const OrtSequenceTypeInfo& OrtTypeInfo::GetSequenceTypeInfo() const {
   const OrtSequenceTypeInfo* out;
   Ort::ThrowOnError(Ort::api->CastTypeInfoToSequenceTypeInfo(this, &out));
-  return out;
+  return *out;
 }
 
-inline const OrtMapTypeInfo* OrtTypeInfo::GetMapTypeInfo() const {
+inline const OrtMapTypeInfo& OrtTypeInfo::GetMapTypeInfo() const {
   const OrtMapTypeInfo* out;
   Ort::ThrowOnError(Ort::api->CastTypeInfoToMapTypeInfo(this, &out));
-  return out;
+  return *out;
 }
 
 inline ONNXType OrtTypeInfo::GetONNXType() const {
@@ -884,9 +884,9 @@ inline size_t OrtValue::GetCount() const {
   return out;
 }
 
-inline std::unique_ptr<OrtValue> OrtValue::GetValue(int index, OrtAllocator* allocator) const {
+inline std::unique_ptr<OrtValue> OrtValue::GetValue(int index) const {
   OrtValue* out;
-  Ort::ThrowOnError(Ort::api->GetValue(this, index, allocator, &out));
+  Ort::ThrowOnError(Ort::api->GetValue(this, index, &Ort::standard_allocator, &out));
   return std::unique_ptr<OrtValue>{out};
 }
 
@@ -927,10 +927,10 @@ inline std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtValue::GetTensorTypeAndShap
   return std::unique_ptr<OrtTensorTypeAndShapeInfo>{output};
 }
 
-inline const OrtMemoryInfo* OrtValue::GetTensorMemoryInfo() const {
+inline const OrtMemoryInfo& OrtValue::GetTensorMemoryInfo() const {
   const OrtMemoryInfo* mem_info;
   Ort::ThrowOnError(Ort::api->GetTensorMemoryInfo(this, &mem_info));
-  return mem_info;
+  return *mem_info;
 }
 
 inline void OrtValue::GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const {
@@ -1024,27 +1024,27 @@ void OrtValue::UseBlockSparseIndices(const OrtShape& indices_shape, int32_t* ind
   Ort::ThrowOnError(Ort::api->UseBlockSparseIndices(this, indices_shape.shape, indices_shape.shape_len, indices_data));
 }
 
-void OrtValue::FillSparseTensorCoo(const OrtMemoryInfo* mem_info, const OrtSparseValuesParam& values_param,
+void OrtValue::FillSparseTensorCoo(const OrtMemoryInfo& mem_info, const OrtSparseValuesParam& values_param,
                                    const int64_t* indices_data, size_t indices_num) {
-  Ort::ThrowOnError(Ort::api->FillSparseTensorCoo(this, mem_info, values_param.values_shape,
+  Ort::ThrowOnError(Ort::api->FillSparseTensorCoo(this, &mem_info, values_param.values_shape,
                                             values_param.values_shape_len, values_param.data.p_data,
                                             indices_data, indices_num));
 }
 
-void OrtValue::FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
+void OrtValue::FillSparseTensorCsr(const OrtMemoryInfo& data_mem_info,
                                    const OrtSparseValuesParam& values,
                                    const int64_t* inner_indices_data, size_t inner_indices_num,
                                    const int64_t* outer_indices_data, size_t outer_indices_num) {
-  Ort::ThrowOnError(Ort::api->FillSparseTensorCsr(this, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
+  Ort::ThrowOnError(Ort::api->FillSparseTensorCsr(this, &data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
                                             inner_indices_data, inner_indices_num,
                                             outer_indices_data, outer_indices_num));
 }
 
-void OrtValue::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_info,
+void OrtValue::FillSparseTensorBlockSparse(const OrtMemoryInfo& data_mem_info,
                                            const OrtSparseValuesParam& values,
                                            const OrtShape& indices_shape,
                                            const int32_t* indices_data) {
-  Ort::ThrowOnError(Ort::api->FillSparseTensorBlockSparse(this, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
+  Ort::ThrowOnError(Ort::api->FillSparseTensorBlockSparse(this, &data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
                                                     indices_shape.shape, indices_shape.shape_len,
                                                     indices_data));
 }
@@ -1064,35 +1064,35 @@ inline std::unique_ptr<OrtValue> OrtValue::CreateTensor(const OrtMemoryInfo& inf
 }
 
 template <typename T>
-inline std::unique_ptr<OrtValue> OrtValue::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len) {
-  return CreateTensor(allocator, shape, shape_len, TypeToTensorType<T>::type);
+inline std::unique_ptr<OrtValue> OrtValue::CreateTensor(OrtAllocator& allocator, const int64_t* shape, size_t shape_len) {
+  return CreateTensor(&allocator, shape, shape_len, Ort::TypeToTensorType<T>::type);
 }
 
-inline std::unique_ptr<OrtValue> OrtValue::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
+inline std::unique_ptr<OrtValue> OrtValue::CreateTensor(OrtAllocator& allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
   OrtValue* out;
-  Ort::ThrowOnError(Ort::api->CreateTensorAsOrtValue(allocator, shape, shape_len, type, &out));
+  Ort::ThrowOnError(Ort::api->CreateTensorAsOrtValue(&allocator, shape, shape_len, type, &out));
   return std::unique_ptr<OrtValue>{out};
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
 template <typename T>
-inline std::unique_ptr<OrtValue> OrtValue::CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const OrtShape& dense_shape,
+inline std::unique_ptr<OrtValue> OrtValue::CreateSparseTensor(const OrtMemoryInfo& info, T* p_data, const OrtShape& dense_shape,
                                                               const OrtShape& values_shape) {
-  return CreateSparseTensor(info, p_data, dense_shape, values_shape, TypeToTensorType<T>::type);
+  return CreateSparseTensor(info, p_data, dense_shape, values_shape, Ort::TypeToTensorType<T>::type);
 }
 
-inline std::unique_ptr<OrtValue> OrtValue::CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const OrtShape& dense_shape,
+inline std::unique_ptr<OrtValue> OrtValue::CreateSparseTensor(const OrtMemoryInfo& info, void* p_data, const OrtShape& dense_shape,
                                        const OrtShape& values_shape, ONNXTensorElementDataType type) {
   OrtValue* out;
-  Ort::ThrowOnError(Ort::api->CreateSparseTensorWithValuesAsOrtValue(info, p_data, dense_shape.shape, dense_shape.shape_len,
+  Ort::ThrowOnError(Ort::api->CreateSparseTensorWithValuesAsOrtValue(&info, p_data, dense_shape.shape, dense_shape.shape_len,
                                                                values_shape.shape, values_shape.shape_len, type, &out));
   return std::unique_ptr<OrtValue>{out};
 }
 
 template <typename T>
 inline std::unique_ptr<OrtValue> OrtValue::CreateSparseTensor(OrtAllocator* allocator, const OrtShape& dense_shape) {
-  return CreateSparseTensor(allocator, dense_shape, TypeToTensorType<T>::type);
+  return CreateSparseTensor(allocator, dense_shape, Ort::TypeToTensorType<T>::type);
 }
 
 inline std::unique_ptr<OrtValue> OrtValue::CreateSparseTensor(OrtAllocator* allocator, const OrtShape& dense_shape,
