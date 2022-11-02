@@ -54,7 +54,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToHipType<T>::MappedType HipT;
 
-  return LaunchFastGeluKernel<HipT>(Stream(),
+  return LaunchFastGeluKernel<HipT>(Stream(context),
                                   static_cast<int>(input_length),
                                   static_cast<int>(bias_length),
                                   reinterpret_cast<const HipT*>(input->Data<T>()),

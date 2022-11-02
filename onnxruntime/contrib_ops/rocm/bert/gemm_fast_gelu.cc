@@ -48,7 +48,7 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(X->Shape(), W->Shape(), transa, transb, trans_batch_a, trans_batch_b, false));
 
-  auto gemm_buffer = GetScratchBuffer<T>(helper.OutputShape().Size());
+  auto gemm_buffer = GetScratchBuffer<T>(helper.OutputShape().Size(), ctx->GetComputeStream());
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -62,14 +62,14 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
                     reinterpret_cast<const T*>(W->Data<T>()),
                     reinterpret_cast<T*>(gemm_buffer.get()),
                     X->Shape(), W->Shape(),
-                    transa, transb, trans_batch_a, trans_batch_b, alpha, zero) != Status::OK()) {
+                    transa, transb, trans_batch_a, trans_batch_b, alpha, zero, ctx->GetComputeStream()) != Status::OK()) {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
   int64_t fast_gelu_input_length = Y->Shape().Size();
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
 
-  return LaunchFastGeluKernel<HipT>(Stream(),
+  return LaunchFastGeluKernel<HipT>(Stream(ctx),
                                   static_cast<int>(fast_gelu_input_length),
                                   static_cast<int>(bias_length),
                                   reinterpret_cast<HipT*>(gemm_buffer.get()),

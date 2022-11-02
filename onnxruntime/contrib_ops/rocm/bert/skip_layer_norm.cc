@@ -100,7 +100,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   return LaunchSkipLayerNormKernel<HipT>(
-      Stream(),
+      Stream(ctx),
       reinterpret_cast<HipT*>(output->MutableData<T>()),
       reinterpret_cast<const HipT*>(input->Data<T>()),
       reinterpret_cast<const HipT*>(skip->Data<T>()),

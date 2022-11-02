@@ -17,6 +17,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:
@@ -36,10 +38,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  Status SetComputeStream(void* stream) override;
-
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
   rocblas_handle PerThreadRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
   }
@@ -49,34 +47,16 @@ class ROCMExecutionProvider : public IExecutionProvider {
   }
 
   template <typename T>
-  const T* GetConstOnes(size_t count) {
-    return GetPerThreadContext().template GetConstOnes<T>(count);
+  const T* GetConstOnes(size_t count, hipStream_t stream) {
+    return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
-  // Add CPU buffer to a buffer pool.
-  // They can and only can be released
-  // by calling EuqueueDeferredRelease.
-  // A common pattern is
-  //  1. auto buffer = AllocateBufferOnCPUPinned<char>(128);
-  //  2. Some GPU kernel calls on GPU stream from GetComputeStream.
-  //  3. Call AddDeferredReleaseCPUPtr(buffer.release());
-  //  4. Call EnqueueDeferredRelease();
-  // so that the allocated "buffer" in (1) will be released
-  // only after all GPU kernels in (2) are finished.
-  // (4) is done in OnRunEnd, so the user doesn't need to call
-  // it in most cases.
-  void AddDeferredReleaseCPUPtr(void* p);
-  // Release all buffers added by
-  // AddDeferredReleaseCPUPtr using
-  // GPU callback (so it's async).
-  Status EnqueueDeferredRelease();
-
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
   }
 
   template <typename T>
@@ -125,23 +105,15 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
   bool external_stream_ = false;
   hipStream_t stream_ = nullptr;
 
-  // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
-  // HIP kernels running on my_stream (type: hipStream_t).
-  // Buffers' release is enqueued as a HIP callback onto the associated stream (aka
-  // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
-  // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
-  // by CPU Allocator's Free function.
-  std::unordered_map<hipStream_t, std::vector<void*>> deferred_release_buffer_pool_;
-  // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
-  // different threads may create CPU buffers at the same time. Releasing
-  // buffers also needs this mutex.
-  OrtMutex deferred_release_mutex_;
+  bool use_ep_level_unified_stream_ = false;
 
   class PerThreadContext final {
    public:
@@ -158,41 +130,34 @@ class ROCMExecutionProvider : public IExecutionProvider {
     }
 
     template <typename T>
-    const T* GetConstOnes(size_t count) {
+    const T* GetConstOnes(size_t count, hipStream_t stream) {
       if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
     }
 
-    AllocatorPtr GetAllocator() const {
-      return allocator_;
-    }
-
    private:
-    hipStream_t stream_ = nullptr;
     rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
 
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
-
-    AllocatorPtr allocator_;
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;
