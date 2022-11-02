@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
@@ -49,11 +50,11 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
     return static_cast<WType>(v);
   });
 
-  std::vector<float> A_scale = random.Uniform<float>(std::array<int64_t, 1>{1}, -0.1f, 0.1f);
+  std::vector<float> A_scale = random.Uniform<float>(AsSpan<int64_t>({1}), -0.1f, 0.1f);
   std::vector<IType> A_zero_point{(std::numeric_limits<IType>::lowest() + std::numeric_limits<IType>::max() + IType(2)) / 2};
 
   int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
-  std::vector<float> B_scale = random.Uniform<float>({b_scale_zp_size}, -0.1f, 0.1f);
+  std::vector<float> B_scale = random.Uniform<float>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
 
   std::vector<WType> B_zero_point(b_scale_zp_size);
   std::for_each(B_zero_point.begin(),
@@ -64,7 +65,7 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                                                                   std::numeric_limits<WType>::max())[0]);
                 });
 
-  std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   OpTester test("MatMulIntegerToFloat", 1, onnxruntime::kMSDomain);
   test.AddInput<IType>("A", A_dims, A_data);

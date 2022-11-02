@@ -329,6 +329,12 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
                     _In_reads_(graph_outputs_len) const char* const* graph_output_names) {
   API_IMPL_BEGIN
 
+  if (graph_outputs_len == 0U) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "Empty array of graph output names is not valid. Please provide valid graph output names");
+  }
+
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
 
   onnxruntime::InlinedVector<std::string> output_names(graph_outputs_len);

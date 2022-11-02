@@ -85,7 +85,7 @@ class Stream {
       if (it == other_stream_clock_.end()) {
         other_stream_clock_.insert(kv);
       } else {
-        other_stream_clock_[kv.first] = std::max(it->second, kv.second);
+        it->second = std::max(it->second, kv.second);
       }
     }
   }
@@ -104,7 +104,7 @@ namespace synchronize {
 // an object which record the status of the stream, and can be wait on from another stream.
 class Notification {
  public:
-  explicit Notification(Stream* s) : stream_(s) {}
+  explicit Notification(Stream& s) : stream_(s) {}
   virtual ~Notification() = default;
 
   // this api will perform three operations:
@@ -113,8 +113,8 @@ class Notification {
   // 3. bump the timestamp for current stream.
   void ActivateAndUpdate() {
     Activate();
-    stream_->CloneCurrentStreamSyncTable(stream_clock_);
-    stream_clock_[stream_] = stream_->BumpTimeStampAndReturn();
+    stream_.CloneCurrentStreamSyncTable(stream_clock_);
+    stream_clock_[&stream_] = stream_.BumpTimeStampAndReturn();
   }
 
   // return the timestamp lookup table saved in the notificaiton.
@@ -125,7 +125,7 @@ class Notification {
  protected:
   virtual void Activate() = 0;
   // which stream create this notification.
-  Stream* stream_;
+  Stream& stream_;
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
@@ -147,11 +147,14 @@ class IStreamCommandHandleRegistry {
   virtual ~IStreamCommandHandleRegistry() = default;
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type, OrtDevice::DeviceType executor_device_type) const = 0;
+  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type,
+                                                         OrtDevice::DeviceType executor_device_type) const = 0;
   // Get the stream creation function registered on the given device type.
   [[nodiscard]] virtual CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType execution_device_type) const = 0;
   // register a wait methond which will be invoked when we wait a notification (created by 'notification_device_type' device) on a stream at 'device_type' device.
-  virtual void RegisterWaitFn(OrtDevice::DeviceType notification_device_type, OrtDevice::DeviceType device_type, WaitNotificationFn fn) = 0;
+  virtual void RegisterWaitFn(OrtDevice::DeviceType notification_device_type,
+                              OrtDevice::DeviceType device_type,
+                              WaitNotificationFn fn) = 0;
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };

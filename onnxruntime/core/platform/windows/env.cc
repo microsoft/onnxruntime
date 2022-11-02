@@ -27,8 +27,9 @@ limitations under the License.
 #include <fcntl.h>
 #include <io.h>
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
@@ -93,7 +94,7 @@ class WindowsThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
-    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+    if (narrow<size_t>(index) < thread_options.affinity.size()) {
       local_param->affinity = thread_options.affinity[index];
     }
 
@@ -248,7 +249,7 @@ class WindowsEnv : public Env {
       return {};
     }
 
-    const size_t count = gsl::narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+    const size_t count = narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
     std::optional<LogicalProcessorInformation> result;
     result = {std::move(allocation), gsl::make_span(buffer, count)};
     return result;

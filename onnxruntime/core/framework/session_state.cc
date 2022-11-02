@@ -254,7 +254,7 @@ void Print(const std::string& type, gsl::span<const AllocPlanPerValue> alloc_pla
   std::cout << std::endl;
 }
 
-const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const {
+const std::vector<AllocPlanPerValue>& SessionState::GetPerValueAllocPlan() const {
   return p_seq_exec_plan_->allocation_plan;
 }
 
@@ -344,7 +344,7 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
 
   for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
     // BufferDeleter is nullptr because the kernel should not delete the shared buffer - it can only use it
-    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(static_cast<BufferFreeFn>(nullptr)));
+    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
   }
 
   bool used_shared_buffers = false;
@@ -1513,7 +1513,7 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
       auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->device_.Type());
       if (create_stream_fn) {
         auto device_stream = create_stream_fn(logic_stream->device_);
-        device_stream_map.SetDeviceStream(i, std::move(device_stream));
+        device_stream_map.AddDeviceStream(i, std::move(device_stream));
       } else {
         device_stream_map.SetDeviceStream(i, nullptr);
       }

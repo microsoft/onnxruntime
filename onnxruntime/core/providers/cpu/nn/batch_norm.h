@@ -19,6 +19,7 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/framework/tensor.h"
@@ -81,7 +82,7 @@ class BatchNorm : public OpKernel {
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;
     for (size_t i = 2; i < dims_vec.size(); ++i) {
-      sample_size *= gsl::narrow<size_t>(dims_vec[i]);
+      sample_size *= narrow<size_t>(dims_vec[i]);
     }
 
     // calculate sample_size (including all channels)

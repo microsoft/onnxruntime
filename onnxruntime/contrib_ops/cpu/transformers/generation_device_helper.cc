@@ -7,7 +7,7 @@
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
@@ -527,7 +527,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
-    for (gsl::index j = 0; j < beam_indices.length(); j++) {
+    for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam,
@@ -564,7 +564,7 @@ Status UpdateGptFeeds(
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
@@ -713,7 +713,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
-    for (gsl::index j = 0; j < beam_indices.length(); j++) {
+    for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_beam = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<T> past_beam = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
@@ -751,7 +751,7 @@ Status UpdateDecoderFeeds(
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
 
   // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;

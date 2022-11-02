@@ -253,7 +253,7 @@ namespace Dml
         bool hasInputsToBind = false;
         std::vector<DML_BUFFER_BINDING> inputBufferBindings(inputBindings.size());
 
-        for (gsl::index i = 0; i < inputBindings.size(); i++)
+        for (size_t i = 0; i < inputBindings.size(); i++)
         {
             if (inputBindings[i].Buffer)
             {
@@ -662,11 +662,11 @@ namespace Dml
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
-        
+
         // Get the list of node indices in toplogical order, so nodes are visited before
         // downstream nodes consuming them.
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
-        for (size_t nodeIndex : toplogicalOrder) 
+        for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
             if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask))

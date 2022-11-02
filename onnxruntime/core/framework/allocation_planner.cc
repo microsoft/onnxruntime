@@ -112,7 +112,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
     auto& execution_plan = plan.execution_plan[i];
     out << " Start logic stream : " << i << "on device: " << execution_plan->device_.Type() << std::endl;
     for (auto& step : execution_plan->steps_) {
-      out << step->Dump() << std::endl;
+      out << step->ToString() << std::endl;
     }
     out << "End logic stream : " << i << std::endl;
   }
@@ -144,7 +144,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  std::string Dump() const override {
+  std::string ToString() const override {
     std::stringstream ss;
     ss << "Set a barrier with id: " << barrier_id << ", count: " << 2 << ". ";
     return ss.str();
@@ -176,7 +176,7 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  std::string Dump() const override {
+  std::string ToString() const override {
     std::stringstream ss;
     ss << "WaitOnEPStep: wait on notification with id: " << notification_idx << ". ";
     return ss.str();
@@ -213,7 +213,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
     return status;
   }
 
-  std::string Dump() const override {
+  std::string ToString() const override {
     std::stringstream ss;
     ss << "Launch kernel with node id: " << node_index << ". ";
     return ss.str();
@@ -241,7 +241,7 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  virtual std::string Dump() const override {
+  virtual std::string ToString() const override {
     std::stringstream ss;
     ss << "ActivateNotificationStep: activate notification with id: " << notification_idx << ". ";
     return ss.str();
@@ -266,7 +266,7 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
     return Status::OK();
   }
 
-  virtual std::string Dump() const override {
+  virtual std::string ToString() const override {
     std::stringstream ss;
     ss << "TriggerDownstreamStep: trigger downstream of trigger point: " << trigger_point_index << ". ";
     return ss.str();
@@ -297,8 +297,6 @@ class PlannerImpl {
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                    /*const ProviderStreamMap& provider_stream_map,
-                    const OpStreamMap& op_stream_map,*/
                     const std::string& partition_config_file,
                     const logging::Logger& logger);
 
@@ -835,58 +833,58 @@ class PlannerImpl {
                                  pnode->GetExecutionProviderType());
         }
 
-        bool is_implicit_input = false;
+      bool is_implicit_input = false;
 
-        // Add location information if applicable for the provided input def
-        auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                              &set_node_arg_has_explicit_consumer,
-                              &map_implicitly_consumed_node_arg_to_ep,
-                              &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
-                              this](const NodeArg& input, size_t arg_idx) {
-          const auto& name = input.Name();
+      // Add location information if applicable for the provided input def
+      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+                            &set_node_arg_has_explicit_consumer,
+                            &map_implicitly_consumed_node_arg_to_ep,
+                            &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
+                            this](const NodeArg& input, size_t arg_idx) {
+        const auto& name = input.Name();
 
-          bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
-                                                 [&name](const NodeArg* value) {
-                                                   return value && value->Name() == name;
-                                                 }) != outer_scope_node_args_.cend();
-          bool is_subgraph = (parent_node_ != nullptr);
+        bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
+        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
+                                               [&name](const NodeArg* value) {
+                                                 return value && value->Name() == name;
+                                               }) != outer_scope_node_args_.end();
+        bool is_subgraph = (parent_node_ != nullptr);
 
-          // If it's a graph input or outer scope node arg, set its plan.
-          // NOTE: Copy nodes should have already been added if a graph input is fed as input
-          // to nodes assigned to different providers.
+        // If it's a graph input or outer scope node arg, set its plan.
+        // NOTE: Copy nodes should have already been added if a graph input is fed as input
+        // to nodes assigned to different providers.
 
-          if (is_graph_input || is_outer_scope_arg) {
-            OrtValueIndex index = Index(name);
+        if (is_graph_input || is_outer_scope_arg) {
+          OrtValueIndex index = Index(name);
 
-            if (!is_implicit_input) {
-              OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(exec_provider->GetDeviceId(), mem_type)->Info());
-              set_node_arg_has_explicit_consumer.insert(index);
-            } else {  // implicit input
-              // Only process an implicit input if there are explicit consumers at this graph level
-              // If there is an explicit consumer, the location MUST be where it is consumed
-              // and not where it is located in the outer scope.
-              // It is okay if we process a node consuming this arg as an implicit input
-              // ahead of a node that is an explicit consumer, because we will just reset
-              // this location in the 'if' branch above.
+          if (!is_implicit_input) {
+            OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+            set_node_arg_has_explicit_consumer.insert(index);
+          } else {  // implicit input
+            // Only process an implicit input if there are explicit consumers at this graph level
+            // If there is an explicit consumer, the location MUST be where it is consumed
+            // and not where it is located in the outer scope.
+            // It is okay if we process a node consuming this arg as an implicit input
+            // ahead of a node that is an explicit consumer, because we will just reset
+            // this location in the 'if' branch above.
 
-              // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
-              // then set its location to be its corresponding location in the outer scope.
-              // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
-              // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
-              if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
-                auto iter = outer_scope_node_arg_to_location_map_.find(name);
-                bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
+            // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
+            // then set its location to be its corresponding location in the outer scope.
+            // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
+            // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
+            if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
+              auto iter = outer_scope_node_arg_to_location_map_.find(name);
+              bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
 
-                if (!is_graph_input) {
-                  // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
-                  // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
-                  // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
-                  // called in FinalizeSessionStateImpl() in SessionState.
-                  ORT_ENFORCE(found_in_outer_scope_location_map,
-                              "There is no location for this node arg in the outer scope location map");
-                }
+              if (!is_graph_input) {
+                // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
+                // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
+                // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
+                // called in FinalizeSessionStateImpl() in SessionState.
+                ORT_ENFORCE(found_in_outer_scope_location_map,
+                            "There is no location for this node arg in the outer scope location map");
+              }
 
                 if (found_in_outer_scope_location_map) {
                   plan_.SetLocation(static_cast<size_t>(index), iter->second);
@@ -1867,10 +1865,9 @@ class PlannerImpl {
 
   void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                             const std::string& partition_config_file) {
-    auto partitioner = IGraphPartitioner::CreateNodePartitioner(logger, partition_config_file);
-    auto status = partitioner->GetStatus();
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
+    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
@@ -2222,8 +2219,6 @@ class PlannerImpl {
 };
 
 Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                               /*const ProviderStreamMap& provider_stream_map,
-                               const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
   // 1. partition graph into streams
@@ -2314,7 +2309,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TODO: update the keyword in the config file
-InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DummyPartition"}, GraphPartitioningStrategy::DeviceBasedPartition}};
+InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
@@ -2327,13 +2322,14 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
     }
   }
   void DumpPartition() const;
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
+  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
 
  private:
   void Initialize();
+  void Reset();
   int num_streams_{};
   std::map<OrtDevice::DeviceType, int> max_streams_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
@@ -2355,9 +2351,10 @@ line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream o
 line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
 */
 
-#define EXIT_ON_ERR(err)                             \
-  status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err); \
-  if_stream.close();                                 \
+#define EXIT_ON_ERR(warning)         \
+  LOGS(logger_, WARNING) << warning; \
+  Reset();                           \
+  if_stream.close();                 \
   return;
 
 void DeviceBasedPartitioner::Initialize() {
@@ -2408,6 +2405,12 @@ void DeviceBasedPartitioner::Initialize() {
   }
 }
 
+void DeviceBasedPartitioner::Reset() {
+  num_streams_ = 0;
+  max_streams_.clear();
+  node_names_by_stream_.clear();
+}
+
 void DeviceBasedPartitioner::DumpPartition() const {
   if (configuration_file_.empty()) {
     return;
@@ -2431,12 +2434,9 @@ void DeviceBasedPartitioner::DumpPartition() const {
   }
 }
 
-void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
-                                            const ExecutionProviders& execution_providers,
-                                            std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
-  if (!status_.IsOK()) {
-    return;  // input configuration has errors, do nothing
-  }
+Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                              const ExecutionProviders& execution_providers,
+                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
 
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
@@ -2489,6 +2489,7 @@ void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& grap
       stream_nodes[node_stream_map[node_name]].push_back(node_index);
     }
   }
+  return Status::OK();
 }
 
 InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, char splitor) {
@@ -2502,7 +2503,7 @@ InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, cha
   return columns;
 }
 
-std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
+std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) {
   std::string cfg_file = configuration_file;
   IGraphPartitioner::GraphPartitioningStrategy partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!cfg_file.empty()) {
@@ -2521,12 +2522,12 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(cons
       of_stream.close();
     }
   }  // else means configuration will not be written to a file
-  std::unique_ptr<IGraphPartitioner> node_partitioner;
+  std::unique_ptr<IGraphPartitioner> graph_partitioner;
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
-    node_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
+    graph_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
   }
 
-  return node_partitioner;
+  return graph_partitioner;
 }
 
 }  // namespace onnxruntime
