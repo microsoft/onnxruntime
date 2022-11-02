@@ -3,6 +3,7 @@
 
 # pylint: disable=missing-docstring
 # pylint: disable=C0103
+# pylint: disable=W0212
 
 import pytest
 import torch
@@ -1244,7 +1245,9 @@ def test_pythonop_training_mode():
         @staticmethod
         def backward(ctx, grad_output):
             x = ctx.saved_tensors
-            return None
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            return ff * grad_output
 
     class TestModel(torch.nn.Module):
         def __init__(self, output_size):
