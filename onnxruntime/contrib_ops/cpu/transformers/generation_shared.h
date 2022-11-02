@@ -25,8 +25,11 @@ template <typename T>
 struct IBeamSearchState {
   gsl::span<T> next_token_logits;      // shape (batch_size * num_beams, vocab_size)
   gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
+  gsl::span<float> topk_scores;        // shape (batch_size * num_beams, 2 * num_beams)
+  gsl::span<int32_t> topk_indices;     // shape (batch_size * num_beams, 2 * num_beams)
   gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
   gsl::span<int32_t> next_indices;     // shape (batch_size, 2 * num_beams)
+  gsl::span<float> next_scores;        // shape (batch_size, 2 * num_beams)
   gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams), empty for T5. Next position for position_ids.
   gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
   gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)

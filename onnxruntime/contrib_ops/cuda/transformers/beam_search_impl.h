@@ -55,6 +55,16 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
                            int current_length,
                            cudaStream_t stream);
 
+template<typename T, typename I>
+void LanuchBatchTopKKernel(const T* topk_scores,
+                           const I* topk_indices,
+                           int32_t* next_indices,
+                           int32_t* next_tokens,
+                           T* next_scores,
+                           int batch_size,
+                           int num_beams,
+                           cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

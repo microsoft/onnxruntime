@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cub/util_type.cuh"
 #include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include "reduce_kernel_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -270,6 +271,89 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
   UpdateGptInputsKernel<int32_t><<<gridSize, blockSize, 0, stream>>>(
       old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
+
+
+template<typename T, int MAX_K, int THREADBLOCK_SIZE, typename I>
+__launch_bounds__(THREADBLOCK_SIZE) __global__
+    void BatchTopKKernel(const T* topk_scores,
+                         const I* topk_indices,
+                         int32_t* next_indices,
+                         int32_t* next_tokens,
+                         T* next_scores,
+                         int batch_size,
+                         int num_beams) {
+    int thread_id = threadIdx.x;
+    int block_id = blockIdx.x;
+    const bool IS_FP16 = std::is_same<T, half>::value;
+    const T MIN_T_VAL = (IS_FP16) ? HALF_FLT_MIN : -FLT_MAX;
+    TopK<T, MAX_K> partial;
+    if (thread_id == 0) {
+        for (int i = 0; i < MAX_K; ++i) {
+            partial.p[i] = -1;
+            partial.u[i] = MIN_T_VAL;
+        }
+
+        int index_block = 2 * block_id * num_beams * num_beams;
+        for (int i = 0; i < 2 * num_beams * num_beams; i++) {
+            partial.insert((T)topk_scores[index_block + i], index_block + i);
+        }
+
+        int index_next = block_id * 2 * num_beams;
+        for (int i = 0; i < 2 * num_beams; i++) {
+            next_tokens[index_next + i] = topk_indices[partial.p[i]];
+            next_indices[index_next + i] = (partial.p[i] - index_block) / (2 * num_beams);
+            next_scores[index_next + i] = partial.u[i];
+        }
+    }
+}
+
+template<typename T, typename I>
+void LanuchBatchTopKKernel(const T* topk_scores,
+                           const I* topk_indices,
+                           int32_t* next_indices,
+                           int32_t* next_tokens,
+                           T* next_scores,
+                           int batch_size,
+                           int num_beams,
+                           cudaStream_t stream) {
+  BatchTopKKernel<T, 8, 256, I><<<batch_size, 256, 0, stream>>>(topk_scores, topk_indices, next_indices, next_tokens, next_scores, batch_size, num_beams);
+}
+
+template void LanuchBatchTopKKernel(const float* topk_scores,
+                           const int32_t* topk_indices,
+                           int32_t* next_indices,
+                           int32_t* next_tokens,
+                           float* next_scores,
+                           int batch_size,
+                           int num_beams,
+                           cudaStream_t stream);
+
+template void LanuchBatchTopKKernel(const float* topk_scores,
+                           const int64_t* topk_indices,
+                           int32_t* next_indices,
+                           int32_t* next_tokens,
+                           float* next_scores,
+                           int batch_size,
+                           int num_beams,
+                           cudaStream_t stream);
+
+template void LanuchBatchTopKKernel(const half* topk_scores,
+                           const int32_t* topk_indices,
+                           int32_t* next_indices,
+                           int32_t* next_tokens,
+                           half* next_scores,
+                           int batch_size,
+                           int num_beams,
+                           cudaStream_t stream);
+
+template void LanuchBatchTopKKernel(const half* topk_scores,
+                           const int64_t* topk_indices,
+                           int32_t* next_indices,
+                           int32_t* next_tokens,
+                           half* next_scores,
+                           int batch_size,
+                           int num_beams,
+                           cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

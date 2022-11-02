@@ -9,6 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+#define DEBUG_GENERATION
+
 #ifdef DEBUG_GENERATION
 
 template <typename T>
