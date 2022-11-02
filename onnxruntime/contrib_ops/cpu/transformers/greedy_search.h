@@ -69,7 +69,7 @@ class GreedySearch : public IControlFlowKernel {
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
 
- protected:
+ private:
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;

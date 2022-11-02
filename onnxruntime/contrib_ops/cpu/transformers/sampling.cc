@@ -39,13 +39,38 @@ REGISTER_KERNEL_TYPED(float)
 namespace transformers {
 
 void Sampling::Init(const OpKernelInfo& info) {
-  this->Init(info);
+  parameters_.ParseFromAttributes(info);
+
+  // Check model_type 0 (GPT-2)
+  ORT_ENFORCE(parameters_.model_type == 0);
+
+  ONNX_NAMESPACE::GraphProto proto;
+
+  ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("decoder", &proto).IsOK());
+  ORT_IGNORE_RETURN_VALUE(proto);
 }
 
 Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                             const std::string& attribute_name,
                                             const SessionState& subgraph_session_state) {
-  return this->SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state);
+  const auto& node = Node();
+  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {  // GPT-2
+    if (attribute_name == "decoder") {
+      ORT_ENFORCE(gpt_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(gpt_subgraph_->Setup(session_state, subgraph_session_state));
+      decoder_feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
+      parameters_.SetSubgraphParameters(gpt_subgraph_->vocab_size,
+                                        gpt_subgraph_->num_heads,
+                                        gpt_subgraph_->head_size,
+                                        gpt_subgraph_->num_layers);
+    }
+  } else if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {  // encoder-decoder like T5
+    ORT_THROW("Not Implemented");
+  }
+
+  return Status::OK();
 }
 
 Status Sampling::Compute(OpKernelContext* ctx) const {

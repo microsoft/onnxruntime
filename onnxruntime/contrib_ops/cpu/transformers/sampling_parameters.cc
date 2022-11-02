@@ -7,6 +7,7 @@ namespace contrib {
 namespace transformers {
 
 void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) {
+  std::cout << "parse sampling params" << std::endl;
   model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
