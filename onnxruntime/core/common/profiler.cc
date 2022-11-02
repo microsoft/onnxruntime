@@ -49,7 +49,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   custom_logger_ = custom_logger;
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->StartProfiling();
+    ep_profiler->StartProfiling(profiling_start_time_);
   }
 }
 
