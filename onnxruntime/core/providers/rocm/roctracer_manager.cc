@@ -240,9 +240,9 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
 
   switch(call_record.cid_) {
   case HIP_API_ID_hipLaunchKernel: {
-    name = demangle(hipKernelNameRefByPtr(launch_args.args.hipLaunchKernel.function_address,
-                                          launch_args.args.hipLaunchKernel.stream));
     auto const& launch_args = call_record.api_data_.args.hipLaunchKernel;
+    name = demangle(hipKernelNameRefByPtr(launch_args.function_address,
+                                          launch_args.stream));
 
     args = {
       {"stream", PointerToHexString((void*)(launch_args.stream))},
