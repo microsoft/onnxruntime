@@ -110,7 +110,6 @@ def optimize_by_onnxruntime(
         session = onnxruntime.InferenceSession(
             onnx_model_path, sess_options, providers=gpu_ep, **kwargs
         )
-        assert any(gpu_ep in session.get_providers() for gpu_ep in ["CUDAExecutionProvider","ROCMExecutionProvider"]) # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
