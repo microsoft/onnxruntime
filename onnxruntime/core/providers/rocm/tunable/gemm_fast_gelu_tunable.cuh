@@ -9,38 +9,18 @@
 
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 #include "core/providers/rocm/tunable/gemm.h"
-#include "core/providers/rocm/tunable/gemm_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
+#include "core/providers/rocm/tunable/gemm_fast_gelu_ck.cuh"
+#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
 
 using onnxruntime::rocm::tunable::blas::BlasOp;
 using onnxruntime::rocm::tunable::blas::BlasOpToString;
 
 namespace onnxruntime {
-namespace contrib {
 namespace rocm {
-
-template <typename T>
-struct GemmFastGeluParams : onnxruntime::rocm::tunable::OpParams {
-  std::string Signature() const override {
-    return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k);
-  }
-  rocblas_handle handle;
-  BlasOp opa;
-  BlasOp opb;
-  int64_t m;
-  int64_t n;
-  int64_t k;
-  T alpha;
-  const T* a;
-  int64_t lda;
-  const T* b;
-  int64_t ldb;
-  const T* bias;
-  T beta;
-  T* c;
-  int64_t ldc;
-  bool tuning{false};
-};
+namespace tunable {
+namespace blas {
+namespace internal {
 
 template <typename T>
 Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
@@ -57,7 +37,7 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   int64_t bias_length = (params->bias != nullptr) ? params->n : 0;
 
   // inplace computation
-  return LaunchFastGeluKernel<T>(params->stream,
+  return onnxruntime::contrib::rocm::LaunchFastGeluKernel<T>(params->stream,
                                  static_cast<int>(fast_gelu_input_length),
                                  static_cast<int>(bias_length),
                                  params->c,
@@ -66,16 +46,26 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
                                  params->tuning);
 }
 
-template <typename T>
+template <typename T, typename ALayout, typename BLayout>
 class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
     this->ops_.emplace_back(GemmFastGeluUnfused<T>);
+    for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->ops_.emplace_back(std::move(op));
+    }
+    for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->ops_.emplace_back(std::move(op));
+    }
 
     this->SetDefaultId(0);
   }
 };
 
+}  // namespace internal
+}  // namespace blas
+}  // namespace tunable
 }  // namespace rocm
-}  // namespace contrib
 }  // namespace onnxruntime

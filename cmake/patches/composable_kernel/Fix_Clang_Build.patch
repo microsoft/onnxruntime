@@ -1,20 +1,20 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5655ba17..1252d1ea 100644
+index f861e302..f0b6bcea 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
  cmake_minimum_required(VERSION 3.14)
- 
+
  # Check support for CUDA/HIP in Cmake
 -project(composable_kernel)
 +project(composable_kernel LANGUAGES CXX HIP)
- 
+
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
- 
+
 @@ -41,27 +41,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
- 
+
 -## OpenMP
 -if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 -	# workaround issue hipcc in rocm3.5 cannot find openmp
@@ -45,21 +45,21 @@ index 5655ba17..1252d1ea 100644
  message(STATUS "Build with HIP ${HIP_VERSION}")
 -link_libraries(hip::device)
 -add_compile_definitions(__HIP_PLATFORM_HCC__=1)
- 
+
  ## tidy
  include(EnableCompilerWarnings)
-@@ -263,9 +240,6 @@ rocm_package_setup_component(tests
+@@ -273,9 +250,6 @@ rocm_package_setup_component(profiler
  )
- 
+
  add_subdirectory(library)
 -add_subdirectory(example)
 -add_subdirectory(test)
 -add_subdirectory(profiler)
- 
+
  #Create an interface target for the include only files and call it "composablekernels"
  include(CMakePackageConfigHelpers)
-@@ -291,11 +265,3 @@ rocm_install(FILES
- 
+@@ -301,11 +275,3 @@ rocm_install(FILES
+
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 -
@@ -70,20 +70,6 @@ index 5655ba17..1252d1ea 100644
 -    LDCONFIG
 -    HEADER_ONLY
 -)
-diff --git a/include/ck/ck.hpp b/include/ck/ck.hpp
-index 92018aac..2ada620c 100644
---- a/include/ck/ck.hpp
-+++ b/include/ck/ck.hpp
-@@ -126,7 +126,9 @@
- #define CK_EXPERIMENTAL_USE_MEMCPY_FOR_BIT_CAST 1
- 
- // experimental feature: optimize for inter-wave scheduling policy
-+#ifndef CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING
- #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING 0
-+#endif
- #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING_MAC_CLUSTERS 1
- 
- // hack: have underlying assumption that need to be satsified, otherwise it's a bug
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 index c206c4dc..e45fac9d 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
