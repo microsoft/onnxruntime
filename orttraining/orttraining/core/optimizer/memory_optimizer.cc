@@ -464,13 +464,13 @@ void MemoryOptimizer::RegisterAllowedRecomputeOps() {
         // Unary elementwise
         /// The ratio and mode input are trivial whether they exist or not in backward
         {"BitmaskDropout", AllowedRecomputeNodeConfig{{0}}},
-        /// The axis input are trivial whether they exist or not in backward
+        /// The axis input is trivial whether it exists or not in backward
         {"CumSum", AllowedRecomputeNodeConfig{{0}}},
         {"Dropout", AllowedRecomputeNodeConfig{{0}}},
         {"Gelu", AllowedRecomputeNodeConfig{{0}}},
         {"FastGelu", AllowedRecomputeNodeConfig{{0}}},
 
-        // Tenary elementwise
+        // Ternary elementwise
         {"Where", AllowedRecomputeNodeConfig{{0, 1, 2}}},
 
         // Data copy
@@ -512,7 +512,9 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
   bool early_stop = false;
   std::set<NodeOutputPort> visited_output_arg_set;
   std::set<const Node*> visited_node_set;
-  bool is_entry_node_output_arg = true;
+
+  // For the initial activations in queue, they are stashed ones, so we do differently when scan the queue for them.
+  bool is_first_queue_scan = true;
   while (nodes.size() < MAXIMUM_RECOMPUTE_NODE_COUNT && !q.empty() && !early_stop) {
     // Loop all candidate NodeOutputPort, and find the next layer of input nodes.
     size_t current_queue_size = q.size();
@@ -536,14 +538,17 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
 
       visited_node_set.insert(curr_node);
 
-      // Buttom-up search rules.
-      // If current op is in allowed list, check its input args, and append the producers' NodeOutputPorts to next_q.
-      // If current op is NOT in allowed list:
-      // 1). the output does not exist in backward, we cannot find a good solution for so, search terminates.
-      // 2). the output is used in backward, we don't need trace back further, continue searching.
+      // Bottom-up search rules.
+      // If current op is entry output node (that generates stashed activations):
+      //   1. If the op is not in recomputable_op_type_to_input_arg_index_map_, skip it.
+      // Otherwise:
+      //  If current op is in allowed list, check its input args, and append the producers' NodeOutputPorts to next_q.
+      //  If current op is NOT in allowed list:
+      //    1). the output does not exist in backward, we cannot find a good solution for so, search terminates.
+      //    2). the output is used in backward, we don't need trace back further, continue searching.
       auto op_recompute_config_it = recomputable_op_type_to_input_arg_index_map_.find(curr_node->OpType());
       auto cur_output_arg_name = curr_node->OutputDefs()[p.second]->Name();
-      if (is_entry_node_output_arg) {
+      if (is_first_queue_scan) {
         // We handle the entry node outputs differently because, we don't want this case falls into and succeed one of
         // the checks in the other branch
         // 1. "op is not in recompute op list, but its output is used in backward"
@@ -560,7 +565,7 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
           if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
             LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
                                   << "recompute op list, but its output [" << cur_output_arg_name
-                                  << "] is used in backward, we don't need trace buttom-up further";
+                                  << "] is used in backward, we don't need trace bottom-up further";
             continue;
           } else {
             early_stop = true;
@@ -574,7 +579,7 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
         if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
           LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
                                 << "is in recompute op list, while its output [" << cur_output_arg_name
-                                << "] is used in backward, we don't need trace buttom-up further";
+                                << "] is used in backward, we don't need trace bottom-up further";
           continue;
         }
       }
@@ -599,7 +604,7 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
         LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is in "
                               << "recompute op list, and its output [" << cur_output_arg_name
                               << "] does not exist in backward, while it meet compromised check, we don't need trace "
-                              << "buttom-up further.";
+                              << "bottom-up further.";
         continue;
       }
 
@@ -624,7 +629,7 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
       }
     }
     // After handle all entry node outputs, we set the flag to false.
-    is_entry_node_output_arg = false;
+    is_first_queue_scan = false;
   }
 
   // If input args are not found in bw, but op count exceed MAXIMUM_RECOMPUTE_NODE_COUNT, skip recompute.
@@ -653,6 +658,11 @@ void MemoryOptimizer::CheckNodeForRecompute(const Node& node,
                                             const logging::Logger& logger,
                                             bool compromise_stashed_activation,
                                             bool& can_compromise_stashed_activation) const {
+  if (recomputable_op_type_to_input_arg_index_map_.find(node.OpType()) ==
+      recomputable_op_type_to_input_arg_index_map_.end()) {
+    return;
+  }
+
   InlinedVector<const Node*> nodes_in_topological_order;
   ORT_ENFORCE(SelectRecomputeSubgraph(node, candidate_output_args_map.at(&node),
                                       fw_op_output_arg_used_map,

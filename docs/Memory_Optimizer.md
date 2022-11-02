@@ -9,7 +9,7 @@ When training with ORTModule, by default, the graph transformer will scan the ex
 
 ## When memory optimizer can help?
 
-Classical scenarios includes:
+Classical scenarios include:
 
 - ORTModule training run a model with batch size B (for example 2^N), the memory bandwidth and compute are not fully saturated, while it hits OOM to run a bigger batch size (for example 2^(N+1)).
 
@@ -83,7 +83,7 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 
 ## Compromised Recompute
 
-If you check the above logs, there is a seperate section called "RecomputeWithCompromise". Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
+If you check the above logs, there is a separate section called "RecomputeWithCompromise". Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
 
 ## Notes
 

@@ -65,11 +65,11 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of
 // <subgraph string : optimization strategy : number of subgraph to apply>.
-// For example, "Gelu+Cast+:1:0,Dropout:1:1".
+// For example, "Gelu+Cast+:1:0,Dropout+:1:1".
 //   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
 //   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
 //   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
-//    the memory.
+//   the memory.
 static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
 
 // Specifies the level for detecting subgraphs for memory footprint reduction.

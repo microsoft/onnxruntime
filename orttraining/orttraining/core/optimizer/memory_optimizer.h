@@ -77,8 +77,10 @@ class MemoryOptimizer : public GraphTransformer {
    * Afterwards, we optionally pick up some of them to apply optimization according to user configs.
    *
    * subgraph_descs is a map from subgraph string representation to its subgraph related configurations.
+   *
    * _optimization_target_graphs_ is a map from activation producer node pointers to its target optimization subgraph
-   * nodes.
+   * nodes. For example, if a subgraph Cast+Gelu can be recomputed, we may have a map like:
+   *  key: node pointer of stashed activation producer Gelu; value: node vector {Cast, Gelu,}.
    *
    * When we AddSubGraphInstance, we must provider its corresponding subgraph desc in the parameter.
    * Then we can know for each subgraph instance, what's the subgraph str representation, and what's the optimization
