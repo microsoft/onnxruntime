@@ -425,7 +425,7 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         bool safe_to_use = chunk->stream == stream ||
                            !chunk->stream ||
                            (stream && chunk->stream &&
-                            chunk->stream_timestamp >= stream->GetLastSyncTimestampWithTargetStream(chunk->stream));
+                            chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream));
         if (safe_to_use) {
           // the chunk with same stream has higher priority.
           return SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
