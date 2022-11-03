@@ -103,15 +103,16 @@ export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS = "megatron.fp16.fp16.fused_kernels.
 
 ### 2.2 Memory Optimization
 
-Q: Want to run a bigger batch size?
-Q: The model hit OOM during training, even using minimum required batch size?
+Q: *Want to run a bigger batch size?*
+
+Q: *The model hit OOM during training, even using minimum required batch size?*
 
 Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for how to leverage ORT's recomputation techniques.
 
 
 ### 3. Use `FusedAdam` to Accelerate Parameter Update
 
-Parameter update is done by optimizers (for example AdamW) with many elementwise operations. `FusedAdam` launches the elementwise update kernels with multi-tensor apply, allowing batches of gradients applied to corresponding parameters.
+Parameter update is done by optimizers (for example AdamW) with many elementwise operations. `FusedAdam` launches the elementwise update kernels with multi-tensor apply, allowing batches of gradients applied to corresponding parameters for each time kernel launch.
 
 Here is a sample switch from torch `AdamW` optimizer to `FusedAdam`.
 
