@@ -1345,6 +1345,7 @@ if (onnxruntime_USE_ROCM)
 
   auto_set_source_files_hip_language(${onnxruntime_providers_rocm_src})
   onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
+  target_compile_options(onnxruntime_providers_rocm PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
 
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare)

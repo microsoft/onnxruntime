@@ -85,13 +85,16 @@ index 92018aac..2ada620c 100644
  
  // hack: have underlying assumption that need to be satsified, otherwise it's a bug
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index c206c4dc..6ca1ec11 100644
+index c206c4dc..e45fac9d 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-@@ -1,5 +1,6 @@
+@@ -1,7 +1,9 @@
  function(add_instance_library INSTANCE_NAME)
      message("adding instance ${INSTANCE_NAME}")
 +    set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
      add_library(${INSTANCE_NAME} OBJECT ${ARGN})
      target_compile_features(${INSTANCE_NAME} PUBLIC)
++    target_compile_definitions(${INSTANCE_NAME} PRIVATE "__HIP_PLATFORM_AMD__=1" "__HIP_PLATFORM_HCC__=1")
      set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+     clang_tidy_check(${INSTANCE_NAME})
+ endfunction(add_instance_library INSTANCE_NAME)

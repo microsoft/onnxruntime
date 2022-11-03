@@ -1894,6 +1894,7 @@ if (onnxruntime_USE_ROCM)
   if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
     message(FATAL_ERROR "HIP Language is not properly configured.")
   endif()
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
     set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
