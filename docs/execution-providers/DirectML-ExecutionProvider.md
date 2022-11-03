@@ -2,7 +2,7 @@
 title: DirectML (Windows)
 description: Instructions to execute ONNX Runtime with the DirectML execution provider
 parent: Execution Providers
-nav_order: 6
+nav_order: 3
 redirect_from: /docs/reference/execution-providers/DirectML-ExecutionProvider
 ---
 

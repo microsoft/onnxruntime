@@ -2,7 +2,7 @@
 title: ROCm (AMD)
 description: Instructions to execute ONNX Runtime with the AMD ROCm execution provider
 parent: Execution Providers
-nav_order: 12
+nav_order: 7
 redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
 ---
 
