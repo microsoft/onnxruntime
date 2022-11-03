@@ -21,13 +21,13 @@ More options for **developers**.
 	model = build_model()
 
 +	from onnxruntime.training import ORTModule, DebugOptions, LogLevel
-+	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE))
++	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/debug_options.py) for more details.
 
-### 2.1 environment Variables
+### 2.1 Environment Variables
 
-ONNX Runtime Training (ORTModule) provides environment variables targeting different use cases.
+`ORTModule` provides environment variables targeting different use cases.
 
 #### ORTMODULE_ONNX_OPSET_VERSION
 
@@ -42,7 +42,7 @@ ONNX Runtime Training (ORTModule) provides environment variables targeting diffe
 #### ORTMODULE_FALLBACK_POLICY
 
 - **Feature Area**: *ORTMODULE/FallbackToPytorch*
-- **Description**: By default, if ORTModule fails to run the model using ONNX Runtime backend, it will fallback to use PyTorch to continue the training. At some point developers are optimizing the models and doing benchmarking, we want explicitly let ORT backend to run the model. The way we disable the retry:
+- **Description**: By default, if `ORTModule` fails to run the model using ONNX Runtime backend, it will fallback to use PyTorch to continue the training. At some point developers are optimizing the models and doing benchmarking, we want explicitly let ORT backend to run the model. The way we disable the retry:
 	```
 	export ORTMODULE_FALLBACK_POLICY="FALLBACK_DISABLE"
 	```
@@ -51,26 +51,25 @@ ONNX Runtime Training (ORTModule) provides environment variables targeting diffe
 #### ORTMODULE_LOG_LEVEL
 
 - **Feature Area**: *ORTMODULE/DebugOptions*
-- **Description**: Configure ORTModule log level. Defaults to LogLevel.WARNING.
-log_level can also be set by setting the environment variable "ORTMODULE_LOG_LEVEL" to one of "VERBOSE", "INFO", "WARNING", "ERROR", "FATAL". The environment variable takes precedence if DebugOptions also set log_level.
+- **Description**: Configure `ORTModule` log level. Defaults to LogLevel.WARNING, can be set one of "VERBOSE", "INFO", "WARNING", "ERROR", "FATAL". The environment variable takes precedence if DebugOptions also sets log_level.
 
 #### ORTMODULE_SAVE_ONNX_PATH
 
 - **Feature Area**: *ORTMODULE/DebugOptions*
-- **Description**: Configure ORTModule to save onnx models. Defaults to False.
+- **Description**: Configure `ORTModule` to save onnx models. Defaults to False.
 The output directory of the onnx models by default is set to the current working directory. To change the output directory, the environment variable "ORTMODULE_SAVE_ONNX_PATH" can be set to the destination directory path.
 
 
 #### ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
-- **Description**: By default ORTModule will fail with exception when handling PythonOp export for some `'autograd.Function'`s (One example is torch CheckpointFunction). Set
+- **Description**: By default `ORTModule` will fail with exception when handling PythonOp export for some `'autograd.Function'`s (One example is torch CheckpointFunction). Set
 	this env variable to be `1` to explicitly allow it.
 	```
 	export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1
 	```
 
-	> Take the example of torch.utils.checkpoint.CheckpointFunction, if it is exported as PythonOp, the checkpointed computation may be computed by PyTorch, not ORT. This situation is especially important for big models such as GPT-2 where every few layers are wrapped to do re-computation, large number of computations are done by PyTorch. Currently a failure is reported to notify users it is possible ORTModule has less opportunities to optimize further.
+	> Take the example of torch.utils.checkpoint.CheckpointFunction, if it is exported as PythonOp, the checkpointed computation may be computed by PyTorch, not ORT. This situation is especially important for big models such as GPT-2 where every few layers are wrapped to do re-computation, large number of computations are done by PyTorch. Currently a failure is reported to notify users it is possible `ORTModule` has less opportunities to optimize further.
 
 	> On the other hand, if the wrapped computation graph is small, it is reasonable to allow it.
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
@@ -99,27 +98,29 @@ The output directory of the onnx models by default is set to the current working
 Before full qualified name can be got from exporter, this environment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there are multiple classes to be ignored, use comma as the separator.
 
 ```
-export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
+export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS = "megatron.fp16.fp16.fused_kernels.GELUFunction"
 ```
 
 ### 2.2 Memory Optimization
 
-Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
+Q: Want to run a bigger batch size?
+Q: The model hit OOM during training, even using minimum required batch size?
+
+Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for how to leverage ORT's recomputation techniques.
 
 
 ### 3. Use `FusedAdam` to Accelerate Parameter Update
 
-Parameter update is done by optimizers (for example AdamW) with many elementwise operations. `FusedAdam` launches the elementwise updates kernels with multi-tensor apply, allowing batches of gradients applied to corresponding models parameters with much less kernel launches.
+Parameter update is done by optimizers (for example AdamW) with many elementwise operations. `FusedAdam` launches the elementwise update kernels with multi-tensor apply, allowing batches of gradients applied to corresponding parameters.
 
 Here is a sample switch from torch `AdamW` optimizer to `FusedAdam`.
 
 ```diff
 	model = build_model()
 
--	adamw_opt = AdamW(model.parameters(), lr=1)
-
+-	optimizer = AdamW(model.parameters(), lr=1)
 +	from onnxruntime.training.optim import FusedAdam
-+	adamw_opt = FusedAdam(model.parameters(), lr=1)
++	optimizer = FusedAdam(model.parameters(), lr=1)
 
 ```
 
