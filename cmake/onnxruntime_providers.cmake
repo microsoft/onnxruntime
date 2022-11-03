@@ -1264,18 +1264,15 @@ if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
   include(onnxruntime_rocm_hipify.cmake)
 
-  # Add search paths for default hip installation
-  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME} ${onnxruntime_ROCM_HOME}/hip ${onnxruntime_ROCM_HOME}/hcc ${onnxruntime_ROCM_HOME}/miopen ${onnxruntime_ROCM_HOME}/hiprand ${onnxruntime_ROCM_HOME}/rocrand)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
 
-  set(CMAKE_MODULE_PATH "${onnxruntime_ROCM_HOME}/hip/cmake" ${CMAKE_MODULE_PATH})
   find_package(HIP)
   find_package(hiprand REQUIRED)
-  find_library(HIP_LIB amdhip64 REQUIRED)
-  find_library(ROC_BLAS rocblas REQUIRED)
-  find_library(MIOPEN_LIB MIOpen REQUIRED)
+  find_package(rocblas REQUIRED)
+  find_package(MIOpen REQUIRED)
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
-  set(ONNXRUNTIME_ROCM_LIBS ${HIP_LIB} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB} ${ROCTRACER_LIB})
+  set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
@@ -1342,30 +1339,12 @@ if (onnxruntime_USE_ROCM)
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_generated_training_ops_cc_srcs} ${onnxruntime_rocm_generated_training_ops_cu_srcs})
   endif()
 
-  set(HIP_CXX_FLAGS -fPIC)
-  list(APPEND HIP_CXX_FLAGS -std=c++17)
-
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND HIP_CXX_FLAGS -g)
-      #list(APPEND HIP_CXX_FLAGS -O0)
-  endif(CMAKE_BUILD_TYPE MATCHES Debug)
-
-  list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
-  list(APPEND HIP_CLANG_FLAGS ${CMAKE_HIP_FLAGS})
-
-  # Generate GPU code during compilation
-  list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
-
-  # Generate GPU code
-  foreach(HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
-    list(APPEND HIP_CLANG_FLAGS --offload-arch=${HIP_ARCH})
-  endforeach()
-
   auto_set_source_files_hip_language(${onnxruntime_providers_rocm_src})
   onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
+  target_compile_options(onnxruntime_providers_rocm PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
 
   if(NOT MSVC)
-    target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
+    target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-unused-parameter)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()
