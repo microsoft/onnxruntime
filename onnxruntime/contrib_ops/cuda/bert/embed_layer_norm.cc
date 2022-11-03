@@ -94,8 +94,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
     cudaMemcpyAsync(host_data.data(), random_data_, output->SizeInBytes(), cudaMemcpyDeviceToHost);
 
     for (size_t i = 0; i < static_cast<size_t>(output->Shape().Size()); ++i) {
-      if ((host_data[i] & 0x7C00) == 0) {
-        ORT_THROW("Sub-normal found 2: ", host_data[i]);
+      if (host_data[i] != 0 && ((host_data[i] & 0x7C00) == 0)) {
+        ORT_THROW("Sub-normal found 3: ", host_data[i]);
       }
     }
 
