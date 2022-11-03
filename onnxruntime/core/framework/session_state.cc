@@ -22,15 +22,18 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type, const OrtDevice::DeviceType executor_device_type) {
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
+                                     const OrtDevice::DeviceType executor_device_type) {
   return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
 }
 
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  public:
-  // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
+  // Wait is a little special as we need to consider the source stream the notification generated,
+  // and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type, const OrtDevice::DeviceType executor_device_type) const override {
+  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type,
+                                   const OrtDevice::DeviceType executor_device_type) const override {
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }
@@ -40,7 +43,9 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     return it == create_stream_map_.end() ? nullptr : it->second;
   }
 
-  void RegisterWaitFn(const OrtDevice::DeviceType notification_device_type, const OrtDevice::DeviceType device_type, WaitNotificationFn fn) override {
+  void RegisterWaitFn(const OrtDevice::DeviceType notification_device_type,
+                      const OrtDevice::DeviceType device_type,
+                      WaitNotificationFn fn) override {
     notification_wait_map_.insert({GetWaitKey(notification_device_type, device_type), fn});
   }
 
@@ -692,11 +697,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
       if (!ml_type->IsTensorType())
         continue;
 
-      auto* ep = GetExecutionProviders().Get(*node);
-      auto device_id = exe_plan->allocation_plan[ml_value_idx].location.device.Id();
-      auto ep_main_allocator = ep->GetAllocator(device_id, OrtMemType::OrtMemTypeDefault);
-      ORT_ENFORCE(ep_main_allocator);
-      if (exe_plan->allocation_plan[ml_value_idx].location != ep_main_allocator->Info())
+      if (exe_plan->allocation_plan[ml_value_idx].location.mem_type != OrtMemType::OrtMemTypeDefault)
         continue;
 
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
@@ -1351,16 +1352,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
+  SequentialPlannerContext context(session_options.execution_mode,
+                                   session_options.execution_order,
+                                   session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context,
-                                                    this->GetStreamHandleRegistryInstance(),
-                                                    /*provider_stream_map,
-                                                    read_op_map_from_str(session_options.grouped_ops),*/
-                                                    session_options.config_options.GetConfigOrDefault(kNodePartitionConfigFile, ""),
+                                                    GetStreamHandleRegistryInstance(),
+                                                    session_options.config_options.GetConfigOrDefault(
+                                                        kNodePartitionConfigFile, ""),
                                                     Logger(),
                                                     p_seq_exec_plan_));
 

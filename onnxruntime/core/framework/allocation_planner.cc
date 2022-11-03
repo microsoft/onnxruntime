@@ -11,6 +11,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
+#include "core/framework/execution_steps.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
@@ -33,15 +34,8 @@ std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base,
                                                size_t graph_depth,
                                                NodeIndex node_index,
                                                const std::string& attr_name) {
-  std::ostringstream ss;
-
   // key = base + graph depth + current graph node index + attr name corresponding to the subgraph
-  ss << base;
-  ss << graph_depth;
-  ss << node_index;
-  ss << attr_name;
-
-  return ss.str();
+  return ::onnxruntime::MakeString(base, graph_depth, node_index, attr_name);
 }
 
 }  // namespace NestedSubgraphInfoDetails
@@ -129,152 +123,6 @@ static const KernelCreateInfo& GetKernelCreateInfo(
 
   return *entry->second;
 }
-
-class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
-                           barrier_id{id} {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t /*stream_idx*/,
-                 SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
-                 bool& continue_flag) override {
-    continue_flag = ctx->DecCountDownBarrier(barrier_id);
-    return Status::OK();
-  }
-
-  std::string ToString() const override {
-    std::stringstream ss;
-    ss << "Set a barrier with id: " << barrier_id << ", count: " << 2 << ". ";
-    return ss.str();
-  }
-
- private:
-  size_t barrier_id{0};
-};
-
-class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx) : SequentialExecutionPlan::ExecutionStep(),
-                                                                   wait_handle(handle),
-                                                                   notification_idx(idx) {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t stream_idx,
-                 SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
-                 bool& continue_flag) override {
-    ORT_ENFORCE(wait_handle, "WaitOnEPStep.wait_handle is null");
-    wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
-    // update streams clock status
-    if (ctx->GetDeviceStream(stream_idx)) {
-      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->GetStreamSyncTable());
-    }
-    LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
-    continue_flag = true;
-    return Status::OK();
-  }
-
-  std::string ToString() const override {
-    std::stringstream ss;
-    ss << "WaitOnEPStep: wait on notification with id: " << notification_idx << ". ";
-    return ss.str();
-  }
-
- private:
-  WaitNotificationFn wait_handle;
-  NotificationIndex notification_idx;
-};
-
-class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
-                                      node_index{index} {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t stream_idx,
-                 SessionScope& session_scope,
-                 const bool& terminate_flag,
-                 bool& continue_flag) override {
-    if (!continue_flag) {
-      LOGS(ctx->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-    }
-#ifdef ENABLE_TRAINING
-    auto* node_to_execute = ctx->GetNodeToExecute();
-    if (node_to_execute && node_to_execute->count(node_index) == 0) {
-      continue_flag = true;
-      return Status::OK();
-    }
-#endif
-    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx, terminate_flag, session_scope);
-    continue_flag = status.IsOK();
-    return status;
-  }
-
-  std::string ToString() const override {
-    std::stringstream ss;
-    ss << "Launch kernel with node id: " << node_index << ". ";
-    return ss.str();
-  }
-
- private:
-  NodeIndex node_index{0};
-};
-
-class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                                   notification_idx(notification_index) {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t stream_idx,
-                 SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
-                 bool& continue_flag) override {
-    if (ctx->GetNotification(notification_idx)) {
-      ctx->GetNotification(notification_idx)->ActivateAndUpdate();
-    }
-    LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " activate notification with index " << notification_idx;
-    continue_flag = true;
-    return Status::OK();
-  }
-
-  virtual std::string ToString() const override {
-    std::stringstream ss;
-    ss << "ActivateNotificationStep: activate notification with id: " << notification_idx << ". ";
-    return ss.str();
-  }
-
- private:
-  NotificationIndex notification_idx;
-};
-
-class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                      trigger_point_index(trigger_point_index) {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t /*stream_idx*/,
-                 SessionScope& session_scope,
-                 const bool& terminate_flag,
-                 bool& continue_flag) override {
-    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode(), terminate_flag, session_scope);
-    continue_flag = true;
-    return Status::OK();
-  }
-
-  virtual std::string ToString() const override {
-    std::stringstream ss;
-    ss << "TriggerDownstreamStep: trigger downstream of trigger point: " << trigger_point_index << ". ";
-    return ss.str();
-  }
-
- private:
-  size_t trigger_point_index;
-};
 
 class PlannerImpl {
  public:
@@ -833,58 +681,58 @@ class PlannerImpl {
                                  pnode->GetExecutionProviderType());
         }
 
-      bool is_implicit_input = false;
+        bool is_implicit_input = false;
 
-      // Add location information if applicable for the provided input def
-      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                            &set_node_arg_has_explicit_consumer,
-                            &map_implicitly_consumed_node_arg_to_ep,
-                            &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
-                            this](const NodeArg& input, size_t arg_idx) {
-        const auto& name = input.Name();
+        // Add location information if applicable for the provided input def
+        auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+                              &set_node_arg_has_explicit_consumer,
+                              &map_implicitly_consumed_node_arg_to_ep,
+                              &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
+                              this](const NodeArg& input, size_t arg_idx) {
+          const auto& name = input.Name();
 
-        bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
-                                               [&name](const NodeArg* value) {
-                                                 return value && value->Name() == name;
-                                               }) != outer_scope_node_args_.end();
-        bool is_subgraph = (parent_node_ != nullptr);
+          bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
+          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
+                                                 [&name](const NodeArg* value) {
+                                                   return value && value->Name() == name;
+                                                 }) != outer_scope_node_args_.end();
+          bool is_subgraph = (parent_node_ != nullptr);
 
-        // If it's a graph input or outer scope node arg, set its plan.
-        // NOTE: Copy nodes should have already been added if a graph input is fed as input
-        // to nodes assigned to different providers.
+          // If it's a graph input or outer scope node arg, set its plan.
+          // NOTE: Copy nodes should have already been added if a graph input is fed as input
+          // to nodes assigned to different providers.
 
-        if (is_graph_input || is_outer_scope_arg) {
-          OrtValueIndex index = Index(name);
+          if (is_graph_input || is_outer_scope_arg) {
+            OrtValueIndex index = Index(name);
 
-          if (!is_implicit_input) {
-            OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
-            set_node_arg_has_explicit_consumer.insert(index);
-          } else {  // implicit input
-            // Only process an implicit input if there are explicit consumers at this graph level
-            // If there is an explicit consumer, the location MUST be where it is consumed
-            // and not where it is located in the outer scope.
-            // It is okay if we process a node consuming this arg as an implicit input
-            // ahead of a node that is an explicit consumer, because we will just reset
-            // this location in the 'if' branch above.
+            if (!is_implicit_input) {
+              OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+              set_node_arg_has_explicit_consumer.insert(index);
+            } else {  // implicit input
+              // Only process an implicit input if there are explicit consumers at this graph level
+              // If there is an explicit consumer, the location MUST be where it is consumed
+              // and not where it is located in the outer scope.
+              // It is okay if we process a node consuming this arg as an implicit input
+              // ahead of a node that is an explicit consumer, because we will just reset
+              // this location in the 'if' branch above.
 
-            // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
-            // then set its location to be its corresponding location in the outer scope.
-            // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
-            // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
-            if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
-              auto iter = outer_scope_node_arg_to_location_map_.find(name);
-              bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
+              // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
+              // then set its location to be its corresponding location in the outer scope.
+              // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
+              // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
+              if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
+                auto iter = outer_scope_node_arg_to_location_map_.find(name);
+                bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
 
-              if (!is_graph_input) {
-                // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
-                // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
-                // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
-                // called in FinalizeSessionStateImpl() in SessionState.
-                ORT_ENFORCE(found_in_outer_scope_location_map,
-                            "There is no location for this node arg in the outer scope location map");
-              }
+                if (!is_graph_input) {
+                  // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
+                  // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
+                  // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
+                  // called in FinalizeSessionStateImpl() in SessionState.
+                  ORT_ENFORCE(found_in_outer_scope_location_map,
+                              "There is no location for this node arg in the outer scope location map");
+                }
 
                 if (found_in_outer_scope_location_map) {
                   plan_.SetLocation(static_cast<size_t>(index), iter->second);
@@ -2437,7 +2285,6 @@ void DeviceBasedPartitioner::DumpPartition() const {
 Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                               const ExecutionProviders& execution_providers,
                                               std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
-
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
 

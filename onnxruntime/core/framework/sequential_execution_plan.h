@@ -110,7 +110,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   class ExecutionStep {
    public:
     virtual ~ExecutionStep() {}
-    virtual Status Execute(StreamExecutionContext* ctx,
+    virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
                            SessionScope& session_scope,
                            const bool& terminate_flag,

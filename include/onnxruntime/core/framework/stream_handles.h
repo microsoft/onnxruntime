@@ -61,7 +61,11 @@ class Stream {
 
   // return the timestamp when the last synchronization happened between target stream and current stream.
   // return 0 if no synchonization happened.
+  // if target_stream is nullptr, it means it is a sequence running on device doesn't support Stream (i.e. CPU)
+  // we can safely return 0 in that case to save a lookup.
   uint64_t GetLastSyncTimestampWithTargetStream(Stream* target_stream) const {
+    if (!target_stream)
+      return 0;
     auto it = other_stream_clock_.find(target_stream);
     return it == other_stream_clock_.end() ? 0 : it->second;
   }
@@ -74,6 +78,8 @@ class Stream {
 
   // bump the current timestamp
   // When a notification get activated, bump the snapshot in its owner.
+  // Stream is not shared across threads, BumpTimeStampAndReturn will only be invoked on the current thread
+  // where the stream is executed on, so there is no race condition.
   uint64_t BumpTimeStampAndReturn() {
     return ++timestamp_;
   }
@@ -90,7 +96,7 @@ class Stream {
     }
   }
 
- protected:
+ private:
   StreamHandle handle_;
   const OrtDevice& device_;
   uint64_t timestamp_{0};
