@@ -2,7 +2,7 @@
 title: Vitis AI (Xilinx)
 description: Instructions to execute ONNX Runtime on Xilinx devices with the Vitis AI execution provider
 grand_parent: Execution Providers
-parent: Community-maintained Providers
+parent: Community-maintained
 nav_order: 7
 redirect_from: /docs/reference/execution-providers/Vitis-AI-ExecutionProvider
 ---

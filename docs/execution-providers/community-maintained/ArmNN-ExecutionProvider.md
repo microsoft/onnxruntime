@@ -2,7 +2,7 @@
 title: Arm NN
 description: Instructions to execute ONNX Runtime with Arm NN on Armv8 cores
 grand_parent: Execution Providers
-parent: Community-maintained Providers
+parent: Community-maintained
 nav_order: 2
 redirect_from: /docs/reference/execution-providers/ArmNN-ExecutionProvider
 ---

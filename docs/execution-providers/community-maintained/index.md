@@ -1,5 +1,5 @@
 ---
-title: Community-maintained Providers
+title: Community-maintained
 parent: Execution Providers
 has_children: true
 nav_order: 11
