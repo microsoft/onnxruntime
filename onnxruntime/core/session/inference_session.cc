@@ -1652,7 +1652,7 @@ common::Status InferenceSession::ValidateInputs(gsl::span<const std::string> fee
     }
 
     auto expected_type = iter->second.ml_data_type;
-    auto& input_ml_value = feeds.at(i);
+    auto& input_ml_value = feeds[i];
     if (input_ml_value.IsTensor()) {
       if (!expected_type->IsTensorType()
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -1988,7 +1988,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
     // info all execution providers InferenceSession:Run ended
     for (auto* xp : exec_providers_to_stop) {
-      auto status = xp->OnRunEnd(/*sync_stream*/ true);
+      auto status = xp->OnRunEnd(run_options.synchronize_execution_providers);
       ORT_CHECK_AND_SET_RETVAL(status);
     }
 

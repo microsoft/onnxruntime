@@ -4,6 +4,7 @@
 #include "qlinear_concat.h"
 #include "qlinear_lookup_table.h"
 
+#include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
@@ -158,9 +159,9 @@ Status QLinearConcat::Compute(OpKernelContext* ctx) const {
     uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw()) + initial_output_offset;
     for (int64_t cur_in_offset = 0; cur_in_offset < prep.num_elements; cur_in_offset += input_axis_pitch) {
       if (is_copy) {
-        memcpy(output, input + cur_in_offset, gsl::narrow<size_t>(input_axis_pitch));
+        memcpy(output, input + cur_in_offset, narrow<size_t>(input_axis_pitch));
       } else {
-        QLinearLookupTableTransform(input + cur_in_offset, table, output, gsl::narrow<size_t>(input_axis_pitch));
+        QLinearLookupTableTransform(input + cur_in_offset, table, output, narrow<size_t>(input_axis_pitch));
       }
       output += p.output_axis_pitch;
     }

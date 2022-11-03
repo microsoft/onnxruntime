@@ -63,8 +63,8 @@ def test_fast_gelu(x_size, bias_size, dtype):
 
 
 def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
-    x_size = [batch_size, seq_len, hidden_size * 3]
-    bias_size = hidden_size * 3
+    x_size = [batch_size, seq_len, hidden_size * 4]
+    bias_size = hidden_size * 4
     np.random.seed(0)
     x = np.random.rand(*x_size).astype(dtype)
     bias = np.random.rand(bias_size).astype(dtype)

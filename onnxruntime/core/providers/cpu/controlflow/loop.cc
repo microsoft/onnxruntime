@@ -23,7 +23,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/providers/utils.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -470,7 +470,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
 
   // first dimension is number of iterations
   dims.push_back(gsl::narrow_cast<int64_t>(per_iteration_output.size()));
-  std::copy(per_iteration_dims.cbegin(), per_iteration_dims.cend(), std::back_inserter(dims));
+  std::copy(per_iteration_dims.begin(), per_iteration_dims.end(), std::back_inserter(dims));
 
   TensorShape output_shape{dims};
   Tensor* output = context_.Output(output_index, output_shape);
@@ -604,7 +604,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         const auto& dims = tensor_shape.GetDims();
 
         // copy to output dims and use 0 for any symbolic dim
-        std::for_each(dims.cbegin(), dims.cend(),
+        std::for_each(dims.begin(), dims.end(),
                       [&output_dims](const int64_t dim) { output_dims.push_back(dim < 0 ? 0 : dim); });
       } else {
         // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,

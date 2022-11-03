@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/split.h"
+
+#include "core/common/gsl.h"
+#include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
-#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,11 +30,11 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
   axis = HandleNegativeAxis(axis_value, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
 
-  before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
-  after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
+  before_dims = narrow<int>(input_shape.SizeToDimension(axis));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(axis + 1));
 
   std::vector<int64_t> split_sizes_values(split_sizes);
   split_sizes.clear();
@@ -125,7 +126,7 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
 
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
-    auto split_size = gsl::narrow<int>(split_sizes[i]);
+    auto split_size = narrow<int>(split_sizes[i]);
     output_dimensions[axis] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});

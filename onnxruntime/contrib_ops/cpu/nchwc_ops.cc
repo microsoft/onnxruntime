@@ -3,6 +3,8 @@
 
 #include <core/common/safeint.h>
 #include "nchwc_ops.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -54,7 +56,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
     // elements, so that operations involving a smaller number of channels will
     // process more rows per worker.
     constexpr ptrdiff_t worker_goal = 48 * 1024;
-    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal /  gsl::narrow<ptrdiff_t>(nchwc_channels), 1);
+    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / narrow<ptrdiff_t>(nchwc_channels), 1);
     worker_count = std::max<ptrdiff_t>(total_work / work_per_worker, 1);
   } else {
     // Each iteration produces one spatial_size chunk of NCHWc blocks.
@@ -258,27 +260,27 @@ std::vector<float> NchwcUpsample::ComputeInterpolation(int64_t input_length,
                                                        int64_t output_length,
                                                        int64_t scale) const {
   std::vector<float> interpolation;
-  interpolation.resize(gsl::narrow<size_t>(output_length));
+  interpolation.resize(narrow<size_t>(output_length));
 
   if (scale == 1) {
     // Identity map for unscaled.
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[gsl::narrow<size_t>(o)] = static_cast<float>(o);
+      interpolation[narrow<size_t>(o)] = static_cast<float>(o);
     }
   } else if (transformation_mode_ == TransformationMode::ALIGN_CORNERS) {
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[gsl::narrow<size_t>(o)] =
+      interpolation[narrow<size_t>(o)] =
           static_cast<float>(o) * static_cast<float>(input_length - 1) / static_cast<float>(output_length - 1);
     }
   } else if (transformation_mode_ == TransformationMode::HALF_PIXEL) {
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[gsl::narrow<size_t>(o)] =
+      interpolation[narrow<size_t>(o)] =
           std::max(0.0f, (static_cast<float>(o) + 0.5f) / static_cast<float>(scale) - 0.5f);
     }
   } else {
     // Default to TransformationMode::ASYMMETRIC.
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[gsl::narrow<size_t>(o)] = static_cast<float>(o) / static_cast<float>(scale);
+      interpolation[narrow<size_t>(o)] = static_cast<float>(o) / static_cast<float>(scale);
     }
   }
 
@@ -353,7 +355,7 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
               static_cast<size_t>(input_h),
               static_cast<size_t>(input_w),
               static_cast<size_t>(output_w),
-              interpolation_h[gsl::narrow<size_t>(row_index)],
+              interpolation_h[narrow<size_t>(row_index)],
               interpolation_w.data(),
               x_channel_base,
               y_row);
