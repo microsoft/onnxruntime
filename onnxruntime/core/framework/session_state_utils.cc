@@ -178,10 +178,11 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     size_t total_normals = 0;
 
     if (should_randomize && (tensor_proto.name().find("Attention_") != std::string::npos ||
-        tensor_proto.name().find("MatMul_") != std::string::npos ||
-        tensor_proto.name().find("dense.bias") != std::string::npos ||
-        tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
-        tensor_proto.name().find("LayerNorm.bias") != std::string::npos)) {
+                             tensor_proto.name().find("MatMul_") != std::string::npos ||
+                             tensor_proto.name().find("dense.bias") != std::string::npos ||
+                             tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
+                             tensor_proto.name().find("LayerNorm.bias") != std::string::npos ||
+                             tensor_proto.name().find("embeddings.weight") != std::string::npos)) {
       //copy_status = data_transfer_mgr.Randomize(*p_tensor);
       ORT_ENFORCE(p_deserialize_tensor->SizeInBytes() == (static_cast<size_t>(p_deserialize_tensor->Shape().Size()) * 2));
       auto* data = reinterpret_cast<uint16_t*>(p_deserialize_tensor->MutableDataRaw());
