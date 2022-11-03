@@ -75,3 +75,7 @@ Before full qualified name can be got from exporter, this envrionment variables 
 	```
 	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
 	```
+
+### Memory Optimization ###
+
+Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
