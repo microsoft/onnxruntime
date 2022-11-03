@@ -192,7 +192,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         if ((data[i] & 0x7C00) == 0) {
           //ORT_THROW("Sub-normal found: ", data[i]);
           ++total_subnormals;
-          data[i] = 0;
+          //data[i] = 0;
         } else {
           ++total_normals;
           // std::cout << "Normal fp16" << std::endl;
