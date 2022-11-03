@@ -64,7 +64,7 @@ __global__ void AdamWComputeMode0(
   PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
                  momentum_1_chunk_ptr, momentum_2_chunk_ptr, chunk_size);
 
-#pragma unroll(4)
+#pragma unroll 4
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
     float w = static_cast<float>(weight_chunk_ptr[i]);
     float g = static_cast<float>(grad_chunk_ptr[i]);
@@ -112,7 +112,7 @@ __global__ void AdamWComputeMode1(
   PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
                  momentum_1_chunk_ptr, momentum_2_chunk_ptr, chunk_size);
 
-#pragma unroll(4)
+#pragma unroll 4
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
     float w = static_cast<float>(weight_chunk_ptr[i]);
     float g = static_cast<float>(grad_chunk_ptr[i]);

@@ -8,8 +8,27 @@ using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-    public partial class InferenceTest
+  /// <summary>
+  /// This is compensate for the absence of string.Contains() in .NET Standard 2.0
+  /// Contains(String, StringComparison)
+  /// </summary>
+  public static class StringExtensions
+  {
+    public static bool Contains(this String str, String substring,
+                                StringComparison comp)
     {
+      if (substring == null)
+        throw new ArgumentNullException("substring",
+                                     "substring cannot be null.");
+      else if (!Enum.IsDefined(typeof(StringComparison), comp))
+        throw new ArgumentException("comp is not a member of StringComparison",
+                                 "comp");
+
+      return str.IndexOf(substring, comp) >= 0;
+    }
+  }
+  public partial class InferenceTest
+  {
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
 
@@ -359,7 +378,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
-                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." },
+                { "BERT-Squad-int8", "training domain"},
+                { "YOLOv3-12-int8", "training_domain"}
             };
 
             // The following models fails on nocontribops win CI
@@ -407,6 +428,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
                 skipModels["test_ssd"] = "System out of memory";
                 skipModels["roberta_sequence_classification"] = "System out of memory";
+                // models from model zoo
+                skipModels["VGG 19"] = "bad allocation";
+                skipModels["VGG 19-caffe2"] = "bad allocation";
+                skipModels["VGG 19-bn"] = "bad allocation";
+                skipModels["VGG 16"] = "bad allocation";
+                skipModels["VGG 16-bn"] = "bad allocation";
+                skipModels["VGG 16-fp32"] = "bad allocation";
             }
 
             return skipModels;
@@ -423,7 +451,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
+#if USE_CUDA
                     if (!skipModels.ContainsKey(modelDir.Name))
+#else
+                    if (!(skipModels.ContainsKey(modelDir.Name) || 
+                          modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                          modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
+#endif
                     {
                         yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
@@ -441,7 +475,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
+#if USE_CUDA
                     if (skipModels.ContainsKey(modelDir.Name))
+#else
+                    if (skipModels.ContainsKey(modelDir.Name) ||
+                        modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                        modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
+#endif
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
                         yield return new object[] { modelDir.Parent.FullName, modelDir.Name };

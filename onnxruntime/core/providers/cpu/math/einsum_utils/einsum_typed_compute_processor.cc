@@ -3,6 +3,8 @@
 
 #include "einsum_typed_compute_processor.h"
 
+#include "core/common/span_utils.h"
+
 namespace onnxruntime {
 
 template <typename T>
@@ -83,7 +85,7 @@ static bool IsTransposeReshapeForEinsum(const gsl::span<const size_t>& perm,
       return false;
     last_permuted_axis = perm[i];
   }
-  new_shape.assign(input_dims.cbegin(), input_dims.cend());
+  new_shape.assign(input_dims.begin(), input_dims.end());
   for (size_t i = 0; i < perm.size(); ++i) {
     new_shape[i] = input_dims[perm[i]];
   }
@@ -162,13 +164,13 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
         auto tensor_to_be_reduced_dims = current_left ? current_left->Shape().GetDims() : left_dims;
 
         current_left = EinsumOp::ReduceSum<T>(
-            tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
+            tensor_to_be_reduced, tensor_to_be_reduced_dims, AsSpan({i}), allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       } else if (has_right_dim) {
         const Tensor& tensor_to_be_reduced = current_right ? *current_right : right;
         auto tensor_to_be_reduced_dims = current_right ? current_right->Shape().GetDims() : right_dims;
 
         current_right = EinsumOp::ReduceSum<T>(
-            tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
+            tensor_to_be_reduced, tensor_to_be_reduced_dims, AsSpan({i}), allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       }
     } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
       // Both the left and right operands have non-trivial dimension value along this axis

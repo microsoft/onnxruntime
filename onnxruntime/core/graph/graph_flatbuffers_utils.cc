@@ -1,16 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/graph/graph.h>
+#include "graph_flatbuffers_utils.h"
+
+#include "flatbuffers/flatbuffers.h"
+
+#include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
-#include "graph_flatbuffers_utils.h"
-#include "flatbuffers/flatbuffers.h"
+#include "core/graph/graph.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
 
 namespace onnxruntime::fbs::utils {
 
@@ -61,6 +63,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   return Status::OK();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       const ONNX_NAMESPACE::SparseTensorProto& initializer,
                                       const Path& model_path,
@@ -87,6 +90,7 @@ Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
   return Status::OK();
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 #define GET_FBS_ATTR(BUILDER, TYPE, DATA_NAME, DATA) \
   fbs::AttributeBuilder attr_builder(BUILDER);       \
@@ -205,7 +209,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
       // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
       // use intptr_t as OFFSET_TYPE is signed. in theory you could get a weird looking value if the address uses the
       // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
-      auto offset = gsl::narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
+      auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
 
       ONNX_NAMESPACE::StringStringEntryProto* entry = initializer.mutable_external_data()->Add();
       entry->set_key("location");
@@ -225,6 +229,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
   return Status::OK();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
                                       SparseTensorProto& initializer) {
   SparseTensorProto loaded_initializer;
@@ -248,6 +253,7 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
   swap(loaded_initializer, initializer);
   return Status::OK();
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               ONNX_NAMESPACE::AttributeProto& attr_proto,

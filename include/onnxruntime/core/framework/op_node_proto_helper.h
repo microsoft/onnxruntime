@@ -7,7 +7,7 @@
 #include "core/common/status.h"
 #include "core/framework/tensor_shape.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #endif
 
 #ifdef __has_attribute

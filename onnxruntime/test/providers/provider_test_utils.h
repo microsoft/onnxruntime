@@ -8,7 +8,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/optional.h"
@@ -288,7 +288,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           gsl::as_bytes(gsl::make_span(values)),
                            gsl::make_span(indices),
                            CheckParams(), dim_params);
   }
@@ -338,7 +338,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCsrTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           gsl::as_bytes(gsl::make_span(values)),
                            gsl::make_span(inner_indices),
                            gsl::make_span(outer_indices),
                            CheckParams(), dim_params);
@@ -727,6 +727,17 @@ class OpTester {
   enum class ExpectResult { kExpectSuccess,
                             kExpectFailure };
 
+  OpTester& Config(const SessionOptions& sess_options);
+  OpTester& Config(ExpectResult expect_result, const std::string& expected_failure_string);
+  OpTester& ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types);
+  OpTester& Config(const RunOptions* run_options);
+  OpTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers);
+  OpTester& Config(const Graph::ResolveOptions& resolve_options);
+
+  void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,
+                     size_t* number_of_shared_pre_packed_weights_counter = nullptr);
+
+  // [[deprecated("Use builder pattern Config* and RunWithConfig")]]
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
@@ -734,6 +745,7 @@ class OpTester {
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
            const Graph::ResolveOptions& resolve_options = {});
 
+  // [[deprecated("Use builder pattern Config* and RunWithConfig")]]
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
@@ -833,6 +845,19 @@ class OpTester {
                                      const std::vector<std::string>& output_names,
                                      const std::string& provider_type,
                                      bool allow_released_onnx_opset_only = true);
+
+  struct RunContext {
+    SessionOptions session_options{};
+    ExpectResult expect_result{ExpectResult::kExpectSuccess};
+    std::string expected_failure_string{};
+    std::unordered_set<std::string> excluded_provider_types = {};
+    const RunOptions* run_options{};
+    bool run_with_specified_eps{false};
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers{};
+    Graph::ResolveOptions resolve_options{};
+  };
+
+  RunContext ctx_{};
 
   const char* op_;
   std::vector<Data> input_data_;
@@ -1193,7 +1218,7 @@ inline std::vector<int64_t> GetShapeVector(const TensorShape& shape) {
   std::vector<int64_t> result;
   const auto dims = shape.GetDims();
   result.resize(dims.size());
-  result.assign(dims.cbegin(), dims.cend());
+  result.assign(dims.begin(), dims.end());
   return result;
 }
 

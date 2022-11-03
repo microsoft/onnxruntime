@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <gsl/gsl>
 #include <memory>
 #include <vector>
 #include "gtest/gtest.h"
+#include "core/common/gsl.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
 
@@ -87,7 +87,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   ASSERT_EQ(expected_output_shape, result_ts.GetShape());
   const auto* result_vals = sequences.GetTensorData<int32_t>();
   auto result_span = gsl::make_span(result_vals, expected_output.size());
-  ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.cbegin(), result_span.cend()));
+  ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
 }
 
 TEST(BeamSearchTest, GptBeamSearchFp16) {
@@ -171,7 +171,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
     ASSERT_EQ(expected_output_shape, result_ts.GetShape());
     const auto* result_vals = sequences.GetTensorData<int32_t>();
     auto result_span = gsl::make_span(result_vals, expected_output.size());
-    ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.cbegin(), result_span.cend()));
+    ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
   }
 }
 

@@ -14,8 +14,6 @@ import sys
 from distutils.version import LooseVersion
 from pathlib import Path
 
-from amd_hipify import amd_hipify
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -1467,24 +1465,17 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def setup_rocm_build(args, configs):
-
+def setup_rocm_build(args):
     rocm_home = None
-
     if args.use_rocm:
         print("rocm_home = {}".format(args.rocm_home))
         rocm_home = args.rocm_home or None
-
         rocm_home_not_valid = rocm_home and not os.path.exists(rocm_home)
-
         if rocm_home_not_valid:
             raise BuildError(
                 "rocm_home paths must be specified and valid.",
                 "rocm_home='{}' valid={}.".format(rocm_home, rocm_home_not_valid),
             )
-
-        for config in configs:
-            amd_hipify(get_config_build_dir(args.build_dir, config))
     return rocm_home or ""
 
 
@@ -2116,7 +2107,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml
+    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2152,6 +2143,9 @@ def build_nuget_package(
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
+    elif use_snpe:
+        execution_provider = '/p:ExecutionProvider="snpe"'
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Snpe"'
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2374,7 +2368,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + str(diff))
 
-            diff_file(opkernel_doc_path, " with CPU and CUDA execution providers enabled")
+            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2395,7 +2389,7 @@ def main():
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
-    if not (args.update or args.clean or args.build or args.test):
+    if not (args.update or args.clean or args.build or args.test or args.gen_doc):
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
@@ -2506,7 +2500,7 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_build(args, configs)
+    rocm_home = setup_rocm_build(args)
 
     # if using cann, setup cann paths
     cann_home = setup_cann_vars(args)
@@ -2792,13 +2786,20 @@ def main():
                 args.use_dnnl,
                 args.use_tvm,
                 args.use_winml,
+                args.use_snpe,
             )
 
     if args.test and args.build_nuget:
         run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
 
-    if args.gen_doc and (args.build or args.test):
-        generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+    if args.gen_doc:
+        # special case CI where we create the build config separately to building
+        if args.update and not args.build:
+            pass
+        else:
+            # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
+            # documentation generation as a separate task post-build
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
 
     if args.gen_api_doc and (args.build or args.test):
         print("Generating Python doc for ORTModule...")

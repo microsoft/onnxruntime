@@ -14,7 +14,6 @@
 
 #include <iomanip>
 #include <fstream>
-#include "gsl/gsl"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -25,9 +24,9 @@ constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kDnnlExecutionProvider, true} {
-  
+
   InitProviderOrtApi();
-  
+
   AllocatorCreationInfo default_memory_info(
       {[](int) {
         return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
@@ -312,7 +311,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
 
     compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      
+
       ort_dnnl::DnnlSubgraphPrimitive* subgraph_primitive = reinterpret_cast<ort_dnnl::DnnlSubgraphPrimitive*>(state);
 
       const size_t subgraph_num_inputs = subgraph_primitive->GetOrderedInputs().size();

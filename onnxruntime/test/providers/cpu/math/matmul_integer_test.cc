@@ -266,6 +266,11 @@ TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1",
                          {2, 2, 4},
