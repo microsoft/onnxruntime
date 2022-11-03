@@ -91,11 +91,11 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (should_randomize_) {
     std::vector<uint16_t> host_data(output->SizeInBytes(), 0);
-    cudaMemcpyAsync(host_data.data(), output->MutableDataRaw(), output->SizeInBytes(), cudaMemcpyDeviceToHost);
+    cudaMemcpyAsync(host_data.data(), random_data_, output->SizeInBytes(), cudaMemcpyDeviceToHost);
 
     for (size_t i = 0; i < static_cast<size_t>(output->Shape().Size()); ++i) {
       if ((host_data[i] & 0x7C00) == 0) {
-        ORT_THROW("Sub-normal found: ", host_data[i]);
+        ORT_THROW("Sub-normal found 2: ", host_data[i]);
       }
     }
 
