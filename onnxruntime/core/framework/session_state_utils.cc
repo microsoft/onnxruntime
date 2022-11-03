@@ -186,7 +186,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_ENFORCE(p_deserialize_tensor->SizeInBytes() == (static_cast<size_t>(p_deserialize_tensor->Shape().Size()) * 2));
       auto* data = reinterpret_cast<uint16_t*>(p_deserialize_tensor->MutableDataRaw());
 
-      std::cout << "Checking and correcting sub-normals" << std::endl;
+      // std::cout << "Checking and correcting sub-normals" << std::endl;
 
       for (size_t i = 0; i < static_cast<size_t>(p_deserialize_tensor->Shape().Size()); ++i) {
         if ((data[i] & 0x7C00) == 0) {
@@ -200,6 +200,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       }
 
       std::cout << "Percentage of subnormals: " << (100.f * total_subnormals / (total_normals + total_subnormals)) << std::endl;
+      copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
 
     } else {
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
