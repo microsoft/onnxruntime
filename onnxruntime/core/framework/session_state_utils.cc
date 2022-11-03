@@ -192,14 +192,14 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         if ((data[i] & 0x7C00) == 0) {
           //ORT_THROW("Sub-normal found: ", data[i]);
           ++total_subnormals;
-          //data[i] = 0;
+          data[i] = 0;
         } else {
           ++total_normals;
           // std::cout << "Normal fp16" << std::endl;
         }
       }
 
-      std::cout << "Percentage of subnormals 2: " << (100.f * total_subnormals / (total_normals + total_subnormals)) << std::endl;
+      std::cout << "Percentage of subnormals 3: " << (100.f * total_subnormals / (total_normals + total_subnormals)) << std::endl;
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
 
     } else {
