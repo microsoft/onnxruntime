@@ -3,10 +3,6 @@
 
 #pragma once
 
-/*
-xnnpack_unpool can only work with xnnpack_maxpool, its index is totally different from onnxruntime's.
-*/
-
 #include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/nn/pool_attributes.h"

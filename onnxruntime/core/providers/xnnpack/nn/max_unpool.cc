@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "unpool.h"
+#include "max_unpool.h"
+#include <cstring>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
@@ -104,7 +105,7 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
 
   auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*input_defs[0]->Shape());
   int x_dtype = 0;
-  ORT_ENFORCE(GetType(*input_defs[0], x_dtype));
+  GetType(*input_defs[0], x_dtype);
   switch (x_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       op_type_ = OpComputeType::op_compute_type_fp32;
@@ -117,7 +118,7 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
       break;
     default:
       auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-      ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8, but got ", stype);
+      ORT_THROW("unsupported op in MaxUnpool, we have FLOAT|UINT8|INT8, but get ", stype);
   }
 
   // create NCHW shape to calculate most of the output shape. 'N' is set in Compute.
@@ -200,17 +201,10 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   const int64_t oHW = output_dims[1] * output_dims[2];
 
   // No computation is involved, just copy and paste so we convert data from float to int32 to make it faster
-  const auto* X_data_x32 = reinterpret_cast<const int32_t*>(X.DataRaw());
-  // for any int8/uint8
-  const auto* X_data_x8 = reinterpret_cast<const int8_t*>(X.DataRaw());
+  const void* X_data = X.DataRaw();
   const auto* I_data = indice.Data<int64_t>();
-  auto out_x32 = gsl::make_span(reinterpret_cast<int32_t*>(Y->MutableDataRaw()), Y->Shape().Size());
-  auto out_x8 = gsl::make_span(reinterpret_cast<int8_t*>(Y->MutableDataRaw()), Y->Shape().Size());
-  if (op_type_ != OpComputeType::op_compute_type_fp32) {
-    std::fill_n(out_x8.data(), out_x8.size(), int8_t(0));
-  } else {
-    std::fill_n(out_x32.data(), out_x32.size(), int32_t(0));
-  }
+  void* Y_data = Y->MutableDataRaw();
+  std::memset(Y_data, 0, Y->SizeInBytes());
 
   using onnxruntime::TensorOpCost;
   using onnxruntime::concurrency::ThreadPool;
@@ -221,9 +215,10 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
         TensorOpCost{static_cast<double>(2),
                      static_cast<double>(1),
                      static_cast<double>(10)},
-        [X_data_x32, out_x32, I_data, HW, oHW, Channel](std::ptrdiff_t first, std::ptrdiff_t last) {
+        [X_data, Y_data, I_data, HW, oHW, Channel](std::ptrdiff_t first, std::ptrdiff_t last) {
           using xType = typename XbitType<32>::XType;
-          ComputeMaxUnpool<xType>(X_data_x32, out_x32.data(), I_data, HW, oHW, Channel, first, last);
+          const auto* x32 = static_cast<const xType*>(X_data);
+          ComputeMaxUnpool<xType>(x32, (xType*)Y_data, I_data, HW, oHW, Channel, first, last);
         });
 
   } else {
@@ -233,9 +228,10 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
         TensorOpCost{static_cast<double>(2),
                      static_cast<double>(1),
                      static_cast<double>(10)},
-        [X_data_x8, out_x8, I_data, HW, oHW, Channel](std::ptrdiff_t first, std::ptrdiff_t last) {
+        [X_data, Y_data, I_data, HW, oHW, Channel](std::ptrdiff_t first, std::ptrdiff_t last) {
           using xType = typename XbitType<8>::XType;
-          ComputeMaxUnpool<xType>(X_data_x8, out_x8.data(), I_data, HW, oHW, Channel, first, last);
+          const auto* x8 = static_cast<const xType*>(X_data);
+          ComputeMaxUnpool<xType>(x8, (xType*)Y_data, I_data, HW, oHW, Channel, first, last);
         });
   }
   return Status::OK();

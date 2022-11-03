@@ -178,7 +178,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
       break;
     default:
       auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-      ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8, but got ", stype);
+      ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8|INT8, but get ", stype);
   }
 
   const auto* x_shape = input_defs[0]->Shape();
