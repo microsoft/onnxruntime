@@ -111,7 +111,7 @@ stages:
 
   - job: Build_NNAPI_EP
     pool: Linux-CPU-2019
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
     workspace:
       clean: all
     condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
