@@ -474,17 +474,31 @@ Status GreedySearchProcessLogits(
     const Tensor& input = next_token_probs_value.Get<Tensor>();
 
     std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(parameters->seed)};
-    Tensor sampled_idx;
-    ORT_RETURN_IF_ERROR(MultinomialComputeShared<int64_t>(allocator,
+
+    int64_t sampled_idx_dims[] = {static_cast<int64_t>(batch_size), 1};
+    TensorShape sampled_idx_shape(&sampled_idx_dims[0], 2);
+
+    gsl::span<int64_t>& next_token_idx = greedy_state->next_tokens_cpu;
+
+    OrtValue sampled_idx_ov;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(),
+                         sampled_idx_shape,
+                         next_token_idx.data(),
+                         allocator->Info(),
+                         sampled_idx_ov);
+    Tensor* sampled_idx = sampled_idx_ov.GetMutable<Tensor>();
+
+    AllocatorPtr allocator_temp = allocator;
+    ORT_RETURN_IF_ERROR(MultinomialComputeShared<int64_t>(allocator_temp,
                                                           input,
                                                           batch_size,
                                                           vocab_size,
                                                           1,
                                                           generator,
-                                                          sampled_idx));
-
-    gsl::span<const int64_t> next_token_indices = sampled_idx.DataAsSpan<int64_t>();
-    gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
+                                                          *sampled_idx));
+#ifdef DEBUG_GENERATION
+    dumper->Print("sampled_idx", *sampled_idx);
+#endif
   } else {
     // next_tokens = torch.argmax(scores, dim=-1)
     int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
@@ -598,7 +612,6 @@ Status UpdateGptFeeds(
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
-
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
@@ -614,7 +627,6 @@ Status UpdateGptFeeds(
     input_ids_data[i] = beam_next_tokens[i];
   }
   next_inputs[0] = input_ids;
-
   if (increase_position) {
     // Update position IDs
     int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
@@ -623,7 +635,6 @@ Status UpdateGptFeeds(
     }
   }
   next_inputs[1] = position_ids;
-
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
   const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();

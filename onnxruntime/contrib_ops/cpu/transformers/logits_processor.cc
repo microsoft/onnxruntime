@@ -205,7 +205,12 @@ void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   T* p = next_token_scores.scores.data();
   for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
     *p /= temperature_;
+    ++p;
   }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("TemperatureLogitsProcessor", next_token_scores);
+#endif
 }
 
 template <typename T>
@@ -229,18 +234,18 @@ void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
     std::vector<T> sorted_scores(beam_token_scores.begin(), beam_token_scores.end());
 
-    // bugbug: decending sort
+    // decending sort
     std::vector<size_t> sorted_indices(beam_token_scores.size());
     std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
     std::sort(sorted_indices.begin(),
               sorted_indices.end(),
               [&sorted_scores](size_t i1, size_t i2) {
-                return sorted_scores[i1] < sorted_scores[i2];
+                return sorted_scores[i1] > sorted_scores[i2];
               });
 
-    std::sort(sorted_scores.begin(), sorted_scores.end());
+    std::sort(sorted_scores.begin(), sorted_scores.end(), std::greater<T>());
     std::vector<T> cumulative_probs(vocab_size);
-    // bugbug
+    // todo: batch
     ORT_UNUSED_PARAMETER(SoftmaxCPU<T>(1,
                                        vocab_size,
                                        sorted_scores.data(),
@@ -264,6 +269,10 @@ void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
       beam_token_scores[index_to_remove] = filter_value_;
     }
   }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("TopPLogitsProcessor", next_token_scores);
+#endif
 }
 
 template <typename T>
@@ -285,6 +294,10 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
   for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
     *p -= presence_mask_[i] * presence_penalty_;
   }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("PresencePenaltyLogitsProcessor", next_token_scores);
+#endif
 }
 
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters,

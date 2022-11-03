@@ -225,7 +225,6 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
     }
     fetches.clear();
   }
-
   // Copy the sequences to output
   gsl::span<int32_t> output = output_sequences->MutableDataAsSpan<int32_t>();
   for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {

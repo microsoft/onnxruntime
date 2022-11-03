@@ -100,8 +100,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int64_t* d_output,
                                     int batch_size,
                                     int vocab_size,
-                                    cudaStream_t stream,
-                                    curandState_t* curandstate);
+                                    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

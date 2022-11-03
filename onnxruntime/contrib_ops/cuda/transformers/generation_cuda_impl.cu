@@ -501,8 +501,7 @@ __global__ void sampleMultinomialOnce(
     scalar_t* sampled,
     scalar_t* dist,
     int stride_dist, // dist->stride(0)
-    int stride_categories, // dist->stride(1)
-    curandState_t* curandstate
+    int stride_categories // dist->stride(1)
 ) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
@@ -515,6 +514,7 @@ __global__ void sampleMultinomialOnce(
   scalar_t zero = static_cast<scalar_t>(0);
   for (int curDist = blockIdx.x;
        curDist < distributions; curDist += gridDim.x) {
+
     // Each block handles one distribution
     // First pass, find the total sum of the distribution
     accscalar_t sum = accZero;
@@ -527,8 +527,7 @@ __global__ void sampleMultinomialOnce(
       sum = sum + static_cast<accscalar_t>(val);
     }
     // threadIdx.x == 0 has the sum value from this
-    // sum = cuda_utils::BlockReduceSum(sum, smem);
-    sum = BlockReduce(tmp_storage).Reduce(sum, cub::Sum());
+    sum = BlockReduce(tmp_storage).Reduce(sum, cub::Sum()); // sum = cuda_utils::BlockReduceSum(sum, smem);
     // Broadcast sum and sample value
     if (threadIdx.x == 0) {
       // Make sure the sum of our distribution didn't overflow
@@ -536,8 +535,7 @@ __global__ void sampleMultinomialOnce(
       // CUDA_KERNEL_ASSERT(sum > accZero);
       foundPos = 0;
       smem[0] = sum;
-      //smem[1] = sampled[curDist];
-      smem[1] = static_cast<accscalar_t>(curand_uniform(curandstate + blockIdx.x));
+      smem[1] = sampled[curDist];
     }
     __syncthreads();
     sum = smem[0];
@@ -622,8 +620,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int64_t* d_output,
                                     int batch_size,
                                     int vocab_size,
-                                    cudaStream_t stream,
-                                    curandState_t* curandstate)
+                                    cudaStream_t stream)
 {
   // Store the props in class variables
   int device;
@@ -639,7 +636,6 @@ void TorchMultinomialKernelLauncher(float* d_input,
   int requiredShared = requiredThreads * sizeof(float);
 
   // bugbug: randomize d_sampled
-
   dim3 block(requiredThreads);
   dim3 grid(std::min(batch_size, numSM * 4));
 
@@ -652,8 +648,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_sampled,
                                                 d_input,
                                                 vocab_size,
-                                                batch_size,
-                                                curandstate);
+                                                batch_size);
   } else {
     printf("Please add more cases for block size");
   }
