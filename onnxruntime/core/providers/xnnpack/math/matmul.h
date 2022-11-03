@@ -30,10 +30,7 @@ private:
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
   AllocatorPtr myAlloc;
-  CBLAS_TRANSPOSE trans_A_;
-  CBLAS_TRANSPOSE trans_B_;
 
-  std::optional<std::pair<float, float>> clip_min_max_;
   XnnpackOperator op0_ = nullptr;
 
 #ifdef XNN_CACHE_ENABLE

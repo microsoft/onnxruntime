@@ -55,14 +55,7 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
   return supported;
 }
 
-MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info) {
-  int64_t temp;
-  ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
-  trans_A_ = temp == 0 ? CblasNoTrans : CblasTrans;
-
-  ORT_ENFORCE(info.GetAttr<int64_t>("transB", &temp).IsOK());
-  trans_B_ = temp == 0 ? CblasNoTrans : CblasTrans;
-}
+MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info) {}
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                        /*out*/ bool& is_packed,
@@ -78,17 +71,17 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   is_packed = true;
 
   uint32_t flags = XNN_FLAG_TRANSPOSE_WEIGHTS;
-  float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-  float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
+  float output_min = -INFINITY;
+  float output_max = INFINITY;
   xnn_status status = xnn_status::xnn_status_uninitialized;
 
   struct xnn_operator* p = nullptr;
   b_shape_ = tensor.Shape();
   status = xnn_create_fully_connected_nc_f32(
-      trans_B_ == CblasNoTrans ? tensor.Shape()[0] : tensor.Shape()[1],  // size_t input_channels,
-      trans_B_ == CblasNoTrans ? tensor.Shape()[1] : tensor.Shape()[0],  // size_t output_channels,
-      trans_B_ == CblasNoTrans ? tensor.Shape()[0] : tensor.Shape()[1],  // size_t input_stride,
-      trans_B_ == CblasNoTrans ? tensor.Shape()[1] : tensor.Shape()[0],  // size_t output_stride,
+      tensor.Shape()[0],  // size_t input_channels,
+      tensor.Shape()[1],  // size_t output_channels,
+      tensor.Shape()[0],  // size_t input_stride,
+      tensor.Shape()[1],  // size_t output_stride,
       tensor.Data<float>(),  // const float* kernel,
       nullptr,               // const float* bias,
       output_min,
@@ -124,7 +117,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
 
   xnn_status status = xnn_setup_fully_connected_nc_f32(
       op0_.get(),
-      trans_A_ == CblasNoTrans ? a->Shape()[0] : a->Shape()[1],
+      a->Shape()[0],
       a->Data<float>(),
       y_data,
       t_pool);
