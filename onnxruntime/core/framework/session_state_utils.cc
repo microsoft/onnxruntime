@@ -180,7 +180,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
         tensor_proto.name().find("LayerNorm.bias") != std::string::npos)) {
       //copy_status = data_transfer_mgr.Randomize(*p_tensor);
-      ORT_ENFORCE(p_deserialize_tensor->SizeInBytes() == (p_deserialize_tensor->Shape().Size() * 2));
+      ORT_ENFORCE(p_deserialize_tensor->SizeInBytes() == (static_cast<size_t>(p_deserialize_tensor->Shape().Size()) * 2));
       auto* data = reinterpret_cast<uint16_t*>(p_deserialize_tensor->MutableDataRaw());
 
       for (size_t i = 0; i < p_deserialize_tensor->Shape().Size(); ++i) {
