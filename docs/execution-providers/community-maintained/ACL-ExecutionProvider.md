@@ -1,5 +1,5 @@
 ---
-title: ARM Compute Library (ACL)
+title: ARM Compute Library (Arm)
 description: Instructions to execute ONNX Runtime with the ACL Execution Provider
 grand_parent: Execution Providers
 parent: Community-maintained
