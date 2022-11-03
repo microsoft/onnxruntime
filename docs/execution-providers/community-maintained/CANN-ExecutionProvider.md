@@ -1,9 +1,9 @@
 ---
-title: CANN (Huawei)
+title: Huawei - CANN
 description: Instructions to execute ONNX Runtime with the Huawei CANN execution provider
 grand_parent: Execution Providers
 parent: Community-maintained
-nav_order: 3
+nav_order: 7
 redirect_from: /docs/reference/execution-providers/CANN-ExecutionProvider
 ---
 

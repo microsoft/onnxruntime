@@ -1,5 +1,5 @@
 ---
-title: RKNPU (Rockchip NPU)
+title: Rockchip - RKNPU
 description: Instructions to execute ONNX Runtime on Rockchip NPUs with the RKNPU execution provider
 grand_parent: Execution Providers
 parent: Community-maintained
