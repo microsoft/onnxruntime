@@ -88,17 +88,19 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         training_mode = None
         runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
         if runtime_pytorch_version >= version.parse("1.12"):
+            # FIXME: using privated modules
             from torch.onnx import _globals
 
             # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9, training_mode is still a bool type
             if isinstance(_globals.GLOBALS.training_mode, bool):
                 training_mode = _globals.GLOBALS.training_mode
             else:
-                assert _globals.GLOBALS.training_mode in [
+                if _globals.GLOBALS.training_mode not in [
                     torch.onnx.TrainingMode.EVAL,
                     torch.onnx.TrainingMode.TRAINING,
-                ], f"Unexpected training mode, expected EVAL or TRAINING, while it's {_globals.GLOBALS.training_mode} now"
-                training_mode = 1 if _globals.GLOBALS.training_mode == torch.onnx.TrainingMode.TRAINING else 0
+                ]:
+                    raise Exception(f"Unexpected training mode {_globals.GLOBALS.training_mode}")
+                training_mode = _globals.GLOBALS.training_mode == torch.onnx.TrainingMode.TRAINING
         else:
             training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
