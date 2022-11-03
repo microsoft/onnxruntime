@@ -691,7 +691,12 @@ else()
     message("AVX instruction set is not supported.")
   endif()
 
-  if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX))
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    message("F16C, FMA and AVX flags are not supported on Android for on-device training.")
+  endif()
+
+  if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX) OR
+    (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE))
     message("One or more AVX/F16C instruction flags are not supported. ")
     set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
   endif()
@@ -1873,11 +1878,6 @@ if (onnxruntime_USE_ROCM)
   if (NOT CMAKE_HIP_ARCHITECTURES)
     set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
-
-  # NOTE: Following flags are extracted from hipcc via HIPCC_VERBOSE=7 hipcc foo.cc
-  # -mllvm pass the next flag to underlying llvm, not clang itself
-  # -amdgpu-early-inline-all=true is critical for kernel code
-  set(CMAKE_HIP_FLAGS "-mllvm -amdgpu-early-inline-all=true -mllvm -amdgpu-function-calls=false ${CMAKE_HIP_FLAGS}")
 
   if (NOT onnxruntime_HIPIFY_PERL)
     set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
