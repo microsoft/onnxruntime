@@ -1,5 +1,5 @@
 ---
-title: Arm NN
+title: Arm NN (Arm)
 description: Instructions to execute ONNX Runtime with Arm NN on Armv8 cores
 grand_parent: Execution Providers
 parent: Community-maintained
