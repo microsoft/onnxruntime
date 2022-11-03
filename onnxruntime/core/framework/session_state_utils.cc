@@ -185,7 +185,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
       for (size_t i = 0; i < static_cast<size_t>(p_deserialize_tensor->Shape().Size()); ++i) {
         if ((data[i] & 0x7C00) == 0) {
-          ORT_THROW("Sub-normal found: ", data[i]);
+          //ORT_THROW("Sub-normal found: ", data[i]);
+          data[i] = 0;
         } else {
           std::cout << "Normal fp16" << std::endl;
         }
