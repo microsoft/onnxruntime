@@ -21,7 +21,7 @@ class EmbedLayerNorm final : public CudaKernel {
  private:
   float epsilon_;
   mutable void* random_data_ = nullptr;
-  bool should_randomize_ = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE", false);
+  bool should_randomize_ = false;
 };
 
 }  // namespace cuda
