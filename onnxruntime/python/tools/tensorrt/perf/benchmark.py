@@ -82,6 +82,7 @@ METRICS_FILE = ".metrics_map"
 SESSION_FILE = ".session_map"
 MEMORY_FILE = "./temp_memory.csv"
 
+TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
 
 def split_and_sort_output(string_list):
     string_list = string_list.split("\n")
@@ -1055,15 +1056,16 @@ def parse_models_info_from_file(root_dir, path, models):
                 model["test_data_path_fp16"] = row["test_data_path_fp16"]
 
 
-def convert_model_from_float_to_float16(model_path):
+def convert_model_from_float_to_float16(model_path, new_model_dir):
     from float16 import convert_float_to_float16
     from onnxmltools.utils import load_model, save_model
 
-    new_model_path = os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+    new_model_path = os.path.join(new_model_dir, "new_fp16_model_by_trt_perf.onnx")
+
     if not os.path.exists(new_model_path):
         onnx_model = load_model(model_path)
         new_onnx_model = convert_float_to_float16(onnx_model)
-        save_model(new_onnx_model, "new_fp16_model_by_trt_perf.onnx")
+        save_model(new_onnx_model, new_model_path)
 
     return new_model_path
 
@@ -1356,6 +1358,10 @@ def run_onnxruntime(args, models):
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
             elif args.running_mode == "validate":
+                if is_standalone(ep):
+                    logger.info("Cannot validate standalone trtexec. Skipping ...")
+                    continue
+
                 logger.info("\n----------------------------- validate -------------------------------------")
 
                 # enable profiling to generate profiling file for analysis
@@ -1460,6 +1466,266 @@ def run_onnxruntime(args, models):
         model_to_metrics,
         model_to_session,
     )
+
+
+def test_models_eps(args, models):
+    """
+    Benchmarks or validates the given models over the provided set of EPs.
+
+    :param args: The command-line arguments to this script. Contains the list of EPs to use.
+    :param models: Dictionary of models to run. The keys are model names and the values are dictionaries containing
+                   paths to the model files and input data.
+
+    :return: A tuple containing aggregated metrics/results.
+    """
+
+    success_results = []
+    model_to_latency = {}  # model -> cuda and tensorrt latency
+    model_to_metrics = {}  # model -> metrics from profiling file
+    model_to_fail_ep = {}  # model -> failing ep
+    model_to_session = {}  # models -> session creation time
+
+    if do_benchmark and os.path.exists(SESSION_FILE):
+        model_to_session = read_map_from_file(SESSION_FILE)
+
+    ep_list = []
+    if args.ep:
+        ep_list.append(args.ep)
+    else:
+        if args.fp16:
+            ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
+        else:
+            ep_list = [cpu, cuda, trt]
+
+    if os.path.exists(FAIL_MODEL_FILE):
+        model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
+
+    init_dir = os.getcwd()
+
+    # Run benchmarking and/or validation for every model and EP combination.
+    for name, model_info in models.items():
+        ep_to_latency = {}
+        ep_to_metrics = {}
+        ep_to_session = {}
+
+        for exec_provider in ep_list:
+
+            # Skip model + EP combinations that have already failed in a previous run.
+            if skip_ep(name, exec_provider, model_to_fail_ep):
+                continue
+
+            # Check if EP is supported.
+            if not is_standalone(exec_provider):
+                ep_ = ep_to_provider_list[exec_provider][0]
+                if ep_ not in onnxruntime.get_available_providers():
+                    logger.error("No %s support", ep_)
+                    continue
+
+            # Create a temporary directory for this run, which may create profiles, subgraph dumps, and TRT engines.
+            # The temporary directory is created in '/tmp/' and is automatically deleted after scope exit.
+            with tempfile.TemporaryDirectory() as temp_dir:
+                run_model_on_ep(
+                    args,
+                    name,
+                    model_info,
+                    exec_provider,
+                    success_results,
+                    ep_to_latency,
+                    ep_to_metrics,
+                    model_to_fail_ep,
+                    ep_to_session,
+                    temp_dir,
+                )
+
+        model_to_latency[name] = ep_to_latency
+        model_to_session[name] = ep_to_session
+        update_metrics_map(model_to_metrics, name, ep_to_metrics)
+
+    os.chdir(init_dir)
+
+    return (
+        success_results,
+        model_to_latency,
+        model_to_fail_ep,
+        model_to_metrics,
+        model_to_session,
+    )
+
+
+def run_model_on_ep(
+    args,
+    model_name,
+    model_info,
+    exec_provider,
+    success_results,
+    ep_to_latency,
+    ep_to_op_metrics,
+    model_to_fail_ep,
+    ep_to_session,
+    tmp_work_dir,
+):
+    """
+    Benchmarks and/or validates the given model on the given EP.
+
+    :param args: The command-line arguments to this script.
+    :param model_name: The name of the model to run.
+    :param model_info: A dictionary that contains paths to the model file and input data.
+    :param exec_provider: The name of the EP (e.g., ORT-CUDAFp32) on which to run the model.
+    :param success_results: List of successful results that is updated by this function.
+    :param ep_to_latency: Dictionary that maps an EP to inference latency and memory usage results.
+                          Updated by this function.
+    :param ep_to_op_metrics: Dictionary that maps an EP to operator usage information. Updated by this function.
+    :param model_to_fail_ep: Dictionary that tracks failing model and EP combinations. Updated by this function.
+    :param ep_to_session: Dictionary that maps an EP to session creation latency results. Updated by this function.
+    :param tmp_work_dir: Temporary directory in which to run the model + EP.
+    """
+
+    all_inputs_shape = []  # used for standalone trt
+    model_work_dir = os.path.abspath(model_info["working_directory"])
+    model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path"]))
+    test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path"]))
+
+    os.chdir(tmp_work_dir)
+
+    logger.info("Starting mode '%s' for %s on %s ...", args.running_mode, model_name, exec_provider)
+
+    # Set environment variables for ort-trt benchmarking
+    trt_ep_options = copy.deepcopy(args.trt_ep_options)
+    if "ORT-TRT" in exec_provider:
+        trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in exec_provider else "False"
+
+        # Create/set a directory to store TRT engine caches.
+        engine_cache_path = os.path.normpath(os.path.join(tmp_work_dir, TRT_ENGINE_CACHE_DIR_NAME))
+        if not os.path.exists(engine_cache_path):
+            os.makedirs(engine_cache_path)
+
+        trt_ep_options["trt_engine_cache_path"] = engine_cache_path
+
+    convert_input_fp16 = False
+
+    # use float16.py for cuda fp16 only
+    if cuda_fp16 == ep:
+
+        # handle model
+        if "model_path_fp16" in model_info:
+            model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path_fp16"]))
+
+        else:
+            try:
+                model_path = convert_model_from_float_to_float16(model_path, tmp_work_dir)
+                convert_input_fp16 = True
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, name, exec_provider, "script error", excpt)
+                return
+
+        # handle test data
+        if "test_data_path_fp16" in model_info:
+            test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path_fp16"]))
+            convert_input_fp16 = False
+
+    inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
+    # generate random input data
+    if args.input_data == "random":
+        inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
+
+    do_validation = is_validate_mode(args.running_mode)
+    do_benchmark = is_benchmark_mode(args.running_mode)
+
+    #######################################
+    # Validation
+    #######################################
+    if do_validate and not is_standalone(exec_provider):
+        validation_exemption = [trt_fp16]
+
+        # enable profiling to generate profiling file for analysis
+        options = onnxruntime.SessionOptions()
+        options.enable_profiling = True
+        options.profile_file_prefix = f"ort_profile_{model_name}_{exec_provider}"
+        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        providers = ep_to_provider_list[exec_provider]
+        provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
+
+        # create onnxruntime inference session
+        try:
+            sess, creation_time = create_session(model_path, providers, provider_options, options)
+
+        except Exception as excpt:
+            logger.error(excpt)
+            update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
+            return  # TODO: Should still do_benchmark
+
+        if creation_time:
+            ep_to_session[exec_provider] = creation_time
+
+        sess.disable_fallback()
+
+        logger.debug("Start to inference %s with %s ...", model_name, exec_provider)
+        logger.debug(sess.get_providers())
+        logger.debug(sess.get_provider_options())
+
+        if sess:
+            logger.debug("Model inputs nodes:")
+            for input_meta in sess.get_inputs():
+                logger.debug(input_meta)
+            logger.debug("Model outputs nodes:")
+            for output_meta in sess.get_outputs():
+                logger.debug(output_meta)
+
+        # run inference and validate the result
+        #
+        # currently skip TensorRT float16 validation intentionally
+        if exec_provider not in validation_exemption:
+            try:
+                ort_outputs = inference_ort_and_get_prediction(model_name, sess, inputs)
+
+                status = validate(
+                    ref_outputs,
+                    ort_outputs,
+                    args.rtol,
+                    args.atol,
+                    args.percent_mismatch,
+                )
+                if not status[0]:
+                    update_fail_model_map(
+                        model_to_fail_ep,
+                        model_name,
+                        exec_provider,
+                        "result accuracy issue",
+                        status[1],
+                    )
+                    return
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
+                return
+
+            # Run inference again. the reason is that some ep like tensorrt
+            # it takes much longer time to generate graph on first run and
+            # we need to skip the perf result of that expensive run.
+            inference_ort_and_get_prediction(model_name, sess, inputs)
+        else:
+            inference_ort_and_get_prediction(model_name, sess, inputs)
+            inference_ort_and_get_prediction(model_name, sess, inputs)
+
+        sess.end_profiling()
+
+        # get metrics from profiling file
+        metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
+        if metrics:
+            ep_to_op_metrics[exec_provider] = metrics
+
+    #######################################
+    # Benchmark
+    #######################################
+    if do_benchmark:
+
+        # Skip if validation failed
+        # TODO: validate() should return a boolean
+        if skip_ep(name, exec_provider, model_to_fail_ep):
+            return
+
 
 
 def calculate_gain(value, ep1, ep2):
@@ -2008,7 +2274,7 @@ def parse_arguments():
         "--running_mode",
         required=False,
         default="benchmark",
-        choices=["validate", "benchmark"],
+        choices=["validate", "benchmark", "both"],
         help="Testing mode.",
     )
 

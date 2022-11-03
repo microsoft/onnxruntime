@@ -72,6 +72,9 @@ def main():
     benchmark_session_csv = session_name + csv_ending
     specs_csv = specs_name + csv_ending
 
+    validate = is_validate_mode(args.running_mode)
+    benchmark = is_benchmark_mode(args.running_mode)
+
     for model, model_info in models.items():
         logger.info("\n" + "=" * 40 + "=" * len(model))
         logger.info("=" * 20 + model + "=" * 20)
@@ -83,7 +86,6 @@ def main():
         write_model_info_to_file([model_info], model_list_file)
 
         for ep in ep_list:
-
             command = [
                 "python3",
                 "benchmark.py",
@@ -103,10 +105,7 @@ def main():
                 command.append("-z")
 
             if ep == standalone_trt or ep == standalone_trt_fp16:
-                if args.running_mode == "validate":
-                    continue
-                else:
-                    command.extend(["--trtexec", trtexec])
+                command.extend(["--trtexec", trtexec])
 
             if len(args.cuda_ep_options):
                 command.extend(["--cuda_ep_options", dict_to_args(args.cuda_ep_options)])
@@ -114,10 +113,10 @@ def main():
             if len(args.trt_ep_options):
                 command.extend(["--trt_ep_options", dict_to_args(args.trt_ep_options)])
 
-            if args.running_mode == "validate":
+            if validate:
                 command.extend(["--benchmark_metrics_csv", benchmark_metrics_csv])
 
-            elif args.running_mode == "benchmark":
+            if benchmark:
                 command.extend(
                     [
                         "-t",
@@ -154,7 +153,7 @@ def main():
 
         Path(path).mkdir(parents=True, exist_ok=True)
 
-    if args.running_mode == "validate":
+    if validate:
         logger.info("\n=========================================")
         logger.info("=========== Models/EPs metrics ==========")
         logger.info("=========================================")
@@ -164,7 +163,7 @@ def main():
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
             logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv))
 
-    elif args.running_mode == "benchmark":
+    if benchmark:
         logger.info("\n=========================================")
         logger.info("======= Models/EPs session creation =======")
         logger.info("=========================================")
