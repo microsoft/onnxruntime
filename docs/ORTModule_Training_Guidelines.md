@@ -1,11 +1,10 @@
 # ONNX Runtime Training Guidelines
 
-## Envrionment Variables
+### Envrionment Variables ###
 
 ONNX Runtime Training (ORTModule) provides envrionment variables targeting different use cases.
 
-
-### ORTMODULE_ONNX_OPSET_VERSION ###
+#### ORTMODULE_ONNX_OPSET_VERSION ####
 
 - **Feature Area**: *ORTMODULE/ONNX_OPSET*
 - **Description**: By default, as ONNX Runtime released, the ONNX opset version to use will be updated periodically. For some customers, they want to stick to fixed opset where both performance and accuracy are well validated, so this env variable can be used to control that.
@@ -15,7 +14,7 @@ ONNX Runtime Training (ORTModule) provides envrionment variables targeting diffe
 	```
 
 
-### ORTMODULE_FALLBACK_POLICY ###
+#### ORTMODULE_FALLBACK_POLICY ####
 
 - **Feature Area**: *ORTMODULE/FallbackToPytorch*
 - **Description**: By default, if ORTModule failed to run the model using ONNX Runtime backend, it will fallback to use PyTorch to continue the training. At some point developers are optimizing the models and doing benchmarking, we want explicitly let ORT backend to run the model. The way we disable the retry:
@@ -24,20 +23,20 @@ ONNX Runtime Training (ORTModule) provides envrionment variables targeting diffe
 	```
 
 
-### ORTMODULE_LOG_LEVEL ###
+#### ORTMODULE_LOG_LEVEL ####
 
 - **Feature Area**: *ORTMODULE/DebugOptions*
 - **Description**: Configure ORTModule log level. Defaults to LogLevel.WARNING.
-log_level can also be set by setting the environment variable "ORTMODULE_LOG_LEVEL" to one of "VERBOSE", "INFO", "WARNING", "ERROR", "FATAL". The environment variable takes precedence if DebugOptions also set log_vel.
+log_level can also be set by setting the environment variable "ORTMODULE_LOG_LEVEL" to one of "VERBOSE", "INFO", "WARNING", "ERROR", "FATAL". The environment variable takes precedence if DebugOptions also set log_level.
 
-### ORTMODULE_SAVE_ONNX_PATH ###
+#### ORTMODULE_SAVE_ONNX_PATH ####
 
 - **Feature Area**: *ORTMODULE/DebugOptions*
 - **Description**: Configure ORTModule to save onnx models. Defaults to False.
 The output directory of the onnx models by default is set to the current working directory. To change the output directory, the environment variable "ORTMODULE_SAVE_ONNX_PATH" can be set to the destination directory path.
 
 
-### ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT ###
+#### ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT ####
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default ORTModule will fail with exception when handle PythonOp export for some `'autograd.Function'`s (One example is torch CheckpointFunction). Set
@@ -48,13 +47,13 @@ The output directory of the onnx models by default is set to the current working
 
 	> Take the example of torch.utils.checkpoint.CheckpointFunction, if it is exported as PythonOp, the checkpointed computation may be computed by PyTorch, not ORT. This situation is especially important for big models such as GPT-2 where every few layers are wrapped to do recomputation, large amount of computations are done by PyTorch. Currently a failure is reported to notice users it is possible ORTModule has less opportunaties optimize further.
 
-	> On the other hand, if the wrapped computation graph is small, it is reasonable to allowed it. And users should be aware that performance boost might be
+	> On the other hand, if the wrapped computation graph is small, it is reasonable to allowed it. And users should be aware that ORT performance boost might be trivial.
 
 
-### ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT ###
+#### ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT ####
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
-- **Description**: By default, all torch.autograd.Function classes will be exported to ORT PythonOp. There are some cases you might consider to disable it. For example, if you confirmed those torch.autograd.Function classes defined computations that could be inlined exported by PyTorch, and it is save to use the inlined exported ONNX graph to train, then you can disable it, then ORT has more opportunaties to optimize more.
+- **Description**: By default, all torch.autograd.Function classes will be exported to ORT PythonOp. There are some cases you might consider to disable it. For example, if you confirmed those torch.autograd.Function classes defined computations that could be inlined exported by PyTorch, and it is safe to use the inlined exported ONNX graph to train, then you can disable it, as a result, ORT has more opportunaties to optimize more.
 	```
 	export ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT=1
 	```
@@ -66,12 +65,12 @@ The output directory of the onnx models by default is set to the current working
 		enable_custom_autograd_support(False)
 		```
 
-### ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS ###
+#### ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS ####
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
-- **Description**: By default, this is empty. When user model's setup depends on multiple libraries defining multiple torch.autograd.Function classes of same name, though their python import pathes (e.g. 'namespace') are different, while due to limitation of PyTorch exporter (https://github.com/microsoft/onnx-converters-private/issues/115), ORT backend cannot infer which one to call. So an exception will be thrown for this case.
+- **Description**: By default, this is empty. When user model's setup depends on libraries who might define multiple torch.autograd.Function classes of same name, though their python import pathes (e.g. 'namespace') are different, while due to limitation of PyTorch exporter (https://github.com/microsoft/onnx-converters-private/issues/115), ORT backend cannot infer which one to call. So an exception will be thrown for this case.
 
-Before full qualified name can be got from exporter, this envrionment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there is multiple classes to be ignored, use comma as the seperator.
+Before full qualified name can be got from exporter, this envrionment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there are multiple classes to be ignored, use comma as the seperator.
 
 	```
 	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
