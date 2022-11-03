@@ -64,8 +64,9 @@ CudaStream::~CudaStream() {
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
     cudnnDestroy(cudnn_handle_);
-    if (handle_)
-      cudaStreamDestroy(static_cast<cudaStream_t>(handle_));
+    auto* handle = GetHandle();
+    if (handle)
+      cudaStreamDestroy(static_cast<cudaStream_t>(handle));
   }
 }
 
@@ -77,7 +78,7 @@ void CudaStream::Flush() {
   // A temp fix: when use cuda graph, we can't flush it before cuda graph capture end
   // only flush when we own the stream (not external, not EP unified stream)
   if (own_stream_)
-    CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(handle_)));
+    CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(GetHandle())));
 }
 
 void CudaStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
@@ -132,13 +133,13 @@ Status CudaStream::CleanUpOnRunEnd() {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
     cpu_buffers_info->n_buffers = deferred_cpu_buffers_.size();
-    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(static_cast<cudaStream_t>(handle_), ReleaseCpuBufferCallback, cpu_buffers_info));
+    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(static_cast<cudaStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info));
   } else {
     // for cuda graph case, if we launch the host function to cuda stream
     // it seems be captured in cuda graph and replay, which cause wrong deletion.
     // so in this mode, we manually sync the stream to make sure the copy is done
     // then delete the buffers
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(handle_)));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetHandle())));
     for (auto* buffer : deferred_cpu_buffers_) {
       cpu_allocator_->Free(buffer);
     }
@@ -176,8 +177,8 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   if (!use_existing_stream)
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream](const OrtDevice& device) {
       cudaStream_t stream = nullptr;
-      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-      // CUDA_CALL_THROW(cudaStreamCreate(&stream));
+      // CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      CUDA_CALL_THROW(cudaStreamCreate(&stream));
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr);
     });
   else

@@ -38,15 +38,15 @@ class Memcpy final : public OpKernel {
       // do we support async copy?
       auto& src_device = X->Location().device;
       auto& dst_device = Y->Location().device;
-
+      ORT_ENFORCE(ctx->GetComputeStream());
       if (!((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
             (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED))) {
         auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream()));
+        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
         return Status::OK();
       } else {
         auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream()));
+        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
         return Status::OK();
       }
     } else {

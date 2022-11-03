@@ -117,8 +117,7 @@ void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& alloc, size_t size,
   if (use_reserve)
     return alloc->Reserve(size);
   if (stream && alloc->Info().alloc_type == OrtArenaAllocator) {
-    BFCArena* arena_ptr = static_cast<BFCArena*>(alloc.get());
-    auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
+    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*static_cast<BFCArena*>(alloc.get()));
     if (stream_aware_alloc) {
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }

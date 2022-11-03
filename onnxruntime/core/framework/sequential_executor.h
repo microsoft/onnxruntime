@@ -24,8 +24,8 @@ namespace onnxruntime {
 class StreamExecutionContext;
 class DeviceStreamCollection;
 class SessionScope;
-typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
-typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
+using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
 
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,

@@ -79,27 +79,36 @@ class StreamExecutionContext {
   void SetLogger(const logging::Logger& current_logger) {
     logger_ = &current_logger;
   }
+
   // Get status of the execution.
   // if one of the stream got non-OK status, the whole task status will be set as that non-OK status.
   const Status& TaskStatus() const;
+
   // Decrease the count of a given barrier.
   bool DecCountDownBarrier(size_t barrier_id);
+
   // The execution mode:
   // 1. single thread mode: all the streams will be launched using current host thread.
   // 2. multi-threads mode: use inter-op thread pool to schedule the N streams.
   bool SingleThreadMode() const { return single_thread_mode_; }
+
   // Get the Stream instance for a given logic sequence.
   // return nullptr if the device of given logic sequence doesn't register stream support.
   Stream* GetDeviceStream(size_t idx);
+
   // Decrease the count of remaining job by 1.
   void CompleteTask();
+
   // Increase the count of remaining job by 1.
   void AddTask();
+
   // This is only used under multi-threads mode.
   // blocked until all the jobs scheduled into inter-op thread pool complete.
   void WaitAll();
+
   // If one of the stream got non-OK status, update the status in the context.
   void SetStatus(Status& status);
+
   // Release the OrtValues after a step, based on the execution plan.
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
 
@@ -136,21 +145,33 @@ class StreamExecutionContext {
 
  private:
   const SessionState* session_state_;
+
   ExecutionFrame frame_;
+
   const logging::Logger* logger_;
+
   InlinedVector<std::unique_ptr<synchronize::Notification>> notifications_;
+
   std::unique_ptr<std::atomic_int[]> release_plan_;
+
   const DeviceStreamCollection& device_stream_map_;
+
   std::vector<CountDownBarrier> count_down_barriers_;
+
   CountDownBarrier remain_tasks_;
+
   Status task_status_{Status::OK()};
+
 #ifdef ENABLE_TRAINING
   const ProgramRegion* program_range_{nullptr};
+
   OrtValueCachePtr cache_{nullptr};
+
   // TODO: this is mainly for ort trainer
   // Should we deprecate it?
   const InlinedHashSet<NodeIndex>* node_to_execute_{nullptr};
 #endif
+
   const bool single_thread_mode_;
 };
 
@@ -162,6 +183,7 @@ void RunSince(size_t stream_idx,
               SessionScope& session_scope,
               const bool& terminate_flag,
               size_t since);
+
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,
                         size_t trigger,
