@@ -246,12 +246,15 @@ void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     std::sort(sorted_scores.begin(), sorted_scores.end(), std::greater<T>());
     std::vector<T> cumulative_probs(vocab_size);
     // todo: batch
-    ORT_UNUSED_PARAMETER(SoftmaxCPU<T>(1,
-                                       vocab_size,
-                                       sorted_scores.data(),
-                                       cumulative_probs.data(),
-                                       false,
-                                       thread_pool_));
+    Status status = SoftmaxCPU<T>(1,
+                                  vocab_size,
+                                  sorted_scores.data(),
+                                  cumulative_probs.data(),
+                                  false,
+                                  thread_pool_);
+    if (!status.IsOK()) {
+      ORT_THROW(status.ErrorMessage());
+    }
 
     std::unordered_set<size_t> sorted_indices_to_remove;
     if (cumulative_probs[0] > top_p_) {
