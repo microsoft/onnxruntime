@@ -179,7 +179,18 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         tensor_proto.name().find("dense.bias") != std::string::npos ||
         tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
         tensor_proto.name().find("LayerNorm.bias") != std::string::npos)) {
-      copy_status = data_transfer_mgr.Randomize(*p_tensor);
+      //copy_status = data_transfer_mgr.Randomize(*p_tensor);
+      ORT_ENFORCE(p_deserialize_tensor->SizeInBytes() == (p_deserialize_tensor->Shape().Size() * 2));
+      auto* data = reinterpret_cast<uint16_t*>(p_deserialize_tensor->MutableDataRaw());
+
+      for (size_t i = 0; i < p_deserialize_tensor->Shape().Size(); ++i) {
+        if ((data[i] & 0x7C00) == 0) {
+          ORT_THROW("Sub-normal found: ", data[i]);
+        } else {
+          std::cout << "Normal fp16" << std::endl;
+        }
+      }
+
     } else {
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
     }
