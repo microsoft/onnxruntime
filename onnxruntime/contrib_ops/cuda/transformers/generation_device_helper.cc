@@ -318,18 +318,17 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->no_repeat_ngram_size,
       cuda_stream);
 
-  static bool do_print = true;
-  if(do_print)
+#ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
-
+#endif
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
                              batch_size, num_beams, vocab_size, cuda_stream);
 
-  if(do_print) {
+#ifdef DEBUG_GENERATION
     dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
-  }
+#endif
 
   if (output_scores) {
     // Append next token scores to the scores output.
@@ -366,13 +365,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
                            *topk_scores, *topk_indices));
 
-// #ifdef DEBUG_GENERATION
-  if(do_print){
+#ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", *(topk_scores.get()));
     dumper->Print("topk_indices", *(topk_indices.get()));
-    do_print = false;
-  }
-// #endif
+#endif
 
   // Convert indices in range [0, num_beams * vocab_size) to token ID of range [0, vocab_size) like the following:
   //   next_indices = (next_tokens / vocab_size).long()
@@ -430,13 +426,12 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   cuda::LaunchTopK<float>(next_token_scores.data(), batch_size, num_beams, vocab_size, 2 * num_beams, topk_scores, topk_indices, topk_scores_tmp, topk_indices_tmp, reinterpret_cast<cudaStream_t>(stream));
 
   // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
-  // static bool do_print = true;
-  if(do_print) {
+#ifdef DEBUG_GENERATION
     dumper->Print("topk_scores_tmp", topk_scores_tmp, batch_size, num_beams, 2 * num_beams);
     dumper->Print("topk_indices_tmp", topk_indices_tmp, batch_size, num_beams, 2 * num_beams);
     dumper->Print("topk_scores", topk_scores, batch_size, num_beams, 2 * num_beams);
     dumper->Print("topk_indices", topk_indices, batch_size, num_beams, 2 * num_beams);
-  }
+#endif
 
   cuda::LanuchBatchTopKKernel(topk_scores,
                               topk_indices,
@@ -448,12 +443,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                               cuda_stream);
 
   // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
-  if(do_print) {
+#ifdef DEBUG_GENERATION
     dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
     dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
     dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
-    do_print = false;
-  }
+#endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                        beam_state->next_scores.data(),
