@@ -199,8 +199,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         }
       }
 
-      std::cout << "Total normals: " << total_normals;
-      std::cout << "Total subnormals: " << total_subnormals;
+      std::cout << "Percentage of subnormals: " << (100 * total_subnormals / (total_normals + total_subnormals));
 
     } else {
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
