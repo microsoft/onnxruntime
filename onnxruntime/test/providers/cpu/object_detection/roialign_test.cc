@@ -9,8 +9,8 @@ namespace onnxruntime {
 namespace test {
 
 TEST(RoiAlignTest, AvgModePositive) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
+  // TODO: Unskip when fixed for CUDA too https://github.com/microsoft/onnxruntime/issues/6146.
+  if (DefaultCudaExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2.9583299160003662, which exceeds threshold";
   }
 
@@ -128,8 +128,8 @@ TEST(RoiAlignTest, OnnxTest) {
 }
 
 TEST(RoiAlignTest, MaxModePositive) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
+  // TODO: Unskip when fixed for CUDA too https://github.com/microsoft/onnxruntime/issues/6146.
+  if (DefaultCudaExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2.1093800067901611, which exceeds threshold";
   }
 
