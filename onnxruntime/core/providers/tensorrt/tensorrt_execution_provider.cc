@@ -1228,6 +1228,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
+    //force Pow + reduce ops to run in FP32 to fix accuracy issue
+    for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
+      auto layer = trt_network->getLayer(idx);
+      auto next_layer = trt_network->getLayer(idx + 1);
+      if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops to run in FP32 to fix FP16 accuracy issue in ViT matting model";
+        layer->setPrecision(nvinfer1::DataType::kFLOAT);
+        next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
+        layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+        next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+      }
+    }
+
     int num_inputs = trt_network->getNbInputs();
     int num_outputs = trt_network->getNbOutputs();
     std::unordered_map<std::string, size_t> input_indexes(num_inputs);
