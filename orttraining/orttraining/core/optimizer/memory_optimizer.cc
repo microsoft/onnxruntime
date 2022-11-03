@@ -490,7 +490,7 @@ void MemoryOptimizer::RegisterAllowedRecomputeOps() {
   }
 }
 
-Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
+Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& entry_node,
                                                 const InlinedVector<size_t>& node_output_index_candidates,
                                                 const ActivationUsedMap& fw_op_output_arg_used_map,
                                                 const InlinedHashMap<NodeIndex, size_t>&
@@ -501,12 +501,12 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
                                                 bool& can_compromise_stashed_activation) const {
   can_compromise_stashed_activation = false;
 
-  LOGS(logger, VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << node.Name() << "(" << node.OpType() << ")";
+  LOGS(logger, VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << entry_node.Name() << "(" << entry_node.OpType() << ")";
   nodes.clear();
 
   std::deque<NodeOutputPort> q;
   for (auto output_index : node_output_index_candidates) {
-    q.push_back(NodeOutputPort(&node, static_cast<int>(output_index)));
+    q.push_back(NodeOutputPort(&entry_node, static_cast<int>(output_index)));
   }
 
   bool early_stop = false;
@@ -564,14 +564,16 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
         if (op_recompute_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
           if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
             LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
-                                  << "recompute op list, but its output [" << cur_output_arg_name
-                                  << "] is used in backward, we don't need trace bottom-up further";
+                                  << "recompute op list, but its output [" << cur_output_arg_name << "] is used in "
+                                  << "backward, we don't need trace bottom-up further. Entry node: "
+                                  << entry_node.Name() << "(" << entry_node.OpType();
             continue;
           } else {
             early_stop = true;
             LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
                                   << "recompute op list, and its output [" << cur_output_arg_name
-                                  << "] does not exist in backward, search terminates.";
+                                  << "] does not exist in backward, search terminates. Entry node: "
+                                  << entry_node.Name() << "(" << entry_node.OpType();
             break;
           }
         }
@@ -579,7 +581,8 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& node,
         if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
           LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
                                 << "is in recompute op list, while its output [" << cur_output_arg_name
-                                << "] is used in backward, we don't need trace bottom-up further";
+                                << "] is used in backward, we don't need trace bottom-up further. Entry node: "
+                                << entry_node.Name() << "(" << entry_node.OpType();
           continue;
         }
       }

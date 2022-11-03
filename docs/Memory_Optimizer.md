@@ -5,13 +5,13 @@
 ONNX Runtime Training provides a capability trading node/subgraph recomputations for better memory efficiency.
 Specifically, a list of recomputable operators is pre-defined, with which memory optimizer graph transformer will iterate the graph to find all recomputable subgraph candidates.
 
-When training with ORTModule, by default, the graph transformer will scan the execution graph to find all eligible subgraphs to recompute, along with sizes that can save. Users can pick up some of the subgraphs to enable them by environment variables.
+When training with ORTModule, by default, the graph transformer will scan the execution graph to find all eligible subgraphs to recompute, along with sizes that can save. Users can pick up some of the subgraphs to enable by environment variables.
 
 ## When memory optimizer can help?
 
 Classical scenarios include:
 
-- ORTModule run a model with batch size B (for example 2^N), the memory bandwidth and compute are not fully saturated, while it hits OOM to run a bigger batch size (for example 2^(N+1)).
+- ORTModule runs a model with batch size B (for example 2^N), the memory bandwidth and compute are not fully saturated, while it hits OOM to run a bigger batch size (for example 2^(N+1)).
 
 - For big models, ORTModule fails to run the minimum allowed batch size, so performance can be compromised for a successful run.
 
@@ -49,7 +49,7 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	=================================
 	```
 5. As shown above, 'Subgraph' shows 1) a string representative for a recomputable subgraph; and 2) current status of memory optimization. All are disabled for recompute in this case.
-6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In this sample, 12 FastGelu related subgraphs are allowed to recompute.
+6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In the blow example, 12 FastGelu related subgraphs are allowed to recompute.
 `FastGelu+` is the subgraph string representative; `1` in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled); `12` means the initial 12 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
 	```
 	export ORTMODULE_MEMORY_OPT_CONFIG="FastGelu+:1:12"
