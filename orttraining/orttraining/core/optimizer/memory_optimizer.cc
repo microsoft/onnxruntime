@@ -566,14 +566,14 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& entry_node,
             LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
                                   << "recompute op list, but its output [" << cur_output_arg_name << "] is used in "
                                   << "backward, we don't need trace bottom-up further. Entry node: "
-                                  << entry_node.Name() << "(" << entry_node.OpType();
+                                  << entry_node.Name() << "(" << entry_node.OpType() << ")";
             continue;
           } else {
             early_stop = true;
             LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
                                   << "recompute op list, and its output [" << cur_output_arg_name
                                   << "] does not exist in backward, search terminates. Entry node: "
-                                  << entry_node.Name() << "(" << entry_node.OpType();
+                                  << entry_node.Name() << "(" << entry_node.OpType() << ")";
             break;
           }
         }
@@ -582,7 +582,7 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& entry_node,
           LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
                                 << "is in recompute op list, while its output [" << cur_output_arg_name
                                 << "] is used in backward, we don't need trace bottom-up further. Entry node: "
-                                << entry_node.Name() << "(" << entry_node.OpType();
+                                << entry_node.Name() << "(" << entry_node.OpType() << ")";
           continue;
         }
       }

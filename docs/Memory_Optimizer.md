@@ -5,7 +5,7 @@
 ONNX Runtime Training provides a capability trading node/subgraph recomputations for better memory efficiency.
 Specifically, a list of recomputable operators is pre-defined, with which memory optimizer graph transformer will iterate the graph to find all recomputable subgraph candidates.
 
-When training with ORTModule, by default, the graph transformer will scan the execution graph to find all eligible subgraphs to recompute, along with sizes that can save. Users can pick up some of the subgraphs to enable by environment variables.
+When training with ORTModule, by default, the graph transformer will scan the execution graph to find all eligible subgraphs to recompute, along with sizes that can be saved. Users can pick up some of the subgraphs to enable by environment variables.
 
 ## When memory optimizer can help?
 
