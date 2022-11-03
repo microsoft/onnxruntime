@@ -23,7 +23,7 @@ class RocmProfiler final : public EpProfiler {
   void Start(uint64_t) override;
   void Stop(uint64_t) override;
 
-private:
+ private:
   uint64_t client_handle_;
   TimePoint profiling_start_time_;
 };
@@ -45,7 +45,7 @@ class RocmProfiler final : public EpProfiler {
   void Stop(uint64_t) override{};
 };
 
-}
-}
+}  // namespace profiling
+}  // namespace onnxruntime
 
 #endif

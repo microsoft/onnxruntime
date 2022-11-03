@@ -78,7 +78,7 @@ class CudaProfiler final : public EpProfiler {
   void Stop(uint64_t) override{};
 };
 
-}
-}
+}  // namespace profiling
+}  // namespace onnxruntime
 
 #endif

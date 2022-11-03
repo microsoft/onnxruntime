@@ -11,19 +11,19 @@ namespace profiling {
 static constexpr size_t sc_activity_buffer_size = 0x4000;
 
 const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
-  "hipMemcpy",
-  "hipMemcpy2D",
-  "hipMemcpyAsync",
-  "hipMemcpy2DAsync",
-  "hipMemcpyWithStream",
-  "hipLaunchKernel",
-  "hipMemset",
-  "hipMemsetAsync",
-  "hipExtModuleLaunchKernel",
+    "hipMemcpy",
+    "hipMemcpy2D",
+    "hipMemcpyAsync",
+    "hipMemcpy2DAsync",
+    "hipMemcpyWithStream",
+    "hipLaunchKernel",
+    "hipMemset",
+    "hipMemsetAsync",
+    "hipExtModuleLaunchKernel",
 };
 
 // Implementation of RoctracerActivityBuffer
-RoctracerActivityBuffer& RoctracerActivityBuffer::operator = (const RoctracerActivityBuffer& other) {
+RoctracerActivityBuffer& RoctracerActivityBuffer::operator=(const RoctracerActivityBuffer& other) {
   if (&other == this) {
     return *this;
   }
@@ -37,7 +37,7 @@ RoctracerActivityBuffer& RoctracerActivityBuffer::operator = (const RoctracerAct
   return *this;
 }
 
-RoctracerActivityBuffer& RoctracerActivityBuffer::operator = (RoctracerActivityBuffer&& other) {
+RoctracerActivityBuffer& RoctracerActivityBuffer::operator=(RoctracerActivityBuffer&& other) {
   if (&other == this) {
     return *this;
   }
@@ -115,8 +115,7 @@ void RoctracerManager::StartLogging() {
 }
 
 // Requires: roctracer_manager_mutex_ must be held
-void RoctracerManager::Clear()
-{
+void RoctracerManager::Clear() {
   unprocessed_activity_buffers_.clear();
   api_call_args_.clear();
   unique_correlation_id_to_client_offset_.clear();
@@ -203,7 +202,7 @@ bool RoctracerManager::PushCorrelation(uint64_t client_handle,
   // offset to be subtracted
 
   uint64_t offset =
-    std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
+      std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
   auto unique_cid = external_correlation_id + offset;
   roctracer_activity_push_external_correlation_id(unique_cid);
 
@@ -261,7 +260,7 @@ static inline std::string PointerToHexString(const void* ptr) {
 }
 
 static inline std::string MemcpyKindToString(hipMemcpyKind kind) {
-  switch(kind) {
+  switch (kind) {
     case hipMemcpyHostToHost:
       return "H2H";
     case hipMemcpyHostToDevice:
@@ -282,106 +281,101 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
   std::string name;
   std::unordered_map<std::string, std::string> args;
 
-  switch(call_record.cid_) {
-  case HIP_API_ID_hipLaunchKernel: {
-    auto const& launch_args = call_record.api_data_.args.hipLaunchKernel;
-    name = demangle(hipKernelNameRefByPtr(launch_args.function_address,
-                                          launch_args.stream));
+  switch (call_record.cid_) {
+    case HIP_API_ID_hipLaunchKernel: {
+      auto const& launch_args = call_record.api_data_.args.hipLaunchKernel;
+      name = demangle(hipKernelNameRefByPtr(launch_args.function_address,
+                                            launch_args.stream));
 
-    args = {
-      {"stream", PointerToHexString((void*)(launch_args.stream))},
-      {"grid_x", std::to_string(launch_args.numBlocks.x)},
-      {"grid_y", std::to_string(launch_args.numBlocks.y)},
-      {"grid_z", std::to_string(launch_args.numBlocks.z)},
-      {"block_x", std::to_string(launch_args.dimBlocks.x)},
-      {"block_y", std::to_string(launch_args.dimBlocks.y)},
-      {"block_z", std::to_string(launch_args.dimBlocks.z)}
-    };
-    break;
+      args = {
+          {"stream", PointerToHexString((void*)(launch_args.stream))},
+          {"grid_x", std::to_string(launch_args.numBlocks.x)},
+          {"grid_y", std::to_string(launch_args.numBlocks.y)},
+          {"grid_z", std::to_string(launch_args.numBlocks.z)},
+          {"block_x", std::to_string(launch_args.dimBlocks.x)},
+          {"block_y", std::to_string(launch_args.dimBlocks.y)},
+          {"block_z", std::to_string(launch_args.dimBlocks.z)}};
+      break;
+    }
+
+    case HIP_API_ID_hipMemset:
+    case HIP_API_ID_hipMemsetAsync: {
+      auto const& launch_args = call_record.api_data_.args;
+      name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
+
+      args = {
+          {"stream", call_record.cid_ == HIP_API_ID_hipMemset
+                         ? "0"
+                         : PointerToHexString((void*)launch_args.hipMemsetAsync.stream)},
+          {"dst", PointerToHexString(launch_args.hipMemset.dst)},
+          {"size", std::to_string(launch_args.hipMemset.sizeBytes)},
+          {"value", std::to_string(launch_args.hipMemset.value)}};
+      break;
+    }
+
+    case HIP_API_ID_hipMemcpy:
+    case HIP_API_ID_hipMemcpyAsync:
+    case HIP_API_ID_hipMemcpyWithStream: {
+      auto const& launch_args = call_record.api_data_.args;
+      name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
+
+      args = {
+          {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy
+                         ? "0"
+                         : PointerToHexString((void*)launch_args.hipMemcpyAsync.stream)},
+          {"src", PointerToHexString(launch_args.hipMemcpy.src)},
+          {"dst", PointerToHexString(launch_args.hipMemcpy.dst)},
+          {"kind", MemcpyKindToString(launch_args.hipMemcpy.kind)}};
+      break;
+    }
+
+    case HIP_API_ID_hipMemcpy2D:
+    case HIP_API_ID_hipMemcpy2DAsync: {
+      auto const& launch_args = call_record.api_data_.args;
+      name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
+
+      args = {
+          {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy2D
+                         ? "0"
+                         : PointerToHexString((void*)launch_args.hipMemcpy2DAsync.stream)},
+          {"src", PointerToHexString(launch_args.hipMemcpy2D.src)},
+          {"dst", PointerToHexString(launch_args.hipMemcpy2D.dst)},
+          {"spitch", std::to_string(launch_args.hipMemcpy2D.spitch)},
+          {"dpitch", std::to_string(launch_args.hipMemcpy2D.dpitch)},
+          {"width", std::to_string(launch_args.hipMemcpy2D.width)},
+          {"height", std::to_string(launch_args.hipMemcpy2D.height)},
+          {"kind", MemcpyKindToString(launch_args.hipMemcpy2D.kind)}};
+      break;
+    }
+
+    case HIP_API_ID_hipExtModuleLaunchKernel: {
+      auto const& launch_args = call_record.api_data_.args.hipExtModuleLaunchKernel;
+      name = demangle(hipKernelNameRef(launch_args.f));
+
+      args = {
+          {"stream", PointerToHexString((void*)launch_args.hStream)},
+          {"grid_x", std::to_string(launch_args.globalWorkSizeX)},
+          {"grid_y", std::to_string(launch_args.globalWorkSizeY)},
+          {"grid_z", std::to_string(launch_args.globalWorkSizeZ)},
+          {"block_x", std::to_string(launch_args.localWorkSizeX)},
+          {"block_y", std::to_string(launch_args.localWorkSizeY)},
+          {"block_z", std::to_string(launch_args.localWorkSizeZ)},
+      };
+      break;
+    }
+
+    default:
+      return false;
   }
 
-  case HIP_API_ID_hipMemset:
-  case HIP_API_ID_hipMemsetAsync: {
-    auto const& launch_args = call_record.api_data_.args;
-    name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
-
-    args = {
-      {"stream", call_record.cid_ == HIP_API_ID_hipMemset
-                                  ? "0"
-                                  : PointerToHexString((void*)launch_args.hipMemsetAsync.stream)},
-      {"dst", PointerToHexString(launch_args.hipMemset.dst)},
-      {"size", std::to_string(launch_args.hipMemset.sizeBytes)},
-      {"value", std::to_string(launch_args.hipMemset.value)}
-    };
-    break;
-  }
-
-  case HIP_API_ID_hipMemcpy:
-  case HIP_API_ID_hipMemcpyAsync:
-  case HIP_API_ID_hipMemcpyWithStream: {
-    auto const& launch_args = call_record.api_data_.args;
-    name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
-
-    args = {
-      {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy
-                                  ? "0"
-                                  : PointerToHexString((void*)launch_args.hipMemcpyAsync.stream)},
-      {"src", PointerToHexString(launch_args.hipMemcpy.src)},
-      {"dst", PointerToHexString(launch_args.hipMemcpy.dst)},
-      {"kind", MemcpyKindToString(launch_args.hipMemcpy.kind)}
-    };
-    break;
-  }
-
-  case HIP_API_ID_hipMemcpy2D:
-  case HIP_API_ID_hipMemcpy2DAsync: {
-    auto const& launch_args = call_record.api_data_.args;
-    name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
-
-    args = {
-      {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy2D
-                                  ? "0"
-                                  : PointerToHexString((void*)launch_args.hipMemcpy2DAsync.stream)},
-      {"src", PointerToHexString(launch_args.hipMemcpy2D.src)},
-      {"dst", PointerToHexString(launch_args.hipMemcpy2D.dst)},
-      {"spitch", std::to_string(launch_args.hipMemcpy2D.spitch)},
-      {"dpitch", std::to_string(launch_args.hipMemcpy2D.dpitch)},
-      {"width", std::to_string(launch_args.hipMemcpy2D.width)},
-      {"height", std::to_string(launch_args.hipMemcpy2D.height)},
-      {"kind", MemcpyKindToString(launch_args.hipMemcpy2D.kind)}
-    };
-    break;
-  }
-
-  case HIP_API_ID_hipExtModuleLaunchKernel: {
-    auto const& launch_args = call_record.api_data_.args.hipExtModuleLaunchKernel;
-    name = demangle(hipKernelNameRef(launch_args.f));
-
-    args = {
-      {"stream", PointerToHexString((void*)launch_args.hStream)},
-      {"grid_x", std::to_string(launch_args.globalWorkSizeX)},
-      {"grid_y", std::to_string(launch_args.globalWorkSizeY)},
-      {"grid_z", std::to_string(launch_args.globalWorkSizeZ)},
-      {"block_x", std::to_string(launch_args.localWorkSizeX)},
-      {"block_y", std::to_string(launch_args.localWorkSizeY)},
-      {"block_z", std::to_string(launch_args.localWorkSizeZ)},
-    };
-    break;
-  }
-
-  default:
-    return false;
-  }
-
-  new (&event) EventRecord {
-    /* cat = */ EventCategory::KERNEL_EVENT,
-    /* pid = */ -1,
-    /* tid = */ -1,
-    /* name = */ std::move(name),
-    /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
-    /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
-    /* args = */ std::move(args)
-  };
+  new (&event) EventRecord{
+      /* cat = */ EventCategory::KERNEL_EVENT,
+      /* pid = */ -1,
+      /* tid = */ -1,
+      /* name = */ std::move(name),
+      /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+      /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
+      /* args = */ std::move(args)};
   return true;
 }
 
@@ -425,7 +419,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
   for (auto const& buffer : buffers) {
     auto current_record = reinterpret_cast<const roctracer_record_t*>(buffer.GetData());
     auto data_end = reinterpret_cast<const roctracer_record_t*>(buffer.GetData() + buffer.GetSize());
-    for ( ; current_record < data_end; roctracer_next_record(current_record, &current_record)) {
+    for (; current_record < data_end; roctracer_next_record(current_record, &current_record)) {
       EventRecord event;
       if (current_record->domain == ACTIVITY_DOMAIN_EXT_API) {
         roctracer_correlation_to_unique_correlation_[current_record->correlation_id] = current_record->external_id;
@@ -449,7 +443,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
 
         auto api_it = api_call_args_.find(current_record->correlation_id);
         if (api_it == api_call_args_.end()) {
-            // we're not tracking this activity, ignore it
+          // we're not tracking this activity, ignore it
           continue;
         }
 

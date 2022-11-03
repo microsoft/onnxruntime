@@ -161,17 +161,17 @@ std::optional<std::string> LoadEnv(const std::string& name, const std::unordered
     return std::nullopt;
   }
 
-  LOGS_DEFAULT(WARNING) << "Environment variable "<< name << " is used. It is reserved for internal testing prupose. "
-                           "End users should opt for provider options or session options and must not rely on it.";
+  LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "
+                                                              "End users should opt for provider options or session options and must not rely on it.";
 
   if (valid_values.find(env) == valid_values.cend()) {
     std::ostringstream oss;
     auto it = valid_values.cbegin();
     oss << *it++;
-    while(it != valid_values.cend()) {
+    while (it != valid_values.cend()) {
       oss << ", " << *it++;
     }
-    ORT_THROW("Value of environment variable ", name," must be ",oss.str(), ", but got ", env);
+    ORT_THROW("Value of environment variable ", name, " must be ", oss.str(), ", but got ", env);
   }
 
   return env;
@@ -371,7 +371,7 @@ void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, voi
   // it will be cleaned up automatically at the end of this function.
   std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
   cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
-  for (auto ptr: cpu_buffers_info->buffers) {
+  for (auto ptr : cpu_buffers_info->buffers) {
     cpu_buffers_info->allocator->Free(ptr);
   }
 }
@@ -411,7 +411,6 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease(bool actually_defer) {
         ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
       }
     } else {
-
       // Per
       // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
       // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels

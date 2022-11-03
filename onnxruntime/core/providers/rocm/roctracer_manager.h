@@ -16,31 +16,30 @@
 
 #include "core/common/profiler_common.h"
 
-
-namespace onnxruntime{
+namespace onnxruntime {
 namespace profiling {
 
 class RoctracerActivityBuffer {
-public:
+ public:
   RoctracerActivityBuffer()
-    : data_(nullptr), size_(0) {}
+      : data_(nullptr), size_(0) {}
 
   RoctracerActivityBuffer(const uint8_t* data, size_t size)
-    : data_((uint8_t*)malloc(size)), size_(size) {
+      : data_((uint8_t*)malloc(size)), size_(size) {
     memcpy(data_, data, size);
   }
 
   RoctracerActivityBuffer(const RoctracerActivityBuffer& other)
-    : RoctracerActivityBuffer(other.data_, other.size_) {}
+      : RoctracerActivityBuffer(other.data_, other.size_) {}
 
   RoctracerActivityBuffer(RoctracerActivityBuffer&& other)
-    : RoctracerActivityBuffer() {
+      : RoctracerActivityBuffer() {
     std::swap(data_, other.data_);
     std::swap(size_, other.size_);
   }
 
-  RoctracerActivityBuffer& operator = (const RoctracerActivityBuffer& other);
-  RoctracerActivityBuffer& operator = (RoctracerActivityBuffer&& other);
+  RoctracerActivityBuffer& operator=(const RoctracerActivityBuffer& other);
+  RoctracerActivityBuffer& operator=(RoctracerActivityBuffer&& other);
 
   ~RoctracerActivityBuffer();
 
@@ -49,7 +48,7 @@ public:
   const uint8_t* GetData() const { return data_; }
   size_t GetSize() const { return size_; }
 
-private:
+ private:
   uint8_t* data_;
   size_t size_;
 };
@@ -57,14 +56,13 @@ private:
 struct ApiCallRecord {
   uint32_t domain_;
   uint32_t cid_;
-  hip_api_data_t api_data_ {};
+  hip_api_data_t api_data_{};
 };
 
-class RoctracerManager
-{
-public:
+class RoctracerManager {
+ public:
   RoctracerManager(const RoctracerManager&) = delete;
-  RoctracerManager& operator = (const RoctracerManager&) = delete;
+  RoctracerManager& operator=(const RoctracerManager&) = delete;
   RoctracerManager() = default;
   ~RoctracerManager();
 
@@ -80,7 +78,7 @@ public:
   void PopCorrelation(uint64_t& popped_correlation_id);
   bool PopCorrelation();
 
-private:
+ private:
   static void ActivityCallback(const char* begin, const char* end, void* arg);
   static void ApiCallback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
   void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
