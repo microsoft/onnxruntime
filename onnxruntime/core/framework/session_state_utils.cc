@@ -174,6 +174,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     Status copy_status = Status::OK();
 
+    size_t total_subnormals = 0;
+    size_t total_normals = 0;
+
     if (should_randomize && (tensor_proto.name().find("Attention_") != std::string::npos ||
         tensor_proto.name().find("MatMul_") != std::string::npos ||
         tensor_proto.name().find("dense.bias") != std::string::npos ||
@@ -188,11 +191,16 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       for (size_t i = 0; i < static_cast<size_t>(p_deserialize_tensor->Shape().Size()); ++i) {
         if ((data[i] & 0x7C00) == 0) {
           //ORT_THROW("Sub-normal found: ", data[i]);
+          ++total_subnormals;
           data[i] = 0;
         } else {
+          ++total_normals;
           // std::cout << "Normal fp16" << std::endl;
         }
       }
+
+      std::cout << "Total normals: " << total_normals;
+      std::cout << "Total subnormals: " << total_subnormals;
 
     } else {
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
