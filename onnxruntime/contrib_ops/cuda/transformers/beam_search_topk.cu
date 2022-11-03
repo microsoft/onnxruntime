@@ -34,8 +34,7 @@ __global__ void BeamSearchOnlineTopKStage1Kernel(
   int32_t* output_token) {
     TopK<T, MAX_K> top_k;
 
-    const bool IS_FP16 = std::is_same<T, half>::value;
-    const T MAX_T_VAL = (IS_FP16) ? HALF_FLT_MAX : FLT_MAX;
+    const T MAX_T_VAL = NumericLimits<T>::Max();
     for (int i = 0; i < MAX_K; ++i) {
         top_k.p[i] = -1;
         top_k.u[i] = -MAX_T_VAL;
@@ -50,17 +49,8 @@ __global__ void BeamSearchOnlineTopKStage1Kernel(
     for(int i = threadIdx.x + token_id_base; i < vocab_part_size + token_id_base; i+= blockDim.x) {
         if( i < vocab_size) {
             top_k.insert(input_block[i], i);
-            if(batch_beam == 1)
-                printf("(%d, %d, %f)\n", voc_part_id, i, (float)(input_block[i]));
         }
     }
-
-    /*
-    if(threadIdx.x == 0 && blockIdx.x == 0) {
-        for(int i = 0; i < MAX_K; i++)
-            printf("(%d, %f, %d),", i, (float)(top_k.u[i]), top_k.p[i]);
-        printf("\n\n");
-    }*/
 
     // reduce in thread block
     typedef cub::BlockReduce<TopK<T, MAX_K>, THREADBLOCK_SIZE> BlockReduce;
@@ -69,15 +59,13 @@ __global__ void BeamSearchOnlineTopKStage1Kernel(
     TopK<T, MAX_K> top_k_block = BlockReduce(temp_storage).Reduce(top_k, reduce_topk_op<T, MAX_K>);
     __syncthreads();
 
-    output_values += batch_beam * K;
-    output_token += batch_beam * K;
+    output_values += batch_beam * gridDim.y * K + voc_part_id * K;
+    output_token += batch_beam * gridDim.y * K + voc_part_id * K;
     if(threadIdx.x == 0) {
         for(int i = 0; i < K; i++) {
             output_values[i] = top_k_block.u[i];
             output_token[i] = top_k_block.p[i];
         }
-        // for(int i = 0; i < K; i++)
-        //     printf("(%d, %d, %f, %d)\n", batch_beam, i, (float)(output_values[i]), output_token[i]);
     }
 
   }
@@ -95,8 +83,7 @@ __global__ void BeamSearchOnlineTopKStage2Kernel(
     const int vector_id = blockIdx.x;
     const int thread_id = threadIdx.x;
 
-    const bool IS_FP16 = std::is_same<T, half>::value;
-    const T MAX_T_VAL = (IS_FP16) ? HALF_FLT_MAX : FLT_MAX;
+    const T MAX_T_VAL = NumericLimits<T>::Max();
 
     extern __shared__ char buf_s_[];  // intermediate result
     T* buf_value = reinterpret_cast<T*>(buf_s_);
@@ -122,14 +109,12 @@ __global__ void BeamSearchOnlineTopKStage2Kernel(
     __syncthreads();
 
     if (thread_id < parts_per_beam) {
-        T* b_v = buf_value + thread_id * K;
-        int32_t* b_i = buf_indices + thread_id * K;
-        for (int i = 0; i < K; i++) {
-            partial.p[i] = b_v[i];
-            partial.u[i] = b_i[i];
-        }
+         T* b_v = buf_value + thread_id * K;
+         int32_t* b_i = buf_indices + thread_id * K;
+         for (int i = 0; i < K; i++) {
+           partial.insert(b_v[i], b_i[i]);
+         }
     }
-    __syncthreads();
 
     TopK<T, MAX_K> total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op<T, MAX_K>);
 
@@ -139,8 +124,8 @@ __global__ void BeamSearchOnlineTopKStage2Kernel(
 
         for (int i = 0; i < K; ++i) {
             if (i < K) {
-                output_values[i] = total.p[i];
-                output_indices[i] = total.u[i];
+                output_values[i] = total.u[i];
+                output_indices[i] = total.p[i];
             }
         }
     }
@@ -196,14 +181,13 @@ void TopKLauncherMaxK(
 {
     constexpr int THREAD_BLOCK_SIZE = (MAX_K < 16) ? (MAX_K < 8) ? 256 : 128 : 64;
 
-    // int voc_parts = 4;
-    // if (batch_size * num_beams < 256) {
-    //     // volta has 80 SMs, so we aim for three waves
-    //     voc_parts = (240 + batch_size * num_beams - 1) / (batch_size * num_beams);
-    //     voc_parts = std::min(128, voc_parts);  // we implment up to 128
-    // }
+     int voc_parts = 4;
+     if (batch_size * num_beams < 256) {
+         // volta has 80 SMs, so we aim for three waves
+         voc_parts = (240 + batch_size * num_beams - 1) / (batch_size * num_beams);
+         voc_parts = std::min(128, voc_parts);  // we implment up to 128
+     }
 
-    int voc_parts = 1;
     dim3 grid(batch_size * num_beams, voc_parts);
     cudaFuncSetAttribute(BeamSearchOnlineTopKStage1Kernel<T, MAX_K, THREAD_BLOCK_SIZE>,
                          cudaFuncAttributePreferredSharedMemoryCarveout,

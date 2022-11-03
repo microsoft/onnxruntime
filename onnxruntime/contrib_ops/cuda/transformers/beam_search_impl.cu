@@ -284,8 +284,7 @@ __launch_bounds__(THREADBLOCK_SIZE) __global__
                          int num_beams) {
     int thread_id = threadIdx.x;
     int block_id = blockIdx.x;
-    const bool IS_FP16 = std::is_same<T, half>::value;
-    const T MIN_T_VAL = (IS_FP16) ? HALF_FLT_MIN : -FLT_MAX;
+    const T MIN_T_VAL = NumericLimits<T>::Min();
     TopK<T, MAX_K> partial;
     if (thread_id == 0) {
         for (int i = 0; i < MAX_K; ++i) {

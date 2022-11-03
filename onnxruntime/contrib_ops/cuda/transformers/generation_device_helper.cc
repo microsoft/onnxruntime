@@ -419,7 +419,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   gsl::span<const float> next_scores = gsl::make_span(
       cpu_state->topk_scores.data(),
-      static_cast<typename gsl::span<float>::index_type>(topk_scores->Shape().Size()));
+      static_cast<typename gsl::span<float>::size_type>(topk_scores->Shape().Size()));
 #else
 
   float* topk_scores = beam_state->topk_scores.data();
@@ -433,6 +433,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // static bool do_print = true;
   if(do_print) {
     dumper->Print("topk_scores_tmp", topk_scores_tmp, batch_size, num_beams, 2 * num_beams);
+    dumper->Print("topk_indices_tmp", topk_indices_tmp, batch_size, num_beams, 2 * num_beams);
     dumper->Print("topk_scores", topk_scores, batch_size, num_beams, 2 * num_beams);
     dumper->Print("topk_indices", topk_indices, batch_size, num_beams, 2 * num_beams);
   }

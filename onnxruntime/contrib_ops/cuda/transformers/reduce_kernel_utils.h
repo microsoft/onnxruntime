@@ -37,8 +37,46 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-static const float HALF_FLT_MAX = 65504.F;
-static const float HALF_FLT_MIN = -65504.F;
+template <typename T>
+struct NumericLimits {
+  __inline__ __device__ static T Min() {
+    return std::numeric_limits<T>::lowest();
+  }
+  __inline__ __device__ static T Max() {
+    return std::numeric_limits<T>::max();
+  }
+};
+
+template <>
+struct NumericLimits<half> {
+  __inline__ __device__ static half Min() {
+    return -65504.0f;
+  }
+  __inline__ __device__ static half Max() {
+    return 65504.0f;
+  }
+};
+
+template <>
+struct NumericLimits<float> {
+  __inline__ __device__ static float Min() {
+    return -INFINITY;
+  }
+  __inline__ __device__ static float Max() {
+    return INFINITY;
+  }
+};
+
+template <>
+struct NumericLimits<double> {
+  __inline__ __device__ static double Min() {
+    return -HUGE_VAL;
+  }
+  __inline__ __device__ static double Max() {
+    return HUGE_VAL;
+  }
+};
+
 #define FINAL_MASK 0xffffffff
 
 template<typename T>
@@ -249,15 +287,13 @@ struct TopK {
         }
     }
 
-    __device__ __forceinline__ void init()
-    {
-        const bool IS_FP16 = std::is_same<T, half>::value;
-        const T MAX_T_VAL = (IS_FP16) ? HALF_FLT_MAX : FLT_MAX;
+    __device__ __forceinline__ void init() {
+      const T MAX_T_VAL = NumericLimits<T>::Max();
 
-        for (int i = 0; i < MAX_K; i++) {
-            p[i] = -1;
-            u[i] = -MAX_T_VAL;
-        }
+      for (int i = 0; i < MAX_K; i++) {
+        p[i] = -1;
+        u[i] = -MAX_T_VAL;
+      }
     }
 };
 
@@ -272,22 +308,20 @@ __device__ __forceinline__ TopK<T, MAX_K> reduce_topk_op(const TopK<T, MAX_K>& a
 
 template<typename T>
 struct TopK_2 {
-    int p = -1;
-    T u = -((std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX);
+  int p = -1;
+  T u = NumericLimits<T>::Min();
 
-    __device__ __forceinline__ void insert(T elem, int elem_id)
-    {
-        if (elem > u) {
-            u = elem;
-            p = elem_id;
-        }
+  __device__ __forceinline__ void insert(T elem, int elem_id) {
+    if (elem > u) {
+      u = elem;
+      p = elem_id;
     }
+  }
 
-    __device__ __forceinline__ void init()
-    {
-        u = -((std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX);
-        p = -1;
-    }
+  __device__ __forceinline__ void init() {
+    u = NumericLimits<T>::Min();
+    p = -1;
+  }
 };
 
 template<typename T>
@@ -297,15 +331,13 @@ __device__ __forceinline__ TopK_2<T> reduce_topk_op_2(const TopK_2<T>& a, const 
 }
 
 template<typename T>
-__device__ __forceinline__ T clamp_inf_for_half(const float input)
-{
-    if (std::is_same<T, half>::value == true) {
-        // clamp inf values to enable fp16 training
-        return (float)input > 0.0f ? min(input, HALF_FLT_MAX - 1000) : max(input, -HALF_FLT_MAX + 1000);
-    }
-    else {
-        return input;
-    }
+__device__ __forceinline__ T clamp_inf_for_half(const float input) {
+  if (std::is_same<T, half>::value == true) {
+    // clamp inf values to enable fp16 training
+    return (float)input > 0.0f ? min(input, NumericLimits<T>::Max() - 1000) : max(input, NumericLimits<T>::Min() + 1000);
+  } else {
+    return input;
+  }
 }
 
 }
