@@ -6,6 +6,7 @@
 #include "embed_layer_norm.h"
 #include "embed_layer_norm_impl.h"
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
+#include "core/framework/float16.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -84,22 +85,13 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   ORT_IGNORE_RETURN_VALUE(status);
 
-  if (should_randomize_ && random_data_ == nullptr) {
+  if (should_randomize_input_ && random_data_ == nullptr) {
     std::cout << "Generating random input" << std::endl;
     cudaMalloc(&random_data_, output->SizeInBytes());
   }
 
-  if (should_randomize_) {
-    std::vector<uint16_t> host_data(output->SizeInBytes(), 0);
-    cudaMemcpyAsync(host_data.data(), output->MutableDataRaw(), output->SizeInBytes(), cudaMemcpyDeviceToHost);
-
-    for (size_t i = 0; i < static_cast<size_t>(output->Shape().Size()); ++i) {
-      if (host_data[i] != 0 && ((host_data[i] & 0x7C00) == 0)) {
-        ORT_THROW("Sub-normal found 3: ", host_data[i]);
-      }
-    }
-
-    //cudaMemcpyAsync(output->MutableDataRaw(), random_data_, output->SizeInBytes(), cudaMemcpyDeviceToDevice);
+  if (should_randomize_input_) {
+    cudaMemcpyAsync(output->MutableDataRaw(), random_data_, output->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
   }
 
   return Status::OK();

@@ -27,6 +27,8 @@
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/platform/env_var_utils.h"
+#include "core/framework/float16.h"
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -170,37 +172,36 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
-    bool should_randomize = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE", false);
+    bool randomize_weights = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE_WEIGHTS", false);
+    bool fix_subnormals = ParseEnvironmentVariableWithDefault<bool>("ORT_FIX_WEIGHTS", false);
 
     Status copy_status = Status::OK();
 
-    size_t total_subnormals = 0;
-    size_t total_normals = 0;
+    if (randomize_weights && (tensor_proto.name().find("Attention_") != std::string::npos ||
+                              tensor_proto.name().find("MatMul_") != std::string::npos ||
+                              tensor_proto.name().find("dense.bias") != std::string::npos ||
+                              tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
+                              tensor_proto.name().find("LayerNorm.bias") != std::string::npos ||
+                              tensor_proto.name().find("embeddings.weight") != std::string::npos)) {
+      std::cout << "Randomizing weights" << std::endl;
+      copy_status = data_transfer_mgr.Randomize(*p_tensor);
+    } else if (fix_subnormals && (tensor_proto.name().find("Attention_") != std::string::npos ||
+                                  tensor_proto.name().find("MatMul_") != std::string::npos ||
+                                  tensor_proto.name().find("dense.bias") != std::string::npos ||
+                                  tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
+                                  tensor_proto.name().find("LayerNorm.bias") != std::string::npos ||
+                                  tensor_proto.name().find("embeddings.weight") != std::string::npos)) {
+      std::cout << "Fixing subnormals in weights" << std::endl;
 
-    if (should_randomize && (tensor_proto.name().find("Attention_") != std::string::npos ||
-                             tensor_proto.name().find("MatMul_") != std::string::npos ||
-                             tensor_proto.name().find("dense.bias") != std::string::npos ||
-                             tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
-                             tensor_proto.name().find("LayerNorm.bias") != std::string::npos ||
-                             tensor_proto.name().find("embeddings.weight") != std::string::npos)) {
-      //copy_status = data_transfer_mgr.Randomize(*p_tensor);
       ORT_ENFORCE(p_deserialize_tensor->SizeInBytes() == (static_cast<size_t>(p_deserialize_tensor->Shape().Size()) * 2));
       auto* data = reinterpret_cast<uint16_t*>(p_deserialize_tensor->MutableDataRaw());
 
-      // std::cout << "Checking and correcting sub-normals" << std::endl;
-
       for (size_t i = 0; i < static_cast<size_t>(p_deserialize_tensor->Shape().Size()); ++i) {
         if ((data[i] & 0x7C00) == 0) {
-          //ORT_THROW("Sub-normal found: ", data[i]);
-          ++total_subnormals;
           data[i] = 0;
-        } else {
-          ++total_normals;
-          // std::cout << "Normal fp16" << std::endl;
         }
       }
 
-      std::cout << "Percentage of subnormals 6: " << (100.f * total_subnormals / (total_normals + total_subnormals)) << std::endl;
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
 
     } else {
