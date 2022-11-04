@@ -19,7 +19,7 @@ redirect_from: /docs/reference/execution-providers/ArmNN-ExecutionProvider
 Accelerate performance of ONNX model workloads across Armv8 cores with the ArmNN execution provider. [ArmNN](https://github.com/ARM-software/armnn) is an open source inference engine maintained by Arm and Linaro companies. 
 
 ## Build
-For build instructions, please see the [BUILD page](../build/eps.md#armnn).
+For build instructions, please see the [BUILD page](../build/eps.md#ArmNN).
 
 ## Usage
 ### C/C++

@@ -19,7 +19,7 @@ The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution p
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx). 
+For build instructions, please see the [BUILD page](../build/eps.md#AMD-MIGraphX). 
 
 ## Usage
 

@@ -21,7 +21,7 @@ The integration of ACL as an execution provider (EP) into ONNX Runtime accelerat
 
 
 ## Build
-For build instructions, please see the [build page](../build/eps.md#arm-compute-library).
+For build instructions, please see the [build page](../build/eps.md#ARM-Compute-Library).
 
 ## Usage
 ### C/C++

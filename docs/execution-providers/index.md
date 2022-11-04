@@ -28,12 +28,12 @@ ONNX Runtime supports many different execution providers today. Some of the EPs 
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 ---|---|---|---
-|Default CPU|[NVIDIA CUDA](../execution-providers/CUDA-ExecutionProvider.md)|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[Rockchip NPU](../execution-providers/RKNPU-ExecutionProvider.md) (*preview*)|
-|[Intel DNNL](../execution-providers/oneDNN-ExecutionProvider.md)|[NVIDIA TensorRT](../execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../execution-providers/ACL-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](../execution-providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
-|[TVM](../execution-providers/TVM-ExecutionProvider.md) (*preview*)|[DirectML](../execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../execution-providers/NNAPI-ExecutionProvider.md)|[Huawei CANN](../execution-providers/CANN-ExecutionProvider.md) (*preview*)|
-|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[AMD MIGraphX](../execution-providers/MIGraphX-ExecutionProvider.md) (*preview*)|[ARM-NN](../execution-providers/ArmNN-ExecutionProvider.md) (*preview*)|
+|Default CPU|[NVIDIA CUDA](../execution-providers/CUDA-ExecutionProvider.md)|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[Rockchip NPU](../execution-providers/community-maintained/RKNPU-ExecutionProvider.md) (*preview*)|
+|[Intel DNNL](../execution-providers/oneDNN-ExecutionProvider.md)|[NVIDIA TensorRT](../execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../execution-providers/community-maintained/ACL-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md) (*preview*)|
+|[TVM](../execution-providers/community-maintained/TVM-ExecutionProvider.md) (*preview*)|[DirectML](../execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../execution-providers/NNAPI-ExecutionProvider.md)|[Huawei CANN](../execution-providers/community-maintained/CANN-ExecutionProvider.md) (*preview*)|
+|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[AMD MIGraphX](../execution-providers/community-maintained/MIGraphX-ExecutionProvider.md) (*preview*)|[ARM-NN](../execution-providers/community-maintained/ArmNN-ExecutionProvider.md) (*preview*)|
 ||[AMD ROCm](../execution-providers/ROCm-ExecutionProvider.md) (*preview*)|[CoreML](../execution-providers/CoreML-ExecutionProvider.md) (*preview*)|
-||[TVM](../execution-providers/TVM-ExecutionProvider.md) (*preview*)|[TVM](../execution-providers/TVM-ExecutionProvider.md) (*preview*)|
+||[TVM](../execution-providers/community-maintained/TVM-ExecutionProvider.md) (*preview*)|[TVM](../execution-providers/community-maintained/TVM-ExecutionProvider.md) (*preview*)|
 ||[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[Qualcomm SNPE](../execution-providers/SNPE-ExecutionProvider.md)|
 |[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)||[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)|
 

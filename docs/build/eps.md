@@ -454,7 +454,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ---
 
 ## ARM Compute Library
-See more information on the ACL Execution Provider [here](../execution-providers/ACL-ExecutionProvider.md).
+See more information on the ACL Execution Provider [here](../execution-providers/community-maintained/ACL-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -521,7 +521,7 @@ onnxruntime_test_all
 
 ## ArmNN
 
-See more information on the ArmNN Execution Provider [here](../execution-providers/ArmNN-ExecutionProvider.md).
+See more information on the ArmNN Execution Provider [here](../execution-providers/community-maintained/ArmNN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -569,7 +569,7 @@ The ARM Compute Library home directory and build directory must also be availabl
 ---
 
 ## RKNPU
-See more information on the RKNPU Execution Provider [here](../execution-providers/RKNPU-ExecutionProvider.md).
+See more information on the RKNPU Execution Provider [here](../execution-providers/community-maintained/RKNPU-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -608,7 +608,7 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
+See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
 
 For instructions to setup the hardware environment: [Hardware setup](../execution-providers/Vitis-AI-ExecutionProvider.md#hardware-setup)
 
@@ -629,7 +629,7 @@ The Vitis-AI execution provider is only supported on Linux.
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../execution-providers/community-maintained/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -774,7 +774,7 @@ Linux example:
 
 ## CANN
 
-See more information on the CANN Execution Provider [here](../execution-providers/CANN-ExecutionProvider.md).
+See more information on the CANN Execution Provider [here](../execution-providers/community-maintained/CANN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
