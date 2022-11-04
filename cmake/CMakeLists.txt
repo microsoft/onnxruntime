@@ -1869,6 +1869,9 @@ if (onnxruntime_USE_ROCM)
     message(FATAL_ERROR "ROCM does not support build with CUDA!")
   endif()
 
+  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
+  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
+
   set(ROCM_PATH ${onnxruntime_ROCM_HOME})
 
   if (NOT CMAKE_HIP_COMPILER)
@@ -1879,14 +1882,23 @@ if (onnxruntime_USE_ROCM)
     set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
+  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
+  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+
+  enable_language(HIP)
+  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
+  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
+  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
+  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
+  # example, the CMAKE_PREFIX_PATH might be improperly configured.
+  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
+    message(FATAL_ERROR "HIP Language is not properly configured.")
+  endif()
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
+
   if (NOT onnxruntime_HIPIFY_PERL)
     set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
   endif()
-
-  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
-  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
-  find_package(HIP)
-  enable_language(HIP)
 
   # replicate strategy used by pytorch to get ROCM_VERSION
   # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
