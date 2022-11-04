@@ -137,7 +137,6 @@ def main():
             p = subprocess.run(command, stderr=subprocess.PIPE)
             logger.info("Completed subprocess %s ", " ".join(p.args))
             logger.info("Return code: %d", p.returncode)
-            logger.info(p.stderr)
 
             if p.returncode != 0:
                 error_type = "runtime error"
