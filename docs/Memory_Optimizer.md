@@ -49,7 +49,7 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	=================================
 	```
 5. As shown above, 'Subgraph' shows 1) a string representative for a re-computable subgraph; and 2) current status of memory optimization. All are disabled for recompute in this case.
-6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In the blow example, 12 FastGelu related subgraphs are allowed to recompute.
+6. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraph to do recompute. In below example, 12 FastGelu related subgraphs are allowed to recompute.
 `FastGelu+` is the subgraph string representative; `1` in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled); `12` means the initial 12 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
 	```
 	export ORTMODULE_MEMORY_OPT_CONFIG="FastGelu+:1:12"
