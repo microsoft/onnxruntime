@@ -35,19 +35,19 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
 
   // ReduceSumSquare for A
   std::vector<T> a_ss;
-  a_ss.resize(m);
+  a_ss.resize(gsl::narrow_cast<size_t>(m));
   const auto* cur_a = a_data;
   for (int64_t i = 0; i < m; ++i) {
-    a_ss[i] = ConstEigenVectorMap<T>(cur_a, k).squaredNorm();
+    a_ss[gsl::narrow_cast<size_t>(i)] = ConstEigenVectorMap<T>(cur_a, gsl::narrow_cast<size_t>(k)).squaredNorm();
     cur_a += k;
   }
 
   // ReduceSumSquare for B
   std::vector<T> b_ss;
-  b_ss.resize(n);
+  b_ss.resize(gsl::narrow_cast<size_t>(n));
   const auto* cur_b = b_data;
   for (int64_t i = 0; i < n; ++i) {
-    b_ss[i] = ConstEigenVectorMap<T>(cur_b, k).squaredNorm();
+    b_ss[gsl::narrow_cast<size_t>(i)] = ConstEigenVectorMap<T>(cur_b, gsl::narrow_cast<size_t>(k)).squaredNorm();
     cur_b += k;
   }
 
@@ -71,19 +71,19 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
   ORT_UNUSED_PARAMETER(threadpool);
 
   // https://eigen.tuxfamily.org/dox/TopicWritingEfficientProductExpression.html
-  auto out_map = EigenMatrixMapRowMajor<T>(c_data, m, n);
+  auto out_map = EigenMatrixMapRowMajor<T>(c_data, gsl::narrow_cast<size_t>(m), gsl::narrow_cast<size_t>(n));
   out_map.noalias() = static_cast<T>(-2.) *
-                      (ConstEigenMatrixMapRowMajor<T>(a_data, m, k) *
-                       ConstEigenMatrixMapRowMajor<T>(b_data, n, k).transpose());
+                      (ConstEigenMatrixMapRowMajor<T>(a_data, gsl::narrow_cast<size_t>(m), gsl::narrow_cast<size_t>(k)) *
+                       ConstEigenMatrixMapRowMajor<T>(b_data, gsl::narrow_cast<size_t>(n), gsl::narrow_cast<size_t>(k)).transpose());
 #endif
 
   // add a_ss and b_ss, with broadcast
   // output shape is {m, n}
   auto* cur_out = c_data;
   for (int64_t i = 0; i < m; ++i) {
-    T a_val = a_ss[i];
+    T a_val = a_ss[gsl::narrow_cast<size_t>(i)];
     for (int64_t j = 0; j < n; ++j) {
-      *cur_out = (*cur_out + a_val) + b_ss[j];
+      *cur_out = (*cur_out + a_val) + b_ss[gsl::narrow_cast<size_t>(j)];
       ++cur_out;
     }
   }
@@ -114,7 +114,7 @@ common::Status CDist<T>::Compute(OpKernelContext* context) const {
   T* output = C->MutableData<T>();
 
   CalculateSqeuclidean<T>(*A, *B, *C, tp);
-  auto map_out = EigenVectorArrayMap<T>(output, output_shape.Size());
+  auto map_out = EigenVectorArrayMap<T>(output, gsl::narrow_cast<size_t>(output_shape.Size()));
 
   // because we use GEMM in CalculateSqeuclidean there's a slight chance a number extremely close to zero
   // could be negative, so we need to run abs() to avoid NaN's in the results.

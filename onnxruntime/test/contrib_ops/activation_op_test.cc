@@ -47,6 +47,53 @@ TEST_F(ActivationOpTest, Gelu) {
       "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
       false, 1, kMSDomain);
 }
-}  // namespace test
 
+TEST_F(ActivationOpTest, QuickGelu) {
+  // QuickGelu is not a single activation, some corner values in input_values will not work.
+  std::vector<std::vector<float>> quick_gelu_input_values{{-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f}};
+
+  // Positive alpha.
+  {
+    float alpha = 1.702f;
+    TestActivationOp<float>(
+        "QuickGelu", quick_gelu_input_values,
+        [alpha](float x) {
+          auto tmp = x * alpha;
+          auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
+          y = tmp >= 0 ? y : 1 - y;
+          return x * y;
+        },
+        {{"alpha", alpha}}, false, 1, kMSDomain);
+  }
+
+  // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
+  {
+    float alpha = 1.0f;
+    TestActivationOp<float>(
+        "QuickGelu", quick_gelu_input_values,
+        [alpha](float x) {
+          auto tmp = x * alpha;
+          auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
+          y = tmp >= 0 ? y : 1 - y;
+          return x * y;
+        },
+        {{"alpha", alpha}}, false, 1, kMSDomain);
+  }
+
+  // Negative alpha.
+  {
+    float alpha = -1.702f;
+    TestActivationOp<float>(
+        "QuickGelu", quick_gelu_input_values,
+        [alpha](float x) {
+          auto tmp = x * alpha;
+          auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
+          y = tmp >= 0 ? y : 1 - y;
+          return x * y;
+        },
+        {{"alpha", alpha}}, false, 1, kMSDomain);
+  }
+}
+
+}  // namespace test
 }  // namespace onnxruntime

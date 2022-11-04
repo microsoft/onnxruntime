@@ -5,6 +5,7 @@
 #include "contrib_ops/cpu/crop.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
@@ -65,6 +66,11 @@ TEST(CropContribOpTest, CropBorderAndScale) {
 }
 
 TEST(ImageScalerContribOpTest, ImageScalerTest) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {
       1.0f, 3.0f,

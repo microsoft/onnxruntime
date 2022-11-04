@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/cast_map.h"
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 
 namespace {

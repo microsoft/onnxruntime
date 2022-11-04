@@ -8,8 +8,27 @@ using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-    public partial class InferenceTest
+  /// <summary>
+  /// This is compensate for the absence of string.Contains() in .NET Standard 2.0
+  /// Contains(String, StringComparison)
+  /// </summary>
+  public static class StringExtensions
+  {
+    public static bool Contains(this String str, String substring,
+                                StringComparison comp)
     {
+      if (substring == null)
+        throw new ArgumentNullException("substring",
+                                     "substring cannot be null.");
+      else if (!Enum.IsDefined(typeof(StringComparison), comp))
+        throw new ArgumentException("comp is not a member of StringComparison",
+                                 "comp");
+
+      return str.IndexOf(substring, comp) >= 0;
+    }
+  }
+  public partial class InferenceTest
+  {
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
 
@@ -435,7 +454,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                     if (!skipModels.ContainsKey(modelDir.Name))
 #else
-                    if (!(skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
+                    if (!(skipModels.ContainsKey(modelDir.Name) || 
+                          modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                          modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
 #endif
                     {
                         yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
@@ -457,7 +478,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                     if (skipModels.ContainsKey(modelDir.Name))
 #else
-                    if (skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
+                    if (skipModels.ContainsKey(modelDir.Name) ||
+                        modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                        modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
 #endif
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
