@@ -44,23 +44,15 @@ void xnn_aligned_deallocate(void* context, void* pointer) {
 }
 }  // namespace
 
-std::pair<AllocatorPtr, xnn_allocator*> GetOrCreateAllocator() {
-  // create our allocator
-  AllocatorCreationInfo const allocator_info(
-      [](int) {
-        // lazy create the allocator
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                            OrtAllocatorType::OrtDeviceAllocator));
-      });
-  // thread safe and create only once
-  static const AllocatorPtr ort_allocator = CreateAllocator(allocator_info);
+std::pair<AllocatorPtr*, xnn_allocator*> GetStoredAllocator() {
+  static AllocatorPtr ort_allocator;
   static xnn_allocator xnn_allocator_wrapper_ = {ort_allocator.get(),
                                                  xnn_allocate,
                                                  xnn_reallocate,
                                                  xnn_deallocate,
                                                  xnn_aligned_allocate,
                                                  xnn_aligned_deallocate};
-  return {ort_allocator, &xnn_allocator_wrapper_};
+  return {&ort_allocator, &xnn_allocator_wrapper_};
 }
 
 }  // namespace xnnpack

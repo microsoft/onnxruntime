@@ -5,7 +5,7 @@ struct xnn_allocator;
 namespace onnxruntime {
 namespace xnnpack {
 
-std::pair<AllocatorPtr, xnn_allocator*> GetOrCreateAllocator();
+std::pair<AllocatorPtr*, xnn_allocator*> GetStoredAllocator();
 
 }  // namespace xnnpack
 }  // namespace onnxruntime
