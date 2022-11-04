@@ -39,8 +39,6 @@ class ThreadPoolInterface;
 namespace onnxruntime {
 
 #ifdef _WIN32
-//using ThreadAffinity = std::pair<uint64_t,uint64_t>;
-//using ThreadAffinities = std::vector<ThreadAffinity>;
 using PIDType = unsigned long;
 using FileOffsetType = int64_t;
 #else

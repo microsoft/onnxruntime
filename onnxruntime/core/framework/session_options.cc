@@ -5,6 +5,8 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/ml_value.h"
 
+#define SESS_CONFIG_VALUE_MAX_LEN 10240
+
 namespace onnxruntime {
 
 bool SessionOptions::TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept {
@@ -32,7 +34,7 @@ Status SessionOptions::AddConfigEntry(_In_z_ const char* config_key, _In_z_ cons
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
 
   std::string val(config_value);
-  if (val.length() > 10240)
+  if (val.length() > SESS_CONFIG_VALUE_MAX_LEN)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 10240");
 
   auto iter = session_configurations.find(config_key);
