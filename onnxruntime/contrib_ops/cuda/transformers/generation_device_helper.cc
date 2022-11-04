@@ -862,19 +862,22 @@ Status UpdateGptFeeds(
 
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
-  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
-  int64_t mask_dims[] = {batch_beam_size, current_length};
-  TensorShape mask_shape(&mask_dims[0], 2);
-  OrtValue attention_mask;
-  auto mask_type = DataTypeImpl::GetType<int32_t>();
-  Tensor::InitOrtValue(mask_type, mask_shape, allocator, attention_mask);
-  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  const auto& mask_dims = old_mask.Get<Tensor>().Shape().GetDims();
+  if (mask_dims.size() == 2) {
+    const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
+    int64_t mask_dims[] = {batch_beam_size, current_length};
+    TensorShape mask_shape(&mask_dims[0], 2);
+    OrtValue attention_mask;
+    auto mask_type = DataTypeImpl::GetType<int32_t>();
+    Tensor::InitOrtValue(mask_type, mask_shape, allocator, attention_mask);
+    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
 
-  // Launch kernel to update position_ids and attention_mask for next iteration
-  cuda::LaunchUpdateGptKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length,
-                              reinterpret_cast<cudaStream_t>(stream));
+    // Launch kernel to update position_ids and attention_mask for next iteration
+    cuda::LaunchUpdateGptKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length,
+                                reinterpret_cast<cudaStream_t>(stream));
 
-  next_inputs[2] = attention_mask;
+    next_inputs[2] = attention_mask;
+  } // do nothing for mask_dims.size() == 4
 
   // Update past state
   if (num_beams == 1) {

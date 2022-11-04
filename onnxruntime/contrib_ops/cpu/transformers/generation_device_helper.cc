@@ -138,7 +138,8 @@ Status CreateGptInputs(
   OrtValue attention_mask;
   if (attn_mask_value != nullptr) {
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
-    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(),
+    const TensorShape& attn_mask_shape = attn_mask.Shape(); // 2d or 4d
+    Tensor::InitOrtValue(element_type, attn_mask_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(),
                          allocator->Info(), attention_mask);
   } else {
     auto mask_type = DataTypeImpl::GetType<int32_t>();
@@ -176,9 +177,16 @@ Status CreateGptInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
-  ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
-  ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
+  if (num_beams == 1) {
+    expanded_input_ids = input_ids;
+    expanded_position_ids = position_ids;
+    expanded_attention_mask = attention_mask;
+  } else {
+    // bugbug: 4d not supported here
+    ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
+    ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
+    ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
+  }
 
   return Status::OK();
 }
@@ -637,19 +645,22 @@ Status UpdateGptFeeds(
   next_inputs[1] = position_ids;
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
-  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
-  int64_t mask_dims[] = {batch_beam_size, current_length};
-  TensorShape mask_shape(&mask_dims[0], 2);
-  OrtValue attention_mask;
-  Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
-  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  for (int i = 0; i < batch_beam_size; i++) {
-    for (int j = 0; j < current_length - 1; j++) {
-      mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
+  const auto& mask_dims = old_mask.Get<Tensor>().Shape().GetDims();
+  if (mask_dims.size() == 2) {
+    const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
+    int64_t mask_dims[] = {batch_beam_size, current_length};
+    TensorShape mask_shape(&mask_dims[0], 2);
+    OrtValue attention_mask;
+    Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
+    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_beam_size; i++) {
+      for (int j = 0; j < current_length - 1; j++) {
+        mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
+      }
+      mask_data[i * current_length + current_length - 1] = 1;
     }
-    mask_data[i * current_length + current_length - 1] = 1;
-  }
-  next_inputs[2] = attention_mask;
+    next_inputs[2] = attention_mask;
+  } // if mask_dims.size() == 4 do nothing
 
   // Update past state
   if (num_beams == 1) {

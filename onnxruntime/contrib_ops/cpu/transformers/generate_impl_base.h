@@ -139,13 +139,19 @@ class GenerateBase {
 
     if (attention_mask != nullptr) {
       const auto& dims_attn = attention_mask->Shape().GetDims();
-      if (dims_attn.size() != 2) {
+      if (dims_attn.size() == 2) {
+        if (!SpanEq(dims_attn, dims)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'attention_mask' is expected to have same shape as input_ids");
+        }
+      } else if (dims_attn.size() == 4) {
+        if (dims_attn[0] != dims[0] || dims_attn[1] != 1) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'attention_mask' is expected to shape [batch_size, 1, max_sequence_length, max_sequence_length]");
+        }
+      } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
-      }
-      if (!SpanEq(dims_attn, dims)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'attention_mask' is expected to have same shape as input_ids");
+                               "Input 'attention_mask' is expected to have 2 or 4 dimensions, got ", dims_attn.size());
       }
     }
 
