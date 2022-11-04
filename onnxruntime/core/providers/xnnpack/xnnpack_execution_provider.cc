@@ -128,7 +128,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  if (stored_allocator->get()) {
+  if (!(*stored_allocator)) {
     *stored_allocator = cpu_alloc;
   }
 
