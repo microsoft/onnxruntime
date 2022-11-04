@@ -14,7 +14,9 @@ export CUDACXX=$CUDA_HOME/bin/nvcc
 ./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi --enable_training_torch_interop
 ```
 
-Configure ORTModule torch extensions (**avoid** doing this in ORT code *repo root directory*):
+Install the Python wheel.
+
+Configure ORTModule torch cpp extensions (**avoid** doing this in ORT code *repo root directory*):
 
 ```bash
 python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
@@ -24,7 +26,7 @@ python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
 
 ## 2. Use `ORTModule` to Accelerate Forward/Backward
 
-Plug in your `torch.nn.Module` model with `ORTModule` to leverage ONNX Runtime fast training engine.
+Plug in your `torch.nn.Module` model with `ORTModule` to leverage ONNX Runtime fast training backend.
 
 Sample usage as below:
 ```diff
@@ -103,7 +105,7 @@ The output directory of the onnx models by default is set to the current working
 
 	An alternative to disable without using environment variable:
 
-	```bash
+	```python
 	from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
 	enable_custom_autograd_support(False)
 	```
@@ -122,7 +124,7 @@ Before full qualified name can be got from exporter, this environment variables 
 
 Q: *Want to run a bigger batch size?*
 
-Q: *The model hits OOM, even with minimum required batch size?*
+Q: *The model training hits OOM, even with minimum required batch size?*
 
 Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for how to leverage ORT's recomputation techniques.
 
@@ -151,7 +153,6 @@ If user models utilize DeepSpeed or Apex libraries, ORT's `FP16_Optimizer` can b
 Use `FP16_Optimizer` with DeepSpeed ZeRO Optimizer:
 
 ```diff
-	# Could also be ORT's FusedAdam.
 	optimizer = AdamW(model.parameters(), lr=1)
 	model, optimizer, _, lr_scheduler = deepspeed.initialize(
 			model=model,
