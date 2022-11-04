@@ -134,12 +134,18 @@ def main():
                     ]
                 )
 
-            p = subprocess.run(command)
-            logger.info(p)
+            p = subprocess.run(command, stderr=subprocess.PIPE)
+            logger.info("Completed subprocess %s ", " ".join(p.args))
+            logger.info("Return code: %d", p.returncode)
+            logger.info(p.stderr)
 
             if p.returncode != 0:
                 error_type = "runtime error"
                 error_message = "Benchmark script exited with returncode = " + str(p.returncode)
+
+                if p.stderr:
+                    error_message += "\nSTDERR:\n" + p.stderr.decode("utf-8")
+
                 logger.error(error_message)
                 update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)
                 write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
