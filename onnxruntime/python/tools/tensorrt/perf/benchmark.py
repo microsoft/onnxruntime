@@ -1298,93 +1298,6 @@ def run_model_on_ep(
                               model_to_fail_ep, ep_results, success_results, test_data_dir, convert_input_fp16)
 
 
-def validate_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_path,
-                         inputs, ref_outputs,
-                         model_to_fail_ep, ep_results, tmp_work_dir):
-    if is_standalone(exec_provider):
-        return True
-
-    # enable profiling to generate profiling file for analysis
-    options = onnxruntime.SessionOptions()
-    options.enable_profiling = True
-    options.profile_file_prefix = f"ort_profile_{model_name}_{exec_provider}"
-    options.graph_optimization_level = get_graph_opt_level(args.graph_enablement)
-
-    providers = ep_to_provider_list[exec_provider]
-    provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
-
-    # create onnxruntime inference session
-    try:
-        sess, creation_time = create_session(model_path, providers, provider_options, options)
-
-    except Exception as excpt:
-        logger.error(excpt)
-        update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
-        return  False
-
-    if creation_time:
-        ep_results["session"][exec_provider] = creation_time
-
-    sess.disable_fallback()
-
-    logger.info("Start to inference %s with %s ...", model_name, exec_provider)
-    logger.info(sess.get_providers())
-    logger.info(sess.get_provider_options())
-
-    if sess:
-        logger.info("Model inputs nodes:")
-        for input_meta in sess.get_inputs():
-            logger.info(input_meta)
-        logger.info("Model outputs nodes:")
-        for output_meta in sess.get_outputs():
-            logger.info(output_meta)
-
-    # run inference and validate the result
-    #
-    # currently skip TensorRT float16 validation intentionally
-    if exec_provider != trt_fp16:
-        try:
-            ort_outputs = inference_ort_and_get_prediction(model_name, sess, inputs)
-
-            status = validate(
-                ref_outputs,
-                ort_outputs,
-                args.rtol,
-                args.atol,
-                args.percent_mismatch,
-            )
-            if not status[0]:
-                update_fail_model_map(
-                    model_to_fail_ep,
-                    model_name,
-                    exec_provider,
-                    "result accuracy issue",
-                    status[1],
-                )
-                return False
-        except Exception as excpt:
-            logger.error(excpt)
-            update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
-            return False
-
-        # Run inference again. the reason is that some ep like tensorrt
-        # it takes much longer time to generate graph on first run and
-        # we need to skip the perf result of that expensive run.
-        inference_ort_and_get_prediction(model_name, sess, inputs)
-    else:
-        inference_ort_and_get_prediction(model_name, sess, inputs)
-        inference_ort_and_get_prediction(model_name, sess, inputs)
-
-    sess.end_profiling()
-
-    # get metrics from profiling file
-    metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
-    if metrics:
-        ep_results["metrics"][exec_provider] = metrics
-
-    return True
-
-
 def benchmark_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_path, inputs, all_inputs_shape,
                           model_to_fail_ep, ep_results, success_results, test_data_dir, convert_input_fp16):
     # memory tracking variables
@@ -1490,6 +1403,93 @@ def benchmark_model_on_ep(args, model_name, exec_provider, trt_ep_options, model
             ep_results["latency"][exec_provider]["memory"] = mem_usage
         if not args.trtexec:  # skip standalone
             success_results.append(result)
+
+
+def validate_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_path,
+                         inputs, ref_outputs,
+                         model_to_fail_ep, ep_results, tmp_work_dir):
+    if is_standalone(exec_provider):
+        return True
+
+    # enable profiling to generate profiling file for analysis
+    options = onnxruntime.SessionOptions()
+    options.enable_profiling = True
+    options.profile_file_prefix = f"ort_profile_{model_name}_{exec_provider}"
+    options.graph_optimization_level = get_graph_opt_level(args.graph_enablement)
+
+    providers = ep_to_provider_list[exec_provider]
+    provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
+
+    # create onnxruntime inference session
+    try:
+        sess, creation_time = create_session(model_path, providers, provider_options, options)
+
+    except Exception as excpt:
+        logger.error(excpt)
+        update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
+        return  False
+
+    if creation_time:
+        ep_results["session"][exec_provider] = creation_time
+
+    sess.disable_fallback()
+
+    logger.info("Start to inference %s with %s ...", model_name, exec_provider)
+    logger.info(sess.get_providers())
+    logger.info(sess.get_provider_options())
+
+    if sess:
+        logger.info("Model inputs nodes:")
+        for input_meta in sess.get_inputs():
+            logger.info(input_meta)
+        logger.info("Model outputs nodes:")
+        for output_meta in sess.get_outputs():
+            logger.info(output_meta)
+
+    # run inference and validate the result
+    #
+    # currently skip TensorRT float16 validation intentionally
+    if exec_provider != trt_fp16:
+        try:
+            ort_outputs = inference_ort_and_get_prediction(model_name, sess, inputs)
+
+            status = validate(
+                ref_outputs,
+                ort_outputs,
+                args.rtol,
+                args.atol,
+                args.percent_mismatch,
+            )
+            if not status[0]:
+                update_fail_model_map(
+                    model_to_fail_ep,
+                    model_name,
+                    exec_provider,
+                    "result accuracy issue",
+                    status[1],
+                )
+                return False
+        except Exception as excpt:
+            logger.error(excpt)
+            update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
+            return False
+
+        # Run inference again. the reason is that some ep like tensorrt
+        # it takes much longer time to generate graph on first run and
+        # we need to skip the perf result of that expensive run.
+        inference_ort_and_get_prediction(model_name, sess, inputs)
+    else:
+        inference_ort_and_get_prediction(model_name, sess, inputs)
+        inference_ort_and_get_prediction(model_name, sess, inputs)
+
+    sess.end_profiling()
+
+    # get metrics from profiling file
+    metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
+    if metrics:
+        ep_results["metrics"][exec_provider] = metrics
+
+    return True
 
 
 def calculate_gain(value, ep1, ep2):
