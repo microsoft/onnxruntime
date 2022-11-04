@@ -72,10 +72,26 @@ enable_all = "all"
 
 
 def is_benchmark_mode(running_mode):
+    """
+    Returns True if the script's running mode requires running benchmarks.
+
+    :param running_mode: A string denoting the script's running mode (i.e., 'benchmark', 'validate', or 'both')
+
+    :return: True if benchmarking is required.
+    """
+
     return running_mode == "benchmark" or running_mode == "both"
 
 
 def is_validate_mode(running_mode):
+    """
+    Returns True if the script's running mode requires running inference validation.
+
+    :param running_mode: A string denoting the script's running mode (i.e., 'benchmark', 'validate', or 'both')
+
+    :return: True if validation is required.
+    """
+
     return running_mode == "validate" or running_mode == "both"
 
 
