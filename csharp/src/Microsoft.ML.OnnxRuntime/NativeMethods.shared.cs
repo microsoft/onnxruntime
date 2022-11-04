@@ -476,7 +476,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(LogLevel custom_log_level, IntPtr /*(OrtEnv*)*/ env);
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, LogLevel custom_log_level);
         public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
         #endregion Runtime/Environment API

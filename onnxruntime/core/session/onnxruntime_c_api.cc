@@ -167,8 +167,8 @@ ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env)
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level,
-                    _In_ OrtEnv* ort_env) {
+ORT_API_STATUS_IMPL(OrtApis::UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env,
+                    OrtLoggingLevel log_severity_level) {
   API_IMPL_BEGIN
   LoggingManager* default_logging_manager = ort_env->GetLoggingManager();
   int severity_level = static_cast<int>(log_severity_level);

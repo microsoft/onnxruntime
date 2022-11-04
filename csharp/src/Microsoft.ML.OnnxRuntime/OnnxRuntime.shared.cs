@@ -162,7 +162,7 @@ namespace Microsoft.ML.OnnxRuntime
             get { return envLogLevel; }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(value, Handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(Handle, value));
                 envLogLevel = value;
             }
         }

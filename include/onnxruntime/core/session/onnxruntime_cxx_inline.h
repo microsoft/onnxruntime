@@ -416,7 +416,7 @@ inline Env& Env::DisableTelemetryEvents() {
 }
 
 inline Env& Env::UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level) {
-  ThrowOnError(GetApi().UpdateEnvWithCustomLogLevel(log_severity_level, p_));
+  ThrowOnError(GetApi().UpdateEnvWithCustomLogLevel(p_, log_severity_level));
   return *this;
 }
 
