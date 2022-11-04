@@ -339,6 +339,37 @@ ORT_API(void, OrtTrainingApis::ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckp
   delete reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
+                    _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len,
+                    _In_reads_(graph_outputs_len) const char* const* graph_output_names) {
+  API_IMPL_BEGIN
+
+  if (graph_outputs_len == 0U) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "Empty array of graph output names is not valid. Please provide valid graph output names");
+  }
+
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+
+  onnxruntime::InlinedVector<std::string> output_names(graph_outputs_len);
+
+  for (size_t i = 0; i != graph_outputs_len; ++i) {
+    if (graph_output_names[i] == nullptr || graph_output_names[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Name of graph output cannot be empty. Please provide valid graph names");
+    }
+
+    output_names[i] = graph_output_names[i];
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path), output_names));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -363,6 +394,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::CopyBufferToParameters,
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
+    &OrtTrainingApis::ExportModelForInferencing,
 };
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {

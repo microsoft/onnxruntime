@@ -295,15 +295,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         std::string node_name = oss.str();
 
         Node* fused_node = nullptr;
-        // TODO1: The DML currently use some legacy approach.
-        // It registers a generic predefined kernel for all purpose fusion,
-        // so it rely on the function body in the fused node during kernel creation,
-        // which is after the graph partition phase.
-        // Ideally, it should be moved to "Compile" call.
-        // Here we temporary keep the function body for DML fusion
-        // Need to remove it after migrate DML to the Compile-based approach.
-        if (fusion_style == IExecutionProvider::FusionStyle::Function ||
-            provider_type == kDmlExecutionProvider) {
+        if (fusion_style == IExecutionProvider::FusionStyle::Function) {
           fused_node = &graph.FuseSubGraph(capability, node_name);
         } else {
           // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
@@ -471,10 +463,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
-  // TODO: The DML currently use some legacy approach.
-  // The fuse is done in FuseSubGraph function.
-  // Need to remove it later when DML migrate to Compile approach
-  if (!nodes_to_complete_fuse.empty() && type != kDmlExecutionProvider) {
+  if (!nodes_to_complete_fuse.empty()) {
     for (size_t j = 0, end = nodes_to_complete_fuse.size(); j < end; j++) {
       auto* node = nodes_to_complete_fuse[j];
 

@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/label_encoder.h"
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
@@ -39,7 +39,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
     // map isn't going to change so get end() once instead of calling inside the for_each loop
     const auto map_end = string_to_int_map_.end();
 
-    std::for_each(input.cbegin(), input.cend(),
+    std::for_each(input.begin(), input.end(),
                   [&out, &map_end, this](const std::string& value) {
                     auto map_to = string_to_int_map_.find(value);
                     *out = map_to == map_end ? default_int_ : map_to->second;
@@ -55,7 +55,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
 
     const auto map_end = int_to_string_map_.end();
 
-    std::for_each(input.cbegin(), input.cend(),
+    std::for_each(input.begin(), input.end(),
                   [&out, &map_end, this](const int64_t& value) {
                     auto map_to = int_to_string_map_.find(value);
                     *out = map_to == map_end ? default_string_ : map_to->second;

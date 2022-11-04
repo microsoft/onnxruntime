@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocatormgr.h"
-#include "core/framework/bfc_arena.h"
-#include "core/common/logging/logging.h"
+
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
-#include <limits>
+
+#include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
+#include "core/framework/bfc_arena.h"
 
 namespace onnxruntime {
 using namespace common;
@@ -15,9 +18,9 @@ using namespace common;
 namespace {
 int32_t MakeKey(OrtMemType mem_type, OrtDevice device) {
   // shorten device id so we can fit everything
-  uint8_t short_device = gsl::narrow<uint8_t>(device.Id());
+  uint8_t short_device = narrow<uint8_t>(device.Id());
   // and convert mem_type. OrtMemType weirdly uses -2 as the first value so we offset by that before narrowing
-  uint8_t ort_mem_type = gsl::narrow<uint8_t>(mem_type + 2);
+  uint8_t ort_mem_type = narrow<uint8_t>(mem_type + 2);
 
   // NOTE: OrtMemType is the type of memory for a kernel's input/output
   //       OrtDevice.MemType is the device memory type.

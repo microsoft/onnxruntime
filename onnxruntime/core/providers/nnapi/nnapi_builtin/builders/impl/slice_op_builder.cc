@@ -140,7 +140,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
                               const char* name, const Shape& shape, const gsl::span<const int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
     param_data.reserve(param_raw_data.size());
-    std::transform(param_raw_data.cbegin(), param_raw_data.cend(),
+    std::transform(param_raw_data.begin(), param_raw_data.end(),
                    std::back_inserter(param_data),
                    [](int64_t i) { return SafeInt<int32_t>(i); });
     std::string param_name = model_builder.GetUniqueName(node_unit.Name() + name);

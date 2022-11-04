@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
+
+#include "core/common/span_utils.h"
+#include "core/optimizer/initializer.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
@@ -73,7 +75,7 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
 }
 
 static inline bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, std::initializer_list<std::string> expected_types) {
-  return IsNeighborNodeExpectedTypes(start, end, gsl::make_span(expected_types));
+  return IsNeighborNodeExpectedTypes(start, end, AsSpan(expected_types));
 }
 
 /** Match subgraph like the following:

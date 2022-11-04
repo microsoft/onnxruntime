@@ -18,7 +18,7 @@ static std::once_flag default_pool_init;
 PThreadPool TestEnv::GetDefaultThreadPool(onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     using namespace onnxruntime::concurrency;
-    int core_num = env.GetNumCpuCores();
+    int core_num = env.GetNumPhysicalCpuCores();
 
     onnxruntime::ThreadOptions t_opts;
     default_pool = std::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runner_tp"), core_num, false);

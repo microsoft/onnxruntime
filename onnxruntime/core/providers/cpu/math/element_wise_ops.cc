@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/math/element_wise_ops.h"
 
+#include "core/common/narrow.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/math.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -495,7 +496,7 @@ void PowImpl(OpKernelContext& context) {
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](E y) {
                          return static_cast<T>(std::pow(X, y));
                        });
@@ -507,18 +508,18 @@ void PowImpl(OpKernelContext& context) {
 
         // optimize for X^2 and X^3
         if (Y == 2) {
-          std::transform(X.cbegin(), X.cend(), output.begin(),
+          std::transform(X.begin(), X.end(), output.begin(),
                          [](T x) {
                            return static_cast<T>(x * x);
                          });
 
         } else if (Y == 3) {
-          std::transform(X.cbegin(), X.cend(), output.begin(),
+          std::transform(X.begin(), X.end(), output.begin(),
                          [](T x) {
                            return static_cast<T>(x * x * x);
                          });
         } else {
-          std::transform(X.cbegin(), X.cend(), output.begin(),
+          std::transform(X.begin(), X.end(), output.begin(),
                          [Y](T x) {
                            return static_cast<T>(std::pow(x, Y));
                          });
@@ -529,7 +530,7 @@ void PowImpl(OpKernelContext& context) {
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, E y) {
                          return static_cast<T>(std::pow(x, y));
                        });
@@ -1330,8 +1331,8 @@ class Asinh final : public OpKernel {
     auto X_data = X.Data<float>();
     auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::asinh(in[index]);
@@ -1362,8 +1363,8 @@ class Acosh final : public OpKernel {
     auto X_data = X.Data<float>();
     auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::acosh(in[index]);
@@ -1394,8 +1395,8 @@ class Atanh final : public OpKernel {
     auto X_data = X.Data<float>();
     auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::atanh(in[index]);
@@ -1592,7 +1593,7 @@ void BroadCastFMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](T y) {
                          return static_cast<T>(std::fmod(X, y));
                        });
@@ -1602,7 +1603,7 @@ void BroadCastFMod(OpKernelContext* context) {
         const T& Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), output.begin(),
+        std::transform(X.begin(), X.end(), output.begin(),
                        [Y](T x) {
                          return static_cast<T>(std::fmod(x, Y));
                        });
@@ -1612,7 +1613,7 @@ void BroadCastFMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, T y) {
                          return static_cast<T>(std::fmod(x, y));
                        });
@@ -1638,7 +1639,7 @@ void BroadCastMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](T y) {
                          return Modulus(X, y);
                        });
@@ -1648,7 +1649,7 @@ void BroadCastMod(OpKernelContext* context) {
         const T& Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), output.begin(),
+        std::transform(X.begin(), X.end(), output.begin(),
                        [Y](T x) {
                          return Modulus(x, Y);
                        });
@@ -1658,7 +1659,7 @@ void BroadCastMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, T y) {
                          return Modulus(x, y);
                        });
@@ -1674,7 +1675,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
                          return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
                        });
@@ -1684,7 +1685,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         const MLFloat16 Y = per_iter_bh.ScalarInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(X.cbegin(), X.cend(), output.begin(),
+        std::transform(X.begin(), X.end(), output.begin(),
                        [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
                          return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
                        });
@@ -1694,7 +1695,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](const MLFloat16& x, const MLFloat16& y) {
                          auto x_fl = math::halfToFloat(x.val);
                          auto y_fl = math::halfToFloat(y.val);

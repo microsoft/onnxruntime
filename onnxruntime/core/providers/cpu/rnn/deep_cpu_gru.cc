@@ -281,9 +281,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   auto& X_shape = X.Shape();
 
-  int seq_length = gsl::narrow<int>(X_shape[0]);
-  int batch_size = gsl::narrow<int>(X_shape[1]);
-  int input_size = gsl::narrow<int>(X_shape[2]);
+  int seq_length = narrow<int>(X_shape[0]);
+  int batch_size = narrow<int>(X_shape[1]);
+  int input_size = narrow<int>(X_shape[2]);
 
   auto status = ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
   ORT_RETURN_IF_ERROR(status);
@@ -462,7 +462,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
       }
 
       // replicate what we just wrote to the start of the output span so we have batch_size_ copies
-      auto values = output.cbegin();
+      auto values = output.begin();
       ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(values, values + hidden_size_,
                                                            output.begin() + hidden_size_,  // skip the first batch
                                                            batch_size_ - 1));              // and replicate batch size - 1 times
@@ -475,8 +475,8 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
     // how we treat the h weight depends on whether linear_before_reset_ is set
     if (linear_before_reset_) {
       // need to replicate Wb[o] and Rb[o] separately
-      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Wo.cbegin(), bias_Wo.cend(), batched_bias_Wh_.begin(), batch_size_));
-      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Ro.cbegin(), bias_Ro.cend(), batched_bias_Rh_.begin(), batch_size_));
+      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Wo.begin(), bias_Wo.end(), batched_bias_Wh_.begin(), batch_size_));
+      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Ro.begin(), bias_Ro.end(), batched_bias_Rh_.begin(), batch_size_));
     } else {
       combine_and_replicate(bias_Wo, bias_Ro, batched_bias_WRh_);
     }
@@ -495,7 +495,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                                    const gsl::span<const T>& recurrent_weights,
                                    gsl::span<T>& outputs,
                                    gsl::span<T>& final_hidden_state) {
-  using span_T_const_iter = typename gsl::span<T>::const_iterator;
+  using span_T_const_iter = typename gsl::span<const T>::iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
   // copy inputs_arg as we may change it to point to inputs_reverse_
@@ -530,9 +530,9 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   }
 
   // Calculate the max and min length
-  int32_t max_sequence_length = *std::max_element(sequence_lengths.cbegin(), sequence_lengths.cend());
-  int32_t min_sequence_length = std::min(seq_length_, *std::min_element(sequence_lengths.cbegin(),
-                                                                        sequence_lengths.cend()));
+  int32_t max_sequence_length = *std::max_element(sequence_lengths.begin(), sequence_lengths.end());
+  int32_t min_sequence_length = std::min(seq_length_, *std::min_element(sequence_lengths.begin(),
+                                                                        sequence_lengths.end()));
 
   const int hidden_size_x2 = 2 * hidden_size_;
   const int hidden_size_x3 = 3 * hidden_size_;
@@ -542,9 +542,9 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   // apply weights to all the inputs
   ComputeGemm(total_rows, hidden_size_x3, input_size_, alpha,
-              inputs.cbegin(), inputs.cend(),
+              inputs.begin(), inputs.end(),
               input_size_,
-              input_weights.cbegin(), input_weights.cend(),
+              input_weights.begin(), input_weights.end(),
               input_size_, 0.f,
               outputZRH_.begin(), outputZRH_.end(),
               hidden_size_x3, ttp_);
@@ -562,16 +562,16 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
     output_step_length = 2 * batch_size_ * hidden_size_;
 
   // convenience end iterators we use in the loops below to detect any bounds issues
-  span_T_const_iter batched_bias_WRz_local_end = batched_bias_WRz_.cend();
-  span_T_const_iter batched_bias_WRr_local_end = batched_bias_WRr_.cend();
-  span_T_const_iter batched_bias_Wh_local_end = batched_bias_Wh_.cend();
-  span_T_const_iter batched_bias_Rh_local_end = batched_bias_Rh_.cend();
-  span_T_const_iter batched_bias_WRh_local_end = batched_bias_WRh_.cend();
+  span_T_const_iter batched_bias_WRz_local_end = batched_bias_WRz_.end();
+  span_T_const_iter batched_bias_WRr_local_end = batched_bias_WRr_.end();
+  span_T_const_iter batched_bias_Wh_local_end = batched_bias_Wh_.end();
+  span_T_const_iter batched_bias_Rh_local_end = batched_bias_Rh_.end();
+  span_T_const_iter batched_bias_WRh_local_end = batched_bias_WRh_.end();
 
   size_t out_added_offset;
 
-  span_T_const_iter prev_Ht = batched_hidden0_.cbegin();  // Ht-1
-  span_T_const_iter prev_Ht_end = batched_hidden0_.cend();
+  span_T_const_iter prev_Ht = batched_hidden0_.begin();  // Ht-1
+  span_T_const_iter prev_Ht_end = batched_hidden0_.end();
   span_T_iter cur_h_local = cur_h_.begin();
   span_T_iter cur_h_local_end = cur_h_.end();
 
@@ -582,14 +582,14 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   span_T_const_iter batched_bias_Rh_local{};
 
   if (use_bias_) {
-    batched_bias_WRz_local = batched_bias_WRz_.cbegin();
-    batched_bias_WRr_local = batched_bias_WRr_.cbegin();
+    batched_bias_WRz_local = batched_bias_WRz_.begin();
+    batched_bias_WRr_local = batched_bias_WRr_.begin();
 
     if (linear_before_reset_) {
-      batched_bias_Wh_local = batched_bias_Wh_.cbegin();
-      batched_bias_Rh_local = batched_bias_Rh_.cbegin();
+      batched_bias_Wh_local = batched_bias_Wh_.begin();
+      batched_bias_Rh_local = batched_bias_Rh_.begin();
     } else {
-      batched_bias_WRh_local = batched_bias_WRh_.cbegin();
+      batched_bias_WRh_local = batched_bias_WRh_.begin();
     }
   }
 
@@ -614,7 +614,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       ComputeGemm(batch_size_, hidden_size_x2, hidden_size_, alpha,
                   prev_Ht, prev_Ht_end,
                   hidden_size_,
-                  recurrent_weightsZR.cbegin(), recurrent_weightsZR.cend(),
+                  recurrent_weightsZR.begin(), recurrent_weightsZR.end(),
                   hidden_size_, 1.f,  // beta == 1 so we add existing values in outputZRH_
                   outputZRH_.begin() + out_added_offset, outputZRH_.end(),
                   hidden_size_x3, ttp_);
@@ -634,7 +634,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
         ComputeGemm(batch_size_, hidden_size_, hidden_size_, alpha,
                     prev_Ht, prev_Ht_end,  // Ht-1
                     hidden_size_,
-                    recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
+                    recurrent_weightsH.begin(), recurrent_weightsH.end(),  // Rh^T
                     hidden_size_,
                     use_bias_ ? 1.f : 0.f,  // don't add values in linear_output_ if no bias input
                     linear_output_.begin(),
@@ -707,7 +707,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
         ComputeGemm(batch_size_, hidden_size_, hidden_size_, alpha,
                     cur_h_local, cur_h_local_end,  // rt (.) Ht-1
                     hidden_size_,
-                    recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
+                    recurrent_weightsH.begin(), recurrent_weightsH.end(),  // Rh^T
                     hidden_size_, 1.f,                                       // beta == 1 to add Xt*(Wh^T) from out_H
                     out_H, outputZRH_.end(),
                     hidden_size_x3, ttp_);

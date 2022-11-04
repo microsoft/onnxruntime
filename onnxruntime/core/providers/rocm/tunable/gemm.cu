@@ -18,22 +18,6 @@ namespace blas {
 
 namespace row_major {
 
-template <typename T>
-bool IsZero(T v) {
-  return v == 0.0f;
-}
-
-template <>
-bool IsZero(BFloat16 v) {
-  return v.val == 0;
-}
-
-template <>
-bool IsZero(half v) {
-  return __half2float(v) == 0.0f;
-}
-
-
 template <typename T, typename ScalarT>
 inline GEMM(T, ScalarT) {
   GemmParams<T> params;
@@ -63,7 +47,7 @@ inline GEMM(T, ScalarT) {
   params.ldc = ldc;
 
   // TODO: current implementation for beta != 0 will cause repeatedly inplace update in C buffer. Skip them for now.
-  if (IsZero(params.beta) && tunable) {
+  if (tunable) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
       static internal::GemmTunableOp<T, internal::Row, internal::Row> gemm{};
       gemm.EnableTuning();

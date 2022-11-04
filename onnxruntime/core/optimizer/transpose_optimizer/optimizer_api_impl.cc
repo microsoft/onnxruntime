@@ -167,7 +167,7 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   const auto dims = shape.GetDims();
   std::vector<int64_t> result;
   result.reserve(dims.size());
-  result.assign(dims.cbegin(), dims.cend());
+  result.assign(dims.begin(), dims.end());
   return result;
 }
 
@@ -254,7 +254,7 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 std::vector<int64_t> ApiTensor::Shape() const {
   TensorShape shape = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   const auto dims = shape.GetDims();
-  return std::vector<int64_t>{dims.cbegin(), dims.cend()};
+  return std::vector<int64_t>{dims.begin(), dims.end()};
 }
 
 size_t ApiTensor::NumElements() const {

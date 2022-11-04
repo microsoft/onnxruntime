@@ -8,7 +8,7 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace xnnpack {

@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -136,27 +137,104 @@ void RunTestWrapper() {
 
 }  // namespace
 
-TEST(Scatter, int8_t) { RunTestWrapper<int8_t>(); }
+TEST(Scatter, int8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, int16_t) { RunTestWrapper<int16_t>(); }
+  RunTestWrapper<int8_t>();
+}
 
-TEST(Scatter, int32_t) { RunTestWrapper<int32_t>(); }
+TEST(Scatter, int16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, int64_t) { RunTestWrapper<int64_t>(); }
+  RunTestWrapper<int16_t>();
+}
 
-TEST(Scatter, uint8_t) { RunTestWrapper<uint8_t>(); }
+TEST(Scatter, int32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, uint16_t) { RunTestWrapper<uint16_t>(); }
+  RunTestWrapper<int32_t>();
+}
 
-TEST(Scatter, uint32_t) { RunTestWrapper<uint32_t>(); }
+TEST(Scatter, int64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, uint64_t) { RunTestWrapper<uint64_t>(); }
+  RunTestWrapper<int64_t>();
+}
 
-TEST(Scatter, float) { RunTestWrapper<float>(); }
+TEST(Scatter, uint8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, double) { RunTestWrapper<double>(); }
+  RunTestWrapper<uint8_t>();
+}
 
-TEST(Scatter, MLFloat16) { RunTestWrapper<MLFloat16>(); }
+TEST(Scatter, uint16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint16_t>();
+}
+
+TEST(Scatter, uint32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint32_t>();
+}
+
+TEST(Scatter, uint64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint64_t>();
+}
+
+TEST(Scatter, float) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<float>();
+}
+
+TEST(Scatter, double) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<double>();
+}
+
+TEST(Scatter, MLFloat16) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<MLFloat16>();
+}
 
 static void scatter_indices_updates_dont_match(const char* op_name, int op_version) {
   OpTester test(op_name, op_version);
@@ -171,6 +249,11 @@ static void scatter_indices_updates_dont_match(const char* op_name, int op_versi
 }
 
 TEST(Scatter, IndicesUpdatesDontMatch) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   scatter_indices_updates_dont_match("Scatter", 9);
   scatter_indices_updates_dont_match("ScatterElements", 11);
 }
@@ -189,6 +272,11 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
 }
 
 TEST(Scatter, InvalidIndex) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   scatter_invalid_index("Scatter", 9);
   scatter_invalid_index("ScatterElements", 11);
 }

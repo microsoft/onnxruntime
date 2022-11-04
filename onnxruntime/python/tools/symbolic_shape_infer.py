@@ -193,6 +193,7 @@ class SymbolicShapeInference:
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
+            "GemmFastGelu": self._infer_GemmFastGelu,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,
@@ -425,6 +426,7 @@ class SymbolicShapeInference:
             "EmbedLayerNormalization",
             "FastGelu",
             "Gelu",
+            "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
             "SkipLayerNormalization",
@@ -1995,6 +1997,9 @@ class SymbolicShapeInference:
 
     def _infer_Gelu(self, node):
         self._propagate_shape_and_type(node)
+
+    def _infer_GemmFastGelu(self, node):
+        self._compute_matmul_shape(node)
 
     def _infer_LayerNormalization(self, node):
         self._propagate_shape_and_type(node)

@@ -691,7 +691,12 @@ else()
     message("AVX instruction set is not supported.")
   endif()
 
-  if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX))
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    message("F16C, FMA and AVX flags are not supported on Android for on-device training.")
+  endif()
+
+  if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX) OR
+    (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE))
     message("One or more AVX/F16C instruction flags are not supported. ")
     set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
   endif()
@@ -1016,27 +1021,14 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
-# bounds checking behavior.
-# throw instead of calling terminate if there's a bounds checking violation.
-# we make it through via a handler so CUDA does not complain
-# The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
-# no bounds checking in release build so no perf cost
-# if we enable onnxruntime_DISABLE_EXCEPTIONS, gsl will terminate
-if (onnxruntime_DISABLE_EXCEPTIONS)
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DGSL_TERMINATE_ON_CONTRACT_VIOLATION")
-else()
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DGSL_THROW_ON_CONTRACT_VIOLATION")
-endif()
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
-set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
+include(gsl)
 
 include(eigen)
 
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 ${GSL_TARGET})
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
   set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
@@ -1877,6 +1869,9 @@ if (onnxruntime_USE_ROCM)
     message(FATAL_ERROR "ROCM does not support build with CUDA!")
   endif()
 
+  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
+  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
+
   set(ROCM_PATH ${onnxruntime_ROCM_HOME})
 
   if (NOT CMAKE_HIP_COMPILER)
@@ -1887,14 +1882,23 @@ if (onnxruntime_USE_ROCM)
     set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
+  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
+  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+
+  enable_language(HIP)
+  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
+  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
+  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
+  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
+  # example, the CMAKE_PREFIX_PATH might be improperly configured.
+  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
+    message(FATAL_ERROR "HIP Language is not properly configured.")
+  endif()
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
+
   if (NOT onnxruntime_HIPIFY_PERL)
     set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
   endif()
-
-  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
-  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
-  find_package(HIP)
-  enable_language(HIP)
 
   # replicate strategy used by pytorch to get ROCM_VERSION
   # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
