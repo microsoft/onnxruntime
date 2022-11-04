@@ -225,8 +225,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestUpdatingEnvWithCustomLogLevel()
         {
             var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.SetLogLevel(LogLevel.Verbose);
-            Assert.Equal(LogLevel.Verbose, ortEnvInstance.GetLogLevel());
+            ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
+            Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
         }
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModel")]

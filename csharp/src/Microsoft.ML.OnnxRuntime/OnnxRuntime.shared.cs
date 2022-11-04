@@ -49,13 +49,13 @@ namespace Microsoft.ML.OnnxRuntime
     public sealed class OrtEnv : SafeHandle
     {
         private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
-        private static LogLevel currentLogLevel = LogLevel.Warning;
+        private static LogLevel envLogLevel = LogLevel.Warning;
 
         #region private methods
         private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
     : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(currentLogLevel, @"CSharpOnnxRuntime", out handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out handle));
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
@@ -154,22 +154,17 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Get current log level of OrtEnv instance
+        /// Get/Set log level property of OrtEnv instance
         /// </summary>
-        /// <returns>current log level</returns>
-        public LogLevel GetLogLevel()
+        /// <returns>env log level</returns>
+        public LogLevel EnvLogLevel
         {
-            return currentLogLevel;
-        }
-
-        /// <summary>
-        /// Set desired log level of OrtEnv instance
-        /// <param name="logLevel">Custom LogLevel enum to be used for updating OrtEnv log level</param>
-        /// </summary>
-        public void SetLogLevel(LogLevel logLevel)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(logLevel, Handle));
-            currentLogLevel = logLevel;
+            get { return envLogLevel; }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(value, Handle));
+                envLogLevel = value;
+            }
         }
         #endregion
 
