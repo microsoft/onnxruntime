@@ -1763,7 +1763,7 @@ def run_model_on_ep(
                 convert_input_fp16 = True
             except Exception as excpt:
                 logger.error(excpt)
-                update_fail_model_map(model_to_fail_ep, name, exec_provider, "script error", excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "script error", excpt)
                 return
 
         # handle test data
