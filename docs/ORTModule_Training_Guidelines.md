@@ -144,7 +144,7 @@ Here is a sample switch from torch `AdamW` optimizer to `FusedAdam`.
 
 Check [FusedAdam implementation](../orttraining/orttraining/python/training/optim/fused_adam.py) for more details.
 
-## 4. Use FP16_Optimizer to Complement DeepSpeed/APEX
+## 4. Use `FP16_Optimizer` to Complement DeepSpeed/APEX
 
 If user models utilize DeepSpeed or Apex libraries, ORT's `FP16_Optimizer` can be used to complement some inefficiencies introduced by them.
 
