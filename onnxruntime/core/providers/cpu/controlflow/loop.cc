@@ -494,7 +494,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
                                     ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
                                     context_.GetComputeStream());
-
+    context_.GetComputeStream()->Flush();
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
