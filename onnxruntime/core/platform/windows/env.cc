@@ -77,7 +77,7 @@ class WindowsThread : public EnvThread {
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    const KAFFINITY* affinities = p->thread_options.affinity.data();
+    const KAFFINITY* affinities = reinterpret_cast<const KAFFINITY*>(p->thread_options.affinity.data());
     size_t num_affinity = p->thread_options.affinity.size() * sizeof(size_t) / sizeof(KAFFINITY);
     size_t offset = static_cast<size_t>(p->index) << 1;
     if (offset + 1 < num_affinity) {
