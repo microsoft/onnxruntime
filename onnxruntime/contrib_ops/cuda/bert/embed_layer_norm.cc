@@ -7,6 +7,7 @@
 #include "embed_layer_norm_impl.h"
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
 #include "core/framework/float16.h"
+#include "core/providers/cuda/tensor/scatter_nd_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -88,6 +89,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   if (should_randomize_input_ && random_data_ == nullptr) {
     std::cout << "Generating random input" << std::endl;
     cudaMalloc(&random_data_, output->SizeInBytes());
+    cuda::cudaRandomUniform(Stream(), random_data_, output->Shape().Size());
   }
 
   if (should_randomize_input_) {
