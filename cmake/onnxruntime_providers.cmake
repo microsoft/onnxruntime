@@ -1094,6 +1094,8 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_common)
+  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
   else()
