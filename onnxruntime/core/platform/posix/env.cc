@@ -194,10 +194,16 @@ class PosixEnv : public Env {
     return std::thread::hardware_concurrency();
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    std::vector<size_t> ret(std::thread::hardware_concurrency() / 2);
-    std::iota(ret.begin(), ret.end(), 0);
-    return ret;
+  size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinity) const override {
+    affinity.clear();
+    affinity.resize(std::thread::hardware_concurrency()>>1);
+    std::iota(affinity.begin(), affinity.end(), 0);
+    return affinity.size();
+  }
+
+  std::vector<size_t> ReadThreadAffinityConfig(const std::string& affinity_str) override {
+    ORT_THROW("PosixEnv::ReadThreadAffinityConfig not implemented, do not set affinity!");
+    return {};
   }
 
   void SleepForMicroseconds(int64_t micros) const override {

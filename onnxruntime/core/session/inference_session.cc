@@ -237,36 +237,12 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.name = ORT_TSTR("intra-op");
       }
       to.set_denormal_as_zero = set_denormal_as_zero;
-      // If the thread pool can use all the processors, then
-      // we set affinity of each thread to each processor.
-      to.auto_set_affinity = to.thread_pool_size == 0 &&
-                             session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                             to.affinity_vec_len == 0;
-
-      //////////////////////////// start to read group affinity //////////////////////////////
-      auto affinity_string = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpThreadAffinities, "");
-#ifdef _WIN32
-      ORT_ENFORCE(onnxruntime::concurrency::ExtractAffinityFromString(affinity_string.c_str(), to.thread_affinities),
-                  "failed to extract affinity, invalid affinity string");
-      if (!to.thread_affinities.empty()) {
-        ORT_ENFORCE((to.thread_pool_size - 1) == static_cast<int>(to.thread_affinities.size()),
-                    "number of affinities must equal to thread_pool_size minus 1");
-      }
-#else
-      if (!affinity_string.empty()) {
-        LOGS(*session_logger_, WARNING) << "Group affinity setting only works on windows for this release!";
-      }
-#endif
-      //////////////////////////// done reading group affinity //////////////////////////////
+      to.affinity_str = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpThreadAffinities, "");
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       OrtThreadPoolParams to = session_options_.inter_op_param;
-      // If the thread pool can use all the processors, then
-      // we set thread affinity.
-      to.auto_set_affinity =
-          to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
       to.set_denormal_as_zero = set_denormal_as_zero;

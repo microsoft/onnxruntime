@@ -80,5 +80,4 @@ T ParseStringWithClassicLocale(const std::string& s) {
   ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(s, value));
   return value;
 }
-
 }  // namespace onnxruntime

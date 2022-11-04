@@ -27,6 +27,7 @@ limitations under the License.
 #include <io.h>
 
 #include "core/common/logging/logging.h"
+#include "core/common/parse_string.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
@@ -76,13 +77,19 @@ class WindowsThread : public EnvThread {
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (p->index < p->thread_options.thread_affinities.size()) {
+    const KAFFINITY* affinities = p->thread_options.affinity.data();
+    size_t num_affinity = p->thread_options.affinity.size() * sizeof(size_t) / sizeof(KAFFINITY);
+    size_t offset = static_cast<size_t>(p->index) << 1;
+    if (offset + 1 < num_affinity) {
       GROUP_AFFINITY thread_affinity;
       memset(&thread_affinity, 0x0, sizeof(GROUP_AFFINITY));
-      thread_affinity.Group = static_cast<WORD>(p->thread_options.thread_affinities[p->index].first);
-      thread_affinity.Mask = p->thread_options.thread_affinities[p->index].second;
-      if (!SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
+      thread_affinity.Group = static_cast<WORD>(affinities[offset]);
+      thread_affinity.Mask = affinities[offset + 1];
+      if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
+        LOGS_DEFAULT(WARNING) << "Set group affinity for sub-thread " << p->index << ", "
+                              << " group: " << thread_affinity.Group << ", "
+                              << " mask: " << thread_affinity.Mask;
+      } else {
         LOGS_DEFAULT(WARNING) << "Failed to set group affinity for sub-thread " << p->index << ", "
                               << " group: " << thread_affinity.Group << ", "
                               << " mask: " << thread_affinity.Mask << ","
@@ -124,6 +131,11 @@ class WindowsThread : public EnvThread {
 
 class WindowsEnv : public Env {
  public:
+
+  explicit WindowsEnv() {
+    group_info_vec_ = GetProcessorGroups();
+  }
+
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
@@ -159,28 +171,141 @@ class WindowsEnv : public Env {
     return processorCoreCount;
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    auto generate_vector_of_n = [](int n) {
-      std::vector<size_t> ret(n);
-      std::iota(ret.begin(), ret.end(), 0);
-      return ret;
-    };
-    // Indeed 64 should be enough. However, it's harmless to have a little more.
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
-    if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-      return generate_vector_of_n(std::thread::hardware_concurrency());
-    }
-    std::vector<size_t> ret;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
-        ret.push_back(buffer[i].ProcessorMask);
+  size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinities) const override {
+    std::vector<KAFFINITY> kAffinities;
+    KAFFINITY group_id = 0;
+    for (const auto& group_info : this->group_info_vec_) {
+      size_t bit_offset = 0;
+      constexpr size_t bit_limit = sizeof(KAFFINITY) << 3;
+      KAFFINITY active_processor_mask = group_info.ActiveProcessorMask;
+      for (int i = 0; i < (group_info.ActiveProcessorCount >> 1); ++i) {
+        KAFFINITY processor_mask = 0;
+        size_t processor_count = 0;
+        while (processor_count < 2 && bit_offset < bit_limit) {
+          auto current_bit = (0x1 << bit_offset);
+          if (active_processor_mask & current_bit) {
+            processor_mask |= current_bit;
+            processor_count++;
+          }
+          bit_offset++;
+        }
+        kAffinities.push_back(group_id);
+        kAffinities.push_back(processor_mask);
       }
+      group_id++;
     }
-    if (ret.empty())
-      return generate_vector_of_n(std::thread::hardware_concurrency());
-    return ret;
+    if (kAffinities.empty()) {
+      return std::thread::hardware_concurrency() >> 1;
+    }
+    size_t num_of_size_t = kAffinities.size() * sizeof(KAFFINITY) / sizeof(size_t);
+    affinities.clear();
+    affinities.resize(num_of_size_t);
+    memcpy(affinities.data(), kAffinities.data(), num_of_size_t * sizeof(size_t));
+    return kAffinities.size();
+  }
+
+  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int procssor_from, int processor_to) {
+    if (procssor_from > processor_to) {
+      LOGS_DEFAULT(ERROR) << "Processor <from> must be smaller or equal to <to>";
+      return {-1, 0};
+    }
+    int processor_id = 1;
+    int processor_count = 0;
+    KAFFINITY group_id = 0;
+    KAFFINITY processor_mask = 0;
+    for (const auto& group_info : this->group_info_vec_) {
+      for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
+        if (processor_id >= procssor_from && processor_id <= processor_to) {
+          processor_mask |= 1ULL << i;
+          processor_count += 1;
+        }
+      }
+      if (processor_mask) {
+        break;
+      }
+      group_id++;
+    }
+    if (processor_count < processor_to - procssor_from + 1) {
+      LOGS_DEFAULT(ERROR) << "Processor <from> or <to> crossed group boundary";
+      return {-1,0};
+    }
+    return {group_id, processor_mask};
+  }
+
+  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(const std::vector<std::string>& processor_id_strs) {
+    if (processor_id_strs.empty()) {
+      return {-1, 0};
+    }
+    std::set<int> processor_ids;
+    std::for_each(processor_id_strs.begin(),
+                  processor_id_strs.end(), [&](const std::string& processor_id_str) {
+                    processor_ids.insert( std::stoi(processor_id_str.c_str()));
+                  });
+    int processor_id = 1;
+    int processor_count = 0;
+    KAFFINITY group_id = 0;
+    KAFFINITY processor_mask = 0;
+    for (const auto& group_info : this->group_info_vec_) {
+      for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
+        if (processor_ids.count(processor_id)) {
+          processor_mask |= 1ULL << i;
+          processor_count += 1;
+        }
+      }
+      if (processor_mask) {
+        break;
+      }
+      group_id++;
+    }
+    if (processor_count < processor_ids.size()) {
+      LOGS_DEFAULT(ERROR) << "Processor id(s) crossed group boundary";
+      return {-1, 0};
+    }
+    return {group_id, processor_mask};
+  }
+
+  std::vector<size_t> ReadThreadAffinityConfig(const std::string& affinity_str) {
+    try {
+      auto config_all_threads = SplitStr(affinity_str, ';');
+      std::vector<KAFFINITY> affinities;
+      for (const auto& config_per_threads : config_all_threads) {
+        if (config_per_threads.empty()) {
+          LOGS_DEFAULT(ERROR) << "Found empty affinity string!";
+          return {};
+        }
+        auto partition_by_hyphen = SplitStr(config_per_threads, '-');
+        if (partition_by_hyphen.size() == 2) {
+          int from = stoi(partition_by_hyphen[0]);
+          int to = stoi(partition_by_hyphen[1]);
+          auto group_affinity = GetGroupAffinity(from, to);
+          if (group_affinity.first == -1) {
+            return {};
+          }
+          affinities.push_back(group_affinity.first);
+          affinities.push_back(group_affinity.second);
+        } else {
+          auto partition_by_comma = SplitStr(config_per_threads, ',');
+          if (partition_by_comma.empty()) {
+            LOGS_DEFAULT(ERROR) << "Wrong affinity string format: " << config_per_threads;
+            return {};
+          } else {
+            auto group_affinity = GetGroupAffinity(partition_by_comma);
+            if (group_affinity.first == -1) {
+              return {};
+            }
+            affinities.push_back(group_affinity.first);
+            affinities.push_back(group_affinity.second);
+          }
+        }
+      }
+      size_t num_of_size_t = affinities.size() * sizeof(KAFFINITY) / sizeof(size_t);
+      std::vector<size_t> ret(num_of_size_t, 0);
+      memcpy(ret.data(), affinities.data(), num_of_size_t * sizeof(size_t));
+      return ret;
+    } catch (const std::exception& ex) {
+      LOGS_DEFAULT(ERROR) << "Exception caught in WindowsEnv::ReadThreadAffinityConfig: " << ex.what();
+    }
+    return {};
   }
 
   static WindowsEnv& Instance() {
@@ -574,9 +699,41 @@ class WindowsEnv : public Env {
     return std::string();
   }
 
+  static std::vector<PROCESSOR_GROUP_INFO> GetProcessorGroups() {
+    DWORD returnLength = 0;
+    GetLogicalProcessorInformationEx(RelationGroup, nullptr, &returnLength);
+    auto last_error = GetLastError();
+    if (last_error != ERROR_INSUFFICIENT_BUFFER) {
+      return {};
+    }
+
+    std::unique_ptr<char[]> allocation = std::make_unique<char[]>(returnLength);
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
+
+    if (!GetLogicalProcessorInformationEx(RelationGroup, processorInfos, &returnLength)) {
+      last_error = GetLastError();
+      return {};
+    }
+
+    std::vector<PROCESSOR_GROUP_INFO> group_info_vec;
+    auto num_processor_info = returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+    for (int64_t i = 0; i < static_cast<int64_t>(num_processor_info); ++i) {
+      if (processorInfos[i].Relationship != RelationGroup) {
+        return {};
+      }
+      for (int64_t j = 0; j < static_cast<int>(processorInfos[i].Group.ActiveGroupCount); ++j) {
+        const auto& groupInfo = processorInfos[i].Group.GroupInfo[j];
+        group_info_vec.push_back(groupInfo);
+      }
+    }
+    return group_info_vec;
+  }
+
  private:
+
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
+  std::vector<PROCESSOR_GROUP_INFO> group_info_vec_;
 };
 }  // namespace
 

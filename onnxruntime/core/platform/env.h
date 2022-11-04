@@ -39,8 +39,8 @@ class ThreadPoolInterface;
 namespace onnxruntime {
 
 #ifdef _WIN32
-using ThreadAffinity = std::pair<uint64_t,uint64_t>;
-using ThreadAffinities = std::vector<ThreadAffinity>;
+//using ThreadAffinity = std::pair<uint64_t,uint64_t>;
+//using ThreadAffinities = std::vector<ThreadAffinity>;
 using PIDType = unsigned long;
 using FileOffsetType = int64_t;
 #else
@@ -60,21 +60,15 @@ struct ThreadOptions {
   // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
   unsigned int stack_size = 0;
 
-  // Thread affinity means a thread can only run on the logical processors that the thread is allowed to run on.
-  // If the vector is not empty, set the affinity of each thread to just one CPU.
-  // Index is thread index, value is CPU ID, starting from zero. For example, the first thread in the pool will be bound
-  // to the logical processor with id of affinity[0]. If the vector is empty, the thread can run on all the processors
-  // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
-  // processor group [0,1,2,3] may only contain half of the physical cores.
   std::vector<size_t> affinity;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
 
-#ifdef _WIN32
-  // thread affinity setting for each thread except main
-  ThreadAffinities thread_affinities;
-#endif
+//#ifdef _WIN32
+//  // thread affinity setting for each thread except main
+//  ThreadAffinities thread_affinities;
+//#endif
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
@@ -115,8 +109,11 @@ class Env {
 
   virtual int GetNumCpuCores() const = 0;
 
-  // This function doesn't support systems with more than 64 logical processors
-  virtual std::vector<size_t> GetThreadAffinityMasks() const = 0;
+  // return default threadpool size, and set affinity vector
+  virtual size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinity) const = 0;
+
+  // read affinity setting from a string
+  virtual std::vector<size_t> ReadThreadAffinityConfig(const std::string& affinity_str) = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {

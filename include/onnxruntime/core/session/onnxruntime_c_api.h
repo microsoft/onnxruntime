@@ -1176,17 +1176,16 @@ struct OrtApi {
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
 
   /**
-  * Only works on windows system for release(1.7.3)
-  * Set thread affinity for intra thread pool threads.
-  * affinity_string is of format:
-  * "group,processor_mask;group,processor_mask;group,processor_mask;..."
-  * "group" is an ordinal number of a processor group,
-  * "processor_mask" is a bitmask of processors that a thread is expected to attach to.
-  * e.g., processor 1 and 2 in group 1 will be represented as:
-  * 0,3
-  * where processor 2 and 4 in group 2 will be set to:
-  * 1,10
-  * the number of "group,processor_mask" pair should be intra_op_num_threads - 1, since ort will skip setting affinity for the main thread
+  * Setting intra op thread affnity - only implemented on windows for the branch
+  * affinity string follows format:
+  * logic_processor_id,logic_processor_id;logic_processor_id,processor_id
+  * semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.
+  * e.g. 1,2,3;4,5
+  * specifies affinities for two threads, with the 1st thread attach to the 1st, 2nd, and 3rd processor, and 2nd thread to the 4th and 5th processor.
+  * To ease the configuration for thread across many processors, an interval is also allowed:
+  * e.g. 1-8;8-16;17-24
+  * orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
+  * Note - the number of affinity for each thread should be intra_op_num_threads - 1, since ort does not set affinity on the main thread.
   */
   ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 };
