@@ -33,7 +33,7 @@ Please reference table below for official CANN packages dependencies for the ONN
 
 ## Build
 
-For build instructions, please see the [BUILD page](../../build/eps.md#CANN).
+For build instructions, please see the [BUILD page](../../build/eps.md#cann).
 
 ## Install
 
