@@ -86,6 +86,7 @@ MEMORY_FILE = "./temp_memory.csv"
 
 TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
 
+
 def split_and_sort_output(string_list):
     string_list = string_list.split("\n")
     string_list.sort()
@@ -1829,7 +1830,7 @@ def benchmark_model_on_ep(
     ep_results,
     success_results,
     test_data_dir,
-    convert_input_fp16
+    convert_input_fp16,
 ):
     """
     Benchmarks the given model on the given EP.
