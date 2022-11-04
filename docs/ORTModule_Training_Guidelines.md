@@ -34,7 +34,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 - **Feature Area**: *ORTMODULE/ONNXOPSET*
 - **Description**: By default, as ONNX Runtime released, the ONNX OPSET version to use will be updated periodically. For some customers, they want to stick to fixed OPSET where both performance and accuracy are well validated, this env variable can be used to control that.
 
-	```
+	```bash
 	export ORTMODULE_ONNX_OPSET_VERSION=14
 	```
 
@@ -43,7 +43,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 
 - **Feature Area**: *ORTMODULE/FallbackToPytorch*
 - **Description**: By default, if `ORTModule` fails to run the model using ONNX Runtime backend, it will fallback to use PyTorch to continue the training. At some point developers are optimizing the models and doing benchmarking, we want explicitly let ORT backend to run the model. The way we disable the retry:
-	```
+	```bash
 	export ORTMODULE_FALLBACK_POLICY="FALLBACK_DISABLE"
 	```
 
@@ -65,7 +65,7 @@ The output directory of the onnx models by default is set to the current working
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default `ORTModule` will fail with exception when handling PythonOp export for some `'autograd.Function'`s (One example is torch CheckpointFunction). Set
 	this env variable to be `1` to explicitly allow it.
-	```
+	```bash
 	export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1
 	```
 
@@ -79,13 +79,13 @@ The output directory of the onnx models by default is set to the current working
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default, all torch.autograd.Function classes will be exported to ORT PythonOp. There are some cases where you might consider disable it. For example, if you confirmed those torch.autograd.Function classes defined computations that could be inline exported by PyTorch, and it is safe to use the inline exported ONNX graph to train, then you can disable it, as a result, ORT has more opportunities to optimize more.
-	```
+	```bash
 	export ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT=1
 	```
 
 	An alternative to disable without using environment variable:
 
-	```
+	```bash
 	from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
 	enable_custom_autograd_support(False)
 	```
@@ -94,23 +94,22 @@ The output directory of the onnx models by default is set to the current working
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default, this is empty. When user model's setup depends on libraries who might define multiple torch.autograd.Function classes of same name, though their python import paths (e.g. 'namespace') are different, while due to limitation of PyTorch exporter (https://github.com/microsoft/onnx-converters-private/issues/115), ORT backend cannot infer which one to call. So an exception will be thrown for this case.
-
 Before full qualified name can be got from exporter, this environment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there are multiple classes to be ignored, use comma as the separator.
 
-```
-export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS = "megatron.fp16.fp16.fused_kernels.GELUFunction"
-```
+	```bash
+	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
+	```
 
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
 
-Q: *The model hit OOM during training, even using minimum required batch size?*
+Q: *The model hits OOM, even with minimum required batch size?*
 
 Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for how to leverage ORT's recomputation techniques.
 
 
-### 3. Use `FusedAdam` to Accelerate Parameter Update
+## 3. Use `FusedAdam` to Accelerate Parameter Update
 
 Parameter update is done by optimizers (for example AdamW) with many elementwise operations. `FusedAdam` launches the elementwise update kernels with multi-tensor apply, allowing batches of gradients applied to corresponding parameters for each time kernel launch.
 
@@ -127,7 +126,7 @@ Here is a sample switch from torch `AdamW` optimizer to `FusedAdam`.
 
 Check [FusedAdam implementation](../orttraining/orttraining/python/training/optim/fused_adam.py) for more details.
 
-### 4. Use FP16_Optimizer to Complement DeepSpeed/APEX
+## 4. Use FP16_Optimizer to Complement DeepSpeed/APEX
 
 If user models utilize DeepSpeed or Apex libraries, ORT's `FP16_Optimizer` can be used to complement some inefficiencies introduced by them.
 
@@ -162,7 +161,7 @@ Use `FP16_Optimizer` with Apex Optimizer:
 Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training/optim/fp16_optimizer.py) for more details.
 
 
-### 5. Putting All Together `ORTModule` + `FusedAdam` + `FP16_Optimizer`
+## 5. Putting All Together `ORTModule` + `FusedAdam` + `FP16_Optimizer`
 
 ```diff
 	model = build_model()
@@ -187,13 +186,13 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 
 ```
 
-### 6. One More Thing - `LoadBalancingDistributedBatchSampler`
+## 6. One More Thing - `LoadBalancingDistributedBatchSampler`
 
 `LoadBalancingDistributedBatchSampler` balances the data load across workers based on the sample's complexity.
 This is useful in scenarios like speech and NLP, where each batch has variable length and distributed training suffers from **straggler problem**. In such scenarios, the complexity function could be defined to return the length of the input sample sequence. The usage is similar to `torch.utils.data.DistributedSampler`, where each process loads a subset of the original dataset that is exclusive to it.
 
 A sample shown below:
-```
+```python
 from onnxruntime.training.utils.data import LoadBalancingDistributedSampler, \
     LoadBalancingDistributedBatchSampler
 sampler = LoadBalancingDistributedSampler(dataset, complexity_fn=complexity_fn)
