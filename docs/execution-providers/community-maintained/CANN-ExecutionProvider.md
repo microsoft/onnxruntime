@@ -33,11 +33,11 @@ Please reference table below for official CANN packages dependencies for the ONN
 
 ## Build
 
-For build instructions, please see the [BUILD page](../build/eps.md#CANN).
+For build instructions, please see the [BUILD page](../../build/eps.md#CANN).
 
 ## Install
 
-Pre-built binaries of ONNX Runtime with CANN EP are published for most language bindings. Please reference [Install ORT](../install).
+Pre-built binaries of ONNX Runtime with CANN EP are published for most language bindings. Please reference [Install ORT](../../install).
 
 ## Samples
 

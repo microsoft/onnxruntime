@@ -19,7 +19,7 @@ redirect_from: /docs/reference/execution-providers/ArmNN-ExecutionProvider
 Accelerate performance of ONNX model workloads across Armv8 cores with the ArmNN execution provider. [ArmNN](https://github.com/ARM-software/armnn) is an open source inference engine maintained by Arm and Linaro companies. 
 
 ## Build
-For build instructions, please see the [BUILD page](../build/eps.md#ArmNN).
+For build instructions, please see the [BUILD page](../../build/eps.md#ArmNN).
 
 ## Usage
 ### C/C++
@@ -30,9 +30,9 @@ Ort::SessionOptions so;
 bool enable_cpu_mem_arena = true;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(so, enable_cpu_mem_arena));
 ```
-The C API details are [here](../get-started/with-c.md).
+The C API details are [here](../../get-started/with-c.md).
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../performance/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest), use the flag -e armnn
