@@ -192,7 +192,7 @@ IEngine : IUnknown {
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
+  (_In_ _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t * num_threads) PURE;
@@ -265,9 +265,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateTensorDescriptorInfo)
   (
-      winml::TensorKind kind,
-      int64_t* dims,
-      size_t num_dims,
+      _In_ winml::TensorKind kind,
+      _In_ int64_t* dims,
+      _In_ size_t num_dims,
       _Out_ IDescriptorInfo **info) PURE;
 
   STDMETHOD(CreateSequenceDescriptorInfo)

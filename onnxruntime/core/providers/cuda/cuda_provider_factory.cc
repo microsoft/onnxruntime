@@ -9,7 +9,7 @@
 #include <memory>
 #include <chrono>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"

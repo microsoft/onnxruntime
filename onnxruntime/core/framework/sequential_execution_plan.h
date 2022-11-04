@@ -110,12 +110,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   class ExecutionStep {
    public:
     virtual ~ExecutionStep() {}
-    virtual Status Execute(StreamExecutionContext* ctx,
+    virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
                            SessionScope& session_scope,
                            const bool& terminate_flag,
                            bool& continue_flag) = 0;
-    virtual std::string Dump() const = 0;
+    virtual std::string ToString() const = 0;
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
   // The steps within a sequence are executed in order, and happened on the same device.
@@ -191,7 +191,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     return locations;
   }
 
-  size_t NumberOfValidStream() const {
+  size_t NumberOfValidStreams() const {
     size_t count = 0;
     for (auto& stream : execution_plan) {
       if (!stream->steps_.empty())

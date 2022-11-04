@@ -31,7 +31,7 @@ namespace onnxruntime {
 static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
   if (allocator->Info().alloc_type == OrtArenaAllocator) {
     BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-    return arena_ptr->AsStreamAwareAreana();
+    return StreamAwareArena::FromBFCArena(*arena_ptr);
   }
   return nullptr;
 }
@@ -444,7 +444,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
             }
 
             if (buffer != nullptr) {
-              buffers_[location] = BufferUniquePtr(buffer, alloc);
+              buffers_[location] = BufferUniquePtr(buffer, BufferDeleter(alloc));
             }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
             // Record activation memory pattern
@@ -554,21 +554,21 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
   Stream* current_stream = GetValueStream(ort_value_index);
-  auto create_fn = [this, alloc, current_stream](size_t len) {
+  if (current_stream) {
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
-    if (stream_aware_alloc && current_stream) {
+    if (stream_aware_alloc) {
+      size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
       // the reused memory must from same EP
       auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
           current_stream->GetDevice().Type(), current_stream->GetDevice().Type());
-      return stream_aware_alloc->AllocOnStream(len, current_stream, wait_handle);
+      void* p_data = stream_aware_alloc->AllocOnStream(buffer_size, current_stream, wait_handle);
+      Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
     } else {
-      return alloc->Alloc(len);
+      Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
     }
-  };
-
-  auto delete_fn = [alloc](void* buf) { if (buf) alloc->Free(buf); };
-
-  Tensor::InitOrtValue(element_type, shape, alloc->Info(), create_fn, delete_fn, ort_value);
+  } else {
+    Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+  }
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
@@ -682,7 +682,7 @@ Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlva
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
-  const auto& alloc_plan = session_state_.GetPerAllocPlan();
+  const auto& alloc_plan = session_state_.GetPerValueAllocPlan();
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
 
@@ -842,7 +842,7 @@ Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
-  return session_state_.GetPerAllocPlan()[ort_value_idx];
+  return session_state_.GetPerValueAllocPlan()[ort_value_idx];
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {

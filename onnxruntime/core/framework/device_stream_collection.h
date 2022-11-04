@@ -15,14 +15,14 @@ class DeviceStreamCollection {
  public:
   DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
   ~DeviceStreamCollection();
-  // Set the device stream instance at given index.
+  // Add the device stream instance to given index.
   // and set the current collection as the owner of the device stream.
-  void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
+  void AddDeviceStream(size_t stream_idx, std::unique_ptr<Stream> stream);
   // user an external device stream instance at given index.
   // the current collection is not the owner.
   // this is mainly used in subgraph execution, when we want the
   // subgraph nodes execute on the same stream as parent node.
-  void SetDeviceStream(size_t, Stream* stream);
+  void SetDeviceStream(size_t stream_idx, Stream* stream);
   // Get the index device stream instances.
   gsl::span<Stream*> GetStreams() const;
   // get the number of device stream instances.

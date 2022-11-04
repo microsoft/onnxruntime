@@ -6,6 +6,7 @@
 #include <limits>
 #include <unordered_map>
 
+#include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
@@ -83,7 +84,7 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
   int num_to_combine = 0;
   for (int64_t i = static_cast<int64_t>(starts.size()) - 1; i >= 0; --i) {
     // if we're keeping all the data for the dimension and not reversing the direction we can potentially combine it
-    if (steps[gsl::narrow<size_t>(i)] == 1 && input_dimensions[gsl::narrow<size_t>(i)] == output_dims[gsl::narrow<size_t>(i)])
+    if (steps[narrow<size_t>(i)] == 1 && input_dimensions[narrow<size_t>(i)] == output_dims[narrow<size_t>(i)])
       ++num_to_combine;
     else
       break;
@@ -91,7 +92,7 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
 
   if (num_to_combine > 1) {
     auto num_dims = output_dims.size() - num_to_combine + 1;
-    flattened_output_dims->assign(output_dims.cbegin(), output_dims.cend());
+    flattened_output_dims->assign(output_dims.begin(), output_dims.end());
     flattened_output_dims->resize(num_dims);
 
     int64_t dim_value = 1;
@@ -149,17 +150,17 @@ void CopyData(const Tensor& start_tensor,
               TensorShapeVector& input_axes,
               TensorShapeVector& input_steps) {
   auto start_data = start_tensor.DataAsSpan<T>();
-  std::copy(start_data.cbegin(), start_data.cend(), std::back_inserter(input_starts));
+  std::copy(start_data.begin(), start_data.end(), std::back_inserter(input_starts));
   auto ends_data = ends_tensor.DataAsSpan<T>();
-  std::copy(ends_data.cbegin(), ends_data.cend(), std::back_inserter(input_ends));
+  std::copy(ends_data.begin(), ends_data.end(), std::back_inserter(input_ends));
   if (nullptr != axes_tensor) {
     auto axes_data = axes_tensor->DataAsSpan<T>();
-    std::copy(axes_data.cbegin(), axes_data.cend(), std::back_inserter(input_axes));
+    std::copy(axes_data.begin(), axes_data.end(), std::back_inserter(input_axes));
   }
   // Slice V10
   if (nullptr != steps_tensor) {
     auto steps_data = steps_tensor->DataAsSpan<T>();
-    std::copy(steps_data.cbegin(), steps_data.cend(), std::back_inserter(input_steps));
+    std::copy(steps_data.begin(), steps_data.end(), std::back_inserter(input_steps));
   }
 }
 }  // namespace
@@ -182,13 +183,13 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                     "Starts and steps shape mismatch");
 
   const auto size = start_tensor.Shape().Size();
-  input_starts.reserve(gsl::narrow<size_t>(size));
-  input_ends.reserve(gsl::narrow<size_t>(size));
+  input_starts.reserve(narrow<size_t>(size));
+  input_ends.reserve(narrow<size_t>(size));
   if (nullptr != axes_tensor)
-    input_axes.reserve(gsl::narrow<size_t>(size));
+    input_axes.reserve(narrow<size_t>(size));
   // Slice V10
   if (nullptr != steps_tensor)
-    input_steps.reserve(gsl::narrow<size_t>(size));
+    input_steps.reserve(narrow<size_t>(size));
 
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();

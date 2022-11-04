@@ -48,7 +48,7 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
                          dst.Location().device.ToString());
 }
 
-Status DataTransferManager::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream* stream) const {
+Status DataTransferManager::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const {
   if (src.Shape().Size() != dst.Shape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
   }
@@ -138,8 +138,7 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
                         : first_dt->CopyTensor(first_pair.src.get(), first_pair.dst.get()));
 
   for (auto cur_pair = src_dst_pairs.cbegin() + 1, end_pair = src_dst_pairs.cend(); cur_pair != end_pair; ++cur_pair) {
-    ORT_RETURN_IF_ERROR(!cur_pair->src_stream ? CopyTensor(cur_pair->src, cur_pair->dst) :
-        CopyTensorAsync(cur_pair->src, cur_pair->dst, cur_pair->src_stream));
+    ORT_RETURN_IF_ERROR(!cur_pair->src_stream ? CopyTensor(cur_pair->src, cur_pair->dst) : CopyTensorAsync(cur_pair->src, cur_pair->dst, *(cur_pair->src_stream)));
   }
 
   return Status::OK();

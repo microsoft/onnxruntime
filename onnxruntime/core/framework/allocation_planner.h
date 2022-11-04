@@ -32,10 +32,6 @@ class IStreamCommandHandleRegistry;
 
 using KernelCreateInfoMap = std::unordered_map<onnxruntime::NodeIndex, gsl::not_null<const KernelCreateInfo*>>;
 using SubgraphsKernelCreateInfoMaps = std::unordered_map<std::string, KernelCreateInfoMap>;
-// Specify how many logic streams for each provider type
-using ProviderStreamMap = InlinedHashMap<std::string, int>;
-// Each set contains ops which should be grouped in an independent logic stream
-using OpStreamMap = std::vector<std::vector<std::string>>;
 
 // ISequentialPlannerContext abstracts how the planner accesses information (such as inferred shape)
 // to do the planning.
@@ -81,7 +77,7 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 // but we can't assume any execution order between sequences, unless there is a data dependency.
 class IGraphPartitioner {
  public:
-  // DummyPartition is the default partition, which group the nodes based on the device information.
+  // DeviceBasedPartition is the default, who partitions a graph based off device information.
   // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
   // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
   // We will add more optimized partitioner later.
@@ -89,12 +85,11 @@ class IGraphPartitioner {
     DeviceBasedPartition = 0,
     Unknown,
   };
-  virtual ~IGraphPartitioner(){};
+  virtual ~IGraphPartitioner() = default;
   // create the partition based on the partition type.
-  // if a configuration file is given, perform the partition based on the user configuration.
-  static std::unique_ptr<IGraphPartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
-  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
-  const Status& GetStatus() const { return status_; }
+  // perform partition based on the user input when provided.
+  static std::unique_ptr<IGraphPartitioner> CreateGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
+  virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
   virtual const std::string& Name() const = 0;
 
  protected:
@@ -103,7 +98,6 @@ class IGraphPartitioner {
   IGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
   const logging::Logger& logger_;
   std::string configuration_file_{};
-  Status status_{};
 };
 
 class SequentialPlanner {

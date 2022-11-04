@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
@@ -226,7 +226,7 @@ class Env {
   // library are platform-specific and are not documented here.
   //
   // global_symbols only has an effect on unix, where a value of true means to load with RTLD_GLOBAL vs RTLD_LOCAL
-  // 
+  //
   // On success, returns a handle to the library in "*handle" and returns
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the

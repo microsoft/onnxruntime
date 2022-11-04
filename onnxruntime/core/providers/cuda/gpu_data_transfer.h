@@ -18,7 +18,7 @@ class GPUDataTransfer : public IDataTransfer {
   // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-  common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream* stream) const override;
+  common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const override;
 };
 
 }  // namespace onnxruntime

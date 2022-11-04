@@ -48,7 +48,7 @@ constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr size_t kAllocAlignment = 256;
 
 class IAllocator;
-std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator>& allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 // forward declaration
 class SessionState;
@@ -160,13 +160,11 @@ class IAllocator {
       }
     }
 
-    std::function<void*(size_t)> alloc_fn = GetAllocationFn(allocator, use_reserve, stream, std::move(wait_fn));
-
     // allocate
-    T* p = static_cast<T*>(alloc_fn(alloc_size));
+    T* p = static_cast<T*>(AllocateBufferWithOptions(allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
     return IAllocatorUniquePtr<T>{
         p,
-        [allocator](T* p) { allocator->Free(p); }};
+        [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};
   }
 
  private:
