@@ -36,6 +36,10 @@ Sample usage as below:
 +	model = ORTModule(model)
 ```
 
+> It is strongly recommended to wrap model with ORTModule before other module wrapper (for example, DeepSpeed, `torch.nn.parallel.DistributedDataParallel`, etc), which is validated in more scenarios.
+
+> Be also noticed that, `ORTModule` is **NOT** compatible `with torch.nn.DataParallel` (which is not recommended to use in PyTorch usage. Please use `torch.nn.parallel.DistributedDataParallel` instead.
+
 More options for **developers**.
 ```diff
 	model = build_model()
