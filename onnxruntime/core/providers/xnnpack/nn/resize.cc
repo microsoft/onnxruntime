@@ -122,7 +122,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
       auto scale_span = scale_val.DataAsSpan<float>();
       if (scale_span.size() == 4) {
         has_scale = true;
-        std::copy(scale_span.cbegin(), scale_span.cend(), scale.begin());
+        std::copy(scale_span.begin(), scale_span.end(), scale.begin());
       }
     }
 
@@ -193,7 +193,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     scales_.resize(input_shape.NumDimensions());
     auto size_span = sizes->DataAsSpan<int64_t>();
     ParseScalesDataFromOutputSize(size_span, input_shape.GetDims(), scales_);
-    std::copy(size_span.cbegin(), size_span.cend(), output_dims_.begin());
+    std::copy(size_span.begin(), size_span.end(), output_dims_.begin());
     scales_cached_ = true;
   } else {
     ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);

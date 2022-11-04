@@ -14,7 +14,6 @@
 
 // to sanity check output shape
 #include "core/framework/tensorprotoutils.h"
-#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -129,7 +128,7 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
     info.TryGetConstantInput(2, &output_shape_tensor);
     if (output_shape_tensor) {
       const auto out_sp = output_shape_tensor->DataAsSpan<int64_t>();
-      output_dims_.assign(out_sp.cbegin(), out_sp.cend());
+      output_dims_.assign(out_sp.begin(), out_sp.end());
       // MaxUnpool is layout sensitive, so we handle the other inputs manually.
       // NCHW-->NHWC
       std::swap(output_dims_[1], output_dims_[2]);

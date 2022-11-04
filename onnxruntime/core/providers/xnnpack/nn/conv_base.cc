@@ -12,7 +12,6 @@
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/xnnpack/xnnpack_kernel.h"
-#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
