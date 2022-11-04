@@ -1,8 +1,26 @@
 # ONNX Runtime Training Guidelines
 
-## 1. Installation
+## 1. Installation and Configuration
 
-Refer [https://onnxruntime.ai/](https://onnxruntime.ai/) to download training wheel.
+Be noted: this mainly demonstrates set up steps for development, check [Torch-ORT](https://github.com/pytorch/ort) for end user set up experience.
+
+Refer [https://onnxruntime.ai/](https://onnxruntime.ai/) to download training wheel. Or build from source:
+
+```bash
+export CUDA_HOME=/usr/local/cuda
+export CUDNN_HOME=/usr/local/cuda
+export CUDACXX=$CUDA_HOME/bin/nvcc
+
+./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi --enable_training_torch_interop
+```
+
+Configure ORTModule torch extensions (**avoid** doing this in ORT code *repo root directory*):
+
+```bash
+python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+```
+
+
 
 ## 2. Use `ORTModule` to Accelerate Forward/Backward
 
