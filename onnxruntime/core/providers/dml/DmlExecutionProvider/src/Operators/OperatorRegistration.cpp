@@ -695,11 +695,11 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,                  DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
     {REG_INFO(      9,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,                DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
     {REG_INFO(     11,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,                DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
-    {REG_INFO(      7,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::Supported)},
-    {REG_INFO(     15,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
+    {REG_INFO(     13,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
+    {REG_INFO(     15,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
+    {REG_INFO(      7,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
+    {REG_INFO(     13,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
 
     // DmlFused operators
     {REG_INFO_MSDML(1,  DmlFusedConv,                       typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},

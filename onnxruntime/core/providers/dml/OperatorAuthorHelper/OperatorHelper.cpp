@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "OperatorHelper.h"
+#include "core/providers/common.h"
 
 namespace OperatorHelper
 {
@@ -426,9 +427,10 @@ namespace OperatorHelper
             std::fill(args.windowSize, args.windowSize + spatialDimensionCount, 1);
         }
 
-        std::string autoPad = kernelInfo.GetOptionalAttribute<std::string>(AttrName::AutoPad, AttrValue::NotSet);
+        std::string autoPadStr = kernelInfo.GetOptionalAttribute<std::string>(AttrName::AutoPad, AttrValue::NotSet);
+        auto autoPad = onnxruntime::StringToAutoPadType(autoPadStr);
 
-        if (autoPad == AttrValue::NotSet)
+        if (autoPad == onnxruntime::AutoPadType::NOTSET)
         {
             // Use the pad values in the pads argument.
             std::vector<int> pads = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::Pads);
@@ -444,7 +446,7 @@ namespace OperatorHelper
             std::copy(pads.begin(), pads.begin() + spatialDimensionCount, args.startPadding);
             std::copy(pads.begin() + spatialDimensionCount, pads.begin() + spatialDimensionCount * 2, args.endPadding);
         }
-        else if (autoPad == AttrValue::Valid)
+        else if (autoPad == onnxruntime::AutoPadType::VALID)
         {
             std::fill(args.startPadding, args.startPadding + spatialDimensionCount, 0);
             std::fill(args.endPadding, args.endPadding + spatialDimensionCount, 0);
@@ -452,8 +454,8 @@ namespace OperatorHelper
         else
         {
             args.autoPad = true;
-            args.autoPadSameUpper = autoPad == AttrValue::SameUpper;
-            assert(args.autoPadSameUpper || autoPad == AttrValue::SameLower);
+            args.autoPadSameUpper = autoPad == onnxruntime::AutoPadType::SAME_UPPER;
+            assert(args.autoPadSameUpper || autoPad == onnxruntime::AutoPadType::SAME_LOWER);
         }
 
         if (kernelInfo.HasAttribute(AttrName::OutputPadding, MLOperatorAttributeType::IntArray))
@@ -2520,7 +2522,7 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> SizeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
     {
-        return { EdgeShapes({1u}) };
+        return { EdgeShapes({}) };
     }
 
 } // namespace OperatorHelper
