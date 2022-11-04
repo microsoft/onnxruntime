@@ -70,8 +70,9 @@ def optimize_by_onnxruntime(
         optimized_model_path (str): the path of optimized model
     """
     assert opt_level in [1, 2, 99]
-    import onnxruntime
     from torch import version as torch_version
+
+    import onnxruntime
 
     if use_gpu and not any(
         gpu_ep in onnxruntime.get_available_providers()
