@@ -67,8 +67,8 @@ class MemoryOptimizer : public GraphTransformer {
     int total_frequency{0};  // The occurrence of this subgraph pattern in the graph.
 
     int applied_count{0};  // The number of times this subgraph pattern has been really applied in this transformer.
-    int skip_count{0};     // The number of times this subgraph instances will skipped in reversed topological order.
-    float saving_ratio{1.0f};
+    int skip_count{0};     // The number of times this subgraph instance has been skipped in reversed topological order.
+    float saving_ratio{1.0f};  // For compromised memory saving, the ratio of memory saving.
   };
 
   /**
