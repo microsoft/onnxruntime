@@ -18,9 +18,11 @@ PYBIND11_MODULE(_kernel_explorer, m) {
       .def(py::init<py::array>())
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
   InitVectorAdd(m);
+#if USE_ROCM
   InitFastGelu(m);
   InitGemm(m);
   InitSkipLayerNorm(m);
+#endif
 }
 
 }  // namespace onnxruntime
