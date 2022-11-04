@@ -367,6 +367,8 @@ struct Env : detail::Base<OrtEnv> {
   Env& EnableTelemetryEvents();   ///< Wraps OrtApi::EnableTelemetryEvents
   Env& DisableTelemetryEvents();  ///< Wraps OrtApi::DisableTelemetryEvents
 
+  Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level); ///<Wraps OrtApi::UpdateEnvWithCustomLogLevel
+  
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
