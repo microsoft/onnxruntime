@@ -5,7 +5,7 @@
 
 /*
 Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
-               N is number of attention heads, H is head size, and W=N*H
+               N is number of attention heads, H is head  size, and W=N*H
                M is mask_index tensor
 
      M               A  B  C    // M, A, B, and C are Inputs
