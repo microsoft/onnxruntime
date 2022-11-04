@@ -8,7 +8,6 @@ import pprint
 import re
 import subprocess
 import sys
-import time
 import tempfile
 import timeit
 from datetime import datetime
@@ -121,7 +120,7 @@ def get_graph_opt_level(enablement):
     return opt_level
 
 
-def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, track_memory):
+def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_inputs_shape, fp16, track_memory):
     logger.info("running standalone trt")
     onnx_model_path = "--onnx=" + model_path
 
@@ -132,12 +131,12 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     model = onnx.load(model_path)
     ort_inputs = get_model_inputs(model)
 
-    output = get_output(["find", "-L", os.getcwd(), "-name", "test_data*", "-type", "d"])
-    test_data_dir = split_and_sort_output(output)[0]
+    output = get_output(["find", "-L", test_data_dir, "-name", "test_data*", "-type", "d"])
+    test_data_dir_0 = split_and_sort_output(output)[0]
 
     for i in range(len(ort_inputs)):
         name = ort_inputs[i]
-        loaded_input = name + ":" + test_data_dir + "/" + str(i) + ".bin"
+        loaded_input = name + ":" + test_data_dir_0 + "/" + str(i) + ".bin"
         logger.info(loaded_input)
         shape = []
         for j in all_inputs_shape[i]:
@@ -166,7 +165,8 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
         command.extend(["--fp16"])
 
     # save engine
-    engine_name = model_name + ".engine"
+    engine_suffix = "_trtexec_fp16.engine" if fp16 else "_trtexec.engine"
+    engine_name = model_name + engine_suffix
     save_command = command + ["--saveEngine=" + engine_name]
     logger.info(save_command)
     out = get_output(save_command)
@@ -184,9 +184,9 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
             out = get_output(load_command)
             success = True
             mem_usage = end_memory_tracking(p, success)
-        except Exception as e:
+        except Exception as excpt:
             end_memory_tracking(p, success)
-            raise (e)
+            raise excpt
     else:
         out = get_output(load_command)
 
@@ -799,11 +799,18 @@ def skip_ep(model_name, ep, model_to_fail_ep):
 
 
 def read_map_from_file(map_file):
+    """
+    Load a dictionary stored as a JSON file.
+
+    :param map_file: The name of the JSON file to load.
+
+    :return: A dictionary with the contents of the JSON file.
+    """
+
+    data = {}
+
     with open(map_file) as f:
-        try:
-            data = json.load(f)
-        except Exception as e:
-            return None
+        data = json.load(f)
 
     return data
 

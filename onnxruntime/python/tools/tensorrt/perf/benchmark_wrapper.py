@@ -56,8 +56,7 @@ def main():
     else:
         ep_list = get_ep_list(args.comparison)
 
-    if standalone_trt in ep_list or standalone_trt_fp16 in ep_list:
-        trtexec = resolve_trtexec_path(args.workspace)
+    trtexec = resolve_trtexec_path(args.workspace)
 
     models = {}
     parse_models_helper(args, models)
