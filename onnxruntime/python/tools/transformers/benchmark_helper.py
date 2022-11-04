@@ -164,8 +164,9 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
             ), "Please install onnxruntime-directml package to test GPU inference."
 
         else:
-            assert (
-                any(gpu_ep in onnxruntime.get_available_providers() for gpu_ep in ["CUDAExecutionProvider","ROCMExecutionProvider", "MIGraphXExecutionProvider"])
+            assert any(
+                gpu_ep in onnxruntime.get_available_providers()
+                for gpu_ep in ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
             ), "Please install onnxruntime-gpu package, or install ROCm support, to test GPU inference."
 
     logger.info(f"PyTorch Version:{torch.__version__}")
