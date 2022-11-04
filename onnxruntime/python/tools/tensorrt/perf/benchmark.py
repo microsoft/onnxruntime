@@ -1784,27 +1784,53 @@ def run_model_on_ep(
     # Validation
     #######################################
     if do_validate:
-        validation_passed = validate_model_on_ep(args,
-                                                 model_name,
-                                                 exec_provider,
-                                                 trt_ep_options,
-                                                 model_path,
-                                                 inputs,
-                                                 ref_outputs,
-                                                 model_to_fail_ep,
-                                                 ep_results,
-                                                 tmp_work_dir)
+        validation_passed = validate_model_on_ep(
+            args,
+            model_name,
+            exec_provider,
+            trt_ep_options,
+            model_path,
+            inputs,
+            ref_outputs,
+            model_to_fail_ep,
+            ep_results,
+            tmp_work_dir,
+        )
 
     #######################################
     # Benchmark
     #######################################
     if do_benchmark and (validation_passed or not do_validate):
-        benchmark_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_path, inputs, all_inputs_shape,
-                              model_to_fail_ep, ep_results, success_results, test_data_dir, convert_input_fp16)
+        benchmark_model_on_ep(
+            args,
+            model_name,
+            exec_provider,
+            trt_ep_options,
+            model_path,
+            inputs,
+            all_inputs_shape,
+            model_to_fail_ep,
+            ep_results,
+            success_results,
+            test_data_dir,
+            convert_input_fp16,
+        )
 
 
-def benchmark_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_path, inputs, all_inputs_shape,
-                          model_to_fail_ep, ep_results, success_results, test_data_dir, convert_input_fp16):
+def benchmark_model_on_ep(
+    args,
+    model_name,
+    exec_provider,
+    trt_ep_options,
+    model_path,
+    inputs,
+    all_inputs_shape,
+    model_to_fail_ep,
+    ep_results,
+    success_results,
+    test_data_dir,
+    convert_input_fp16
+):
     """
     Benchmarks the given model on the given EP.
 
@@ -1927,9 +1953,18 @@ def benchmark_model_on_ep(args, model_name, exec_provider, trt_ep_options, model
             success_results.append(result)
 
 
-def validate_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_path,
-                         inputs, ref_outputs,
-                         model_to_fail_ep, ep_results, tmp_work_dir):
+def validate_model_on_ep(
+    args,
+    model_name,
+    exec_provider,
+    trt_ep_options,
+    model_path,
+    inputs,
+    ref_outputs,
+    model_to_fail_ep,
+    ep_results,
+    tmp_work_dir,
+):
     """
     Validates the given model on the given EP.
 
@@ -1964,7 +1999,7 @@ def validate_model_on_ep(args, model_name, exec_provider, trt_ep_options, model_
     except Exception as excpt:
         logger.error(excpt)
         update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
-        return  False
+        return False
 
     if creation_time:
         ep_results["session"][exec_provider] = creation_time
