@@ -57,7 +57,6 @@ option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android N
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -482,12 +481,10 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
 
   if (MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    if (onnxruntime_DEV_MODE)
-      # Eigen throw_std_bad_alloc calls 'new' instead of throwing which results in a nodiscard warning.
-      # It also has unreachable code as there's no good way to avoid EIGEN_EXCEPTIONS being set in macros.h
-      # TODO: see if we can limit the code this is disabled for.
-      string(APPEND CMAKE_CXX_FLAGS " /wd4834 /wd4702")
-    endif()
+    # Eigen throw_std_bad_alloc calls 'new' instead of throwing which results in a nodiscard warning.
+    # It also has unreachable code as there's no good way to avoid EIGEN_EXCEPTIONS being set in macros.h
+    # TODO: see if we can limit the code this is disabled for.
+    string(APPEND CMAKE_CXX_FLAGS " /wd4834 /wd4702")
     add_compile_definitions("_HAS_EXCEPTIONS=0")
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
@@ -607,13 +604,12 @@ if (MSVC)
   if (NOT onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc")
     string(APPEND CMAKE_C_FLAGS " /EHsc")
-    if (onnxruntime_DEV_MODE)
-      string(APPEND CMAKE_CXX_FLAGS " /wd26812")
-      string(APPEND CMAKE_C_FLAGS " /wd26812")
-      # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
-      if (onnxruntime_ENABLE_EAGER_MODE)
-        string(APPEND CMAKE_CXX_FLAGS " /wd4805")
-      endif()
+
+    string(APPEND CMAKE_CXX_FLAGS " /wd26812")
+    string(APPEND CMAKE_C_FLAGS " /wd26812")
+    # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
+    if (onnxruntime_ENABLE_EAGER_MODE)
+      string(APPEND CMAKE_CXX_FLAGS " /wd4805")
     endif()
   endif()
   string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
@@ -867,7 +863,7 @@ if (UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
 
-if (MSVC AND onnxruntime_DEV_MODE AND NOT onnxruntime_PREFER_SYSTEM_LIB)
+if (MSVC AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_compile_options(${PROTOBUF_LIB} PRIVATE "/wd5054")
 endif()
 
@@ -1068,29 +1064,18 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
-    if (onnxruntime_DEV_MODE)
-        # class needs to have dll-interface to be used by clients
-        list(APPEND ORT_WARNING_FLAGS "/wd4251")
-        # issued by thrust nonstandard extension used: nameless struct/union
-        list(APPEND ORT_WARNING_FLAGS "/wd4201")
-        # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-        if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
-           list(APPEND ORT_WARNING_FLAGS "/wd4800")
-        endif()
-        # operator 'operator-name': deprecated between enumerations of different types
-        list(APPEND ORT_WARNING_FLAGS "/wd5054")
-        # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
-        list(APPEND ORT_WARNING_FLAGS "/w15038")
-        # Treat warning as error if onnxruntime_DEV_MODE is ON
-        # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
-        if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
-          # treat warnings as errors
-          list(APPEND ORT_WARNING_FLAGS "/WX")
-          foreach(type EXE STATIC SHARED)
-              set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
-          endforeach()
-        endif()
+    # class needs to have dll-interface to be used by clients
+    list(APPEND ORT_WARNING_FLAGS "/wd4251")
+    # issued by thrust nonstandard extension used: nameless struct/union
+    list(APPEND ORT_WARNING_FLAGS "/wd4201")
+    # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
+    if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
+       list(APPEND ORT_WARNING_FLAGS "/wd4800")
     endif()
+    # operator 'operator-name': deprecated between enumerations of different types
+    list(APPEND ORT_WARNING_FLAGS "/wd5054")
+    # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
+    list(APPEND ORT_WARNING_FLAGS "/w15038")
 
     # set linker flags to minimize the binary size.
     if (MSVC)
@@ -1272,6 +1257,7 @@ endif()
 
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
+    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
         target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
@@ -1292,14 +1278,10 @@ function(onnxruntime_set_compile_flags target_name)
       # Enable warning
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
       target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
-      if (onnxruntime_DEV_MODE)
-          if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-            #external/protobuf/src/google/protobuf/arena.h:445:18: error: unused parameter 'p'
-            target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
-          endif()
-          target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Werror>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Werror>")
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+        #external/protobuf/src/google/protobuf/arena.h:445:18: error: unused parameter 'p'
+        target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
       endif()
-
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
       target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
