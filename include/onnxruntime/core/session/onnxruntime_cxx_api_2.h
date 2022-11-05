@@ -79,6 +79,21 @@ namespace Ort {
 inline const OrtApi* api{};
 inline void InitApi() { api = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 
+/** \brief All C++ methods that can fail will throw an exception of this type
+ *
+ * If <tt>ORT_NO_EXCEPTIONS</tt> is defined, then any error will result in a call to abort()
+ */
+struct Exception : std::exception {
+  Exception(std::unique_ptr<OrtStatus> ort_status) : ort_status_{ std::move(ort_status) } { }
+
+  OrtErrorCode GetOrtErrorCode() const;
+  const char* what() const noexcept override;
+
+private:
+  std::unique_ptr<OrtStatus> ort_status_;
+};
+
+
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and returns a vector of strings representing the available execution providers.
 std::vector<std::string> GetAvailableProviders();
 

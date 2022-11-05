@@ -10,14 +10,17 @@
 namespace Ort {
 
 #ifndef ORT_CXX_API_THROW
-inline void ThrowOnError(const OrtStatus* ort_status) {
+inline void ThrowOnError(OrtStatus* ort_status) {
   if (ort_status) {
-    throw ort_status;
+    throw Exception(std::unique_ptr<OrtStatus>{ort_status});
   }
 }
 #else
 ORT_CXX_API_THROW
 #endif
+
+inline OrtErrorCode Exception::GetOrtErrorCode() const { return ort_status_->GetErrorCode(); }
+inline const char* Exception::what() const noexcept { return api->GetErrorMessage(ort_status_.get()); }
 
 struct StandardAllocator : OrtAllocator
 {
@@ -1112,6 +1115,7 @@ inline std::unique_ptr<OrtValue> OrtValue::CreateMap(OrtValue& keys, OrtValue& v
 
 inline std::unique_ptr<OrtValue> OrtValue::CreateSequence(std::vector<std::unique_ptr<OrtValue>>& values) {
   OrtValue* out;
+
   auto raw_values = reinterpret_cast<OrtValue**>(values.data());
   Ort::ThrowOnError(Ort::api->CreateValue(raw_values, values.size(), ONNX_TYPE_SEQUENCE, &out));
   return std::unique_ptr<OrtValue>{out};
