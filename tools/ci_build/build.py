@@ -170,7 +170,11 @@ def parse_arguments():
     )
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
-    parser.add_argument("--compile_no_warning_as_error", action="store_true", help="Preventing warnings from being treated as errors on compile.")
+    parser.add_argument(
+        "--compile_no_warning_as_error",
+        action="store_true",
+        help="Preventing warnings from being treated as errors on compile.",
+    )
     # Training options
     parser.add_argument("--enable_nvtx_profile", action="store_true", help="Enable NVTX profile in ORT.")
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profile in ORT.")
@@ -836,7 +840,7 @@ def generate_build_tree(
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [cmake_path, cmake_dir]
     if not use_dev_mode(args):
-        cmake_args += ['--compile-no-warning-as-error']
+        cmake_args += ["--compile-no-warning-as-error"]
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
