@@ -128,7 +128,7 @@ def main():
 
         if (args.verify_nuget_signing == 'true'):
             print('Verifying if Nuget has been signed')
-            if(not check_if_nuget_is_signed(args.nuget_path)):
+            if (not check_if_nuget_is_signed(args.nuget_path)):
                 print('Nuget signing verification failed')
                 raise Exception('Nuget signing verification failed')
 
