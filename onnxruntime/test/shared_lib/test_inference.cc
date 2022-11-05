@@ -661,34 +661,51 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   session_options.Add(custom_op_domain);
 
   std::vector<Ort::Value> ort_inputs;
-
   Ort::AllocatorWithDefaultOptions allocator;
-
   std::vector<std::vector<int64_t>> expected_dims;
   std::vector<std::vector<int64_t>> expected_lens;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
 
-  // Local function that adds an input and initializes the corresponding expected output.
-  auto add_input = [&ort_inputs, &expected_dims, &expected_lens, &allocator](std::string_view str) {
+  // Local function that creates an input and initializes the corresponding expected output.
+  auto add_input = [&ort_inputs, &expected_dims, &expected_lens,
+                    &input_names, &output_names, &allocator](std::string_view str) {
+    const size_t index = ort_inputs.size();
+
     std::array<int64_t, 1> input_dims = {1};
     Ort::Value& ort_value = ort_inputs.emplace_back(
         Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
                                  ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+    std::ostringstream oss(std::ostringstream::ate);
+
+    oss.str("input_");
+    oss << index;
+    input_names.emplace_back(oss.str());
+
+    oss.str("output_");
+    oss << index;
+    output_names.emplace_back(oss.str());
 
     expected_dims.push_back({1});
     expected_lens.push_back({static_cast<int64_t>(str.size())});
     ort_value.FillStringTensorElement(str.data(), 0);
   };
 
-  // Set inputs.
+  // Create inputs.
   add_input("hello");
   add_input("");
   add_input("123");
 
-  std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
-  std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
+  // Create arrays of c-strings for input and output names.
+  auto get_c_str = [](const std::string& str) { return str.c_str(); };
+  std::vector<const char*> input_name_cstrs(input_names.size());
+  std::transform(input_names.begin(), input_names.end(), input_name_cstrs.begin(), get_c_str);
+  std::vector<const char*> output_name_cstrs(output_names.size());
+  std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
+
   Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 output_names.data(), output_names.size());
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_name_cstrs.data(), output_name_cstrs.size());
   ASSERT_EQ(ort_outputs.size(), 3u);
 
   // Validate outputs.
