@@ -429,10 +429,10 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "aaa5eab410c2e3fe41ebf7a2316be9c51572dbd2",
+               "commitHash": "c974557598645360fbabac71352b083117e3cc17",
                "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
             },
-            "comments": "CMake 3.18.2. For building our CI build docker image"
+            "comments": "CMake 3.24.3. For building our CI build docker image"
          }
       },
       {
