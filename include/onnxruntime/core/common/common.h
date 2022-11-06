@@ -283,6 +283,6 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-std::vector<std::string> SplitStr(const std::string s, const char splitor);
+std::vector<std::string> SplitStr(const std::string& s, const char& separator);
 
 }  // namespace onnxruntime

@@ -32,12 +32,12 @@ std::wstring ToWideString(const std::string& s) {
   return ret;
 }
 
-std::vector<std::string> SplitStr(const std::string s, const char splitor) {
+std::vector<std::string> SplitStr(const std::string& s, const char& separator) {
   std::vector<std::string> ans;
   std::string tmp;
   std::stringstream ss;
   ss << s;
-  while (getline(ss, tmp, splitor)) {
+  while (getline(ss, tmp, separator)) {
     ans.push_back(tmp);
   }
   return ans;
