@@ -37,7 +37,6 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --enable_onnx_tests \
               --enable_symbolic_shape_infer_tests \
               --enable_pybind --build_java --build_nodejs
       workingDirectory: $(Build.SourcesDirectory)
