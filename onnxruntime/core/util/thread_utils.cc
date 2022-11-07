@@ -30,8 +30,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   } else if (!options.affinity_str.empty()) {
     auto num_of_affinity_read = Env::Default().ReadThreadAffinityConfig(options.affinity_str, to.affinity);
     if (options.thread_pool_size - 1 != static_cast<int>(num_of_affinity_read)) {
-      // report warning on read failure but allow continuing
-      LOGS_DEFAULT(WARNING) << "Number of valid affinities does not equal to thread_pool_size - 1, will not apply";
+      LOGS_DEFAULT(WARNING) << "Number of valid affinity configurations does not equal to thread_pool_size - 1, ignored";
       to.affinity.clear();
     }
   }

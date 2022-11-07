@@ -1176,7 +1176,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
 
   /**
-  * Setting intra op thread affnity - only implemented on windows for the branch
+  * Setting intra op thread affinity - only implemented on windows for the branch
   * affinity string follows format:
   * logic_processor_id,logic_processor_id;logic_processor_id,processor_id
   * semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.

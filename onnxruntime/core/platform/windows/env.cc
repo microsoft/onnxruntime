@@ -166,7 +166,7 @@ class WindowsEnv : public Env {
         KAFFINITY processor_mask = 0;
         size_t processor_count = 0;
         while (processor_count < 2 && bit_offset < bit_limit) {
-          KAFFINITY current_bit = bit_one << bit_offset;
+          KAFFINITY current_bit = BitOne << bit_offset;
           if (active_processor_mask & current_bit) {
             processor_mask |= current_bit;
             processor_count++;
@@ -199,7 +199,7 @@ class WindowsEnv : public Env {
     for (const auto& group_info : this->group_info_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
         if (processor_id >= procssor_from && processor_id <= processor_to) {
-          processor_mask |= bit_one << i;
+          processor_mask |= BitOne << i;
           processor_count += 1;
         }
       }
@@ -241,7 +241,7 @@ class WindowsEnv : public Env {
     for (const auto& group_info : this->group_info_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
         if (processor_ids.count(processor_id)) {
-          processor_mask |= bit_one << i;
+          processor_mask |= BitOne << i;
           processor_count += 1;
         }
       }
@@ -740,7 +740,7 @@ class WindowsEnv : public Env {
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
   std::vector<PROCESSOR_GROUP_INFO> group_info_vec_;
-  static const KAFFINITY bit_one = 1;
+  static constexpr KAFFINITY BitOne = 1;
 };
 }  // namespace
 
