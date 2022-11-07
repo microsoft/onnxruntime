@@ -8,7 +8,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
-
+using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {
 #define DEFINE_KERNEL(data_type)                                                                                  \
@@ -36,19 +36,19 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
 
   // ReduceSumSquare for A
   std::vector<T> a_ss;
-  a_ss.resize(gsl::narrow<size_t>(m));
+  a_ss.resize(narrow<size_t>(m));
   const auto* cur_a = a_data;
   for (int64_t i = 0; i < m; ++i) {
-    a_ss[gsl::narrow<size_t>(i)] = ConstEigenVectorMap<T>(cur_a, gsl::narrow<size_t>(k)).squaredNorm();
+    a_ss[narrow<size_t>(i)] = ConstEigenVectorMap<T>(cur_a, narrow<size_t>(k)).squaredNorm();
     cur_a += k;
   }
 
   // ReduceSumSquare for B
   std::vector<T> b_ss;
-  b_ss.resize(gsl::narrow<size_t>(n));
+  b_ss.resize(narrow<size_t>(n));
   const auto* cur_b = b_data;
   for (int64_t i = 0; i < n; ++i) {
-    b_ss[gsl::narrow<size_t>(i)] = ConstEigenVectorMap<T>(cur_b, gsl::narrow<size_t>(k)).squaredNorm();
+    b_ss[narrow<size_t>(i)] = ConstEigenVectorMap<T>(cur_b, narrow<size_t>(k)).squaredNorm();
     cur_b += k;
   }
 
@@ -82,9 +82,9 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
   // output shape is {m, n}
   auto* cur_out = c_data;
   for (int64_t i = 0; i < m; ++i) {
-    T a_val = a_ss[gsl::narrow<size_t>(i)];
+    T a_val = a_ss[narrow<size_t>(i)];
     for (int64_t j = 0; j < n; ++j) {
-      *cur_out = (*cur_out + a_val) + b_ss[gsl::narrow<size_t>(j)];
+      *cur_out = (*cur_out + a_val) + b_ss[narrow<size_t>(j)];
       ++cur_out;
     }
   }
@@ -115,7 +115,7 @@ common::Status CDist<T>::Compute(OpKernelContext* context) const {
   T* output = C->MutableData<T>();
 
   CalculateSqeuclidean<T>(*A, *B, *C, tp);
-  auto map_out = EigenVectorArrayMap<T>(output, gsl::narrow<size_t>(output_shape.Size()));
+  auto map_out = EigenVectorArrayMap<T>(output, narrow<size_t>(output_shape.Size()));
 
   // because we use GEMM in CalculateSqeuclidean there's a slight chance a number extremely close to zero
   // could be negative, so we need to run abs() to avoid NaN's in the results.
