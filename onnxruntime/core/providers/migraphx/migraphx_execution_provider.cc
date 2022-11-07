@@ -48,7 +48,7 @@ class Memcpy final : public OpKernel {
     const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     if (!gpu_data_transfer)
       return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
-    return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
 
@@ -128,17 +128,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 }
 
 MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
-  try {
-    ROCBLAS_CALL_THROW(rocblas_destroy_handle(external_rocblas_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "rocblas_destroy_handle threw:" << ex.what();
-  }
-
-  try {
-    MIOPEN_CALL_THROW(miopenDestroy(external_miopen_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
-  }
+  ORT_IGNORE_RETURN_VALUE(ROCBLAS_CALL(rocblas_destroy_handle(external_rocblas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(external_miopen_handle_)));
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -1192,7 +1183,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
 
         #ifdef MIGRAPHX_STREAM_SYNC
-        auto prog_outputs = prog.run_async(m, stream_);
+        void* rocm_stream;
+        api->KernelContext_GetGPUComputeStream(context, &rocm_stream);
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
         #else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
@@ -1224,7 +1217,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
 void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, true/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
+  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 
 #ifdef MIGRAPHX_STREAM_SYNC

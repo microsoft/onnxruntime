@@ -18,7 +18,7 @@ struct RocmStream : Stream {
 
   ~RocmStream();
 
-  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override;
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override;
 
   void Flush() override;
 

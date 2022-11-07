@@ -15,12 +15,12 @@ struct RocmNotification : public synchronize::Notification {
   }
 
   void Activate() override {
-    // record event with hipEventBlockingSync so we can support sync on host with out busy wait.
+    // record event with hipEventBlockingSync so we can support sync on host without busy wait.
     HIP_CALL_THROW(hipEventRecord(event_, static_cast<hipStream_t>(stream_.GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {
-    ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU);
+    ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU, "Unexpected device:", device_stream.GetDevice().ToString());
     // launch a wait command to the rocm stream
     HIP_CALL_THROW(hipStreamWaitEvent(static_cast<hipStream_t>(device_stream.GetHandle()), event_, 0));
   };
@@ -61,8 +61,9 @@ RocmStream::~RocmStream() {
   if (own_stream_) {
     rocblas_destroy_handle(rocblas_handle_);
     miopenDestroy(miopen_handle_);
-    if (handle_)
-      HIP_CALL_THROW(hipStreamDestroy(static_cast<hipStream_t>(handle_)));
+    auto* handle = GetHandle();
+    if (handle)
+      HIP_CALL_THROW(hipStreamDestroy(static_cast<hipStream_t>(handle)));
   }
 }
 
@@ -72,7 +73,7 @@ std::unique_ptr<synchronize::Notification> RocmStream::CreateNotification(size_t
 
 void RocmStream::Flush() {
   if (own_stream_)
-    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(handle_)));
+    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetHandle())));
 }
 
 void RocmStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
@@ -117,9 +118,9 @@ Status RocmStream::CleanUpOnRunEnd() {
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
 
     // Release memory asynchronously to avoid blocking the compute stream.
-    HIP_RETURN_IF_ERROR(hipStreamAddCallback(static_cast<hipStream_t>(handle_), ReleaseCpuBufferCallback, cpu_buffers_info, 0));
+    HIP_RETURN_IF_ERROR(hipStreamAddCallback(static_cast<hipStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info, 0));
   } else {
-    HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(handle_)));
+    HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetHandle())));
     for (auto* buffer : deferred_cpu_buffers_) {
       cpu_allocator_->Free(buffer);
     }

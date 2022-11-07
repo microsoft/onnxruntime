@@ -34,7 +34,7 @@ class Memcpy final : public OpKernel {
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
       const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-      return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
+      return gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream());
     } else if (X_type->IsSparseTensorType()) {
       const auto* X = ctx->Input<SparseTensor>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
@@ -59,7 +59,7 @@ class Memcpy final : public OpKernel {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
         const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(source_tensor.Location().device, target_tensor->Location().device);
-        Status retval = gpu_data_transfer->CopyTensorAsync(source_tensor, *target_tensor, ctx->GetComputeStream());
+        Status retval = gpu_data_transfer->CopyTensorAsync(source_tensor, *target_tensor, *ctx->GetComputeStream());
         if (!retval.IsOK()) {
           return retval;
         }
