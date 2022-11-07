@@ -32,10 +32,6 @@ endif()
 add_compile_options(
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wall>"
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wextra>")
-if(onnxruntime_DEV_MODE)
-    add_compile_options(
-        "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Werror>")
-endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objectivec")
 
