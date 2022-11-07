@@ -417,6 +417,9 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
 
   ORT_RETURN_IF_ERROR(status);
 
+  // block host until the stream is complete as fetches will be accessed from CPU
+  context_.GetComputeStream()->Flush();
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // Deal with Nones in fetches
   for (auto& output_index : optional_tensor_type_subgraph_outputs_) {
