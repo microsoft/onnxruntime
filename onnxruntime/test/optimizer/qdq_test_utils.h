@@ -42,7 +42,7 @@ AddQDQNodePairWithOutputAsGraphOutput(ModelTestBuilder& builder, NodeArg* q_inpu
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* input_arg = builder.MakeInput<float>(input_shape, -10.f, 10.f);
     auto* output_arg = builder.MakeOutput();
 
     using InputLimits = std::numeric_limits<InputType>;

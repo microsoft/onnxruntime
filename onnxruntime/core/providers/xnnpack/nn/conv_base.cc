@@ -266,7 +266,8 @@ bool IsValidQuantConv(const NodeUnit& node_unit, const GraphViewer& graph) {
       bias_input_type_ptr = &bias_input_type;
     }
     output_type = GetTensorQuantType(node_unit, 0, true, graph);
-    if (op_compute_type_invalid == GetConvCompType(x_input_type, w_input_type, bias_input_type_ptr, output_type)) {
+    auto qconv_type = GetConvCompType(x_input_type, w_input_type, bias_input_type_ptr, output_type);
+    if (op_compute_type_invalid == qconv_type || (qconv_type == op_compute_type_qs8_per_channel && node_unit.OpType() == "QLinearConvTranspose")) {
       break;
     }
     supported = true;
