@@ -428,13 +428,27 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
                });
 }
 
-/*
-// unfortunately, ONNX doesn't support the QLinearConvTranspose op yet
-TEST(XnnpackEP, TestConvTranspose_s8) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
-  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.5f);
+TEST(XnnpackEP, TestQDQConvTransposeS8S8) {
+  RunModelTest(BuildQDQConvTransposeTestCase<int8_t /* InputType */,
+                                             int8_t /* WeightType */,
+                                             int32_t /* BiasType */,
+                                             int8_t /* OutputType */>(
+                   {1, 2, 8, 5} /* input_shape */,
+                   {2, 3, 3, 3} /* weights_shape */),
+               "xnnpack_qdq_test_graph_convtranspose_s8s8",
+               {ExpectedEPNodeAssignment::Some, 0.2f});
 }
-*/
+
+TEST(XnnpackEP, TestQDQConvTransposeU8U8) {
+  RunModelTest(BuildQDQConvTransposeTestCase<uint8_t /* InputType */,
+                                             uint8_t /* WeightType */,
+                                             int32_t /* BiasType */,
+                                             uint8_t /* OutputType */>(
+                   {1, 2, 8, 5} /* input_shape */,
+                   {2, 3, 3, 3} /* weights_shape */),
+               "xnnpack_qdq_test_graph_convtranspose_u8u8",
+               {ExpectedEPNodeAssignment::Some, 0.2f});
+}
 
 TEST(XnnpackEP, Resize) {
   // two different coordinate_transform_mode in this model, so we can test both

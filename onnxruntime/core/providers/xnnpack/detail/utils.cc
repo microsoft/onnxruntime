@@ -99,6 +99,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
 
   } else if (node_unit.OpType() == "QLinearConv") {
     return QuantizedOpType::QLinearConv;
+  } else if (node_unit.OpType() == "QLinearConvTranspose") {
+    return QuantizedOpType::QLinearConvTranspose;
   }
   return QuantizedOpType::Unknown;
 }

@@ -121,17 +121,30 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint(
-                            "T",
-                            {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<uint8_t>(),
-                             DataTypeImpl::GetTensorType<int8_t>()}),
+                            "T", DataTypeImpl::GetTensorType<float>()),
                         ConvTranspose);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint(
-                                      "T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>()}),
+                                      "T", DataTypeImpl::GetTensorType<float>()),
+                                  ConvTranspose);
+
+ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
+                        KernelDefBuilder()
+                        //.TypeConstraint(
+                        //    "T",
+                        //    {DataTypeImpl::GetTensorType<uint8_t>(),
+                        //     DataTypeImpl::GetTensorType<int8_t>()}),
+                        ,
+                        ConvTranspose);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
+                                  KernelDefBuilder()
+                                  //.TypeConstraint(
+                                  //    "T",
+                                  //    {DataTypeImpl::GetTensorType<uint8_t>(),
+                                  //     DataTypeImpl::GetTensorType<int8_t>()}),
+                                  ,
                                   ConvTranspose);
 
 }  // namespace xnnpack
