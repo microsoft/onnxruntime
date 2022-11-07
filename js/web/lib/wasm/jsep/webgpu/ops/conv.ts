@@ -17,23 +17,25 @@ import {InternalActivationAttributes, parseInternalActivationAttributes} from '.
 
 export const calculateOutputShape =
     (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[],
-     adjustPads: readonly number[], strides: readonly number[]): number[] => {
+     adjustPads: readonly number[], strides: readonly number[], isChannelLast: boolean): number[] => {
       const batchSize = inputShape[0];
-      const inputSpatialShape = inputShape.slice(2);
+      const inputSpatialShape = inputShape.slice(isChannelLast ? 1 : 2, isChannelLast ? 3 : 4);
       const spatialRank = inputSpatialShape.length;
       const outChannels = kernelShape[0];
       const kernelSpatialShape = kernelShape.slice(2);
       const dilatedKernelShape = kernelSpatialShape.map((v, i) => v + (v - 1) * (dilations[i] - 1));
       const inputSpatialShapeWithPad = inputSpatialShape.map((v, i) => v + adjustPads[i] + adjustPads[i + spatialRank]);
-      const outputSpatialShape =
+      const outputShape =
           inputSpatialShapeWithPad.map((v, i) => Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]));
-      const outputShape = [batchSize, outChannels].concat(...outputSpatialShape);
+      outputShape.splice(0, 0, batchSize);
+      outputShape.splice(isChannelLast ? 3 : 1, 0, outChannels);
       return outputShape;
     };
 
 export interface ConvAttributes extends InternalActivationAttributes, AttributeWithCacheKey {
   readonly autoPad: string;
   readonly dilations: readonly number[];
+  readonly format: 'NHWC'|'NCHW';
   readonly group: number;
   readonly kernelShape: readonly number[];
   readonly pads: readonly number[];
@@ -53,7 +55,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
   }
 
   // FILTER_IN_CHANNEL should be equal to DATA_CHANNEL
-  const dataChannel = inputs[0].dims[1];
+  const dataChannel = inputs[0].dims[attributes.format === 'NHWC' ? 3 : 1];
   const filterInChannel = inputs[1].dims[1] * attributes.group;
   if (dataChannel !== filterInChannel) {
     throw new Error('FILTER_IN_CHANNEL should be equal to DATA_CHANNEL');
@@ -106,7 +108,8 @@ const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inpu
   }
   const pads = attributes.pads.slice();
   PoolConvUtil.adjustPadsBasedOnAutoPad(
-      inputs[0].dims, attributes.strides, attributes.dilations, kernelShape, pads, attributes.autoPad);
+      inputs[0].dims, attributes.strides, attributes.dilations, kernelShape, pads, attributes.format === 'NHWC',
+      attributes.autoPad);
 
   // always return a new object so does not modify the original attributes
   const newAttributes: T = Object.assign({}, attributes);
@@ -117,7 +120,8 @@ const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inpu
 export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAttributes => {
   const activationAttributes = parseInternalActivationAttributes(attributes);
   // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
-  const autoPad = ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number];
+  const format = attributes.format as 'NHWC' | 'NCHW';
+  const autoPad = ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.autopad as number];
   const dilations = [attributes.dilation0 as number, attributes.dilation1 as number];
   const group = attributes.group as number;
   const kernelShape = [attributes.kernelshape0 as number, attributes.kernelshape1 as number];
@@ -125,7 +129,8 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
       [attributes.pad0 as number, attributes.pad1 as number, attributes.pad2 as number, attributes.pad3 as number];
   const strides = [attributes.stride0 as number, attributes.stride1 as number];
 
-  return createAttributeWithCacheKey({autoPad, dilations, group, kernelShape, pads, strides, ...activationAttributes});
+  return createAttributeWithCacheKey(
+      {autoPad, format, dilations, group, kernelShape, pads, strides, ...activationAttributes});
 };
 
 const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => {

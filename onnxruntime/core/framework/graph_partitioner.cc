@@ -106,6 +106,10 @@ static bool TryAssignSingleNode(Graph& graph,
   assert(indexed_sub_graph.GetMetaDef() == nullptr && indexed_sub_graph.nodes.size() == 1);
 
   auto* node = graph.GetNode(indexed_sub_graph.nodes[0]);
+  // if (node->Domain() == kMSInternalNHWCDomain && node->Op() == nullptr ) {
+  //   printf("TryAssignSingleNode() calling SetOpSchemaFromRegistryForNode()\n");
+  //   graph.SetOpSchemaFromRegistryForNode(*node);
+  // }
   if (nullptr != node && node->GetExecutionProviderType().empty()) {
     // The node was not fused or assigned. Assign it to <provider_type>.
     node->SetExecutionProviderType(provider_type);

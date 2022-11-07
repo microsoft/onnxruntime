@@ -34,8 +34,9 @@ const createGroupedConvProgramInfo =
         inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> b : array<${dataType}>;`);
       }
 
-      const outputShape =
-          calculateOutputShape(xShape, wShape, attributes.dilations, attributes.pads, attributes.strides);
+      const isChannelLast = attributes.format === 'NHWC';
+      const outputShape = calculateOutputShape(
+          xShape, wShape, attributes.dilations, attributes.pads, attributes.strides, isChannelLast);
       const outputSize = ShapeUtil.size(outputShape);
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const xIndicesHelper = createIndicesHelper('x', xShape);
@@ -64,8 +65,9 @@ const createGroupedConvProgramInfo =
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
     ${outputIndicesHelper.o2iCall('global_id.x', 'outputIndices')}
     let batch: u32 = outputIndices[0];
-    let output_channel: u32 = outputIndices[1];
-    let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[2], outputIndices[3]) * strides - pads;
+    let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
+    let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
+          isChannelLast ? 2 : 3}]) * strides - pads;
     let group_id: u32 = output_channel / ${outputChannelsPerGroup}u;
 
     var value: ${dataType} = ${dataType}(0);
@@ -74,22 +76,23 @@ const createGroupedConvProgramInfo =
       for (var wHeight: u32 = 0u; wHeight < ${wShape[2]}u; wHeight++) {
         let xHeight = xRCCorner.x + wHeight * ${attributes.dilations[0]}u;
 
-        if (xHeight < 0u || xHeight >= ${xShape[2]}u) {
+        if (xHeight < 0u || xHeight >= ${xShape[isChannelLast ? 1 : 2]}u) {
           continue;
         }
 
         for (var wWidth: u32 = 0u; wWidth < ${wShape[3]}u; wWidth++) {
           let xWidth = xRCCorner.y + wWidth * ${attributes.dilations[1]}u;
-          if (xWidth < 0u || xWidth >= ${xShape[3]}u) {
+          if (xWidth < 0u || xWidth >= ${xShape[isChannelLast ? 2 : 3]}u) {
             continue;
           }
 
           ${
           xIndicesHelper.indicesVariableDeclaration(
               'xIndices',
-              [
-                'batch', 'input_channel', 'xHeight', 'xWidth'
-              ])}
+              isChannelLast ? ['batch', 'xHeight', 'xWidth', 'input_channel'] :
+                              [
+                                'batch', 'input_channel', 'xHeight', 'xWidth'
+                              ])}
           let xVal = x[${xIndicesHelper.i2oExpression('xIndices')}];
           ${
           wIndicesHelper.indicesVariableDeclaration('wIndices', [

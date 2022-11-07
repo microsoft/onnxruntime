@@ -93,6 +93,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.backend.getCommandEncoder().copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
     this.backend.flush();
 
+
+    // eslint-disable-next-line no-console
+    console.log(`[js] GpuDataManager.upload(id=${id})`);
+
     gpuBufferForUploading.destroy();
   }
 
@@ -111,6 +115,9 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
+
+    // eslint-disable-next-line no-console
+    console.log(`[js] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
     return gpuData;
   }
 
@@ -123,6 +130,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (!cachedData) {
       throw new Error('releasing data does not exist');
     }
+
+    // eslint-disable-next-line no-console
+    console.log(`[js] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
 
     this.storageCache.delete(id);
     cachedData.gpuData.buffer.destroy();
