@@ -173,8 +173,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       //auto duration = duration_cast<microseconds>(stop - start);
       std::cout << std::endl;
-      std::cout << Node().Name() << " : " << subnormal_cnt_A << std::endl;
-      std::cout << Node().Name() << " : " << subnormal_cnt_B << std::endl;
+      float frac = ((subnormal_cnt_A + subnormal_cnt_B) * 100.f) / (left_X->Shape().Size() + right_X->Shape().Size()); 
+      std::cout << Node().Name() << " : " << frac << std::endl;
 
     } else {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
