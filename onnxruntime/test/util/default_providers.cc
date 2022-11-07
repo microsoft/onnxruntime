@@ -215,5 +215,13 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
+#ifdef USE_DML
+  if (auto factory = DMLProviderFactoryCreator::Create(0))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

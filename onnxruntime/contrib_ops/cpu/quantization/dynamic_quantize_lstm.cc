@@ -1,3 +1,4 @@
+#include "core/common/narrow.h"
 #include "core/providers/cpu/rnn/lstm_base.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "core/providers/cpu/rnn/uni_directional_lstm.h"
@@ -188,8 +189,8 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   ZeroPointCheck(w_zp, W_zp_shape, is_W_signed, Input);
   ZeroPointCheck(r_zp, R_zp_shape, is_R_signed, Recurrent);
 
-  size_t W_scale_size = W_scale_shape.NumDimensions() == 2 ? gsl::narrow<size_t>(W_scale_shape[1]) : 1;
-  size_t R_scale_size = R_scale_shape.NumDimensions() == 2 ? gsl::narrow<size_t>(R_scale_shape[1]) : 1;
+  size_t W_scale_size = W_scale_shape.NumDimensions() == 2 ? narrow<size_t>(W_scale_shape[1]) : 1;
+  size_t R_scale_size = R_scale_shape.NumDimensions() == 2 ? narrow<size_t>(R_scale_shape[1]) : 1;
 
   QuantizationParameter quant_para_W_1(w_scale->Data<float>(),
                                        static_cast<const uint8_t*>(w_zp->DataRaw()),

@@ -11,6 +11,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
+#include "core/framework/execution_steps.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
@@ -33,15 +34,8 @@ std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base,
                                                size_t graph_depth,
                                                NodeIndex node_index,
                                                const std::string& attr_name) {
-  std::ostringstream ss;
-
   // key = base + graph depth + current graph node index + attr name corresponding to the subgraph
-  ss << base;
-  ss << graph_depth;
-  ss << node_index;
-  ss << attr_name;
-
-  return ss.str();
+  return ::onnxruntime::MakeString(base, graph_depth, node_index, attr_name);
 }
 
 }  // namespace NestedSubgraphInfoDetails
@@ -112,7 +106,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
     auto& execution_plan = plan.execution_plan[i];
     out << " Start logic stream : " << i << "on device: " << execution_plan->device_.Type() << std::endl;
     for (auto& step : execution_plan->steps_) {
-      out << step->Dump() << std::endl;
+      out << step->ToString() << std::endl;
     }
     out << "End logic stream : " << i << std::endl;
   }
@@ -129,152 +123,6 @@ static const KernelCreateInfo& GetKernelCreateInfo(
 
   return *entry->second;
 }
-
-class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
-                           barrier_id{id} {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t /*stream_idx*/,
-                 SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
-                 bool& continue_flag) override {
-    continue_flag = ctx->DecCountDownBarrier(barrier_id);
-    return Status::OK();
-  }
-
-  std::string Dump() const override {
-    std::stringstream ss;
-    ss << "Set a barrier with id: " << barrier_id << ", count: " << 2 << ". ";
-    return ss.str();
-  }
-
- private:
-  size_t barrier_id{0};
-};
-
-class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx) : SequentialExecutionPlan::ExecutionStep(),
-                                                                   wait_handle(handle),
-                                                                   notification_idx(idx) {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t stream_idx,
-                 SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
-                 bool& continue_flag) override {
-    ORT_ENFORCE(wait_handle, "WaitOnEPStep.wait_handle is null");
-    wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
-    // update streams clock status
-    if (ctx->GetDeviceStream(stream_idx)) {
-      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->GetStreamSyncTable());
-    }
-    LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
-    continue_flag = true;
-    return Status::OK();
-  }
-
-  std::string Dump() const override {
-    std::stringstream ss;
-    ss << "WaitOnEPStep: wait on notification with id: " << notification_idx << ". ";
-    return ss.str();
-  }
-
- private:
-  WaitNotificationFn wait_handle;
-  NotificationIndex notification_idx;
-};
-
-class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
-                                      node_index{index} {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t stream_idx,
-                 SessionScope& session_scope,
-                 const bool& terminate_flag,
-                 bool& continue_flag) override {
-    if (!continue_flag) {
-      LOGS(ctx->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-    }
-#ifdef ENABLE_TRAINING
-    auto* node_to_execute = ctx->GetNodeToExecute();
-    if (node_to_execute && node_to_execute->count(node_index) == 0) {
-      continue_flag = true;
-      return Status::OK();
-    }
-#endif
-    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx, terminate_flag, session_scope);
-    continue_flag = status.IsOK();
-    return status;
-  }
-
-  std::string Dump() const override {
-    std::stringstream ss;
-    ss << "Launch kernel with node id: " << node_index << ". ";
-    return ss.str();
-  }
-
- private:
-  NodeIndex node_index{0};
-};
-
-class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                                   notification_idx(notification_index) {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t stream_idx,
-                 SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
-                 bool& continue_flag) override {
-    if (ctx->GetNotification(notification_idx)) {
-      ctx->GetNotification(notification_idx)->ActivateAndUpdate();
-    }
-    LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " activate notification with index " << notification_idx;
-    continue_flag = true;
-    return Status::OK();
-  }
-
-  virtual std::string Dump() const override {
-    std::stringstream ss;
-    ss << "ActivateNotificationStep: activate notification with id: " << notification_idx << ". ";
-    return ss.str();
-  }
-
- private:
-  NotificationIndex notification_idx;
-};
-
-class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
- public:
-  TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                      trigger_point_index(trigger_point_index) {}
-
-  Status Execute(StreamExecutionContext* ctx,
-                 size_t /*stream_idx*/,
-                 SessionScope& session_scope,
-                 const bool& terminate_flag,
-                 bool& continue_flag) override {
-    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode(), terminate_flag, session_scope);
-    continue_flag = true;
-    return Status::OK();
-  }
-
-  virtual std::string Dump() const override {
-    std::stringstream ss;
-    ss << "TriggerDownstreamStep: trigger downstream of trigger point: " << trigger_point_index << ". ";
-    return ss.str();
-  }
-
- private:
-  size_t trigger_point_index;
-};
 
 class PlannerImpl {
  public:
@@ -297,8 +145,6 @@ class PlannerImpl {
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                    /*const ProviderStreamMap& provider_stream_map,
-                    const OpStreamMap& op_stream_map,*/
                     const std::string& partition_config_file,
                     const logging::Logger& logger);
 
@@ -846,10 +692,10 @@ class PlannerImpl {
           const auto& name = input.Name();
 
           bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
                                                  [&name](const NodeArg* value) {
                                                    return value && value->Name() == name;
-                                                 }) != outer_scope_node_args_.cend();
+                                                 }) != outer_scope_node_args_.end();
           bool is_subgraph = (parent_node_ != nullptr);
 
           // If it's a graph input or outer scope node arg, set its plan.
@@ -861,7 +707,7 @@ class PlannerImpl {
 
             if (!is_implicit_input) {
               OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(exec_provider->GetDeviceId(), mem_type)->Info());
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level
@@ -1867,10 +1713,9 @@ class PlannerImpl {
 
   void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                             const std::string& partition_config_file) {
-    auto partitioner = IGraphPartitioner::CreateNodePartitioner(logger, partition_config_file);
-    auto status = partitioner->GetStatus();
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
+    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
@@ -2222,8 +2067,6 @@ class PlannerImpl {
 };
 
 Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                               /*const ProviderStreamMap& provider_stream_map,
-                               const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
   // 1. partition graph into streams
@@ -2314,7 +2157,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TODO: update the keyword in the config file
-InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DummyPartition"}, GraphPartitioningStrategy::DeviceBasedPartition}};
+InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
@@ -2327,13 +2170,14 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
     }
   }
   void DumpPartition() const;
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
+  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
 
  private:
   void Initialize();
+  void Reset();
   int num_streams_{};
   std::map<OrtDevice::DeviceType, int> max_streams_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
@@ -2355,9 +2199,10 @@ line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream o
 line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
 */
 
-#define EXIT_ON_ERR(err)                             \
-  status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err); \
-  if_stream.close();                                 \
+#define EXIT_ON_ERR(warning)         \
+  LOGS(logger_, WARNING) << warning; \
+  Reset();                           \
+  if_stream.close();                 \
   return;
 
 void DeviceBasedPartitioner::Initialize() {
@@ -2408,6 +2253,12 @@ void DeviceBasedPartitioner::Initialize() {
   }
 }
 
+void DeviceBasedPartitioner::Reset() {
+  num_streams_ = 0;
+  max_streams_.clear();
+  node_names_by_stream_.clear();
+}
+
 void DeviceBasedPartitioner::DumpPartition() const {
   if (configuration_file_.empty()) {
     return;
@@ -2431,13 +2282,9 @@ void DeviceBasedPartitioner::DumpPartition() const {
   }
 }
 
-void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
-                                            const ExecutionProviders& execution_providers,
-                                            std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
-  if (!status_.IsOK()) {
-    return;  // input configuration has errors, do nothing
-  }
-
+Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                              const ExecutionProviders& execution_providers,
+                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -2489,6 +2336,7 @@ void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& grap
       stream_nodes[node_stream_map[node_name]].push_back(node_index);
     }
   }
+  return Status::OK();
 }
 
 InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, char splitor) {
@@ -2502,7 +2350,7 @@ InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, cha
   return columns;
 }
 
-std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
+std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) {
   std::string cfg_file = configuration_file;
   IGraphPartitioner::GraphPartitioningStrategy partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!cfg_file.empty()) {
@@ -2521,12 +2369,12 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(cons
       of_stream.close();
     }
   }  // else means configuration will not be written to a file
-  std::unique_ptr<IGraphPartitioner> node_partitioner;
+  std::unique_ptr<IGraphPartitioner> graph_partitioner;
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
-    node_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
+    graph_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
   }
 
-  return node_partitioner;
+  return graph_partitioner;
 }
 
 }  // namespace onnxruntime

@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
+
 #include "core/providers/cpu/math/gemm.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
@@ -126,7 +128,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
   math::Gemm<T>(trans_a, trans_b,
-                gsl::narrow<ptrdiff_t>(M), gsl::narrow<ptrdiff_t>(N), gsl::narrow<ptrdiff_t>(K),
+                narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K),
                 alpha,
                 a_data,
                 b_data,

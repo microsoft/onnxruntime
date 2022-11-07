@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
@@ -186,7 +186,7 @@ class SessionState {
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
 
-  const std::vector<AllocPlanPerValue>& GetPerAllocPlan() const;
+  const std::vector<AllocPlanPerValue>& GetPerValueAllocPlan() const;
 
   /**
   Get the logger for this session.

@@ -14,7 +14,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_runtime_api.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <unordered_map>
 #include <utility>
 #include <limits>
@@ -209,7 +209,9 @@ class Memcpy final : public OpKernel {
     auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     if (!gpu_data_transfer)
       return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in TRT EP.");
-    return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
+    if (!ctx->GetComputeStream())
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "Compute Stream is missing in TRT MemCpy kernel's context.");
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
 
