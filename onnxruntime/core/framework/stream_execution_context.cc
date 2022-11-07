@@ -150,7 +150,7 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, session_scope, terminate_flag, continue_flag);
+      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_flag, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -187,7 +187,7 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, session_scope, terminate_flag, continue_flag);
+      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_flag, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -217,7 +217,6 @@ void ScheduleDownstream(StreamExecutionContext& ctx,
                         bool single_thread_mode,
                         const bool& terminate_flag,
                         SessionScope& session_scope) {
-  auto* ctx_ptr = &ctx;
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
@@ -227,8 +226,8 @@ void ScheduleDownstream(StreamExecutionContext& ctx,
       // increase the task count before schedule down-stream
       ctx.AddTask();
       concurrency::ThreadPool::Schedule(tp,
-                                        [ctx_ptr, downstream, &terminate_flag, &session_scope]() {
-                                          RunSince(downstream.first, *ctx_ptr, session_scope, terminate_flag, downstream.second);
+                                        [&ctx, downstream, &terminate_flag, &session_scope]() {
+                                          RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second);
                                         });
     }
   }

@@ -42,7 +42,7 @@ class DeviceStreamCollectionImpl {
             if (alloc->Info().device == stream->GetDevice() &&
                 alloc->Info().alloc_type == OrtArenaAllocator) {
               auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-              auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();
+              auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
               if (stream_aware_alloc) {
                 stream_aware_alloc->ReleaseStreamBuffers(stream.get());
               }
@@ -81,7 +81,8 @@ class DeviceStreamCollectionImpl {
   bool is_main_graph_ = false;
 };
 
-DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
+DeviceStreamCollection::DeviceStreamCollection(size_t num_streams,
+  const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 

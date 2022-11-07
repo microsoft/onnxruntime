@@ -529,7 +529,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       // to avoid data races.
       auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(input_tensor.Location().device, output->Location().device);
       if (context_.GetComputeStream())
-        ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(input_tensor, *output, context_.GetComputeStream()));
+        ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(input_tensor, *output, *context_.GetComputeStream()));
       else
         ORT_RETURN_IF_ERROR(data_transer->CopyTensor(input_tensor, *output));
     } else if (input.IsTensorSequence()) {
@@ -557,7 +557,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
           // to avoid data races.
           auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Location().device, tmp.Location().device);
           if (context_.GetComputeStream())
-            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(*it, tmp, context_.GetComputeStream()));
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(*it, tmp, *context_.GetComputeStream()));
           else
             ORT_RETURN_IF_ERROR(data_transer->CopyTensor(*it, tmp));
           tensors.push_back(std::move(tmp));

@@ -80,7 +80,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
     if (allocator->Info().alloc_type == OrtArenaAllocator) {
       BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-      auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
+      auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
       if (stream_aware_alloc && target_stream) {
         size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
         void* p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
@@ -171,7 +171,9 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     if (copy_tensor_pairs != nullptr) {
       copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, stream});
     } else {
-      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, stream) : session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+      ORT_RETURN_IF_ERROR(stream ? 
+		      session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, *stream) : 
+		      session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -202,7 +204,10 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (copy_tensor_pairs != nullptr) {
         copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), stream});
       } else {
-        ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), stream) : session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+        if (stream)
+          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), *stream));
+        else
+          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }
       ++source_iter;
       ++target_iter;

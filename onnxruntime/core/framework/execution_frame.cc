@@ -31,7 +31,7 @@ namespace onnxruntime {
 static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
   if (allocator->Info().alloc_type == OrtArenaAllocator) {
     BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-    return arena_ptr->AsStreamAwareAreana();
+    return StreamAwareArena::FromBFCArena(*arena_ptr);
   }
   return nullptr;
 }

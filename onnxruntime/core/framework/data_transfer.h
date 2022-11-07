@@ -31,7 +31,7 @@ class IDataTransfer {
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
 
-  virtual common::Status CopyTensorAsync(const Tensor& /*src*/, Tensor& /*dst*/, Stream* /*stream*/) const {
+  virtual common::Status CopyTensorAsync(const Tensor& /*src*/, Tensor& /*dst*/, Stream& /*stream*/) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
