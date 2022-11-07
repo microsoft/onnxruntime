@@ -44,16 +44,18 @@ common::Status GPUDataTransfer::Randomize(Tensor& dst) const {
   cuda::cudaRandomUniform(GetStream(kCudaStreamDefault), dst.MutableDataRaw(), dst.Shape().Size());
   cudaDeviceSynchronize();
 
+  /*
   std::vector<uint16_t> host_data(dst.Shape().Size(), 0);
   cudaMemcpy(host_data.data(), dst.MutableDataRaw(), dst.SizeInBytes(), cudaMemcpyDeviceToHost);
 
   for (size_t i = 0; i < static_cast<size_t>(dst.Shape().Size()); ++i) {
     if ((host_data[i] & 0x7C00) == 0) {
-      ORT_THROW("Sub-normal in randomized data");
+      ORT_THROW("Sub-normal in randomized data");  
     }
   }
 
   std::cout << "No subnormals in weights";
+  */
 
   //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault)));
   return Status::OK();

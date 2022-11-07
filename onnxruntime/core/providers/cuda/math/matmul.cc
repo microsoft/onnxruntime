@@ -126,7 +126,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
-    
+    cudaStreamSynchronize(Stream());
+    auto start = high_resolution_clock::now(); 
+
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),
         transB,
@@ -143,6 +145,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         ldc,
         device_prop));
+
+      cudaStreamSynchronize(Stream());
+      auto stop = high_resolution_clock::now();
+
+      auto duration = duration_cast<microseconds>(stop - start);
+
+      std::cout << Node().Name() << " : " << duration.count() << std::endl;
     }
     else {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
