@@ -1,8 +1,9 @@
 ---
-title: Vitis AI
+title: Xilinx - Vitis AI
 description: Instructions to execute ONNX Runtime on Xilinx devices with the Vitis AI execution provider
-parent: Execution Providers
-nav_order: 16
+grand_parent: Execution Providers
+parent: Community-maintained
+nav_order: 6
 redirect_from: /docs/reference/execution-providers/Vitis-AI-ExecutionProvider
 ---
 
@@ -39,7 +40,7 @@ The following table lists system requirements for running docker containers as w
 | Docker Version                                      | 19\.03\.1                                                  |
 
 ## Build
-See [Build instructions](../build/eps.md#vitis-ai).
+See [Build instructions](../../build/eps.md#vitis-ai).
 
 ### Hardware setup
 

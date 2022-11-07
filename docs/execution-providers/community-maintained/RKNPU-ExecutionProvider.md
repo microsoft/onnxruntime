@@ -1,8 +1,9 @@
 ---
-title: RKNPU
+title: Rockchip - RKNPU
 description: Instructions to execute ONNX Runtime on Rockchip NPUs with the RKNPU execution provider
-parent: Execution Providers
-nav_order: 11
+grand_parent: Execution Providers
+parent: Community-maintained
+nav_order: 5
 redirect_from: /docs/reference/execution-providers/RKNPU-ExecutionProvider
 ---
 
@@ -19,7 +20,7 @@ RKNPU DDK is an advanced interface to access Rockchip NPU. The RKNPU Execution P
 
 
 ## Build 
-For build instructions, please see the [BUILD page](../build/eps.md#rknpu).
+For build instructions, please see the [BUILD page](../../build/eps.md#rknpu).
 
 ## Usage
 **C/C++**
@@ -31,7 +32,7 @@ Ort::SessionOptions sf;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_RKNPU(sf));
 Ort::Session session(env, model_path, sf);
 ```
-The C API details are [here](../get-started/with-c.md).
+The C API details are [here](../../get-started/with-c.md).
 
 
 ## Support Coverage

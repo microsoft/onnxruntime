@@ -1,8 +1,9 @@
 ---
-title: CANN (Huawei)
+title: Huawei - CANN
 description: Instructions to execute ONNX Runtime with the Huawei CANN execution provider
-parent: Execution Providers
-nav_order: 3
+grand_parent: Execution Providers
+parent: Community-maintained
+nav_order: 7
 redirect_from: /docs/reference/execution-providers/CANN-ExecutionProvider
 ---
 
@@ -32,11 +33,11 @@ Please reference table below for official CANN packages dependencies for the ONN
 
 ## Build
 
-For build instructions, please see the [BUILD page](../build/eps.md#cann).
+For build instructions, please see the [BUILD page](../../build/eps.md#cann).
 
 ## Install
 
-Pre-built binaries of ONNX Runtime with CANN EP are published for most language bindings. Please reference [Install ORT](../install).
+Pre-built binaries of ONNX Runtime with CANN EP are published for most language bindings. Please reference [Install ORT](../../install).
 
 ## Samples
 

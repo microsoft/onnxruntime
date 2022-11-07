@@ -1,8 +1,8 @@
 ---
-title: SNPE (Qualcomm)
+title: Qualcomm - SNPE
 description: Execute ONNX models with SNPE Execution Provider 
 parent: Execution Providers
-nav_order: 13
+nav_order: 6
 redirect_from: /docs/reference/execution-providers/SNPE-ExecutionProvider
 ---
 
