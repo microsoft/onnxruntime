@@ -8,6 +8,13 @@
 namespace onnxruntime {
 namespace xnnpack {
 
+// Todo -
+// 1. Integrate activation layers - Cliping & Relu 
+// 2. Enable C matrix broadcasting - reuse "GemmBroadcastBias" function / logic
+// 3. Enable Quant ops
+// 4. Review possible consolidation of MatMul & Gemm 
+//
+
 bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   const onnxruntime::Node& node = node_unit.GetNode();
@@ -17,16 +24,16 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     ConstPointerContainer<std::vector<NodeArg*>> input_defs = node.InputDefs();
 
     const auto alpha = node.GetAttributes().find("alpha");
-    if (!(*alpha).second.has_f() && (*alpha).second.f() != 1.0) break;
+    if ((*alpha).second.f() != 1.0) break;
 
     const auto beta = node.GetAttributes().find("beta");
-    if (!(*beta).second.has_f() && (*beta).second.f() != 1.0) break;
+    if ((*beta).second.f() != 1.0) break;
 
     const NodeArg* A_arg = input_defs[0];
     const NodeArg* B_arg = input_defs[1];
     const NodeArg* C_arg = input_defs.size() <= 2 ? nullptr : input_defs[2];
 
-    // Right now assuming C matrix is exists
+    // Right now assuming C matrix exists
     if (!C_arg) break;
 
     // we only support float currently
@@ -42,7 +49,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
       break;
     }
 
-    if (input_defs[2]->Exists() && !graph.IsConstantInitializer(C_arg->Name(), true)) {
+    if (C_arg->Exists() && !graph.IsConstantInitializer(C_arg->Name(), true)) {
       break;
     }
 

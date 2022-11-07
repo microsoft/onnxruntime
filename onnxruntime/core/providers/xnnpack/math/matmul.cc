@@ -4,6 +4,12 @@
 #include "matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
+// Todo -
+// 1. Integrate activation layers - Cliping & Relu
+// 2. Enable Quant ops
+// 3. Review possible consolidation of MatMul & Gemm
+//
+
 namespace onnxruntime {
 namespace xnnpack {
 
