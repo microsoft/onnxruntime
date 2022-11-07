@@ -4,6 +4,8 @@
 #pragma once
 #include <algorithm>
 #include <vector>
+
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_base.h"
 
 namespace onnxruntime {
@@ -219,7 +221,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
       bool increase_position = (iteration_counter > 1);
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids, increase_position,
-                                      next_tokens.as_span<const int32_t>()));
+                                      ReinterpretAsSpan<const int32_t>(next_tokens)));
     }
     fetches.clear();
   }

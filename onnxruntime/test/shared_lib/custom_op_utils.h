@@ -25,6 +25,17 @@ struct MyCustomKernel {
   void* compute_stream_;
 };
 
+struct MyCustomKernelSecondInputOnCpu {
+  MyCustomKernelSecondInputOnCpu(const OrtKernelInfo* /*info*/, void* compute_stream)
+      : compute_stream_(compute_stream) {
+  }
+
+  void Compute(OrtKernelContext* context);
+
+ private:
+  void* compute_stream_;
+};
+
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   explicit MyCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
 
@@ -43,6 +54,32 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 
  private:
   const char* provider_{"CPUExecutionProvider"};
+  void* compute_stream_;
+};
+
+struct MyCustomOpSecondInputOnCpu : Ort::CustomOpBase<MyCustomOpSecondInputOnCpu, MyCustomKernelSecondInputOnCpu> {
+  explicit MyCustomOpSecondInputOnCpu(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelSecondInputOnCpu(info, compute_stream_); };
+  const char* GetName() const { return "Foo"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
+    // Both the inputs need to be necessarily of float type
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  OrtMemType GetInputMemoryType(size_t i) const {
+    if (i == 1) { return OrtMemTypeCPUInput; }
+    return OrtMemTypeDefault;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+ private:
+  const char* provider_{"CUDAExecutionProvider"};
   void* compute_stream_;
 };
 

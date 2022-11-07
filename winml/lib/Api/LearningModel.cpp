@@ -105,7 +105,7 @@ LearningModel::LearningModel(
                               0);                 // number of bytes to map. 0 means read whole file.
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
-                             file_mapping == nullptr,
+                             buffer == nullptr,
                              "Model load failed!");
   LARGE_INTEGER file_size;
   WINML_THROW_HR_IF_FALSE_MSG(__HRESULT_FROM_WIN32(GetLastError()),

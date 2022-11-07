@@ -18,7 +18,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace rnn {
@@ -247,11 +247,39 @@ void ComputeGemm(const int M,
                  int32_t* quantize_agg_C_buffer,
                  concurrency::ThreadPool* thread_pool);
 
+// helper to call the above pointer versions with spans
+template <typename GemmWeightsType>
+inline void ComputeGemm(const int M,
+                        const int N,
+                        const int K,
+                        const float alpha,
+                        gsl::span<const float> A_span,
+                        const GemmWeights<GemmWeightsType>& weights,
+                        const float beta,
+                        gsl::span<float> C_span,
+                        const int ldc,
+                        uint8_t* quantized_A_buffer,
+                        int32_t* quantize_agg_C_buffer,
+                        concurrency::ThreadPool* thread_pool) {
+  ComputeGemm(M,
+              N,
+              K,
+              alpha,
+              A_span.data(), A_span.data() + A_span.size(),
+              weights,
+              beta,
+              C_span.data(), C_span.data() + C_span.size(),
+              ldc,
+              quantized_A_buffer,
+              quantize_agg_C_buffer,
+              thread_pool);
+}
+
 // helper to convert a span to a raw pointer
 // after validating the memory covered by the span supports the size required
 template <typename T>
-const T* SafeRawConstPointer(typename gsl::span<T>::const_iterator cur,
-                             typename gsl::span<T>::const_iterator end,
+const T* SafeRawConstPointer(typename gsl::span<const T>::iterator cur,
+                             typename gsl::span<const T>::iterator end,
                              size_t size) {
   ORT_ENFORCE(cur + size <= end);
   return &*cur;
@@ -260,7 +288,7 @@ const T* SafeRawConstPointer(typename gsl::span<T>::const_iterator cur,
 // helper to convert a span to a raw pointer
 // after validating the memory covered by the span supports the size required
 template <typename T>
-const T* SafeRawConstPointer(gsl::span<T> span, size_t offset, size_t size) {
+const T* SafeRawConstPointer(gsl::span<const T> span, size_t offset, size_t size) {
   ORT_ENFORCE(offset + size <= size_t(span.size()));
   return span.data();
 }

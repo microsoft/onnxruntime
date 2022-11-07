@@ -4,6 +4,7 @@
 #if !defined(REDUCED_OPS_BUILD)  // may not work with excluded op kernel implementations
 
 #include "core/common/logging/logging.h"
+#include "core/common/span_utils.h"
 #include "core/framework/utils.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -89,7 +90,7 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
     const auto& initializer = session_state.GetConstantInitializedTensors().at(idx);
     const auto expected = initializer.Get<Tensor>().DataAsSpan<float>();
 
-    ASSERT_THAT(data, ::testing::ContainerEq(expected));
+    ASSERT_TRUE(SpanEq(data, expected));
   }
 }
 
