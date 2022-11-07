@@ -55,9 +55,8 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events) {
       for (auto& evt : map_iter.second) {
         evt.args["op_name"] = event_iter->args["op_name"];
 
-        // roctracer timestamps don't use Jan 1 1970 as an epoch,
-        // not sure what epoch it uses, but we adjust the timestamp
-        // here to something sensible.
+        // roctracer doesn't use Jan 1 1970 as an epoch for its timestamps.
+        // So, we adjust the timestamp here to something sensible.
         evt.ts = event_iter->ts + increment;
         ++increment;
       }

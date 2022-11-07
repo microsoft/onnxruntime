@@ -63,45 +63,17 @@ struct EventRecord {
 	name(other.name), ts(other.ts), dur(other.dur),
 	args(other.args) {}
 
-  EventRecord(EventRecord&& other)
-      : cat(other.cat), pid(other.pid), tid(other.tid),
-	name(std::move(other.name)), ts(other.ts), dur(other.dur),
-	args(std::move(other.args)) {}
+  EventRecord(EventRecord&& other) = default;
+  EventRecord& operator=(const EventRecord& other) = default;
+  EventRecord& operator=(EventRecord&& other) = default;
 
-  EventRecord& operator=(const EventRecord& other) {
-    if (&other == this) {
-      return *this;
-    }
-    cat = other.cat;
-    pid = other.pid;
-    tid = other.tid;
-    name = other.name;
-    ts = other.ts;
-    dur = other.dur;
-    args = other.args;
-    return *this;
-  }
-
-  EventRecord& operator=(EventRecord&& other) {
-    if (&other == this) {
-      return *this;
-    }
-    cat = other.cat;
-    pid = other.pid;
-    tid = other.tid;
-    std::swap(name, other.name);
-    dur = other.dur;
-    std::swap(args, other.args);
-    return *this;
-  }
-
-  EventCategory cat;
-  int pid;
-  int tid;
-  std::string name;
-  long long ts;
-  long long dur;
-  std::unordered_map<std::string, std::string> args;
+  EventCategory cat = EventCategory::API_EVENT;
+  int pid = -1;
+  int tid = -1;
+  std::string name{};
+  long long ts = 0;
+  long long dur = 0;
+  std::unordered_map<std::string, std::string> args{};
 };
 
 using Events = std::vector<EventRecord>;

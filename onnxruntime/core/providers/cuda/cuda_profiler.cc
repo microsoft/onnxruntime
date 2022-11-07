@@ -93,8 +93,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
   free(buffer);
 }
 
-bool CudaProfiler::StartProfiling(TimePoint profiling_start_time) {
-  ORT_UNUSED_PARAMETER(profiling_start_time);
+bool CudaProfiler::StartProfiling(TimePoint /* profiling_start_time */) {
   if (!enabled.test_and_set()) {
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER) == CUPTI_SUCCESS &&
