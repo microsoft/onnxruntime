@@ -418,6 +418,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
   ORT_RETURN_IF_ERROR(status);
 
   // block host until the stream is complete as fetches will be accessed from CPU
+  // previously we were relying Fence to guard the data access. Since Fence is retired, we need to do sync explicitly
   context_.GetComputeStream()->Flush();
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
