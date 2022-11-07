@@ -586,7 +586,7 @@ export class PoolConvUtil {
   // adjust pad values based on 'autoPad' attribute
   static adjustPadsBasedOnAutoPad(
       inputDims: readonly number[], strides: readonly number[], dilations: readonly number[],
-      kernelShape: readonly number[], pads: number[], autoPad?: string): void {
+      kernelShape: readonly number[], pads: number[], isChannelLast: boolean, autoPad?: string): void {
     if (!autoPad) {
       return;
     }
@@ -605,8 +605,8 @@ export class PoolConvUtil {
 
     for (let dim = 0; dim < inputDims.length - 2; dim++) {
       PoolConvUtil.adjustPadAndReturnShape(
-          inputDims[dim + 2], strides[dim], dilations[dim], kernelShape[dim], pads, dim, dim + inputDims.length - 2,
-          autoPad);
+          inputDims[dim + (isChannelLast ? 1 : 2)], strides[dim], dilations[dim], kernelShape[dim], pads, dim,
+          dim + inputDims.length - 2, autoPad);
     }
   }
 

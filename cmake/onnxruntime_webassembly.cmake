@@ -214,7 +214,7 @@ else()
                         -s NO_FILESYSTEM=1 \
                         ${WASM_API_EXCEPTION_CATCHING} \
                         -s ASYNCIFY=1 \
-                        -s ASYNCIFY_STACK_SIZE=8192 \
+                        -s ASYNCIFY_STACK_SIZE=16384 \
                         -s ASYNCIFY_ADVISE=1 \
                         -s ASYNCIFY_DEBUG=0 \
                         -s ASYNCIFY_IGNORE_INDIRECT=0 \
