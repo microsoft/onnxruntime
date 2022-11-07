@@ -126,34 +126,57 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
-    cudaStreamSynchronize(Stream());
-    auto start = high_resolution_clock::now(); 
+      cudaStreamSynchronize(Stream());
+      //auto start = high_resolution_clock::now();
 
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        Base::CublasHandle(),
-        transB,
-        transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-        ldb,
-        reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-        lda,
-        &zero,
-        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        ldc,
-        device_prop));
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+          Base::CublasHandle(),
+          transB,
+          transA,
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.K()),
+          &alpha,
+          reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+          ldb,
+          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          lda,
+          &zero,
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          ldc,
+          device_prop));
 
       cudaStreamSynchronize(Stream());
-      auto stop = high_resolution_clock::now();
 
-      auto duration = duration_cast<microseconds>(stop - start);
+      std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
+      std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
 
-      std::cout << Node().Name() << " : " << duration.count() << std::endl;
-    }
-    else {
+      cudaMemcpy(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+      cudaMemcpy(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+
+      size_t subnormal_cnt_A = 0;
+      size_t subnormal_cnt_B = 0;
+
+      for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
+        if ((input_A[i] & 0x7C00) == 0) {
+          ++subnormal_cnt_A;
+        }
+      }
+
+      for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
+        if ((input_B[i] & 0x7C00) == 0) {
+          ++subnormal_cnt_B;
+        }
+      }
+
+      //auto stop = high_resolution_clock::now();
+
+      //auto duration = duration_cast<microseconds>(stop - start);
+      std::cout << std::endl;
+      std::cout << Node().Name() << " : " << subnormal_cnt_A << std::endl;
+      std::cout << Node().Name() << " : " << subnormal_cnt_B << std::endl;
+
+    } else {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
