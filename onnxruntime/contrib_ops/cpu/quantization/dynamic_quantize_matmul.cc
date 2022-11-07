@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
@@ -102,7 +103,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
     const float* b_scale_tensor_data = b_scale_tensor->Data<float>();
 
     if (is_b_scale_per_column) {
-      multipliers_per_column.reserve(gsl::narrow<size_t>(b_scale_tensor->Shape().Size()));
+      multipliers_per_column.reserve(narrow<size_t>(b_scale_tensor->Shape().Size()));
       std::transform(b_scale_tensor_data,
                      b_scale_tensor_data + b_scale_tensor->Shape().Size(),
                      std::back_inserter(multipliers_per_column),
@@ -217,7 +218,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
   BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(std::move(allocator)));
 
-  ParQuantizeLinear(a_data, a_data_quant, gsl::narrow<size_t>(num_of_elements), a_scale, a_zero_point, ctx->GetOperatorThreadPool());
+  ParQuantizeLinear(a_data, a_data_quant, narrow<size_t>(num_of_elements), a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
   bool is_b_scale_supported = IsBQuantParamSupported(b_scale_tensor->Shape(), b ? b->Shape() : b_shape_);
   ORT_RETURN_IF_ERROR(ComputeCommon(

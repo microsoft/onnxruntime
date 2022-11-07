@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <map>
 #include <unordered_map>
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"

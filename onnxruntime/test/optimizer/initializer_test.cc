@@ -8,7 +8,7 @@
 #include <numeric>
 #include <type_traits>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
@@ -80,7 +80,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
         if (offset + length <= tensor_data_span.size()) {
           Initializer i(tensor_proto, tensor_data_dir_path);
-          EXPECT_EQ(gsl::make_span(i.data<int32_t>(), i.size()), tensor_data_span.subspan(offset, length));
+          EXPECT_EQ(i.DataAsSpan<int32_t>(), tensor_data_span.subspan(offset, length));
         } else {
           EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
         }

@@ -6,7 +6,6 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/gsl_suppress.h"
 #include "core/session/ort_apis.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
@@ -858,6 +857,9 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_ARMNN
   provider_names.push_back(ORT_TSTR("armnn"));
 #endif
+#ifdef USE_DML
+  provider_names.push_back(ORT_TSTR("dml"));
+#endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list
@@ -1068,7 +1070,12 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("mask_rcnn"),
                                                     ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512")};
+                                                    ORT_TSTR("zfnet512"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC-12"),
+                                                    ORT_TSTR("FCN ResNet-101"),
+                                                    ORT_TSTR("SSD")
+    };
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 

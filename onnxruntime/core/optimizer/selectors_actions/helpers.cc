@@ -3,6 +3,8 @@
 
 #include "core/optimizer/selectors_actions/helpers.h"
 
+#include "core/common/narrow.h"
+#include "core/common/span_utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
 using namespace ONNX_NAMESPACE;
@@ -107,7 +109,7 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
   };
 
   if (move_info.copy_all) {
-    for (int i = 0, end = gsl::narrow<int>(src_defs.size()); i < end; ++i) {
+    for (int i = 0, end = narrow<int>(src_defs.size()); i < end; ++i) {
       ORT_RETURN_IF_ERROR(process(i));
     }
   } else {
@@ -132,7 +134,7 @@ bool GetNodesByNodeIndex(Graph& graph, gsl::span<const NodeIndex> indices, Inlin
   nodes.reserve(indices.size());
   bool missing = false;
 
-  for (auto iter = indices.cbegin(), end = indices.cend(); iter != end; ++iter) {
+  for (auto iter = indices.begin(), end = indices.end(); iter != end; ++iter) {
     nodes.push_back(GetNodeByNodeIndex(graph, *iter, missing));
 
     // bail if we're missing a node
@@ -261,7 +263,7 @@ InlinedVector<Node*> NodesToOptimize::Inputs(gsl::span<const int> indices, bool 
   return results;
 }
 
-InlinedVector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indices, bool required) const {
+InlinedVector<Node*> NodesToOptimize::Outputs(gsl::span<const int> indices, bool required) const {
   InlinedVector<Node*> results;
   results.reserve(NumOutputEntries());
 
@@ -283,9 +285,9 @@ InlinedVector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indices, b
 
 InlinedVector<Node*> NodesToOptimize::GetNodesAtLocation(const NodeLocation& location, bool required) const {
   if (location.type == NodeType::kInput) {
-    return Inputs({location.index}, required);
+    return Inputs(AsSpan({location.index}), required);
   } else if (location.type == NodeType::kOutput) {
-    return Outputs({location.index}, required);
+    return Outputs(AsSpan({location.index}), required);
   } else {
     return {&Target()};
   }
@@ -309,7 +311,7 @@ Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo&
 }
 
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions) {
+                       gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions) {
   for (const auto& move : moves) {
     auto src_nodes = selected_nodes.GetNodesAtLocation(move.src_node, !move.value_move_info.optional);
 
