@@ -296,6 +296,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
+        # Disable memory alleviation by default. Allow user to enable it via environment variable.
+        alleviation_config = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_CONFIG", "", warn=True)
+        probe_level = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_PROBE_RECOMPUTE_LEVEL", "1", warn=True)
+        session_options.add_session_config_entry("optimization.enable_memory_optimizer", alleviation_config)
+        session_options.add_session_config_entry("optimization.enable_memory_probe_recompute_level", probe_level)
 
         if self._debug_options.save_onnx_models.save:
             session_options.optimized_model_filepath = os.path.join(

@@ -11,8 +11,6 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "gsl/gsl"
-
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
@@ -111,7 +109,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     scan_output_dims.push_back(sequence_len);
   }
 
-  std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
+  std::copy(graph_output_dims.begin(), graph_output_dims.end(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
     ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,

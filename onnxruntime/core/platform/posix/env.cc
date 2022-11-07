@@ -36,14 +36,14 @@ limitations under the License.
 #include <utility>  // for std::forward
 #include <vector>
 
-#include <gsl/gsl>
-
 #ifdef CPUINFO_SUPPORTED
 #include <cpuinfo.h>
 #endif
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
@@ -171,7 +171,7 @@ class PosixThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
-    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+    if (narrow<size_t>(index) < thread_options.affinity.size()) {
       param_ptr->affinity = thread_options.affinity[index];
     }
 
@@ -281,7 +281,7 @@ class PosixEnv : public Env {
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #ifdef CPUINFO_SUPPORTED
     if(cpuinfo_available_) {
-      return gsl::narrow<int>(cpuinfo_get_cores_count());
+      return narrow<int>(cpuinfo_get_cores_count());
     }
 #endif
 #endif

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
