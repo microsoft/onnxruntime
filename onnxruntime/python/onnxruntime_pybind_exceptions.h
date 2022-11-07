@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <stdexcept>
 
 #include <pybind11/pybind11.h>
+#include <stdexcept>
 #include "core/common/status.h"
 
 namespace onnxruntime {
