@@ -494,6 +494,8 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
                                     ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
                                     context_.GetComputeStream());
+
+    // block host until current stream is complete as condition check needs to access CPU before next loop
     context_.GetComputeStream()->Flush();
     ORT_RETURN_IF_ERROR(status);
 
