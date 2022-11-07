@@ -17,14 +17,23 @@ namespace concurrency {
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1) {
-    return nullptr;
+    return {};
   }
   ThreadOptions to;
   if (options.thread_pool_size <= 0) {
     options.thread_pool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(to.affinity));
+    if (options.thread_pool_size <= 0) {
+      LOGS_DEFAULT(ERROR) << "Failed to get a valid default size, skip creating the threadpool"; 
+      return {};
+    }
     LOGS_DEFAULT(WARNING) << "Setting threadpool size to " << options.thread_pool_size << " with default affinity";
   } else if (!options.affinity_str.empty()) {
-    to.affinity = Env::Default().ReadThreadAffinityConfig(options.affinity_str);
+    auto num_of_affinity_read = Env::Default().ReadThreadAffinityConfig(options.affinity_str, to.affinity);
+    if (options.thread_pool_size - 1 != static_cast<int>(num_of_affinity_read)) {
+      // report warning on read failure but allow continuing
+      LOGS_DEFAULT(WARNING) << "Number of valid affinities does not equal to thread_pool_size - 1, will not apply";
+      to.affinity.clear();
+    }
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
   return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,

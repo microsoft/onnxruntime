@@ -201,9 +201,9 @@ class PosixEnv : public Env {
     return affinity.size();
   }
 
-  std::vector<size_t> ReadThreadAffinityConfig(const std::string&) override {
+  size_t ReadThreadAffinityConfig(const std::string&, std::vector<size_t>&) override {
     ORT_THROW("PosixEnv::ReadThreadAffinityConfig not implemented, do not set affinity!");
-    return {};
+    return 0;
   }
 
   void SleepForMicroseconds(int64_t micros) const override {

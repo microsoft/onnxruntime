@@ -56,5 +56,9 @@ static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quan
 // To ease the configuration for thread across many processors, an interval is also allowed:
 // e.g. 1-8;8-16;17-24
 // orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
-// Note - the number of affinity for each thread should be intra_op_num_threads - 1, since ort does not set affinity on the main thread.
+// Note:
+// 1. Once set, the number of affinities must equal to intra_op_num_threads - 1, since ort does not set affinity on the main thread.
+// 2. For windows, ort will infer the group id from a logic process id, e.g., assume there are two groups with each has 64 logic processors,
+//    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be treated as the 1st processor of the second group.
+//    Hence 64-65 is an invalid configuration since a windows thread cannot be attached to processors crossing group boundary.
 static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";

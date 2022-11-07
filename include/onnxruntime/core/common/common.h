@@ -285,4 +285,6 @@ inline std::string ToWideString(const std::string& s) { return s; }
 
 std::vector<std::string> SplitStr(const std::string& s, const char& separator);
 
+bool IsDigit(const std::string& s);
+
 }  // namespace onnxruntime

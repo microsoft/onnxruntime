@@ -43,5 +43,12 @@ std::vector<std::string> SplitStr(const std::string& s, const char& separator) {
   return ans;
 }
 
+bool IsDigit(const std::string& s) {
+  for (char c : s) {
+    if (!isdigit(c)) return false;
+  }
+  return !s.empty(); // empty string is not a digit
+}
+
 }  // namespace onnxruntime
 #endif
