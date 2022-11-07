@@ -36,8 +36,12 @@ limitations under the License.
 #include <utility>  // for std::forward
 #include <vector>
 
-#ifdef CPUINFO_SUPPORTED
+// We can not use CPUINFO if it is not supported and we do not want to used
+// it on certain platforms because of the binary size increase.
+// We could use it to find out the number of physical cores for certain supported platforms
+#if defined(CPUINFO_SUPPORTED) &&  !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #include <cpuinfo.h>
+#define ORT_USE_CPUINFO
 #endif
 
 #include "core/common/common.h"
@@ -271,38 +275,31 @@ class PosixEnv : public Env {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
 
-  // we are guessing the number of phys cores based on a popular HT case.
+  // we are guessing the number of phys cores based on a popular HT case (2 logical proc per core)
   static int DefaultNumCores() {
     return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
   }
 
   // Return the number of physical cores
   int GetNumPhysicalCpuCores() const override {
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-#ifdef CPUINFO_SUPPORTED
+#ifdef ORT_USE_CPUINFO
     if(cpuinfo_available_) {
       return narrow<int>(cpuinfo_get_cores_count());
     }
-#endif
-#endif
-    // We guess the number of cores
+#endif // ORT_USE_CPUINFO
     return DefaultNumCores();
   }
 
   std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
 
     std::vector<LogicalProcessors> ret;
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-#ifdef CPUINFO_SUPPORTED
+#ifdef ORT_USE_CPUINFO
     if (cpuinfo_available_) {
-      // We currently do not implement affinity on more than 64 cores.
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
       for (uint32_t i = 0; i < num_phys_cores; ++i) {
         const auto* core = cpuinfo_get_core(i);
         LogicalProcessors th_aff;
-        // Processor count will never exceed 64 in a given group.
-        // TBD: Processor groups are currently not taken into account.
         th_aff.reserve(core->processor_count);
         auto log_proc_idx = core->processor_start;
         for (uint32_t count = 0; count < core->processor_count; count++, ++log_proc_idx) {
@@ -311,7 +308,6 @@ class PosixEnv : public Env {
         }
         ret.push_back(std::move(th_aff));
        }
-#endif  // CPUINFO_SUPPORTED
     }
 #endif
     // Just the size of the thread-pool
@@ -584,8 +580,7 @@ class PosixEnv : public Env {
 
  private:
   Telemetry telemetry_provider_;
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-#ifdef CPUINFO_SUPPORTED
+#ifdef ORT_USE_CPUINFO
   PosixEnv()  {
     cpuinfo_available_ = cpuinfo_initialize();
     if(!cpuinfo_available_) {
@@ -593,8 +588,7 @@ class PosixEnv : public Env {
     }
   }
   bool cpuinfo_available_{false};
-#endif
-#endif
+#endif // ORT_USE_CPUINFO
 };
 
 }  // namespace
