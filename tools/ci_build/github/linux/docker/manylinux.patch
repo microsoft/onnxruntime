@@ -86,7 +86,7 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index e599ff0..2050bb3 100755
+index e599ff0..6c6f739 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
 @@ -34,7 +34,7 @@ source $MY_DIR/build_utils.sh
@@ -108,7 +108,7 @@ index e599ff0..2050bb3 100755
  elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
  	RUNTIME_DEPS="zlib bzip2 expat ncurses5-libs readline tk gdbm db xz openssl keyutils-libs krb5-libs libcom_err libidn2 libcurl libuuid libffi"
  else
-@@ -73,22 +76,31 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+@@ -73,22 +76,26 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
  	yum -y update
  	yum -y install yum-utils curl
  	yum-config-manager --enable extras
@@ -119,17 +119,14 @@ index e599ff0..2050bb3 100755
 +        if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
- 		# EPEL support (for yasm)
+-		# EPEL support (for yasm)
 -		yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-+                if ! rpm -q --quiet epel-release ; then
-+                  yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-+                fi
+-		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
 +		if [[ -d /opt/rocm ]]; then
 +		  TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
 +		else
 +		  TOOLCHAIN_DEPS="devtoolset-11-binutils devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-gcc-gfortran"
 +		fi
- 		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
  	elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
