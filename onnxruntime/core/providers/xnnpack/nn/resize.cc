@@ -40,6 +40,14 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     const auto* output_shape = node_unit.Outputs()[0].node_arg.Shape();
     bool length_resized_compatible_pytorch_half_pixel = true;
+    // when length_resized > 1, there is no difference between pytorch_half_pixel and half_pixel
+    // according onnx spec.
+    // if coordinate_transformation_mode is "half_pixel",
+    // x_original = (x_resized + 0.5) / scale - 0.5
+    //
+    // if coordinate_transformation_mode is "pytorch_half_pixel",
+    // x_original = length_resized > 1 ? (x_resized + 0.5) / scale - 0.5 : 0
+    //
     if (output_shape->dim(2).dim_value() <= 1 || output_shape->dim(1).dim_value() <= 1) {
       length_resized_compatible_pytorch_half_pixel = false;
     }
@@ -187,16 +195,21 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   if (sizes_input_idx_ > 0) {
     info.TryGetConstantInput(sizes_input_idx_, &sizes);
   }
-  output_dims_.resize(input_shape.NumDimensions());
 
-  if (sizes && sizes->Shape().Size() == 4) {
-    scales_.resize(input_shape.NumDimensions());
-    auto size_span = sizes->DataAsSpan<int64_t>();
-    ParseScalesDataFromOutputSize(size_span, input_shape.GetDims(), scales_);
-    std::copy(size_span.begin(), size_span.end(), output_dims_.begin());
-    scales_cached_ = true;
-  } else {
-    ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);
+  const auto input_dims = input_shape.NumDimensions();
+  // if input shape (H,W) is known ahead, we can calculate output shape
+  if (input_shape[input_dims - 1] > 0 && input_shape[input_dims - 2] > 0 &&
+      (input_dims == 2 || (input_dims > 2 && input_shape[1] > 0))) {
+    output_dims_.resize(input_dims);
+    if (sizes && sizes->Shape().Size() == 4) {
+      scales_.resize(input_shape.NumDimensions());
+      auto size_span = sizes->DataAsSpan<int64_t>();
+      ParseScalesDataFromOutputSize(size_span, input_shape.GetDims(), scales_);
+      std::copy(size_span.begin(), size_span.end(), output_dims_.begin());
+      scales_cached_ = true;
+    } else {
+      ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);
+    }
   }
 
   is_NHWC_ = scales_[3] == 1.0F;
@@ -282,6 +295,24 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
 Status Resize::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   TensorShapeVector output_shape(output_dims_);
+  if (output_shape.empty()) {
+    output_shape.resize(X->Shape().NumDimensions());
+
+    // Get scales data
+    const auto* scales = ctx->Input<Tensor>(scales_input_idx_);
+    std::vector<float> scales_array(X->Shape().GetDims().size());
+
+    if (scales != nullptr && scales->Shape().Size() != 0) {
+      ParseScalesData(scales, scales_array);
+      // Compute output shape from scales and input dims
+      ComputeOutputShape(scales_array, X->Shape().GetDims(), output_shape);
+    } else {
+      const Tensor* sizes = ctx->Input<Tensor>(sizes_input_idx_);
+      // When sizes input is available directly populate it into the output_dims array.
+      memcpy(output_shape.data(), sizes->Data<int64_t>(), sizes->SizeInBytes());
+      ParseScalesDataFromOutputSize(output_shape, X->Shape().GetDims(), scales_array);
+    }
+  }
   output_shape[0] = X->Shape()[0];
   return ComputeInternal(ctx, X, output_shape);
 }
