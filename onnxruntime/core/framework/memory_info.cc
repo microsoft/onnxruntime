@@ -113,7 +113,7 @@ void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtVal
   else if (map[MapType::Initializer].Contain(reuse_buffer))
     map_type = MapType::Initializer;
   else
-    std::cout << "Find no map type for reuse_buffer: " << reuse_buffer << ", so skipping" << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "Find no map type for reuse_buffer: " << reuse_buffer << ", so skipping";
 
   RecordTensorDeviceAllocInfo(idx, value, map_type);
 }
@@ -366,7 +366,7 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
 void MemoryProfiler::GenerateMemoryProfile() {
   // Write memory profile .json
   std::stringstream ss;
-  ss << "memory_profile_" << GetMemoryInfo().GetLocalRank() << "_" << profiler_id_ << ".json";
+  ss << "memory_profile_" << GetMemoryInfo().GetLocalRank() << "_" << Env::Default().GetSelfPid() << "_" << profiler_id_ << ".json";
   std::ofstream memory_profile(ss.str(), std::ios::trunc);
   memory_profile << "[" << std::endl;
   for (size_t i = 0; i < GetEvents().size(); i++) {

@@ -141,4 +141,22 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 
+  - task: CmdLine@2
+    displayName: 'Test DORT with Python 3.9'
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuildlort \
+            bash -c "
+              export PYTHONPATH=/build/Release && \
+              /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
+              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py"
+      workingDirectory: $(Build.SourcesDirectory)
+      condition: succeededOrFailed()
+
   - template: templates/clean-agent-build-directory-step.yml
