@@ -406,7 +406,7 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease(bool actually_defer) {
     if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
       if (actually_defer) {
         // Release memory asynchronously to avoid blocking the compute stream.
-        HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+        HIP_CALL_THROW(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
       } else {
         ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
       }
