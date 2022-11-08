@@ -260,7 +260,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
 
   // weights: [num_directions, 3*hidden_size, input_size]
   // recurrence weights: [num_directions, 3*hidden_size, hidden_size]
-  const size_t num_directions = static_cast<size_t>(shape[0]);
+  const auto num_directions = shape[0];
   if (num_directions != num_directions_) {
     return false;
   }
@@ -287,7 +287,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
 
   const size_t N_x_K = N * K;
   const auto* weights_data = weights.Data<float>();
-  for (size_t dir = 0; dir < num_directions; ++dir) {
+  for (int64_t dir = 0; dir < num_directions; ++dir) {
     MlasGemmPackB(CblasTrans, N, K, weights_data, K, packed_weights_data);
     weights_data += N_x_K;
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
@@ -303,7 +303,7 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
   }
 
   // recurrence weights: [num_directions, 3*hidden_size, hidden_size]
-  const size_t num_directions = static_cast<size_t>(shape[0]);
+  const auto num_directions = shape[0];
   if (num_directions != num_directions_) {
     return false;
   }
