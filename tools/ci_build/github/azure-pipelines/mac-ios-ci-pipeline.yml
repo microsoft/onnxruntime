@@ -69,7 +69,7 @@ jobs:
     vmImage: 'macOS-11'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
-  timeoutInMinutes: 100
+  timeoutInMinutes: 150
   condition: or(eq('${{parameters.BuildXnnpack}}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   steps:
     - script: |
