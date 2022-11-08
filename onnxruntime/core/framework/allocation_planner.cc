@@ -990,17 +990,17 @@ class PlannerImpl {
   }
 
   // assume we already have a baseline reuse plan (no memory reuse at all)
-  // this funciton will optimize the plan by build reusing consider the stream safety.
+  // this funciton will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
-    InlinedHashMap<NodeIndex, int> dependents;
+    InlinedHashMap<NodeIndex, int> dependent_counter;
     for (const auto& it : dependence_graph_) {
       for (NodeIndex node_index : it.second) {
-        dependents[node_index]++;
+        dependent_counter[node_index]++;
       }
     }
     std::deque<NodeIndex> que;
     for (const auto& it : dependence_graph_) {
-      if (dependents[it.first] == 0) {
+      if (dependent_counter[it.first] == 0) {
         que.push_back(it.first);
       }
     }
@@ -1248,17 +1248,7 @@ class PlannerImpl {
                 break;
               }
             }
-            // output now trying to reuse buffer with index downstream_value
-            // we can only reuse it when all the consumers of node(downstream_value) is in current node(output)'s dependents
-            auto& output_deps = dependents_map[node_index];
-            for (auto consumer : value_consumers[downstream_value]) {
-              if (std::find(output_deps.begin(), output_deps.end(), consumer) == output_deps.end()) {
-                all_covered = false;
-                break;
-              }
-            }
             if (all_covered) {
-              std::cout << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
               allocation_plan[downstream_value].alloc_kind = AllocKind::kReuse;
               allocation_plan[downstream_value].reused_buffer = output_idx_global;
               get_reused = true;
@@ -1282,7 +1272,7 @@ class PlannerImpl {
             // if not getting reused, add to waiting
             waiting_list[location][size_in_bytes][node_output] = &dependents_map[node_index];
           }
-        }
+         }
       }
     };  // TryReuseOutput
 
@@ -1295,7 +1285,7 @@ class PlannerImpl {
       TryReuseOutput(node_index);  // try reuse node's outputs for downstream nodes
       que.pop_front();
       for (NodeIndex next_node_index : dependence_graph_[node_index]) {
-        if (--dependents[next_node_index] == 0) {
+        if (--dependent_counter[next_node_index] == 0) {
           que.push_back(next_node_index);
         }
       }
@@ -2184,13 +2174,13 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
   bool need_dump_ = false;
   static const std::string name;
 };
-// TODO: update the keyword
-const std::string DeviceBasedPartitioner::name = "DummyPartition";
+
+const std::string DeviceBasedPartitioner::name = "DeviceBasedPartitioner";
 
 /*
 Format of the configuration file for dummpy partition:
 line 1: DummyPartition                           # name of the partitioner
-line 2: ExecutionProviders:2                     # number of execution providers
+line 2: Devices:2                                # number of devices
 line 3: CpuExecutionProvider:2                   # number of streams of the 1st ep
 line 4: GpuExecutionProvider:2                   # number of streams of the 2nd ep
 line 5: node_name,node_name,node_name ...        # list of nodes on 1st stream of the 1st ep
@@ -2218,9 +2208,10 @@ void DeviceBasedPartitioner::Initialize() {
     if (std::getline(if_stream, line)) {
       auto columns = IGraphPartitioner::Split(line, ':');
       if (columns.size() != 2 || columns[0] != "Devices") {
-        EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders,<an integer>");
+        EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders:<an integer>");
       }
       int eps = atoi(columns[1].c_str());
+      devices_ = eps;
       if (eps <= 0) {
         EXIT_ON_ERR("2nd line, the number of ExecutionProviders must be a positive value");
       }
@@ -2254,6 +2245,7 @@ void DeviceBasedPartitioner::Initialize() {
 }
 
 void DeviceBasedPartitioner::Reset() {
+  devices_ = 0;
   num_streams_ = 0;
   max_streams_.clear();
   node_names_by_stream_.clear();
