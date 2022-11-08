@@ -81,7 +81,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [&](const NodeArg& node_arg, size_t out_index) {
-          if (!requires_matching_kernel || kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
+          if ((!requires_matching_kernel && kernel_info == nullptr) || kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
             cpu_output_args.insert(&node_arg);
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
