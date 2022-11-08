@@ -144,14 +144,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
           if ((input_A[i] & 0x7C00) == 0) {
             ++subnormal_cnt_A;
-            input_A[i] = 0;
+            //input_A[i] = 0;
           }
         }
 
         for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
           if ((input_B[i] & 0x7C00) == 0) {
             ++subnormal_cnt_B;
-            input_B[i] = 0;
+            //input_B[i] = 0;
           }
         }
 
