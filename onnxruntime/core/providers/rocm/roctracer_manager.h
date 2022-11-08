@@ -58,7 +58,7 @@ struct ApiCallRecord {
 
 class RoctracerManager {
  public:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoctracerManager);
   ~RoctracerManager();
 
   static RoctracerManager& GetInstance();
