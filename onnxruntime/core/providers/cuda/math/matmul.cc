@@ -126,34 +126,36 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
+      if (flush_denormals_to_zero_) {
+        // Flush sub-normals to zero
+        std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
+        std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
+
+        cudaMemcpyAsync(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost, Stream());
+        cudaMemcpyAsync(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost, Stream());
+
+        size_t subnormal_cnt_A = 0;
+        size_t subnormal_cnt_B = 0;
+
+        for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
+          if ((input_A[i] & 0x7C00) == 0) {
+            ++subnormal_cnt_A;
+            input_A[i] = 0;
+          }
+        }
+
+        for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
+          if ((input_B[i] & 0x7C00) == 0) {
+            ++subnormal_cnt_B;
+            input_B[i] = 0;
+          }
+        }
+
+        cudaMemcpyAsync(const_cast<Tensor*>(left_X)->MutableDataRaw(), input_A.data(), left_X->SizeInBytes(), cudaMemcpyHostToDevice, Stream());
+        cudaMemcpyAsync(const_cast<Tensor*>(right_X)->MutableDataRaw(), input_B.data(), right_X->SizeInBytes(), cudaMemcpyHostToDevice, Stream());
+      }
+
       cudaStreamSynchronize(Stream());
-
-      // Flush sub-normals to zero
-      std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
-      std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
-
-      cudaMemcpy(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-      cudaMemcpy(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-
-      size_t subnormal_cnt_A = 0;
-      size_t subnormal_cnt_B = 0;
-
-      for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
-        if ((input_A[i] & 0x7C00) == 0) {
-          ++subnormal_cnt_A;
-          input_A[i] = 0;
-        }
-      }
-
-      for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
-        if ((input_B[i] & 0x7C00) == 0) {
-          ++subnormal_cnt_B;
-          input_B[i] = 0;
-        }
-      }
-
-      cudaMemcpy(const_cast<Tensor*>(left_X)->MutableDataRaw() , input_A.data(), left_X->SizeInBytes(), cudaMemcpyHostToDevice);
-      cudaMemcpy(const_cast<Tensor*>(right_X)->MutableDataRaw(), input_B.data(), right_X->SizeInBytes(), cudaMemcpyHostToDevice);
 
       auto start = high_resolution_clock::now();
 

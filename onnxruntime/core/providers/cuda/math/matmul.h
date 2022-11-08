@@ -30,7 +30,8 @@ class MatMul final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool should_use_cublas_gemm_ = ParseEnvironmentVariableWithDefault<bool>("USE_CUBLASGEMM", true);
+  bool flush_denormals_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_DENORMALS", true);
+  const bool should_use_cublas_gemm_ = true;
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
