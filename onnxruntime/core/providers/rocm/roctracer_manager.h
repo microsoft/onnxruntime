@@ -23,13 +23,13 @@ class RoctracerActivityBuffer {
   RoctracerActivityBuffer()
       : data_(nullptr), size_(0) {}
 
-  RoctracerActivityBuffer(const uint8_t* data, size_t size)
-      : data_((uint8_t*)malloc(size)), size_(size) {
-    memcpy(data_, data, size);
+  RoctracerActivityBuffer(const char* data, size_t size)
+      : data_(std::make_unique<char[]>(new char[size])), size_(size) {
+    memcpy(data_.get(), data, size);
   }
 
   RoctracerActivityBuffer(const RoctracerActivityBuffer& other)
-      : RoctracerActivityBuffer(other.data_, other.size_) {}
+      : RoctracerActivityBuffer(other.data_.get(), other.size_) {}
 
   RoctracerActivityBuffer(RoctracerActivityBuffer&& other)
       : RoctracerActivityBuffer() {
@@ -40,15 +40,13 @@ class RoctracerActivityBuffer {
   RoctracerActivityBuffer& operator=(const RoctracerActivityBuffer& other);
   RoctracerActivityBuffer& operator=(RoctracerActivityBuffer&& other);
 
-  ~RoctracerActivityBuffer();
-
   // accessors
-  uint8_t* GetData() { return data_; }
-  const uint8_t* GetData() const { return data_; }
+  char* GetData() { return data_.get(); }
+  const char* GetData() const { return data_.get(); }
   size_t GetSize() const { return size_; }
 
  private:
-  uint8_t* data_;
+  std::unique_ptr<char[]> data_;
   size_t size_;
 };
 

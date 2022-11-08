@@ -27,13 +27,10 @@ RoctracerActivityBuffer& RoctracerActivityBuffer::operator=(const RoctracerActiv
   if (&other == this) {
     return *this;
   }
-  if (data_ != nullptr) {
-    free(data_);
-  }
 
   size_ = other.size_;
-  data_ = (uint8_t*)malloc(size_);
-  memcpy(data_, other.data_, size_);
+  data_ = std::make_unique<char[]>(other.size_);
+  memcpy(data_.get(), other.data_, size_);
   return *this;
 }
 
@@ -44,13 +41,6 @@ RoctracerActivityBuffer& RoctracerActivityBuffer::operator=(RoctracerActivityBuf
   std::swap(data_, other.data_);
   std::swap(size_, other.size_);
   return *this;
-}
-
-RoctracerActivityBuffer::~RoctracerActivityBuffer() {
-  if (data_ != nullptr) {
-    free(data_);
-    data_ = nullptr;
-  }
 }
 
 // Implementation of RoctracerManager
@@ -150,7 +140,7 @@ void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_ti
     roctracer_flush_activity();
   }
 
-  std::vector<RoctracerActivityBuffer> activity_buffers;
+  InlinedVector<RoctracerActivityBuffer> activity_buffers;
   {
     std::lock_guard<std::mutex> lock(unprocessed_activity_buffers_lock_);
     std::swap(unprocessed_activity_buffers_, activity_buffers);
@@ -225,7 +215,7 @@ void RoctracerManager::PopCorrelation(uint64_t& popped_external_correlation_id) 
 
 void RoctracerManager::ActivityCallback(const char* begin, const char* end, void* arg) {
   size_t size = end - begin;
-  RoctracerActivityBuffer activity_buffer{reinterpret_cast<const uint8_t*>(begin), size};
+  RoctracerActivityBuffer activity_buffer{reinterpret_cast<const char*>(begin), size};
   auto& instance = GetInstance();
   {
     std::lock_guard<std::mutex> lock(instance.unprocessed_activity_buffers_lock_);
@@ -395,7 +385,7 @@ Events* RoctracerManager::GetEventListForUniqueCorrelationId(uint64_t unique_cor
   return &event_list;
 }
 
-void RoctracerManager::MapEventsToClient(uint64_t unique_correlation_id, Events&& events) {
+void RoctracerManager::MapEventsToClient(uint64_t unique_correlation_id, InlinedVector<EventRecord>&& events) {
   auto p_event_list = GetEventListForUniqueCorrelationId(unique_correlation_id);
   if (p_event_list != nullptr) {
     p_event_list->insert(p_event_list->end(),
@@ -411,9 +401,9 @@ void RoctracerManager::MapEventToClient(uint64_t unique_correlation_id, EventRec
   }
 }
 
-void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
+void RoctracerManager::ProcessActivityBuffers(const InlinedVector<RoctracerActivityBuffer>& buffers,
                                               const TimePoint& start_time) {
-  std::unordered_map<uint64_t, std::vector<EventRecord>> events_pending_client_mapping;
+  InlinedHashMap<uint64_t, InlinedVector<EventRecord>> events_pending_client_mapping;
   auto start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
 
   for (auto const& buffer : buffers) {
