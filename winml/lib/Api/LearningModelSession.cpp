@@ -275,7 +275,6 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
                outputs_raw.data(),
                output_names_raw.size()));
 
-  binding_impl->Clear();
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
     // This allows us to wait without holding onto the lock in GetResults.
