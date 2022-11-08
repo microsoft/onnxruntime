@@ -362,7 +362,7 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
     MlasGemmPackB(CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
   }
 
-  return false;
+  return true;
 }
 
 Status DeepCpuGruOp::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
