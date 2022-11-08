@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# This file is used by "Npm Packaging Pipeline", "ONNX Runtime Web Pipeline", "Zip-Nuget-Java-Nodejs Packaging Pipeline", "ONNX Runtime Web CI Pipeline".
 # This script makes NPM packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 # Release Mode (release):

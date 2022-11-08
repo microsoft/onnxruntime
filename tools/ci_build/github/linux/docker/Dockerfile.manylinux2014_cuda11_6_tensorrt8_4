@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "OLive-pipeline", "Python packaging pipeline", "Zip-Nuget-Java-Nodejs Packaging Pipeline", "build-perf-test-binaries", "Linux GPU TensorRT CI Pipeline".
 ARG BASEIMAGE=nvidia/cuda:11.6.1-cudnn8-devel-centos7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
+# This file is used by "Zip-Nuget-Java-Nodejs Packaging Pipeline".
 ARG BASEIMAGE=centos:7
 FROM $BASEIMAGE
 

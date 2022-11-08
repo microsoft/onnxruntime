@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "Linux Multi GPU TensorRT CI Pipeline".
 # Tag: nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04
 # Label: com.nvidia.cuda.version: 11.6.1
 # Label: com.nvidia.cudnn.version: 8.4.0

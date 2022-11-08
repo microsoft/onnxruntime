@@ -1,6 +1,7 @@
 #!/bin/bash
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# This file is used by "ONNX Runtime Python Test Pipeline".
 
 set -e -x
 

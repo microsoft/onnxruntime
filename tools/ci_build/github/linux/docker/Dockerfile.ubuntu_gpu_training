@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "orttraining-linux-gpu-ci-pipeline".
 ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.6.2-cudnn8-devel-ubuntu18.04
 
 FROM $BASEIMAGE

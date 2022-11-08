@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "Npm Packaging Pipeline", "Python Packaging Pipeline (Training CPU)", "Zip-Nuget-Java-Nodejs Packaging Pipeline", "build-perf-test-binaries", "Linux CPU CI Pipeline", "Linux CPU Minimal Build E2E CI Pipeline", "Linux DNNL CI Pipeline", "ONNX Runtime React Native CI Pipeline", "onnxruntime-binary-size-checks-ci-pipeline", "orttraining-linux-ci-pipeline", "orttraining-linux-onnx-integration-ci-pipeline".
 ARG BASEIMAGE=centos:7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64

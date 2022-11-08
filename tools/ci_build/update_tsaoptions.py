@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# This file is used by "Python Packaging Pipeline (Training Cuda 11.6)", "Python Packaging Pipeline - No Local Version (Training Cuda 11.6)", "Python packaging pipeline".
 import json
 import os
 from pathlib import Path

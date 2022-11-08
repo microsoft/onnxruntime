@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "Linux Eager Mode CI Pipeline", "Orttraining Linux External Custom Ops".
 FROM quay.io/pypa/manylinux2014_x86_64:latest
 
 ADD scripts /tmp/scripts

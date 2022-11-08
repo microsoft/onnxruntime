@@ -1,6 +1,7 @@
 REM Copyright (c) Microsoft Corporation. All rights reserved.
 REM Licensed under the MIT License.
 
+REM This file is used by "Zip-Nuget-Java-Nodejs Packaging Pipeline".
 set PATH=%CD%;%PATH%
 SETLOCAL EnableDelayedExpansion 
 FOR /R %%i IN (*.nupkg) do (

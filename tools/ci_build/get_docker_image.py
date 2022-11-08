@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "Linux Multi GPU TensorRT CI Pipeline", "Linux OpenVINO CI Pipeline", "orttraining-linux-gpu-ci-pipeline".
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.

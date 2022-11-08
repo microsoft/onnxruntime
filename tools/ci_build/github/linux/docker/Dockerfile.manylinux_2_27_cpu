@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by "Python packaging pipeline".
 ARG BASEIMAGE=ubuntu:18.04
 ARG POLICY=manylinux_2_27
 ARG PLATFORM=x86_64
