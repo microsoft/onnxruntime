@@ -127,6 +127,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
       if (flush_denormals_to_zero_) {
+        cudaStreamSynchronize(Stream());
+
         // Flush sub-normals to zero
         std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
         std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
