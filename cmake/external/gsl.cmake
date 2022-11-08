@@ -3,12 +3,21 @@
 
 include(FetchContent)
 
-FetchContent_Declare(
+if(onnxruntime_USE_CUDA)
+  FetchContent_Declare(
     GSL
-    GIT_REPOSITORY https://github.com/microsoft/gsl
-    GIT_TAG a3534567187d2edc428efd3f13466ff75fe5805c  # v4.0.0
-    GIT_SHALLOW ON
-    )
+    URL https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip
+    URL_HASH SHA1=cf368104cd22a87b4dd0c80228919bb2df3e2a14
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+  )
+else()
+  FetchContent_Declare(
+    GSL
+    URL https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip
+    URL_HASH SHA1=cf368104cd22a87b4dd0c80228919bb2df3e2a14
+  )
+endif()
+
 
 FetchContent_MakeAvailable(GSL)
 
