@@ -15,17 +15,41 @@ using onnxruntime::rocm::aligned_vector;
 
 namespace onnxruntime {
 
-template <typename T, int VecSize>
+template <typename T, int BlockSize>
 std::string GenerateTritonKernelName() {
+  return "add_kernel";
 }
 
-template <typename T, int ThreadsPerBlock, int VecSize>
-Status LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
-  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>),
-                     dim3(CeilDiv(n, ThreadsPerBlock*VecSize)),
-                     dim3(ThreadsPerBlock),
-                     0, stream,
-                     x, y, z, n);
+std::string GenerateTritonCodeFile() {
+  return "add_kernel.hsaco";
+}
+
+template <typename T, int BlockSize>
+Status LaunchTritonVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
+  hipInit(0);
+  hipDevice_t device;
+  hipCtx_t context;
+  HIP_CHECK(hipDeviceGet(&device, 0));
+  HIP_CHECK(hipCtxCreate(&context, 0, device));
+
+  hipModule_t Module;
+  hipFunction_t Function;
+  HIP_CHECK(hipModuleLoad(&Module, GenerateTritonCodeFile()));
+  HIP_CHECK(hipModuleGetFunction(&Function, Module, GenerateTritonKernelName()));
+
+  struct {
+      void* _Ad;
+      void* _Bd;
+      void* _Cd;
+      int   _nz;
+  } args = {x,y,z,n};
+  size_t size = sizeof(args);
+  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, &args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &size,
+                    HIP_LAUNCH_PARAM_END};
+
+  HIP_CHECK(hipModuleLaunchKernel(Function, CeilDiv(n, 1024), 1, 1,
+                                  BlockSize, 1, 1, 0, 0, NULL, (void**)&config));
+
   auto status = hipGetLastError();
   ORT_RETURN_IF(status != hipSuccess, hipGetErrorName(status));
   return Status::OK();
