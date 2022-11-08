@@ -476,8 +476,8 @@ Status GreedySearchProcessLogits(
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
 
-  cuda::LaunchLogitsProcessKernel<float>(
-      reinterpret_cast<float*>(next_token_scores.data()),
+  cuda::LaunchLogitsProcessKernel<CudaT>(
+      reinterpret_cast<CudaT*>(next_token_scores.data()),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
       parameters->batch_size,

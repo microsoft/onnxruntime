@@ -11,6 +11,9 @@ struct CPUIDInfo final {
 
   bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
   bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+  bool HasAVX512_BF16() const { return g_host->CPUIDInfo__HasAVX512_BF16(this); }
+  bool HasAMX_BF16() const { return g_host->CPUIDInfo__HasAMX_BF16(this); }
+  bool HasAVX512Skylake() const { return g_host->CPUIDInfo__HasAVX512Skylake(this); }
 
   PROVIDER_DISALLOW_ALL(CPUIDInfo)
 };
