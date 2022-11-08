@@ -847,10 +847,14 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                               Stream* parent_stream) {
-  auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, false, parent_stream);
-  return status;
+                               Stream* parent_stream,
+                               bool sync_subgraph_fetches) {
+  ORT_RETURN_IF_ERROR(ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
+                                       execution_mode, terminate_flag, logger, false, parent_stream));
+  if (sync_subgraph_fetches && parent_stream) {
+    parent_stream->Flush();
+  }
+  return Status::OK();
 }
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
