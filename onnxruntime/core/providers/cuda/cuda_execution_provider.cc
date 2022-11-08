@@ -36,25 +36,16 @@ class Memcpy final : public OpKernel {
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
       // do we support async copy?
-      auto& src_device = X->Location().device;
-      auto& dst_device = Y->Location().device;
-      ORT_ENFORCE(ctx->GetComputeStream());
-      if (!((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
-            (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED))) {
-        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
-        return Status::OK();
-      } else {
-        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
-        return Status::OK();
-      }
+      // The cudaMemCpyAsync will handle the pinned memory and non-pinned memory,
+      // so we don't need the check here.
+      auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+      ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
+      return Status::OK();
     } else {
-      // TODO: support aysnc copy for sparse tensor
-
-      // sync the stream frist, since it is a sync memory copy
-      cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
       if (X_type->IsSparseTensorType()) {
+        // TODO: support aysnc copy for sparse tensor
+        // sync the stream frist, since it is a sync memory copy
+        cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
         const auto* X = ctx->Input<SparseTensor>(0);
         ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
         SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
@@ -92,10 +83,9 @@ class Memcpy final : public OpKernel {
         for (size_t i = 0; i < X_size; ++i) {
           const Tensor& source_tensor = X->Get(i);
           std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-          Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor);
-          if (!retval.IsOK()) {
-            return retval;
-          }
+          auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(source_tensor.Location().device,
+                                                                                    target_tensor->Location().device);
+          ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(source_tensor, *target_tensor, *ctx->GetComputeStream()));
           Y->Add(std::move(*target_tensor));
         }
         return Status::OK();

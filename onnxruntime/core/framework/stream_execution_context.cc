@@ -31,10 +31,9 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                                            device_stream_map_(device_stream_map),
                                                                            count_down_barriers_(num_barriers),
                                                                            single_thread_mode_(single_thread_mode) {
-  auto device_streams = device_stream_map_.GetStreams();
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
-    auto& stream = device_streams[notification_owners[i]];
+    auto* stream = device_stream_map_.GetStream(notification_owners[i]);
     if (stream)
       notifications_.emplace_back(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0));
     else
@@ -70,7 +69,7 @@ bool StreamExecutionContext ::DecCountDownBarrier(size_t barrier_id) {
 
 Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
   ORT_ENFORCE(idx < device_stream_map_.NumStreams());
-  return device_stream_map_.GetStreams()[idx];
+  return device_stream_map_.GetStream(idx);
 }
 
 const Status& StreamExecutionContext ::TaskStatus() const {

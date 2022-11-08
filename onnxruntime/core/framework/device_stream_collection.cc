@@ -69,6 +69,11 @@ class DeviceStreamCollectionImpl {
     return device_streams_;
   }
 
+  Stream* GetStream(size_t stream_idx) const {
+    ORT_ENFORCE(stream_idx < num_streams_);
+    return device_streams_[stream_idx];
+  }
+
   size_t NumStreams() { return num_streams_; }
 
  private:
@@ -82,7 +87,7 @@ class DeviceStreamCollectionImpl {
 };
 
 DeviceStreamCollection::DeviceStreamCollection(size_t num_streams,
-  const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
+                                               const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 
@@ -104,6 +109,10 @@ size_t DeviceStreamCollection::NumStreams() const {
 
 Status DeviceStreamCollection::CleanUp() {
   return impl_->CleanUp();
+}
+
+Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {
+  return impl_->GetStream(stream_idx);
 }
 
 }  // namespace onnxruntime
