@@ -24,7 +24,7 @@ class RoctracerActivityBuffer {
       : data_(nullptr), size_(0) {}
 
   RoctracerActivityBuffer(const char* data, size_t size)
-      : data_(std::make_unique<char[]>(new char[size])), size_(size) {
+      : data_(std::make_unique<char[]>(size)), size_(size) {
     memcpy(data_.get(), data, size);
   }
 
@@ -92,7 +92,7 @@ class RoctracerManager {
   static constexpr uint32_t HipOpMarker = 4606;
 
   std::mutex unprocessed_activity_buffers_lock_;
-  InlinedVector<RoctracerActivityBuffer> unprocessed_activity_buffers_;
+  std::vector<RoctracerActivityBuffer> unprocessed_activity_buffers_;
   std::mutex activity_buffer_processor_mutex_;
   std::mutex api_call_args_lock_;
   InlinedHashMap<uint64_t, ApiCallRecord> api_call_args_;
