@@ -35,6 +35,7 @@ def fast_gelu(x, bias):
     return y
 
 
+# TODO The test method needs update.
 def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
     assert dtype in ["float16", "float32"]
 
@@ -96,7 +97,7 @@ def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, t
             raise Exception(str(err))
 
 
-dtypes = ["float32"]
+dtypes = ["float16", "float32"]
 all_transabs = list(product([True, False], repeat=2))
 all_basic_sizes = list(product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3))
 
@@ -203,4 +204,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.transa == "N", args.transb == "N", args.dtype, args.m, args.n, args.k)
+        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)
