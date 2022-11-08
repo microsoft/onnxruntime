@@ -171,9 +171,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     if (copy_tensor_pairs != nullptr) {
       copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, stream});
     } else {
-      ORT_RETURN_IF_ERROR(stream ? 
-		      session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, *stream) : 
-		      session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, *stream) : session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -577,7 +575,7 @@ static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collect
     // lifetime. it also may cause additional cost of stream sync for single stream case.
     // In first phase, let's just put all the subgraph execution on the parent stream.
     for (size_t i = 0; i < device_stream_collection.NumStreams(); ++i) {
-      auto* stream = device_stream_collection.GetStreams()[i];
+      auto* stream = device_stream_collection.GetStream(i);
       if (stream) {
         // if current logic stream is not on the same EP instance as parent stream
         // and the EP instance does have async streams (not EP like CPU)
@@ -694,11 +692,10 @@ ExecuteGraphImpl(const SessionState& session_state,
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
-    auto device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
       auto it = value_to_stream_map.find(fetch_idx);
       if (it != value_to_stream_map.end()) {
-        fetches_streams.push_back(device_streams[it->second]);
+        fetches_streams.push_back(device_stream_collection.GetStream(it->second));
       } else {
         // for subgraph, it is possible the graph is empty,
         // the fetches are come from parent graph.
@@ -825,11 +822,10 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
-    auto device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
       auto it = value_to_stream_map.find(fetch_idx);
       if (it != value_to_stream_map.end()) {
-        fetches_streams.push_back(device_streams[it->second]);
+        fetches_streams.push_back(device_stream_collection.GetStream(it->second));
       } else {
         // for subgraph, it is possible the graph is empty,
         // the fetches are come from parent graph.
