@@ -3968,6 +3968,48 @@ Return true if all elements are true and false otherwise.
       .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<13>)
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FakeQuant)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "FakeQuant operator that fuses quantization->dequantization pattern into a single node. "
+          "FakeQuant takes in a non quantized tensor as input and generates a non quantized tensor as output. "
+          "But internally, it will perform Quantization->Dequantization operation that simulates the effects of "
+          "quantization within the model. Loss in numerical precision introduced by model quantization is "
+          "corrected by adjusting the model weights to compensate for loss in model accuracy through the FakeQuant "
+          "op.")
+      .Input(0, "input_tensor", "Tensor to be fake quantized.", "T")
+      .Input(1, "scale", "Quantization scale.", "T")
+      .Input(2, "zero_point", "Quantization zero point as non quantized type.", "T")
+      .Output(0, "fake_quantized_tensor", "Fake quantized input tensor.", "T")
+      .Output(1, "quantization_mask",
+              "Mask where values indicate if the quantized value was in qmin, qmax range."
+              " Needed for gradient computation.",
+              "T_BOOL")
+      .Attr(
+          "quant_min",
+          "Minimum quantization value. QuantType should decide the value. QuantType can be deciphered from zero_point type.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "quant_max",
+          "Maximum quantization value. QuantType should decide the value. QuantType can be deciphered from zero_point type.",
+          AttributeProto::INT,
+          static_cast<int64_t>(255))
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(double)"},
+          "Constrain input tensor types.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain the gradient quantization mask type to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        propagateShapeFromInputToOutput(ctx, 0, 1);
+      });
 }
 
 }  // namespace training

@@ -1,0 +1,79 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "orttraining/training_ops/cpu/quantization/fake_quant.h"
+#include "core/providers/common.h"
+
+namespace onnxruntime {
+namespace contrib {
+
+namespace {
+
+template <typename T>
+void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const T* input_data, T quant_scale,
+                        T quant_zero_point, int64_t quant_min, int64_t quant_max, T* fake_quantized_data,
+                        bool* quantization_mask_data) {
+  auto* tp = ctx->GetOperatorThreadPool();
+  concurrency::ThreadPool::TryParallelFor(
+      tp, num_elements, /* 1 Read, 2 Writes, 4 Computes */ TensorOpCost{1.0, 2.0, 4.0},
+      [quant_scale, quant_zero_point, quant_min, quant_max, &input_data, &fake_quantized_data, &quantization_mask_data](
+          std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t index = begin; index != end; ++index) {
+          size_t idx = static_cast<size_t>(index);
+
+          // Quantize
+          const auto quantized_value = static_cast<int64_t>(
+              std::nearbyint(input_data[idx] / quant_scale) + quant_zero_point);
+
+          // De-Quantize
+          fake_quantized_data[idx] =
+              (std::min(quant_max, std::max(quant_min, quantized_value)) - quant_zero_point) * quant_scale;
+
+          // Compute mask needed for gradient computation
+          quantization_mask_data[idx] = (quant_min <= quantized_value && quantized_value <= quant_max);
+        }
+      });
+}
+}  // namespace
+
+#define REGISTER_FAKEQUANT_KERNEL_TYPED(T)                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      FakeQuant,                                                  \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      FakeQuant<T>);
+
+REGISTER_FAKEQUANT_KERNEL_TYPED(float)
+REGISTER_FAKEQUANT_KERNEL_TYPED(double)
+
+template <typename T>
+Status FakeQuant<T>::Compute(OpKernelContext* ctx) const {
+  // Prepare the input, scale, zero point
+  const auto* input_tensor = ctx->Input<Tensor>(0);
+  const T* input_data = input_tensor->Data<T>();
+  const auto* scale = ctx->Input<Tensor>(1);
+  ORT_ENFORCE(IsScalarOr1ElementVector(scale), "Quantization scale must be a scalar or 1D tensor of size 1.");
+  const T* quant_scale = scale->Data<T>();
+  const auto* zero_point = ctx->Input<Tensor>(2);
+  ORT_ENFORCE(IsScalarOr1ElementVector(zero_point), "Quantization zero point must be a scalar or 1D tensor of size 1.");
+  const T* quant_zero_point = zero_point->Data<T>();
+
+  // Prepare the output, mask for gradient computation
+  auto* fake_quantized_tensor = ctx->Output(0, input_tensor->Shape());
+  T* fake_quantized_data = fake_quantized_tensor->MutableData<T>();
+  bool* quantization_mask_data = ctx->Output(1, input_tensor->Shape())->MutableData<bool>();
+
+  // Copmute
+  // TODO(bmeswani): Add support for FakeQuantPerChannel
+  FakeQuantPerTensor(ctx, input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_,
+                     quant_max_, fake_quantized_data, quantization_mask_data);
+
+  return Status::OK();
+}
+
+}  // namespace contrib
+}  // namespace onnxruntime
