@@ -1,12 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <chrono>
 
 #include "core/common/common.h"
 #include "core/framework/tunable.h"
+
+#ifdef _WIN32
+#pragma comment(lib, "WinMM.lib")
+#endif
 
 using namespace std::chrono_literals;
 
@@ -50,6 +57,20 @@ using Op = ::onnxruntime::tunable::Op<ParamsT>;
 
 template <typename ParamsT>
 using TunableOp = ::onnxruntime::tunable::TunableOp<ParamsT, Timer>;
+
+struct SleepTimeResolutionGuard {
+  SleepTimeResolutionGuard() {
+#ifdef _WIN32
+    timeBeginPeriod(1);
+#endif
+  }
+
+  ~SleepTimeResolutionGuard() {
+#ifdef _WIN32
+    timeEndPeriod(1);
+#endif
+  }
+};
 
 }  // namespace
 
@@ -218,6 +239,7 @@ struct VecAddParamsRecordLastRun : public VecAddParams {
 Status SlowFull(const VecAddParamsRecordLastRun* params) {
   *(params->last_run) = "SlowFull";
   LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
+  SleepTimeResolutionGuard guard{};
   std::this_thread::sleep_for(5ms);
   return Status::OK();
 }
@@ -225,6 +247,7 @@ Status SlowFull(const VecAddParamsRecordLastRun* params) {
 Status FastFull(const VecAddParamsRecordLastRun* params) {
   *(params->last_run) = "FastFull";
   LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
+  SleepTimeResolutionGuard guard{};
   std::this_thread::sleep_for(1ms);
   return Status::OK();
 }
