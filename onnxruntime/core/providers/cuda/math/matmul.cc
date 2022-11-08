@@ -127,7 +127,35 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
       cudaStreamSynchronize(Stream());
-      //auto start = high_resolution_clock::now();
+
+      // Flush sub-normals to zero
+      std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
+      std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
+
+      cudaMemcpy(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+      cudaMemcpy(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+
+      size_t subnormal_cnt_A = 0;
+      size_t subnormal_cnt_B = 0;
+
+      for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
+        if ((input_A[i] & 0x7C00) == 0) {
+          ++subnormal_cnt_A;
+          input_A[i] = 0;
+        }
+      }
+
+      for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
+        if ((input_B[i] & 0x7C00) == 0) {
+          ++subnormal_cnt_B;
+          input_B[i] = 0;
+        }
+      }
+
+      cudaMemcpy(const_cast<Tensor*>(left_X)->MutableDataRaw() , input_A.data(), left_X->SizeInBytes(), cudaMemcpyHostToDevice);
+      cudaMemcpy(const_cast<Tensor*>(right_X)->MutableDataRaw(), input_B.data(), right_X->SizeInBytes(), cudaMemcpyHostToDevice);
+
+      auto start = high_resolution_clock::now();
 
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           Base::CublasHandle(),
@@ -148,33 +176,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       cudaStreamSynchronize(Stream());
 
-      std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
-      std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
+      auto stop = high_resolution_clock::now();
 
-      cudaMemcpy(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-      cudaMemcpy(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+      auto duration = duration_cast<microseconds>(stop - start);
 
-      size_t subnormal_cnt_A = 0;
-      size_t subnormal_cnt_B = 0;
-
-      for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
-        if ((input_A[i] & 0x7C00) == 0) {
-          ++subnormal_cnt_A;
-        }
-      }
-
-      for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
-        if ((input_B[i] & 0x7C00) == 0) {
-          ++subnormal_cnt_B;
-        }
-      }
-
-      //auto stop = high_resolution_clock::now();
-
-      //auto duration = duration_cast<microseconds>(stop - start);
       std::cout << std::endl;
-      float frac = ((subnormal_cnt_A + subnormal_cnt_B) * 100.f) / (left_X->Shape().Size() + right_X->Shape().Size()); 
-      std::cout << Node().Name() << " : " << frac << std::endl;
+      //float frac = ((subnormal_cnt_A + subnormal_cnt_B) * 100.f) / (left_X->Shape().Size() + right_X->Shape().Size());
+      std::cout << Node().Name() << " : " << duration.count() << std::endl;
 
     } else {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
