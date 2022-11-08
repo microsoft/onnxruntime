@@ -5,26 +5,17 @@
 #pragma once
 
 #include "core/providers/cann/cann_kernel.h"
+#include "core/providers/cpu/nn/pool_base.h"
 
 namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-class BatchNorm final : public CannKernel {
+class AveragePool : public CannKernel, public PoolBase {
  public:
-  BatchNorm(const OpKernelInfo& info)
-      : CannKernel(info) {
-    epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
-
-    is_training_mode_ = info.GetAttrOrDefault<int64_t>("training_mode", 0);
-    ORT_ENFORCE(!is_training_mode_, "only supports inference mode");
-  }
+  explicit AveragePool(const OpKernelInfo& info) : CannKernel(info), PoolBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  float epsilon_;
-  int64_t is_training_mode_;
 };
 
 }  // namespace cann
