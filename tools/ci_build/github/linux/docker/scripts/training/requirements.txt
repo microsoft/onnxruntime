@@ -1,7 +1,7 @@
 --pre
 -f https://download.pytorch.org/whl/torch_stable.html
-# transformers requires sklearn
-sklearn
+# transformers requires scikit-learn
+scikit-learn
 numpy==1.21.6
 transformers==v2.10.0
 torch==1.10.0+cu113
