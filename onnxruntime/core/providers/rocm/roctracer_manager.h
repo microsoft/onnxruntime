@@ -58,9 +58,7 @@ struct ApiCallRecord {
 
 class RoctracerManager {
  public:
-  RoctracerManager(const RoctracerManager&) = delete;
-  RoctracerManager& operator=(const RoctracerManager&) = delete;
-  RoctracerManager() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE();
   ~RoctracerManager();
 
   static RoctracerManager& GetInstance();
@@ -76,6 +74,7 @@ class RoctracerManager {
   bool PopCorrelation();
 
  private:
+  RoctracerManager() = default;
   static void ActivityCallback(const char* begin, const char* end, void* arg);
   static void ApiCallback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
   void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
@@ -110,6 +109,10 @@ class RoctracerManager {
   uint64_t num_active_clients_ = 0;
   bool logging_enabled_ = false;
   std::mutex roctracer_manager_mutex_;
+
+  // Keyed on roctracer correlation_id, keeps track of activity records
+  // for which we haven't established the external_correlation_id yet.
+  InlinedHashMap<uint64_t, std::vector<EventRecord>> events_pending_client_mapping_;
 
   // The api calls to track
   static const std::vector<std::string> hip_api_calls_to_trace;

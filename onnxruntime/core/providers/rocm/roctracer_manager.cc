@@ -403,7 +403,6 @@ void RoctracerManager::MapEventToClient(uint64_t unique_correlation_id, EventRec
 
 void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
                                               const TimePoint& start_time) {
-  InlinedHashMap<uint64_t, std::vector<EventRecord>> events_pending_client_mapping;
   auto start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
 
   for (auto const& buffer : buffers) {
@@ -415,14 +414,14 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
         roctracer_correlation_to_unique_correlation_[current_record->correlation_id] = current_record->external_id;
 
         // check for any events pending client mapping on this correlation
-        auto pending_it = events_pending_client_mapping.find(current_record->correlation_id);
-        if (pending_it == events_pending_client_mapping.end()) {
+        auto pending_it = events_pending_client_mapping_.find(current_record->correlation_id);
+        if (pending_it == events_pending_client_mapping_.end()) {
           continue;
         }
 
         // we have one or more pending events, map them to the client
         MapEventsToClient(current_record->external_id, std::move(pending_it->second));
-        events_pending_client_mapping.erase(current_record->correlation_id);
+        events_pending_client_mapping_.erase(pending_it);
         // no additional events to be mapped for this record
         continue;
       } else if (current_record->domain == ACTIVITY_DOMAIN_HIP_OPS) {
@@ -453,7 +452,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
       auto ext_corr_it = roctracer_correlation_to_unique_correlation_.find(current_record->correlation_id);
       if (ext_corr_it == roctracer_correlation_to_unique_correlation_.end()) {
         // defer the processing of this event
-        events_pending_client_mapping[current_record->correlation_id].emplace_back(std::move(event));
+        events_pending_client_mapping_[current_record->correlation_id].emplace_back(std::move(event));
         continue;
       }
       MapEventToClient(ext_corr_it->second, std::move(event));
