@@ -975,15 +975,15 @@ class PlannerImpl {
   bool IsSingleStream() {
     // if each device only have 1 logic stream
     // we can safely reuse the existing memory sharing algorithm
-    std::set<OrtDevice::DeviceType> stream_device_set;
+    InlinedHashSet<OrtDevice::DeviceType> stream_device_set;
+    stream_device_set.reserve(num_logic_streams_);
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       auto& stream = stream_nodes_[i];
       if (!stream.empty()) {
         auto device_type = plan_.execution_plan[i]->device_.Type();
-        if (stream_device_set.find(device_type) != stream_device_set.end()) {
+        if (!stream_device_set.insert(device_type).second) {
           return false;
         }
-        stream_device_set.insert(device_type);
       }
     }
     return true;

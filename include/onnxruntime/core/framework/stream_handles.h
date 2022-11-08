@@ -73,7 +73,8 @@ class Stream {
   // make a copy of the current stream lookup table.
   // this is used to create a snapshot of the stream lookup table in notificaiton.
   void CloneCurrentStreamSyncTable(std::unordered_map<Stream*, uint64_t>& output) const {
-    std::copy(other_stream_clock_.begin(), other_stream_clock_.end(), std::inserter(output, output.end()));
+    output.reserve(other_stream_clock_.size());
+    output.insert(other_stream_clock_.begin(), other_stream_clock_.end());
   }
 
   // bump the current timestamp
