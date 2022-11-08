@@ -415,11 +415,7 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
     Bin* b = BinFromIndex(bin_num);
-    if (b->free_chunks.empty()) {
-      continue;
-    }
-    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end();
-         ++citer) {
+    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end(); ++citer) {
       const BFCArena::ChunkHandle h = (*citer);
       BFCArena::Chunk* chunk = ChunkFromHandle(h);
       ORT_ENFORCE(!chunk->in_use());

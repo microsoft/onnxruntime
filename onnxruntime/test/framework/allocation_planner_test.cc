@@ -1604,7 +1604,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   reuse_pairs.emplace("conv_0_out", "maxpool_out");
   reuse_pairs.emplace("conv_1_out", "conv_2_out");
   reuse_pairs.emplace("relu_1_out", "relu_2_out");
-  for (OrtValueIndex i = 0; i < per_value_plans.size(); ++i) {
+  for (size_t i = 0; i < per_value_plans.size(); ++i) {
     auto& per_value_plan = per_value_plans[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
       std::string reused;
