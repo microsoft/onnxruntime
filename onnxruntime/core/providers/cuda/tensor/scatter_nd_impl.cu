@@ -129,7 +129,6 @@ Status ScatterNDImpl(
   return Status::OK();
 }
 
-
 __global__ void cuda_random_uniform_kernel(half* buffer, const int size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   curandState_t local_state;
@@ -140,9 +139,42 @@ __global__ void cuda_random_uniform_kernel(half* buffer, const int size) {
   }
 }
 
-
 void cudaRandomUniform(cudaStream_t stream, void* buffer, const int size) {
   cuda_random_uniform_kernel<<<256, 256, 0, stream>>>(reinterpret_cast<half*>(buffer), size);
+}
+
+template <unsigned TPB>
+__global__ void SubnormalFlushKernel(half* output,
+                                     const int hidden_size,
+                                     int batch_size,
+                                     int sequence_length) {
+  const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
+
+  const int output_offset = sequence_position * hidden_size;
+
+  for (int it = threadIdx.x; it < hidden_size; it += TPB) {
+    int offset = output_offset + it;
+    short temp = *reinterpret_cast<short*>(&output[offset]);
+
+    if ((temp & 0x7C00) == 0) {
+      output[offset] = half(0);    
+    } else {
+      output[offset] = output[offset];    
+    }
+  }
+}
+
+void SubnormalFlush(cudaStream_t stream,
+                    void* output,
+                    const int hidden_size,
+                    int batch_size,
+                    int sequence_length) {
+  constexpr int tpb = 256;
+  const dim3 grid(sequence_length, batch_size, 1);
+  const dim3 block(tpb, 1, 1);
+
+  SubnormalFlushKernel<tpb>
+      <<<grid, block, 0, stream>>>(reinterpret_cast<half*>(output), hidden_size, batch_size, sequence_length);
 }
 
 }  // namespace cuda

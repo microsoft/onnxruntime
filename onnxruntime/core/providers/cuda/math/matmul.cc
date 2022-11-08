@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/tensor/scatter_nd_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -127,7 +128,20 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
       if (flush_denormals_to_zero_) {
-        cudaStreamSynchronize(Stream());
+        cudaDeviceSynchronize();
+
+        SubnormalFlush(Stream(),
+                       const_cast<Tensor*>(left_X)->MutableDataRaw(),
+                       768,
+                       1,
+                       128);
+
+        SubnormalFlush(Stream(),
+                       const_cast<Tensor*>(right_X)->MutableDataRaw(),
+                       768,
+                       1,
+                       128);
+        /*
 
         // Flush sub-normals to zero
         std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
@@ -136,11 +150,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         cudaMemcpyAsync(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost, Stream());
         cudaMemcpyAsync(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost, Stream());
 
-        cudaStreamSynchronize(Stream());
+        cudaDeviceSynchronize();
 
         size_t subnormal_cnt_A = 0;
-        size_t subnormal_cnt_B = 0;
-
         for (size_t i = 0; i < static_cast<size_t>(left_X->Shape().Size()); ++i) {
           if ((input_A[i] & 0x7C00) == 0) {
             ++subnormal_cnt_A;
@@ -148,6 +160,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           }
         }
 
+        size_t subnormal_cnt_B = 0;
         for (size_t i = 0; i < static_cast<size_t>(right_X->Shape().Size()); ++i) {
           if ((input_B[i] & 0x7C00) == 0) {
             ++subnormal_cnt_B;
@@ -157,9 +170,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
         cudaMemcpyAsync(const_cast<Tensor*>(left_X)->MutableDataRaw(), input_A.data(), left_X->SizeInBytes(), cudaMemcpyHostToDevice, Stream());
         cudaMemcpyAsync(const_cast<Tensor*>(right_X)->MutableDataRaw(), input_B.data(), right_X->SizeInBytes(), cudaMemcpyHostToDevice, Stream());
+         
+         */
       }
 
-      cudaStreamSynchronize(Stream());
+      cudaDeviceSynchronize();
 
       auto start = high_resolution_clock::now();
 
