@@ -18,11 +18,10 @@
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::logging;
 
 namespace onnxruntime {
 namespace test {
@@ -97,7 +96,6 @@ static void CompareTensors(const OrtValue& left_value, const OrtValue& right_val
       EXPECT_EQ(left_strings[i], right_strings[i]) << "Mismatch index:" << i;
     }
   } else {
-
     ASSERT_EQ(memcmp(left.DataRaw(), right.DataRaw(), left.SizeInBytes()), 0);
   }
 }
@@ -231,8 +229,8 @@ static void CompareSessionMetadata(const InferenceSessionWrapper& session_object
   ASSERT_EQ(model_1.ProducerVersion(), model_2.ProducerVersion());
 }
 
-static void SaveAndCompareModels(const std::basic_string<ORTCHAR_T>& orig_file,
-                                 const std::basic_string<ORTCHAR_T>& ort_file,
+static void SaveAndCompareModels(const PathString& orig_file,
+                                 const PathString& ort_file,
                                  TransformerLevel optimization_level = TransformerLevel::Level3) {
   SessionOptions so;
   so.session_logid = "SerializeToOrtFormat";
@@ -301,7 +299,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  vector<float> data(28 * 28, 0.0);
+  std::vector<float> data(28 * 28, 0.0);
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1, 1, 28, 28}, data,
                        &ml_value);
   test_info.inputs.insert(std::make_pair("Input3", ml_value));
@@ -372,59 +370,103 @@ TEST(OrtModelOnlyTests, MetadataSerialization) {
 }
 
 // test we can load an old ORT format model and run it in a full build.
-// we changed from using kernel hashes to kernel type constraints in v5, so any old model should be able to be loaded
+// we changed from using kernel hashes to kernel type constraints in v5, so an old model should be able to be loaded
 // in a full build if we add the kernel type constraints during loading. this also means we can save the updated
 // ORT format model to effectively upgrade it to v5.
-TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
-  // input is ORT format model using v4 where we used kernel hashes instead of constraints
-  const auto onnx_file = ORT_TSTR("testdata/mnist.onnx");
-  const auto ort_file_v4 = ORT_TSTR("testdata/mnist.basic.v4.ort");
-  const auto ort_file_v5 = ORT_TSTR("testdata/mnist.basic.v5.test_output.ort");
+void TestOrtModelUpdate(const PathString& onnx_file,
+                        const PathString& ort_file_v4,
+                        const PathString& generated_ort_file_v5,
+                        const std::function<void(NameMLValMap& inputs, std::vector<std::string>& output_names)>&
+                            set_up_test_inputs_and_outputs_fn) {
+  // ort_file_v4 is ORT format model using v4 where we used kernel hashes instead of constraints
 
   // update v4 model and save as v5. do not run optimizations in order to preserve the model as-is.
-  SaveAndCompareModels(ort_file_v4, ort_file_v5, TransformerLevel::Default);
+  SaveAndCompareModels(ort_file_v4, generated_ort_file_v5, TransformerLevel::Default);
 
   // run the original, v4 and v5 models and check the output is the same
-  RandomValueGenerator random{};
-  std::vector<int64_t> input_dims{1, 1, 28, 28};
-  std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.9f);
-
-  OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
-                       input_dims, input_data, &ml_value);
-
   OrtModelTestInfo test_info;
+  set_up_test_inputs_and_outputs_fn(test_info.inputs, test_info.output_names);
 
   // keep the onnx and ort models to the same optimization level
   test_info.optimization_level = TransformerLevel::Level1;
 
-  test_info.inputs.insert(std::make_pair("Input3", ml_value));
-  test_info.output_names = {"Plus214_Output_0"};
-
-  OrtValue orig_out, v4_out, v5_out;
+  std::vector<OrtValue> orig_out, v4_out, v5_out;
 
   test_info.model_filename = onnx_file;
   test_info.output_verifier = [&orig_out](const std::vector<OrtValue>& fetches) {
-    orig_out = fetches[0];
+    orig_out = fetches;
   };
   RunOrtModel(test_info);
 
   // run with v4 as input. this should also update to v5 prior to execution.
   test_info.model_filename = ort_file_v4;
   test_info.output_verifier = [&v4_out](const std::vector<OrtValue>& fetches) {
-    v4_out = fetches[0];
+    v4_out = fetches;
   };
   RunOrtModel(test_info);
 
   // validate the model saved as v5 also works
-  test_info.model_filename = ort_file_v5;
+  test_info.model_filename = generated_ort_file_v5;
   test_info.output_verifier = [&v5_out](const std::vector<OrtValue>& fetches) {
-    v5_out = fetches[0];
+    v5_out = fetches;
   };
   RunOrtModel(test_info);
 
-  CompareTensors(orig_out, v4_out);
-  CompareTensors(v4_out, v5_out);
+  auto compare_outputs = [](gsl::span<OrtValue> expected, gsl::span<OrtValue> actual) {
+    ASSERT_EQ(expected.size(), actual.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      CompareTensors(expected[i], actual[i]);
+    }
+  };
+
+  compare_outputs(orig_out, v4_out);
+  compare_outputs(v4_out, v5_out);
+};
+
+TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
+  const auto onnx_file = ORT_TSTR("testdata/mnist.onnx");
+  const auto ort_file_v4 = ORT_TSTR("testdata/mnist.basic.v4.ort");
+  const auto ort_file_v5 = ORT_TSTR("testdata/mnist.basic.v5.test_output.ort");
+
+  RandomValueGenerator random{};  // keep in scope so we get random seed trace message on failure
+
+  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5,
+                     [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
+                       std::vector<int64_t> input_dims{1, 1, 28, 28};
+                       std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.9f);
+                       OrtValue ml_value;
+                       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                                            input_dims, input_data, &ml_value);
+
+                       inputs = {{"Input3", ml_value}};
+                       output_names = {"Plus214_Output_0"};
+                     });
+}
+
+// test that a model with saved runtime optimizations can also be updated
+// note: the saved runtime optimizations will be ignored
+TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
+  const auto onnx_file = ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.onnx");
+  const auto ort_file_v4 = ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.v4.ort");
+  const auto ort_file_v5 =
+      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.v5.test_output.ort");
+
+  RandomValueGenerator random{};  // keep in scope so we get random seed trace message on failure
+
+  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5,
+                     [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
+                       constexpr int n = 3;  // number of QDQ convs
+                       for (size_t i = 0; i < n; ++i) {
+                         std::vector<int64_t> input_dims{1, 1, 5, 5};
+                         std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
+                         OrtValue ml_value;
+                         CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                                              input_dims, input_data, &ml_value);
+
+                         inputs.emplace(MakeString("X_", i), std::move(ml_value));
+                         output_names.push_back(MakeString("Y_", i));
+                       }
+                     });
 }
 
 #if !defined(DISABLE_ML_OPS)
