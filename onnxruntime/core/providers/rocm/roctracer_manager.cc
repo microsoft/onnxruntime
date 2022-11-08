@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace profiling {
 
 // allocate a 16K buffer for recording async activities
-static constexpr size_t sc_activity_buffer_size = 0x4000;
+static constexpr size_t kActivityBufferSize = 0x4000;
 
 const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
     "hipMemcpy",
@@ -82,7 +82,7 @@ void RoctracerManager::StartLogging() {
 
   roctracer_properties_t hcc_cb_properties;
   memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
-  hcc_cb_properties.buffer_size = sc_activity_buffer_size;
+  hcc_cb_properties.buffer_size = kActivityBufferSize;
   hcc_cb_properties.buffer_callback_fun = ActivityCallback;
   roctracer_open_pool(&hcc_cb_properties);
 
