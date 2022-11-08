@@ -58,11 +58,7 @@ struct EventRecord {
         dur(duration),
         args(event_args) {}
 
-  EventRecord(const EventRecord& other)
-      : cat(other.cat), pid(other.pid), tid(other.tid),
-	name(other.name), ts(other.ts), dur(other.dur),
-	args(other.args) {}
-
+  EventRecord(const EventRecord& other) = default;
   EventRecord(EventRecord&& other) = default;
   EventRecord& operator=(const EventRecord& other) = default;
   EventRecord& operator=(EventRecord&& other) = default;
