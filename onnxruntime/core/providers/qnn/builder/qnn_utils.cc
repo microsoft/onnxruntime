@@ -8,6 +8,7 @@
 #include <map>
 
 #include "core/common/common.h"
+#include "core/framework/data_types.h"
 #include "qnn_utils.h"
 
 namespace onnxruntime {
@@ -15,13 +16,6 @@ namespace qnn {
 namespace utils {
 std::hash<std::string> g_strToUInt32;
 uint32_t GetTensorIdFromName(const std::string& name) { return static_cast<uint32_t>(g_strToUInt32(name)); }
-
-int64_t GetDataSize(const std::vector<uint32_t>& dims) {
-  if (dims.size() == 0) {
-    return 0;
-  }
-  return std::accumulate(dims.begin(), dims.end(), static_cast<uint32_t>(1), std::multiplies<uint32_t>());
-}
 
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
   const static std::unordered_map<Qnn_DataType_t, size_t> data_type_to_size = {
@@ -45,10 +39,26 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
   };
 
   auto pos = data_type_to_size.find(data_type);
-  if (pos == data_type_to_size.end()) {
-    return static_cast<size_t>(0);
-  }
+  ORT_ENFORCE(pos != data_type_to_size.end(), "Unknown QNN data type", data_type);
+  return pos->second;
+}
+size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
+  const static std::unordered_map<ONNXTensorElementDataType, size_t> elem_type_to_size = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, sizeof(int64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, sizeof(uint32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, sizeof(uint64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, 2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, sizeof(double)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, sizeof(bool)}};
 
+  auto pos = elem_type_to_size.find(elem_type);
+  ORT_ENFORCE(pos != elem_type_to_size.end(), "Unknown element type", elem_type);
   return pos->second;
 }
 
@@ -270,9 +280,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
   out << " memType=" << tensor.memType;
   if (tensor.memType == QNN_TENSORMEMTYPE_RAW) {
     if (tensor.dataType == QNN_DATATYPE_UINT_32) {
-      operator<<<uint32_t>(out, tensor.clientBuf);
+      operator<< <uint32_t>(out, tensor.clientBuf);
     } else {
-      operator<<<int32_t>(out, tensor.clientBuf);
+      operator<< <int32_t>(out, tensor.clientBuf);
     }
   }
   out << " quantizeParams:" << tensor.quantizeParams;

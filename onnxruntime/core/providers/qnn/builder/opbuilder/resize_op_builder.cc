@@ -122,11 +122,10 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   }
 
   input_names.push_back(input_name);
-  Qnn_TensorType_t tensor_type = is_initializer_input ? QNN_TENSOR_TYPE_STATIC : QNN_TENSOR_TYPE_APP_WRITE;
+  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
   Qnn_TensorDataFormat_t data_format = 0;
 
-  QnnTensorWrapper input_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                       input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(unpacked_tensor));
   ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
 
@@ -162,10 +161,8 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   } else if ("half_pixel" == coordinate_mode) {
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
   }
-  QnnParamWrapper qnn_align_corners_param(qnn_model_wrapper->GetAllocator(),
-                                          qnn_def::align_corners, qnn_align_corners);
-  QnnParamWrapper qnn_half_pixel_param(qnn_model_wrapper->GetAllocator(),
-                                       qnn_def::half_pixel_centers, qnn_half_pixel);
+  QnnParamWrapper qnn_align_corners_param(qnn_def::align_corners, qnn_align_corners);
+  QnnParamWrapper qnn_half_pixel_param(qnn_def::half_pixel_centers, qnn_half_pixel);
 
   std::vector<QnnParamWrapper> node_params;
   node_params.push_back(std::move(qnn_align_corners_param));
@@ -194,8 +191,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   bool is_graph_output = qnn_model_wrapper->IsGraphOutput(output_name);
   Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   Qnn_TensorDataFormat_t data_format = 0;
-  QnnTensorWrapper qnn_output(qnn_model_wrapper->GetAllocator(),
-                              output_name, tensor_type, data_format, qnn_data_type, quantize_param,
+  QnnTensorWrapper qnn_output(output_name, tensor_type, data_format, qnn_data_type, quantize_param,
                               std::move(output_shape));
   qnn_outputs.push_back(std::move(qnn_output));
 

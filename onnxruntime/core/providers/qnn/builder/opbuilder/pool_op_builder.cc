@@ -157,20 +157,17 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
   }
 
   std::vector<QnnParamWrapper> node_params;
-  QnnParamWrapper filter_size_param(qnn_model_wrapper->GetAllocator(),
-                                    node_unit.Index(), node_unit.Name(), qnn_def::filter_size,
+  QnnParamWrapper filter_size_param(node_unit.Index(), node_unit.Name(), qnn_def::filter_size,
                                     std::move(filter_size_dim),
                                     std::move(filter_size));
   node_params.push_back(std::move(filter_size_param));
 
-  QnnParamWrapper pad_amount_param(qnn_model_wrapper->GetAllocator(),
-                                   node_unit.Index(), node_unit.Name(), qnn_def::pad_amount,
+  QnnParamWrapper pad_amount_param(node_unit.Index(), node_unit.Name(), qnn_def::pad_amount,
                                    std::move(pad_amount_dim),
                                    std::move(pad_amount));
   node_params.push_back(std::move(pad_amount_param));
 
-  QnnParamWrapper stride_param(qnn_model_wrapper->GetAllocator(),
-                               node_unit.Index(), node_unit.Name(), qnn_def::stride,
+  QnnParamWrapper stride_param(node_unit.Index(), node_unit.Name(), qnn_def::stride,
                                std::move(stride_dim),
                                std::move(stride));
   node_params.push_back(std::move(stride_param));
@@ -178,15 +175,14 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
     Qnn_Scalar_t rounding_mode_param = QNN_SCALAR_INIT;
     rounding_mode_param.dataType = QNN_DATATYPE_UINT_32;
     rounding_mode_param.int32Value = ceil_mode;
-    QnnParamWrapper rounding_mode_param_wrapper(qnn_model_wrapper->GetAllocator(), qnn_def::rounding_mode, rounding_mode_param);
+    QnnParamWrapper rounding_mode_param_wrapper(qnn_def::rounding_mode, rounding_mode_param);
     node_params.push_back(std::move(rounding_mode_param_wrapper));
   }
   if (node_unit.OpType() == "GlobalAveragePool") {
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = 1;
-    QnnParamWrapper count_pad_for_edges_param(qnn_model_wrapper->GetAllocator(),
-                                              qnn_def::count_pad_for_edges, scalar_param);
+    QnnParamWrapper count_pad_for_edges_param(qnn_def::count_pad_for_edges, scalar_param);
     node_params.push_back(std::move(count_pad_for_edges_param));
   }
   this->output_count_ = 1;

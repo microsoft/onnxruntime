@@ -205,13 +205,9 @@ bool QnnModelWrapper::AddNode(const std::string& qnn_node_name,
                               bool do_op_validation) {
   bool rt = AddParams(qnn_node_name, params);
 
-  auto num_of_params = static_cast<int32_t>(params.size());
   std::vector<Qnn_Param_t> qnn_params;
   // params_.insert(std::end(params_), std::make_move_iterator(params.begin()), std::make_move_iterator(params.end()));
-  std::move(params.begin(), params.end(), std::back_inserter(params_));
-  params.clear();
-  auto it = std::prev(params_.end(), num_of_params);  // it points to the begining of the newly added params
-  std::transform(it, params_.end(), std::back_inserter(qnn_params),
+  std::transform(params.begin(), params.end(), std::back_inserter(qnn_params),
                  [](QnnParamWrapper& param) -> const Qnn_Param_t& { return param.GetQnnParam(); });
   // populate input tensors for node
   auto num_of_inputs = static_cast<uint32_t>(input_names.size());
@@ -246,13 +242,12 @@ bool QnnModelWrapper::AddNode(const std::string& qnn_node_name,
     }
   }
 
-  QnnOpConfigWrapper op_config_wrapper(GetAllocator(),
-                                       qnn_node_name,
+  QnnOpConfigWrapper op_config_wrapper(qnn_node_name,
                                        package_name,
                                        qnn_node_type,
-                                       qnn_params,
-                                       inputs,
-                                       outputs);
+                                       std::move(qnn_params),
+                                       std::move(inputs),
+                                       std::move(outputs));
   const Qnn_OpConfig_t& op_config = op_config_wrapper.GetQnnOpConfig();
   using namespace onnxruntime::qnn::utils;
   LOGS(logger_, VERBOSE) << op_config;
@@ -270,7 +265,6 @@ bool QnnModelWrapper::AddNode(const std::string& qnn_node_name,
     LOGS(logger_, ERROR) << "Adding node failed for: " << qnn_node_name;
     return false;
   }
-  op_config_wrappers_.push_back(std::move(op_config_wrapper));
 
   return true;
 }
@@ -382,13 +376,13 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const std::vector<uint32_t>& output_shape,
                                          const Qnn_DataType_t& tensor_data_type,
                                          const Qnn_QuantizeParams_t& quantize_param,
-                                         const bool is_for_input) {
+                                         const bool is_for_input,
+                                         const bool is_for_output) {
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
     Qnn_TensorDataFormat_t data_format = 0;
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;
-    QnnTensorWrapper input_tensorwrapper(GetAllocator(),
-                                         input_name,
+    QnnTensorWrapper input_tensorwrapper(input_name,
                                          tensor_type,
                                          data_format,
                                          tensor_data_type,
@@ -402,13 +396,11 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   std::vector<uint32_t> perm_dim{perm_size};
   std::vector<uint32_t> transpose_perm_copy = transpose_perm;
   const std::string& node_name = output_name;
-  QnnParamWrapper transpose_param(GetAllocator(),
-                                  node_index, node_name, qnn_def::perm, std::move(perm_dim), std::move(transpose_perm_copy));
-  Qnn_TensorType_t tensor_type = is_for_input ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
+  QnnParamWrapper transpose_param(node_index, node_name, qnn_def::perm, std::move(perm_dim), std::move(transpose_perm_copy));
+  Qnn_TensorType_t tensor_type = (false == is_for_output) ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
   Qnn_TensorDataFormat_t data_format = 0;
   std::vector<uint32_t> output_shape_copy = output_shape;
-  QnnTensorWrapper output_tensorwrapper(GetAllocator(),
-                                        output_name,
+  QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         data_format,
                                         tensor_data_type,

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "QnnTypes.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include <functional>
 #include <numeric>
@@ -15,7 +16,7 @@ uint32_t GetTensorIdFromName(const std::string& name);
 
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
-int64_t GetDataSize(const std::vector<uint32_t>& dims);
+size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
 
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
 std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor);

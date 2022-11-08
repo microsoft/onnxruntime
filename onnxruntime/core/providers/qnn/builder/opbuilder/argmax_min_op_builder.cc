@@ -44,8 +44,7 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_mode
   Qnn_Scalar_t keep_dims_scalar = QNN_SCALAR_INIT;
   keep_dims_scalar.dataType = QNN_DATATYPE_BOOL_8;
   keep_dims_scalar.bool8Value = static_cast<uint8_t>(onnx_keepdims == 0 ? 0 : 1);
-  QnnParamWrapper keep_dims_param(qnn_model_wrapper->GetAllocator(),
-                                  qnn_def::keep_dims, keep_dims_scalar);
+  QnnParamWrapper keep_dims_param(qnn_def::keep_dims, keep_dims_scalar);
   node_params.push_back(std::move(keep_dims_param));
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names,

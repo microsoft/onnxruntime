@@ -6,6 +6,11 @@ jobs:
       clean: all
     condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
+      - script: |
+          ls /data/qnnsdk
+          ls -R /data/qnn_test_data
+        displayName: Check QNN test data
+
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
         inputs:
@@ -20,7 +25,6 @@ jobs:
 
       - script: |
           env | egrep -e QNN
-          ls /data
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
@@ -32,7 +36,6 @@ jobs:
             --cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-unused-variable -Wno-unused-parameter -Wno-type-limits -Wno-ignored-qualifiers -fpermissive"
           mkdir -p build/Release/testdata/QNN/node_tests
         displayName: QNN EP, Build
-
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -52,3 +55,61 @@ jobs:
             ./build/Release/onnx_test_runner -e qnn \
               -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
               cmake/external/onnx/onnx/backend/test/data/node
+
+      - task: CmdLine@2
+        displayName: Test Add NHWC and NCHW models
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              /data/qnn_test_data/add
+
+      - task: CmdLine@2
+        displayName: Test MobileNet model
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              /data/qnn_test_data/MobileNet/mobilenetv2-1.0
+
+      - task: CmdLine@2
+        displayName: Test Quantized MobileNet
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "runtime|HTP backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              /data/qnn_test_data/MobileNet/mobilenetv2-1.0_add_transpose_quant
+
+      - task: CmdLine@2
+        displayName: Test FaceDetection model
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              /data/qnn_test_data/facedetection/facedetection_op8
+
+      - task: CmdLine@2
+        displayName: Test Quantized FaceDetection model
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "runtime|HTP backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              /data/qnn_test_data/facedetection/facedetection_op8_qdq
+        enabled: false
+
+      - task: CmdLine@2
+        displayName: Test StyleGAN model
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -t -o 0 -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              /data/qnn_test_data/StyleGAN/block_1024_simp
+
+      - task: CmdLine@2
+        displayName: Test Quantized StyleGAN model
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -o 0 -v -j 1 -c 1 -i "runtime|HTP backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              /data/qnn_test_data/StyleGAN/block_1024_simp
+        enabled: false

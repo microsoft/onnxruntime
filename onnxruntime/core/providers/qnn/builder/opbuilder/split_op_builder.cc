@@ -76,11 +76,10 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   }
 
   input_names.push_back(input_name);
-  Qnn_TensorType_t tensor_type = is_initializer_input ? QNN_TENSOR_TYPE_STATIC : QNN_TENSOR_TYPE_APP_WRITE;
+  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
   Qnn_TensorDataFormat_t data_format = 0;
 
-  QnnTensorWrapper input_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                       input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
   ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
@@ -145,8 +144,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wr
 
   uint32_t split_size = static_cast<uint32_t>(split_index.size());
   std::vector<uint32_t> split_dim{split_size};
-  QnnParamWrapper split_param(qnn_model_wrapper->GetAllocator(),
-                              node_unit.Index(), node_unit.Name(), qnn_def::split_index, std::move(split_dim),
+  QnnParamWrapper split_param(node_unit.Index(), node_unit.Name(), qnn_def::split_index, std::move(split_dim),
                               std::move(split_index));
   node_params.push_back(std::move(split_param));
 

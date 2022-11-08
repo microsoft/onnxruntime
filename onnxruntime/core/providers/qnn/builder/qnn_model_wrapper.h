@@ -80,17 +80,10 @@ class QnnModelWrapper {
     return std::move(model_output_tensor_wrappers_);
   }
 
-  std::vector<QnnOpConfigWrapper>&& GetOpConfigWrappers() {
-    return std::move(op_config_wrappers_);
-  }
-
   std::unordered_map<std::string, QnnTensorWrapper> GetModelTensorsMap() {
     return std::move(model_tensors_map_);
   }
 
-  std::vector<QnnParamWrapper> GetQnnParamWrappers() {
-    return std::move(params_);
-  }
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
   bool IsInitializerInput(std::string input_name) {
@@ -115,19 +108,11 @@ class QnnModelWrapper {
   bool QnnContainsTensor(const std::string& tensor_name) const;
 
   bool IsGraphOutput(const std::string& tensor_name) const {
-    if (output_index_map_.find(tensor_name) == output_index_map_.end()) {
-      return false;
-    }
-
-    return true;
+    return output_index_map_.find(tensor_name) != output_index_map_.end();
   }
 
   bool IsGraphInput(const std::string& tensor_name) const {
-    if (input_index_map_.find(tensor_name) == input_index_map_.end()) {
-      return false;
-    }
-
-    return true;
+    return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
   onnxruntime::AllocatorPtr GetAllocator() const {
@@ -145,7 +130,8 @@ class QnnModelWrapper {
                           const std::vector<uint32_t>& output_shape,
                           const Qnn_DataType_t& tensor_data_type,
                           const Qnn_QuantizeParams_t& quantize_param,
-                          const bool is_for_input = true);
+                          const bool is_for_input = true,
+                          const bool is_for_output = false);
 
   // Tranpose NCHW->HWCN for QNN weight
   Status AddNchwToHwcnTranspose(NodeIndex node_index,
@@ -155,11 +141,12 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
-                                const bool is_for_input = true) {
+                                const bool is_for_input = true,
+                                const bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add NCHW->HWCN Transpose node after Conv weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input);
+                            tensor_data_type, quantize_param, is_for_input, is_for_output);
   }
 
   // Tranpose CNHW->HWCN for QNN weight
@@ -170,11 +157,12 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
-                                const bool is_for_input = true) {
+                                const bool is_for_input = true,
+                                const bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add CNHW->HWCN Transpose node after ConvTranspose weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input);
+                            tensor_data_type, quantize_param, is_for_input, is_for_output);
   }
 
   const OnnxTensorInfo* TryGetModelInputInfo(const std::string& name) const {
@@ -243,8 +231,6 @@ class QnnModelWrapper {
   const std::vector<uint32_t> nhwc2nchw_perm_{0, 3, 1, 2};
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
-  std::vector<QnnParamWrapper> params_;
-  std::vector<QnnOpConfigWrapper> op_config_wrappers_;
 };  // QnnModelWrapper
 
 }  // namespace qnn

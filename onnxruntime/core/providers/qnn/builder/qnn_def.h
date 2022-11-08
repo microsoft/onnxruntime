@@ -9,8 +9,7 @@
 #include <string>
 #include <memory>
 #include <climits>
-
-#include "core/framework/allocator.h"
+#include <type_traits>
 #include "core/graph/basic_types.h"
 #include "core/common/common.h"
 
@@ -26,7 +25,8 @@ const size_t kbitsPerByte = CHAR_BIT;
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
-  OnnxTensorInfo(int32_t data_type, const std::vector<int64_t>& shape) : data_type_(data_type), shape_(shape) {}
+  OnnxTensorInfo(size_t index, int32_t data_type, const std::vector<int64_t>&& shape) : index_(index), data_type_(data_type), shape_(std::move(shape)) {}
+  size_t index_;
   const int32_t data_type_;  // Uses TensorProto::DataType
   const std::vector<int64_t> shape_;
 };
@@ -35,38 +35,32 @@ size_t memscpy(void* dst, size_t dstSize, const void* src, size_t copySize);
 
 class QnnTensorWrapper {
  public:
-  QnnTensorWrapper(onnxruntime::AllocatorPtr cpu_allocator,
-                   const std::string& name,
+  QnnTensorWrapper(const std::string& name,
                    Qnn_TensorType_t tensor_type,
                    Qnn_TensorDataFormat_t data_format,
                    Qnn_DataType_t data_type,
                    const Qnn_QuantizeParams_t& quantize_params,
                    std::vector<uint32_t>&& shape,
                    std::vector<uint8_t>&& client_buf = {},
-                   Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW) : tensor_name_(name), cpu_allocator_(cpu_allocator) {
+                   Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW) : tensor_name_(name),
+                                                                           max_dimensions_(std::move(shape)),
+                                                                           current_dimensions_(max_dimensions_.size(), 0),
+                                                                           client_buf_(std::move(client_buf)) {
+    if (tensor_type == QNN_TENSOR_TYPE_STATIC) {
+      current_dimensions_ = max_dimensions_;
+    }
     qnn_tensor_.id = utils::GetTensorIdFromName(tensor_name_);
     qnn_tensor_.type = tensor_type;
     qnn_tensor_.dataFormat = data_format;
     qnn_tensor_.dataType = data_type;
-    qnn_tensor_.rank = static_cast<uint32_t>(shape.size());
-    {
-      auto size = shape.size() * sizeof(uint32_t);
-      qnn_tensor_.maxDimensions = reinterpret_cast<uint32_t*>(cpu_allocator_->Alloc(size));
-      qnn_tensor_.currentDimensions = reinterpret_cast<uint32_t*>(cpu_allocator_->Alloc(size));
-      memscpy(qnn_tensor_.maxDimensions, size, shape.data(), size);
-      memscpy(qnn_tensor_.currentDimensions, size, shape.data(), size);
-    }
+    qnn_tensor_.rank = static_cast<uint32_t>(max_dimensions_.size());
+    qnn_tensor_.maxDimensions = max_dimensions_.data();
+    qnn_tensor_.currentDimensions = current_dimensions_.data();
     qnn_tensor_.memType = mem_type;
     if (mem_type == QNN_TENSORMEMTYPE_RAW) {
-      if (client_buf.size() > 0) {
-        auto size = client_buf.size() * sizeof(uint8_t);
-        qnn_tensor_.clientBuf.data = reinterpret_cast<int8_t*>(cpu_allocator_->Alloc(size));
-        memscpy(qnn_tensor_.clientBuf.data, size, client_buf.data(), size);
-        qnn_tensor_.clientBuf.dataSize = static_cast<uint32_t>(size * sizeof(uint8_t));
-      } else {
-        qnn_tensor_.clientBuf.data = nullptr;
-        qnn_tensor_.clientBuf.dataSize = 0;
-      }
+      auto size = client_buf_.size() * sizeof(uint8_t);
+      qnn_tensor_.clientBuf.data = client_buf_.data();
+      qnn_tensor_.clientBuf.dataSize = static_cast<uint32_t>(size);
     } else if (mem_type == QNN_TENSORMEMTYPE_MEMHANDLE) {
       qnn_tensor_.memHandle = nullptr;
     } else {
@@ -78,31 +72,21 @@ class QnnTensorWrapper {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnTensorWrapper);
 
   QnnTensorWrapper(QnnTensorWrapper&& other) noexcept {
-    std::swap(this->qnn_tensor_, other.qnn_tensor_);
+    std::swap(qnn_tensor_, other.qnn_tensor_);
     std::swap(tensor_name_, other.tensor_name_);
-    std::swap(cpu_allocator_, other.cpu_allocator_);
+    std::swap(client_buf_, other.client_buf_);
+    std::swap(max_dimensions_, other.max_dimensions_);
+    std::swap(current_dimensions_, other.current_dimensions_);
+    qnn_tensor_.maxDimensions = max_dimensions_.data();
+    qnn_tensor_.currentDimensions = current_dimensions_.data();
+    qnn_tensor_.clientBuf.data = client_buf_.data();
   }
 
-  ~QnnTensorWrapper() {
-    if (nullptr != cpu_allocator_) {
-      if (nullptr != qnn_tensor_.maxDimensions) {
-        cpu_allocator_->Free(qnn_tensor_.maxDimensions);
-        qnn_tensor_.maxDimensions = nullptr;
-      }
+  ~QnnTensorWrapper() = default;
 
-      if (nullptr != qnn_tensor_.currentDimensions) {
-        cpu_allocator_->Free(qnn_tensor_.currentDimensions);
-        qnn_tensor_.currentDimensions = nullptr;
-      }
-
-      if (qnn_tensor_.memType == QNN_TENSORMEMTYPE_RAW && nullptr != qnn_tensor_.clientBuf.data) {
-        cpu_allocator_->Free(qnn_tensor_.clientBuf.data);
-        qnn_tensor_.clientBuf.data = nullptr;
-      }
-    }
+  const Qnn_Tensor_t& GetQnnTensor() const {
+    return qnn_tensor_;
   }
-
-  const Qnn_Tensor_t& GetQnnTensor() const { return qnn_tensor_; }
   const std::string& GetName() const { return tensor_name_; }
 
  private:
@@ -119,211 +103,128 @@ class QnnTensorWrapper {
   }
 
   std::string tensor_name_;
-  onnxruntime::AllocatorPtr cpu_allocator_ = nullptr;
+  std::vector<uint32_t> max_dimensions_;
+  std::vector<uint32_t> current_dimensions_;
+  std::vector<uint8_t> client_buf_;
   Qnn_Tensor_t qnn_tensor_ = QNN_TENSOR_INIT;
 };
 
 class QnnParamWrapper {
  public:
-  QnnParamWrapper(const onnxruntime::AllocatorPtr cpu_allocator,
-                  const std::string& name,
-                  Qnn_Scalar_t scalarParam) : cpu_allocator_(cpu_allocator) {
+  QnnParamWrapper(const std::string& name,
+                  Qnn_Scalar_t scalarParam) : name_(name), shape_({}), param_data_({}) {
     qnn_param_.paramType = QNN_PARAMTYPE_SCALAR;
-    SetName(name);
+    qnn_param_.name = name_.c_str();
     qnn_param_.scalarParam = scalarParam;
   }
 
-  QnnParamWrapper(const onnxruntime::AllocatorPtr cpu_allocator,
-                  NodeIndex node_index,
+  QnnParamWrapper(NodeIndex node_index,
                   const std::string& node_name,
                   const std::string& name,
                   std::vector<uint32_t>&& shape,
                   std::vector<uint32_t>&& param_data,
-                  bool is_signed = false) : cpu_allocator_(cpu_allocator) {
+                  bool is_signed = false) : name_(name), shape_(std::move(shape)), param_data_(std::move(param_data)) {
     qnn_param_.paramType = QNN_PARAMTYPE_TENSOR;
-    SetName(name);
+    qnn_param_.name = name_.c_str();
     std::stringstream ss;
     ss << node_name << "_" << node_index << "_" << name;
     qnn_param_.tensorParam = QNN_TENSOR_INIT;
     qnn_param_.tensorParam.id = utils::GetTensorIdFromName(ss.str());
     qnn_param_.tensorParam.type = QNN_TENSOR_TYPE_STATIC;
     qnn_param_.tensorParam.dataType = is_signed ? QNN_DATATYPE_INT_32 : QNN_DATATYPE_UINT_32;
-    auto size = shape.size() * sizeof(uint32_t);
-    qnn_param_.tensorParam.rank = static_cast<uint32_t>(shape.size());
-    if (size > 0) {
-      qnn_param_.tensorParam.memType = QNN_TENSORMEMTYPE_RAW;
-      qnn_param_.tensorParam.maxDimensions = reinterpret_cast<uint32_t*>(cpu_allocator_->Alloc(size));
-      qnn_param_.tensorParam.currentDimensions = reinterpret_cast<uint32_t*>(cpu_allocator_->Alloc(size));
-      memscpy(qnn_param_.tensorParam.maxDimensions, size, shape.data(), size);
-      memscpy(qnn_param_.tensorParam.currentDimensions, size, shape.data(), size);
-      qnn_param_.tensorParam.memType = QNN_TENSORMEMTYPE_RAW;
-      auto data_size = param_data.size() * sizeof(uint32_t);
-      if (data_size > 0) {
-        qnn_param_.tensorParam.clientBuf.data = cpu_allocator_->Alloc(data_size);
-        if (is_signed) {
-          int32_t* tmp = reinterpret_cast<int32_t*>(qnn_param_.tensorParam.clientBuf.data);
-          std::transform(param_data.begin(), param_data.end(), tmp, [](const uint32_t& item) { return static_cast<int32_t>(item); });
-        } else {
-          memscpy(qnn_param_.tensorParam.clientBuf.data, data_size, param_data.data(), data_size);
-        }
-      } else {
-        qnn_param_.tensorParam.clientBuf.data = nullptr;
-      }
-      qnn_param_.tensorParam.clientBuf.dataSize = static_cast<uint32_t>(data_size);
-    }
+    qnn_param_.tensorParam.rank = static_cast<uint32_t>(shape_.size());
+    qnn_param_.tensorParam.memType = QNN_TENSORMEMTYPE_RAW;
+    qnn_param_.tensorParam.maxDimensions = shape_.data();
+    qnn_param_.tensorParam.currentDimensions = shape_.data();
+    qnn_param_.tensorParam.clientBuf.data = param_data_.data();
+    // TODO Need to convert the data from unsigned to signed.
+    qnn_param_.tensorParam.clientBuf.dataSize = static_cast<uint32_t>(param_data_.size() * sizeof(uint32_t));
     qnn_param_.tensorParam.quantizeParams.encodingDefinition = QNN_DEFINITION_UNDEFINED;
   }
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnParamWrapper);
-
   QnnParamWrapper(QnnParamWrapper&& other) noexcept {
-    std::swap(cpu_allocator_, other.cpu_allocator_);
+    std::swap(name_, other.name_);
+    std::swap(shape_, other.shape_);
+    std::swap(param_data_, other.param_data_);
     std::swap(qnn_param_, other.qnn_param_);
-  }
-
-  ~QnnParamWrapper() {
-    if (nullptr != cpu_allocator_) {
-      if (nullptr != qnn_param_.name) {
-        cpu_allocator_->Free(const_cast<char*>(qnn_param_.name));
-        qnn_param_.name = nullptr;
-      }
-      if (QNN_PARAMTYPE_TENSOR == qnn_param_.paramType) {
-        if (nullptr != qnn_param_.tensorParam.maxDimensions) {
-          cpu_allocator_->Free(qnn_param_.tensorParam.maxDimensions);
-          qnn_param_.tensorParam.maxDimensions = nullptr;
-        }
-
-        if (nullptr != qnn_param_.tensorParam.currentDimensions) {
-          cpu_allocator_->Free(qnn_param_.tensorParam.currentDimensions);
-          qnn_param_.tensorParam.currentDimensions = nullptr;
-        }
-
-        if (nullptr != qnn_param_.tensorParam.clientBuf.data) {
-          cpu_allocator_->Free(qnn_param_.tensorParam.clientBuf.data);
-          qnn_param_.tensorParam.clientBuf.data = nullptr;
-        }
-      }
+    qnn_param_.name = name_.c_str();
+    if (qnn_param_.paramType == QNN_PARAMTYPE_TENSOR) {
+      qnn_param_.tensorParam.maxDimensions = shape_.data();
+      qnn_param_.tensorParam.currentDimensions = shape_.data();
+      qnn_param_.tensorParam.clientBuf.data = param_data_.data();
     }
   }
 
-  const char* GetName() const { return qnn_param_.name; }
-  const Qnn_Param_t& GetQnnParam() const { return qnn_param_; }
+  ~QnnParamWrapper() = default;
+
+  const char* GetName() const {
+    return qnn_param_.name;
+  }
+
+  const Qnn_Param_t& GetQnnParam() const {
+    return qnn_param_;
+  }
 
  private:
-  void SetName(const char* name) {
-    if (nullptr != qnn_param_.name) {
-      cpu_allocator_->Free(const_cast<char*>(qnn_param_.name));
-    }
-    auto size = strlen(name) + 1;
-    qnn_param_.name = reinterpret_cast<char*>(cpu_allocator_->Alloc(size));
-    memscpy(const_cast<char*>(qnn_param_.name), size, name, size);
-  }
-  void SetName(const std::string& name) {
-    SetName(name.c_str());
-  }
-
-  onnxruntime::AllocatorPtr cpu_allocator_ = nullptr;
+  std::string name_;
+  std::vector<uint32_t> shape_;
+  std::vector<uint32_t> param_data_;
   Qnn_Param_t qnn_param_ = QNN_PARAM_INIT;
 };
 
 class QnnOpConfigWrapper {
  public:
-  QnnOpConfigWrapper(onnxruntime::AllocatorPtr cpu_allocator,
-                     const std::string& name,
+  QnnOpConfigWrapper(const std::string& name,
                      const std::string& package_name,
                      const std::string& type_name,
-                     std::vector<Qnn_Param_t>& params,
-                     std::vector<Qnn_Tensor_t>& inputs,
-                     std::vector<Qnn_Tensor_t>& outputs) : cpu_allocator_(cpu_allocator) {
-    SetName(name);
-    SetPackageName(package_name);
-    SetTypeName(type_name);
-    op_config_.numOfParams = static_cast<uint32_t>(params.size());
-    op_config_.numOfInputs = static_cast<uint32_t>(inputs.size());
-    op_config_.numOfOutputs = static_cast<uint32_t>(outputs.size());
-    if (op_config_.numOfParams > 0) {
-      Qnn_Param_t* iter1 = op_config_.params = reinterpret_cast<Qnn_Param_t*>(cpu_allocator_->Alloc(params.size() * sizeof(Qnn_Param_t)));
-      for (auto param : params) {
-        std::swap(*iter1, param);
-        ++iter1;
-      }
-    }
-    if (op_config_.numOfInputs > 0) {
-      Qnn_Tensor_t* iter2 = op_config_.inputTensors = reinterpret_cast<Qnn_Tensor_t*>(cpu_allocator_->Alloc(inputs.size() * sizeof(Qnn_Tensor_t)));
-      for (auto input : inputs) {
-        std::swap(*iter2, input);
-        ++iter2;
-      }
-    }
-    if (op_config_.numOfOutputs) {
-      Qnn_Tensor_t* iter3 = op_config_.outputTensors = reinterpret_cast<Qnn_Tensor_t*>(cpu_allocator_->Alloc(outputs.size() * sizeof(Qnn_Tensor_t)));
-      for (auto output : outputs) {
-        std::swap(*iter3, output);
-        ++iter3;
-      }
-    }
+                     std::vector<Qnn_Param_t>&& params,
+                     std::vector<Qnn_Tensor_t>&& inputs,
+                     std::vector<Qnn_Tensor_t>&& outputs) : name_(name),
+                                                            package_name_(package_name),
+                                                            type_name_(type_name),
+                                                            params_(std::move(params)),
+                                                            inputs_(std::move(inputs)),
+                                                            outputs_(std::move(outputs)) {
+    op_config_.name = name_.c_str();
+    op_config_.packageName = package_name_.c_str();
+    op_config_.typeName = type_name_.c_str();
+    op_config_.numOfParams = static_cast<uint32_t>(params_.size());
+    op_config_.numOfInputs = static_cast<uint32_t>(inputs_.size());
+    op_config_.numOfOutputs = static_cast<uint32_t>(outputs_.size());
+    op_config_.params = params_.data();
+    op_config_.inputTensors = inputs_.data();
+    op_config_.outputTensors = outputs_.data();
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnOpConfigWrapper);
 
   QnnOpConfigWrapper(QnnOpConfigWrapper&& other) noexcept {
-    std::swap(cpu_allocator_, other.cpu_allocator_);
     std::swap(this->op_config_, other.op_config_);
+    std::swap(name_, other.name_);
+    std::swap(package_name_, other.package_name_);
+    std::swap(type_name_, other.type_name_);
+    std::swap(params_, other.params_);
+    std::swap(inputs_, other.inputs_);
+    std::swap(outputs_, other.outputs_);
+    op_config_.name = name_.c_str();
+    op_config_.packageName = package_name_.c_str();
+    op_config_.typeName = type_name_.c_str();
+    op_config_.params = params_.data();
+    op_config_.inputTensors = inputs_.data();
+    op_config_.outputTensors = outputs_.data();
   }
 
-  ~QnnOpConfigWrapper() {
-    if (nullptr != cpu_allocator_) {
-      if (nullptr != op_config_.name) {
-        cpu_allocator_->Free(const_cast<char*>(op_config_.name));
-        op_config_.name = nullptr;
-      }
-      if (nullptr != op_config_.typeName) {
-        cpu_allocator_->Free(const_cast<char*>(op_config_.typeName));
-        op_config_.typeName = nullptr;
-      }
-      if (nullptr != op_config_.packageName) {
-        cpu_allocator_->Free(const_cast<char*>(op_config_.packageName));
-        op_config_.packageName = nullptr;
-      }
-      if (nullptr != op_config_.params) {
-        cpu_allocator_->Free(op_config_.params);
-        op_config_.params = nullptr;
-      }
-      if (nullptr != op_config_.inputTensors) {
-        cpu_allocator_->Free(op_config_.inputTensors);
-        op_config_.inputTensors = nullptr;
-      }
-      if (nullptr != op_config_.outputTensors) {
-        cpu_allocator_->Free(op_config_.outputTensors);
-        op_config_.outputTensors = nullptr;
-      }
-    }
-  }
+  ~QnnOpConfigWrapper() = default;
 
   const Qnn_OpConfig_t& GetQnnOpConfig() { return op_config_; }
 
  private:
-  void CopyString(char** dst, const char* src) {
-    if (nullptr != *dst) {
-      cpu_allocator_->Free(reinterpret_cast<void*>(const_cast<char*>(op_config_.name)));
-    }
-    auto size = strlen(src) + 1;
-    *dst = reinterpret_cast<char*>(cpu_allocator_->Alloc(size));
-    memscpy(*dst, size, src, size);
-  }
-
-  void SetName(const std::string& name) {
-    CopyString(const_cast<char**>(&op_config_.name), name.c_str());
-  }
-
-  void SetPackageName(const std::string& name) {
-    CopyString(const_cast<char**>(&op_config_.packageName), name.c_str());
-  }
-
-  void SetTypeName(const std::string& name) {
-    CopyString(const_cast<char**>(&op_config_.typeName), name.c_str());
-  }
-
-  onnxruntime::AllocatorPtr cpu_allocator_ = nullptr;
+  std::string name_;
+  std::string package_name_;
+  std::string type_name_;
+  std::vector<Qnn_Param_t> params_;
+  std::vector<Qnn_Tensor_t> inputs_;
+  std::vector<Qnn_Tensor_t> outputs_;
   Qnn_OpConfig_t op_config_ = QNN_OPCONFIG_INIT;
 };
 
@@ -332,15 +233,11 @@ class GraphInfo {
   GraphInfo(Qnn_GraphHandle_t graph, const std::string& name,
             std::vector<QnnTensorWrapper>&& input_tensors,
             std::vector<QnnTensorWrapper>&& output_tensors,
-            std::unordered_map<std::string, QnnTensorWrapper>&& model_tensor_map,
-            std::vector<QnnParamWrapper>&& params,
-            std::vector<QnnOpConfigWrapper>&& op_configs) : graph_name_(name),
-                                                            graph_(graph),
-                                                            input_tensors_(std::move(input_tensors)),
-                                                            output_tensors_(std::move(output_tensors)),
-                                                            params_(std::move(params)),
-                                                            model_tensors_map_(std::move(model_tensor_map)),
-                                                            op_configs_(std::move(op_configs)) {
+            std::unordered_map<std::string, QnnTensorWrapper>&& model_tensor_map) : graph_name_(name),
+                                                                                    graph_(graph),
+                                                                                    input_tensors_(std::move(input_tensors)),
+                                                                                    output_tensors_(std::move(output_tensors)),
+                                                                                    model_tensors_map_(std::move(model_tensor_map)) {
   }
   size_t NumInputTensors() const { return input_tensors_.size(); }
   size_t NumOutputTensors() const { return output_tensors_.size(); }
@@ -355,11 +252,7 @@ class GraphInfo {
   Qnn_GraphHandle_t graph_;
   std::vector<QnnTensorWrapper> input_tensors_;
   std::vector<QnnTensorWrapper> output_tensors_;
-  std::vector<QnnParamWrapper> params_;
   std::unordered_map<std::string, QnnTensorWrapper> model_tensors_map_;
-  // Qnn_OpConfig_t are stored to avoid invalid memory access in QNN API
-  // Once the requirement is cleaified and/or fixed we could avoid storing op_config data.
-  std::vector<QnnOpConfigWrapper> op_configs_;
 };
 
 typedef GraphInfo* GraphInfoPtr_t;

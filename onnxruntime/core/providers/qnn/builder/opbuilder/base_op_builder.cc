@@ -134,10 +134,9 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
 
     input_names.push_back(input_name);
 
-    Qnn_TensorType_t tensor_type = is_initializer_input ? QNN_TENSOR_TYPE_STATIC : QNN_TENSOR_TYPE_APP_WRITE;
+    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
     Qnn_TensorDataFormat_t data_format = 0;
-    QnnTensorWrapper input_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                         input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
@@ -194,8 +193,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper* qnn_model_wrapper,
     bool is_graph_output = qnn_model_wrapper->IsGraphOutput(output_name);
     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     Qnn_TensorDataFormat_t data_format = 0;
-    QnnTensorWrapper qnn_output(qnn_model_wrapper->GetAllocator(),
-                                output_name, tensor_type, data_format, qnn_data_type, quantize_param,
+    QnnTensorWrapper qnn_output(output_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                 std::move(output_shape));
     qnn_outputs.push_back(std::move(qnn_output));
   }
@@ -267,11 +265,22 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper* qnn_model_wrap
     axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
     axis_qnn_scalar.uint32Value = static_cast<uint32_t>(onnx_axis);
   }
-  QnnParamWrapper axis_param(qnn_model_wrapper->GetAllocator(),
-                             qnn_def::axis, axis_qnn_scalar);
+  QnnParamWrapper axis_param(qnn_def::axis, axis_qnn_scalar);
   node_params.push_back(std::move(axis_param));
 
   return Status::OK();
+}
+
+Qnn_TensorType_t BaseOpBuilder::GetInputTensorType(QnnModelWrapper* qnn_model_wrapper, const std::string& input_name) const {
+  if (qnn_model_wrapper->IsInitializerInput(input_name)) {
+    return QNN_TENSOR_TYPE_STATIC;
+  } else if (qnn_model_wrapper->IsGraphInput(input_name)) {
+    return QNN_TENSOR_TYPE_APP_WRITE;
+  } else if (qnn_model_wrapper->IsGraphOutput(input_name)) {
+    return QNN_TENSOR_TYPE_APP_READ;
+  } else {
+    return QNN_TENSOR_TYPE_NATIVE;
+  }
 }
 
 }  // namespace qnn

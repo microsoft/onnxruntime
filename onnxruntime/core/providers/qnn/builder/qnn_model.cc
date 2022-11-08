@@ -8,22 +8,21 @@
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
 
-bool QnnModel::GetGraphInfoFromModels(QnnModelWrapper* model_wrapper) {
+bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper* model_wrapper) {
   bool rt = true;
 
   graph_info_ = std::make_unique<GraphInfo>(model_wrapper->GetQnnGraph(),
                                             model_wrapper->GetQnnGraphName(),
                                             model_wrapper->GetGraphInputTensorWrappers(),
                                             model_wrapper->GetGraphOutputTensorWrappers(),
-                                            model_wrapper->GetModelTensorsMap(),
-                                            model_wrapper->GetQnnParamWrappers(),
-                                            model_wrapper->GetOpConfigWrappers());
+                                            model_wrapper->GetModelTensorsMap());
   if (graph_info_ == nullptr) {
-    LOGS(logger_, ERROR) << "GetGraphInfoFromModels() failed to allocate graphsInfo. make_unique returned nullptr.";
+    LOGS(logger_, ERROR) << "GetGraphInfoFromModel() failed to allocate graphsInfo. make_unique returned nullptr.";
     return false;
   }
 
@@ -75,7 +74,7 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
     }
     const auto* type_proto = input_output_defs[i]->TypeAsProto();
     int32_t data_type = type_proto->tensor_type().elem_type();
-    input_output_info_table.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(data_type, std::move(shape)));
+    input_output_info_table.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(i, data_type, std::move(shape)));
   }
 
   return Status::OK();
@@ -140,12 +139,12 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
   }
 
-  LOGS(logger_, VERBOSE) << "GetGraphInfoFromModels started.";
-  rt = GetGraphInfoFromModels(qnn_model_wrapper.get());
+  LOGS(logger_, VERBOSE) << "GetGraphInfoFromModel started.";
+  rt = GetGraphInfoFromModel(qnn_model_wrapper.get());
   if (!rt) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetGraphInfoFromModels failed.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetGraphInfoFromModel failed.");
   }
-  LOGS(logger_, VERBOSE) << "GetGraphInfoFromModels completed.";
+  LOGS(logger_, VERBOSE) << "GetGraphInfoFromModel completed.";
   return Status::OK();
 }
 
@@ -168,21 +167,17 @@ Status QnnModel::FinalizeGraphs() {
 Status QnnModel::SetupQnnInputOutput() {
   LOGS(logger_, VERBOSE) << "Setting up QNN input/output for graph: " << graph_info_->Name();
 
-  auto result = SetupTensors(&qnn_inputs_, graph_info_->InputTensors());
-  inputs_count_ = graph_info_->InputTensors().size();
-  result = SetupTensors(&qnn_outputs_, graph_info_->OutputTensors());
-  outputs_count_ = graph_info_->OutputTensors().size();
+  auto result = SetupTensors(qnn_inputs_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
     LOGS(logger_, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input tensors!");
+  }
 
-    LOGS(logger_, VERBOSE) << "Cleaning up input tensors";
-    ReleaseTensors(&qnn_inputs_, graph_info_->NumInputTensors());
-
-    LOGS(logger_, VERBOSE) << "Cleaning up output tensors";
-    ReleaseTensors(&qnn_outputs_, graph_info_->NumOutputTensors());
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input output tensors!");
+  result = SetupTensors(qnn_outputs_, graph_info_->OutputTensors(), false);
+  if (Status::OK() != result) {
+    LOGS(logger_, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN output tensors!");
   }
 
   return Status::OK();
@@ -195,18 +190,35 @@ Status QnnModel::ExecuteGraph(Ort::CustomOpApi& ort, OrtKernelContext* context) 
   ORT_RETURN_IF_NOT(model_input_index_map_.size() <= num_inputs, "Inconsistent input sizes");
   ORT_RETURN_IF_NOT(model_output_index_map_.size() == num_outputs, "Inconsistent output sizes");
 
-  for (const auto& [model_input, index] : model_input_index_map_) {
+  auto data_size = [&](const OrtValue* ort_tensor) -> size_t {
+    auto* tensor_type_and_shape = ort.GetTensorTypeAndShape(ort_tensor);
+    size_t length = ort.GetTensorShapeElementCount(tensor_type_and_shape);
+    ONNXTensorElementDataType element_type = ort.GetTensorElementType(tensor_type_and_shape);
+    size_t element_size = utils::GetElementSizeByType(element_type);
+    return element_size * length;
+  };
+
+  for (const auto& tensor_wrapper : graph_info_->InputTensors()) {
+    const std::string& model_input = tensor_wrapper.GetName();
+    auto index = GetInputIndex(model_input);
     LOGS(logger_, VERBOSE) << "model_input = " << model_input << " index = " << index;
     const OrtValue* input_tensor = ort.KernelContext_GetInput(context, index);
-    auto index_without_initializers = model_input_index_map_without_initializers_[model_input];
-    qnn_inputs_[index_without_initializers].clientBuf.data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+    index = model_input_index_map_without_initializers_[model_input];
+    ORT_ENFORCE(qnn_inputs_[index].clientBuf.dataSize == data_size(input_tensor),
+                "ORT Tensor data size does not match QNN tensor data size");
+    qnn_inputs_[index].clientBuf.data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
   }
 
-  for (const auto& [tensor_name, index] : model_output_index_map_) {
+  for (const auto& tensor_wrapper : graph_info_->OutputTensors()) {
+    const std::string& tensor_name = tensor_wrapper.GetName();
+    auto index = GetOutputIndex(tensor_name);
+    LOGS(logger_, VERBOSE) << "model_output = " << tensor_name << " index = " << index;
     const auto& output_info = GetOutputInfo(tensor_name);
     const std::vector<int64_t>& output_shape = output_info->shape_;
     auto* output_tensor = ort.KernelContext_GetOutput(context, index,
                                                       output_shape.data(), output_shape.size());
+    ORT_ENFORCE(qnn_outputs_[index].clientBuf.dataSize == data_size(output_tensor),
+                "ORT Tensor data size does not match QNN tensor data size");
     qnn_outputs_[index].clientBuf.data = ort.GetTensorMutableData<void>(output_tensor);
   }
 
@@ -215,10 +227,10 @@ Status QnnModel::ExecuteGraph(Ort::CustomOpApi& ort, OrtKernelContext* context) 
   auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
   Qnn_ErrorHandle_t executeStatus = QNN_GRAPH_NO_ERROR;
   executeStatus = qnn_interface.graphExecute(graph_info_->Graph(),
-                                             qnn_inputs_,
-                                             static_cast<uint32_t>(graph_info_->NumInputTensors()),
-                                             qnn_outputs_,
-                                             static_cast<uint32_t>(graph_info_->NumOutputTensors()),
+                                             qnn_inputs_.data(),
+                                             static_cast<uint32_t>(qnn_inputs_.size()),
+                                             qnn_outputs_.data(),
+                                             static_cast<uint32_t>(qnn_outputs_.size()),
                                              profile_backend_handle,
                                              nullptr);
 
@@ -247,98 +259,26 @@ Status QnnModel::GetQnnTensorDataLength(uint32_t* data_dimensions,
 
 // Setup details for Qnn_Tensor_t for execution
 // based on information in QnnTensorWrapper provided by model.so.
-Status QnnModel::SetupTensors(Qnn_Tensor_t** qnn_tensors,
-                              const std::vector<QnnTensorWrapper>& tensor_wrappers) {
+Status QnnModel::SetupTensors(std::vector<Qnn_Tensor_t>& qnn_tensors,
+                              const std::vector<QnnTensorWrapper>& tensor_wrappers,
+                              bool is_input) {
   size_t tensor_count = tensor_wrappers.size();
   ORT_RETURN_IF(0 == tensor_count, "Zero tensor size!");
+  qnn_tensors.resize(tensor_count);
 
-  *qnn_tensors = reinterpret_cast<Qnn_Tensor_t*>(cpu_allocator_->Alloc(tensor_count * sizeof(Qnn_Tensor_t)));
-  ORT_RETURN_IF(nullptr == *qnn_tensors, "Failed to allocate memory for tensors!");
-
-  for (size_t index = 0; index < tensor_count; ++index) {
-    const auto& wrapper_tensor = tensor_wrappers[index].GetQnnTensor();
+  for (auto& tensor_wrapper : tensor_wrappers) {
+    const auto& wrapper_tensor = tensor_wrapper.GetQnnTensor();
     size_t length = 0;
-    ORT_RETURN_IF_ERROR(GetQnnTensorDataLength(wrapper_tensor.currentDimensions,
+    ORT_RETURN_IF_ERROR(GetQnnTensorDataLength(wrapper_tensor.maxDimensions,
                                                wrapper_tensor.rank,
                                                wrapper_tensor.dataType, length));
-
-    // Only set the dataSize, clientBuf.data reuses the buffer from Ort Tensor
-    ((*qnn_tensors) + index)->clientBuf.dataSize = static_cast<uint32_t>(length);
-    auto result = DeepCopyQnnTensorInfo(((*qnn_tensors) + index), &wrapper_tensor);
-    if (Status::OK() == result) {
-      ((*qnn_tensors) + index)->memType = QNN_TENSORMEMTYPE_RAW;
-    } else {
-      ReleaseTensors(qnn_tensors, index);
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN Tensors!");
-    }
+    auto name = tensor_wrapper.GetName();
+    auto index = is_input ? model_input_index_map_without_initializers_[name] : model_output_index_map_[name];
+    qnn_tensors[index] = wrapper_tensor;
+    qnn_tensors[index].currentDimensions = qnn_tensors[index].maxDimensions;
+    qnn_tensors[index].clientBuf.dataSize = static_cast<uint32_t>(length);
   }
   return Status::OK();
-}
-
-// Clean up memory allocated for maxDimensions, currentDimensions & tensors.
-void QnnModel::ReleaseTensors(Qnn_Tensor_t** tensors, size_t tensor_count) {
-  if (nullptr == tensors || nullptr == *tensors) {
-    return;
-  }
-  for (size_t index = 0; index < tensor_count; index++) {
-    LOGS_DEFAULT(VERBOSE) << "Release resources for tensor: " << index;
-    if (nullptr == ((*tensors) + index)) {
-      continue;
-    }
-
-    if (nullptr != ((*tensors) + index)->maxDimensions) {
-      cpu_allocator_->Free(((*tensors) + index)->maxDimensions);
-    }
-    if (nullptr != ((*tensors) + index)->currentDimensions) {
-      cpu_allocator_->Free(((*tensors) + index)->currentDimensions);
-    }
-  }
-  cpu_allocator_->Free(*tensors);
-  *tensors = nullptr;
-
-  return;
-}
-
-// Clean up all input and output tensors after execution.
-void QnnModel::ReleaseInputAndOutputTensors() {
-  LOGS_DEFAULT(INFO) << "cleaning up resources for input tensors";
-  ReleaseTensors(&qnn_inputs_, inputs_count_);
-
-  LOGS_DEFAULT(INFO) << "cleaning up resources for output tensors";
-  ReleaseTensors(&qnn_outputs_, outputs_count_);
-
-  return;
-}
-
-Status QnnModel::DeepCopyQnnTensorInfo(Qnn_Tensor_t* dest, const Qnn_Tensor_t* src) {
-  ORT_RETURN_IF(nullptr == dest || nullptr == src, "Null pointer encoutnered!");
-
-  dest->id = src->id;
-  dest->type = src->type;
-  dest->dataFormat = src->dataFormat;
-  dest->dataType = src->dataType;
-  dest->rank = src->rank;
-  memscpy(&(dest->quantizeParams), sizeof(Qnn_QuantizeParams_t),
-          &(src->quantizeParams), sizeof(Qnn_QuantizeParams_t));
-  size_t shape_size = src->rank * sizeof(uint32_t);
-  dest->maxDimensions = reinterpret_cast<uint32_t*>(cpu_allocator_->Alloc(shape_size));
-  dest->currentDimensions = reinterpret_cast<uint32_t*>(cpu_allocator_->Alloc(shape_size));
-  if (nullptr == dest->maxDimensions || nullptr == dest->currentDimensions) {
-    if (nullptr != dest->maxDimensions) {
-      cpu_allocator_->Free(dest->maxDimensions);
-    }
-    if (nullptr != dest->currentDimensions) {
-      cpu_allocator_->Free(dest->currentDimensions);
-    }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Empty data dimension encoutered!");
-  }
-  memscpy(dest->maxDimensions, shape_size, src->maxDimensions, shape_size);
-  memscpy(dest->currentDimensions, shape_size, src->currentDimensions, shape_size);
-  return Status::OK();
-}
-
-QnnModel::~QnnModel() {
-  ReleaseInputAndOutputTensors();
 }
 
 }  // namespace qnn

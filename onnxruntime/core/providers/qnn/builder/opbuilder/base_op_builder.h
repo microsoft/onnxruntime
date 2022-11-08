@@ -233,6 +233,7 @@ class BaseOpBuilder : public IOpBuilder {
                               const NodeUnit& node_unit,
                               std::vector<QnnParamWrapper>& node_params,
                               int32_t& default_axis_value) const;
+  Qnn_TensorType_t GetInputTensorType(QnnModelWrapper* qnn_model_wrapper, const std::string& input_name) const;
 
   mutable size_t output_count_ = std::numeric_limits<uint32_t>::max();
 

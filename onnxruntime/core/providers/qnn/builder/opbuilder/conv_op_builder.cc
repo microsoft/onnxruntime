@@ -103,8 +103,7 @@ Status ConvOpBuilder::AddDefaultBias(QnnModelWrapper* qnn_model_wrapper,
   LOGS(logger, VERBOSE) << "Add default bias: " << bias_name;
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;
   Qnn_TensorDataFormat_t data_format = 0;
-  QnnTensorWrapper bias_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                      bias_name, tensor_type, data_format, qnn_data_type, quantize_param,
+  QnnTensorWrapper bias_tensorwrapper(bias_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                       std::move(bias_shape), std::move(default_bias_data));
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(bias_name, std::move(bias_tensorwrapper)), "Failed to add tensor.");
@@ -196,10 +195,10 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
       continue;
     }
 
-    Qnn_TensorType_t tensor_type = is_initializer_input ? QNN_TENSOR_TYPE_STATIC : QNN_TENSOR_TYPE_APP_WRITE;
+    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
+
     Qnn_TensorDataFormat_t data_format = 0;
-    QnnTensorWrapper input_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                         input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
@@ -232,8 +231,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
   std::vector<uint32_t> dialitions_dim;
   dialitions_dim.push_back(dialitions_size);
   if (node_unit.OpType() == "Conv") {
-    QnnParamWrapper dilation_paramwrapper(qnn_model_wrapper->GetAllocator(),
-                                          node_unit.Index(), node_unit.Name(), qnn_def::dilation, std::move(dialitions_dim),
+    QnnParamWrapper dilation_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::dilation, std::move(dialitions_dim),
                                           std::move(dilations));
     conv_params.push_back(std::move(dilation_paramwrapper));
   } else if (node_unit.OpType() == "ConvTranspose") {
@@ -242,8 +240,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
     std::transform(output_padding_values.cbegin(), output_padding_values.cend(), std::back_inserter(output_padding),
                    [](int32_t item) { return SafeInt<uint32_t>(item); });
     std::vector<uint32_t> output_padding_dim{static_cast<uint32_t>(output_padding.size())};
-    QnnParamWrapper output_padding_paramwrapper(qnn_model_wrapper->GetAllocator(),
-                                                node_unit.Index(), node_unit.Name(), qnn_def::output_padding,
+    QnnParamWrapper output_padding_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::output_padding,
                                                 std::move(output_padding_dim), std::move(output_padding));
     conv_params.push_back(std::move(output_padding_paramwrapper));
   } else {
@@ -263,8 +260,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
                  [](int32_t item) { return SafeInt<uint32_t>(item); });
   uint32_t strides_size = static_cast<uint32_t>(strides.size());
   std::vector<uint32_t> strides_dim{strides_size};
-  QnnParamWrapper stride_amount_paramwrapper(qnn_model_wrapper->GetAllocator(),
-                                             node_unit.Index(), node_unit.Name(), qnn_def::stride, std::move(strides_dim),
+  QnnParamWrapper stride_amount_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::stride, std::move(strides_dim),
                                              std::move(strides));
   conv_params.push_back(std::move(stride_amount_paramwrapper));
 
@@ -306,8 +302,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
                  [](int32_t item) { return SafeInt<uint32_t>(item); });
   // Qnn Conv2d must use dims {2, 2}
   std::vector<uint32_t> pad_dims{2, 2};
-  QnnParamWrapper pad_amount_paramwrapper(qnn_model_wrapper->GetAllocator(),
-                                          node_unit.Index(), node_unit.Name(), qnn_def::pad_amount, std::move(pad_dims),
+  QnnParamWrapper pad_amount_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::pad_amount, std::move(pad_dims),
                                           std::move(pads));
   conv_params.push_back(std::move(pad_amount_paramwrapper));
 
@@ -338,8 +333,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
     Qnn_Scalar_t group_qnn_scalar = QNN_SCALAR_INIT;
     group_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
     group_qnn_scalar.uint32Value = SafeInt<uint32_t>(group);
-    QnnParamWrapper group_paramwrapper(qnn_model_wrapper->GetAllocator(),
-                                       qnn_def::group, group_qnn_scalar);
+    QnnParamWrapper group_paramwrapper(qnn_def::group, group_qnn_scalar);
     conv_params.push_back(std::move(group_paramwrapper));
   }
   const std::string& output_node_type = is_depthwise_conv2d ? depthwise_conv2d : GetQnnOpType(node_unit.OpType());
@@ -347,8 +341,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
   bool is_graph_output = qnn_model_wrapper->IsGraphOutput(output_name);
   Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   Qnn_TensorDataFormat_t data_format = 0;
-  QnnTensorWrapper output_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                        output_name, tensor_type, data_format, qnn_data_type, output_quantize_param,
+  QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, data_format, qnn_data_type, output_quantize_param,
                                         std::move(output_shape));
   std::vector<QnnTensorWrapper> output_tensors;
   output_tensors.emplace_back(std::move(output_tensorwrapper));

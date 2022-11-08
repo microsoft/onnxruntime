@@ -87,8 +87,7 @@ Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper* qnn_model_wrapper,
   std::transform(transpose_perm.begin(), transpose_perm.end(), perm_data.begin(),
                  [](int64_t item) { return SafeInt<uint32_t>(item); });
 
-  QnnParamWrapper transpose_param(qnn_model_wrapper->GetAllocator(),
-                                  node_unit.Index(), node_unit.Name(), qnn_def::perm, std::move(perm_shape), std::move(perm_data));
+  QnnParamWrapper transpose_param(node_unit.Index(), node_unit.Name(), qnn_def::perm, std::move(perm_shape), std::move(perm_data));
   node_params.push_back(std::move(transpose_param));
 
   return Status::OK();
@@ -120,8 +119,7 @@ Status SimpleOpBuilder::ProcessAxesAttribute(QnnModelWrapper* qnn_model_wrapper,
   axes_data.resize(axex_size);
   std::transform(reduce_axes.begin(), reduce_axes.end(), axes_data.begin(),
                  [](int64_t item) { return SafeInt<uint32_t>(item); });
-  QnnParamWrapper axes_param(qnn_model_wrapper->GetAllocator(),
-                             node_unit.Index(), node_unit.Name(), qnn_def::axes, std::move(axes_shape), std::move(axes_data));
+  QnnParamWrapper axes_param(node_unit.Index(), node_unit.Name(), qnn_def::axes, std::move(axes_shape), std::move(axes_data));
   node_params.push_back(std::move(axes_param));
 
   return Status::OK();
@@ -141,8 +139,7 @@ Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper* qnn_model_wrapper
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;
   Qnn_TensorDataFormat_t data_format = 0;
-  QnnTensorWrapper input_tensorwrapper(qnn_model_wrapper->GetAllocator(),
-                                       input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_data));
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_data));
   ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
   return Status::OK();
 }
@@ -173,12 +170,10 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = 0;
-    QnnParamWrapper transpose_in0_param(qnn_model_wrapper->GetAllocator(),
-                                        qnn_def::transpose_in0, scalar_param);
+    QnnParamWrapper transpose_in0_param(qnn_def::transpose_in0, scalar_param);
     node_params.push_back(std::move(transpose_in0_param));
 
-    QnnParamWrapper transpose_in1_param(qnn_model_wrapper->GetAllocator(),
-                                        qnn_def::transpose_in1, scalar_param);
+    QnnParamWrapper transpose_in1_param(qnn_def::transpose_in1, scalar_param);
     node_params.push_back(std::move(transpose_in1_param));
   }
 
@@ -192,8 +187,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = static_cast<uint8_t>(onnx_keepdims == 0 ? 0 : 1);
-    QnnParamWrapper keep_dims_param(qnn_model_wrapper->GetAllocator(),
-                                    qnn_def::keep_dims, scalar_param);
+    QnnParamWrapper keep_dims_param(qnn_def::keep_dims, scalar_param);
     node_params.push_back(std::move(keep_dims_param));
   }
 

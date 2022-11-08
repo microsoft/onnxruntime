@@ -88,9 +88,8 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   bool is_graph_output = qnn_model_wrapper->IsGraphOutput(output_name);
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
   std::string name = output_name + (reshape_required ? "_reshape" : "");
-  Qnn_TensorType_t tensor_type = reshape_required ? QNN_TENSOR_TYPE_NATIVE : (is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE);
-  QnnTensorWrapper gather_output_wrapper(qnn_model_wrapper->GetAllocator(),
-                                         name, tensor_type, 0, qnn_data_type, quantize_param,
+  Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper gather_output_wrapper(name, tensor_type, 0, qnn_data_type, quantize_param,
                                          std::move(qnn_output_shape));
   std::vector<QnnTensorWrapper> output_tensors;
   output_tensors.emplace_back(std::move(gather_output_wrapper));
@@ -110,8 +109,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
     // Add Reshape Node after Gather.
     Qnn_TensorType_t reshape_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     Qnn_TensorDataFormat_t reshape_data_format = 0;
-    QnnTensorWrapper reshape_output(qnn_model_wrapper->GetAllocator(),
-                                    output_name, reshape_tensor_type, reshape_data_format, qnn_data_type, quantize_param,
+    QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, reshape_data_format, qnn_data_type, quantize_param,
                                     std::move(target_output_shape));
     std::vector<QnnTensorWrapper> reshape_output_tensors;
     reshape_output_tensors.emplace_back(std::move(reshape_output));
