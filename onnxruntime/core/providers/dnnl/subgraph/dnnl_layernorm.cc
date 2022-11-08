@@ -129,20 +129,47 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Primitive
   auto lnorm_prim = dnnl::layer_normalization_forward(lnorm_pd);
 
+  // Define primitive arguments
+  std::unordered_map<int, dnnl::memory> lnorm_args = {{DNNL_ARG_SRC, src_mem},
+                                                      {DNNL_ARG_DST, src_mem}};
   // Get gamma
   auto gamma_mem = sp.GetMemory(node.Input(scale_pos));
   gamma_mem = sp.GetMemoryAndReshape(node.Input(scale_pos), gamma_mem.get_desc(), dnnl_engine);
-
-  // Define primitive arguments
-  std::unordered_map<int, dnnl::memory> lnorm_args = {{DNNL_ARG_SRC, src_mem},
-                                                      {DNNL_ARG_SCALE, gamma_mem},
-                                                      {DNNL_ARG_DST, src_mem}};
+  if (node.Input(scale_pos).Type() != dnnl::memory::data_type::f32) {
+    //  casting to fp32 if input with other data type
+    auto gamma_md = gamma_mem.get_desc();
+    auto dims = gamma_md.dims();
+    auto strides = gamma_md.data.format_desc.blocking.strides;
+    dnnl::memory::dims gamma_strides_vec;
+    for (size_t i = 0; i < dims.size(); i++) {
+      gamma_strides_vec.push_back(strides[i]);
+    }
+    auto gamma_mem_f32 = CastAndTransformMemory(sp, gamma_mem, dnnl::memory::data_type::f32, gamma_strides_vec);
+    lnorm_args.insert({DNNL_ARG_SCALE, gamma_mem_f32});
+  } else {
+    //  no casting if input with fp32
+    lnorm_args.insert({DNNL_ARG_SCALE, gamma_mem});
+  }
 
   // Get Beta and add shift if available
   if (shift_exists) {
     auto beta_mem = sp.GetMemory(node.Input(shift_pos));
     beta_mem = sp.GetMemoryAndReshape(node.Input(shift_pos), beta_mem.get_desc(), dnnl_engine);
-    lnorm_args.insert({DNNL_ARG_SHIFT, beta_mem});
+    if (node.Input(shift_pos).Type() != dnnl::memory::data_type::f32) {
+      //  casting to fp32 if input with other data type
+      auto beta_md = beta_mem.get_desc();
+      auto dims = beta_md.dims();
+      auto strides = beta_md.data.format_desc.blocking.strides;
+      dnnl::memory::dims beta_strides_vec;
+      for (size_t i = 0; i < dims.size(); i++) {
+        beta_strides_vec.push_back(strides[i]);
+      }
+      auto beta_mem_f32 = CastAndTransformMemory(sp, beta_mem, dnnl::memory::data_type::f32, beta_strides_vec);
+      lnorm_args.insert({DNNL_ARG_SHIFT, beta_mem_f32});
+    } else {
+      //  no casting if input with fp32
+      lnorm_args.insert({DNNL_ARG_SHIFT, beta_mem});
+    }
   }
 
 // Check outputs used for training
@@ -310,6 +337,25 @@ float DnnlLayerNorm::GetEpsilon(DnnlNode& node) {
     epsilon = attr->second().f();
   }
   return epsilon;
+}
+
+dnnl::memory DnnlLayerNorm::CastAndTransformMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::data_type dst_datatype, dnnl::memory::dims dst_strides) {
+  dnnl::memory dst_mem;
+  {
+    auto eng = sp.GetEngine();
+
+    // Make a new memory descriptor based on the source descriptor and given destination dataype and strides
+    auto src_md = src_mem.get_desc();
+    dnnl::memory::desc dst_md = dnnl::memory::desc(src_md.dims(), dst_datatype, dst_strides);
+    dst_mem = dnnl::memory(dst_md, eng);
+
+    // Reorder source memory to destination memory as per the given dataype and strides
+    auto reorder_pd = dnnl::reorder::primitive_desc(eng, src_md, eng, dst_md);
+    auto reorder = dnnl::reorder(reorder_pd);
+    std::unordered_map<int, dnnl::memory> reorder_mem_map({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+    sp.AddPrimitive(reorder, reorder_mem_map);
+  }
+  return dst_mem;
 }
 
 }  // namespace ort_dnnl

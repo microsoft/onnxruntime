@@ -170,7 +170,11 @@ def parse_arguments():
     )
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
-
+    parser.add_argument(
+        "--compile_no_warning_as_error",
+        action="store_true",
+        help="Preventing warnings from being treated as errors on compile.",
+    )
     # Training options
     parser.add_argument("--enable_nvtx_profile", action="store_true", help="Enable NVTX profile in ORT.")
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profile in ORT.")
@@ -784,16 +788,18 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
 
 
 def use_dev_mode(args):
+    if args.compile_no_warning_as_error:
+        return False
     if args.use_acl:
-        return "OFF"
+        return False
     if args.use_armnn:
-        return "OFF"
+        return False
     if args.ios and is_macOS():
-        return "OFF"
+        return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")
     if SYSTEM_COLLECTIONURI and not SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/":
-        return "OFF"
-    return "ON"
+        return False
+    return True
 
 
 def add_default_definition(definition_list, key, default_value):
@@ -832,9 +838,11 @@ def generate_build_tree(
 ):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
-    cmake_args = [
-        cmake_path,
-        cmake_dir,
+    cmake_args = [cmake_path, cmake_dir]
+    if not use_dev_mode(args):
+        cmake_args += ["--compile-no-warning-as-error"]
+
+    cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
@@ -953,9 +961,6 @@ def generate_build_tree(
     if args.llvm_config:
         cmake_args.append("-Donnxruntime_TVM_USE_LLVM=" + args.llvm_config)
 
-    # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
-    # And OFF for the people who are not actively developing onnx runtime.
-    add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
