@@ -40,6 +40,7 @@
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/propagate_cast_ops.h"
+#include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -99,6 +100,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
 

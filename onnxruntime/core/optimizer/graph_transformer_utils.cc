@@ -57,6 +57,7 @@
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -67,6 +68,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
+#include "orttraining/core/optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 
@@ -223,6 +225,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
                                                                   onnxruntime::kCudaExecutionProvider,
                                                                   onnxruntime::kRocmExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_dml_rocm_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                      onnxruntime::kCudaExecutionProvider,
+                                                                      onnxruntime::kRocmExecutionProvider,
+                                                                      onnxruntime::kDmlExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
                                                                             onnxruntime::kCudaExecutionProvider,
                                                                             onnxruntime::kRocmExecutionProvider,
@@ -251,10 +257,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherToSplitFusion>(cpu_cuda_rocm_eps));
 
@@ -271,8 +277,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_rocm_eps));
 
-      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
@@ -291,6 +298,19 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
+
+#ifdef ENABLE_TRAINING
+      // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.
+      // Known issue: after mmeory optimization is completed, if some fusion happens, it is possible that the
+      // node priority got changed. This may disorder the execution order of nodes to recompute.
+      // TODO(pengwa): need to fix this issue.
+      const std::string enable_memory_optimizer =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
+      const std::string probe_level =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
+      transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
+#endif
+
     } break;
 
     case TransformerLevel::Level3: {
@@ -309,6 +329,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
 #endif
+
     } break;
 
     default:

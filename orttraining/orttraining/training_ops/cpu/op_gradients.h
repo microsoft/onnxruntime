@@ -10,18 +10,6 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-class SinGrad final : public OpKernel {
- public:
-  explicit SinGrad(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SinGrad);
-};
-
-template <typename T>
 class ReluGrad final : public OpKernel {
  public:
   explicit ReluGrad(const OpKernelInfo& info) : OpKernel(info) {
@@ -43,6 +31,20 @@ class SigmoidGrad final : public OpKernel {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SigmoidGrad);
+};
+
+template <typename T>
+class QuickGeluGrad final : public OpKernel {
+ public:
+  explicit QuickGeluGrad(const OpKernelInfo& info) : OpKernel(info) {
+    alpha_ = info.GetAttrOrDefault<float>("alpha", 1.702f);
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QuickGeluGrad);
+  float alpha_;
 };
 
 template <typename T>

@@ -110,6 +110,11 @@ Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, cons
   return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
 }
 
+Status TrainingSession::ExportModelForInferencing(const std::string& inference_model_path,
+                                                  gsl::span<const std::string> graph_output_names) const {
+  return module_->ExportModelForInferencing(inference_model_path, graph_output_names);
+}
+
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

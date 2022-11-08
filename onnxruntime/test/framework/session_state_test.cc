@@ -100,7 +100,6 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateAddGetKernelTest, testing::Values(0, 1));
 
-namespace {
 class TestParam {
  public:
   int ir_version;
@@ -108,7 +107,7 @@ class TestParam {
   int thread_count;
 };
 TestParam param_list[] = {{3, true, 0}, {4, true, 0}, {3, false, 0}, {4, false, 0}, {3, true, 1}, {4, true, 1}, {3, false, 1}, {4, false, 1}};
-}  // namespace
+
 class SessionStateTestP : public testing::TestWithParam<TestParam> {};
 // Test that we separate out constant and non-constant initializers correctly
 TEST_P(SessionStateTestP, TestInitializerProcessing) {

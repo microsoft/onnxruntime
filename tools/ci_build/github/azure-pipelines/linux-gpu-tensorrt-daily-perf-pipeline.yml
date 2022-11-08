@@ -1,19 +1,9 @@
 parameters:
 
-- name: BuildORT
-  displayName: Build ORT
-  type: boolean
-  default: true
-
 - name: PostToDashboard
   displayName: Post to Dashboard
   type: boolean
   default: true
-
-- name: RunNvidiaContainer
-  displayName: Run in Nvidia Container (or set trtContainer Variable)
-  type: boolean
-  default: false
 
 - name: TrtVersion
   displayName: TensorRT Version
@@ -23,11 +13,7 @@ parameters:
   - 8.2.1.8
   - 8.0.1.6
   - 8.4.1.5
-
-- name: ConfigureEPs
-  displayName: Configure EPs (set epList variable - separate by spaces)
-  type: boolean
-  default: false
+  - BIN
 
 - name: ModelGroups
   type: object
@@ -60,44 +46,15 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
-    - name: trtContainerVersion
-      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
-        ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
-          value: 21.12
-        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
-          value: 21.07
-      
-    - name: nvidia_dockerfile
-      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
-        value: nvcr.io/nvidia/tensorrt:$(trtContainerVersion)-py3
-      
-
-    - name: dockerfile_path
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: dockerfiles
+    - name: branchName
+      ${{ if not(eq(variables['ortBranchOverride'], '')) }}:
+        value: $(ortBranchOverride)
       ${{ else }}:
-        value: tools/ci_build/github/linux/docker
+        value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
 
-    - name: dockerfile
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: $(dockerfile_path)/Dockerfile.tensorrt
-      ${{ else }}:
-        ${{ if eq(parameters.TrtVersion, '8.4.1.5') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_6_tensorrt8_4
-        ${{ elseif eq(parameters.TrtVersion, '8.2.1.8') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_2
-        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_0
-
-    - name: image
-      ${{ if eq(parameters.BuildORT, true) }}:
-        value: ort-$(branch)
-      ${{ else }}:
-        value: $(nvidia_dockerfile)
-      
-    - name: tensorrt_version
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: $(trtContainerVersion)
+    - name: trtVersion
+      ${{ if eq(parameters.TrtVersion, 'BIN') }}:
+        value: $(tarTrtVersion)
       ${{ else }}:
         value: ${{ parameters.TrtVersion }}
 
@@ -112,34 +69,27 @@ jobs:
     - name: optional_arguments
       value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
-  steps:
-    - ${{ if and( eq(parameters.BuildORT, false), eq(parameters.TrtVersion, '8.2.1.8')) }}:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          buildType: 'specific'
-          project: 'Lotus'
-          preferTriggeringPipeline: true 
-          pipeline: '841'
-          runBranch: 'ref/heads/main'
-          buildVersionToDownload: 'latest'
-          allowPartiallySucceededBuilds: false
-          artifact: 'onnxruntime_gpu'
-          targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-      
-      - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        - script: 'docker pull $(nvidia_dockerfile)'
-          displayName: 'Pull Nvidia Dockerfile'
-      - ${{ else }}:
-        - script: 'Can only run pip package in Nvidia Container'
-          displayName: 'Please Re-run'
+    - name: image
+      value: ort-image-$(Build.BuildId)
 
-    - ${{ if eq(parameters.BuildORT, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/$(dockerfile) -b $(branch) -t $(tensorrt_version) -i $(image) -c 75 '
+  steps:
+    - ${{ if eq(parameters.TrtVersion, 'BIN') }}:
+      - script: 'ls -al $(trtBinsDir)'
+        displayName: 'Show available TensorRT .tar.gz packages'
+
+      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).cudnn$(tarCudnnVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
+        displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
+
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
+        displayName: 'Install TensorRT from binaries and build latest ORT Image'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - ${{ else }}:
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75'
         displayName: 'Build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b ${{ parameters.BuildORT }} -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b true -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
@@ -185,7 +135,7 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch) --kusto_conn $(kustoConn) --database $(database)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database)
     
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gtest/gtest.h"
+
 #include "custom_op_utils.h"
 #include "core/common/common.h"
 
@@ -48,6 +50,54 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   }
 #endif
 }
+
+#ifdef USE_CUDA
+void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
+  // Setup inputs
+  Ort::KernelContext ctx(context);
+  auto input_X = ctx.GetInput(0);
+  auto input_Y = ctx.GetInput(1);
+  const float* X = input_X.GetTensorData<float>();
+  const float* Y = input_Y.GetTensorData<float>();
+
+  // check if the second input is on CPU
+  cudaPointerAttributes attributes;
+  cudaPointerGetAttributes(&attributes, Y);
+  auto y_mem_type = attributes.device;
+  // TODO: check why the below ORT API does not work as expected:
+  // `auto y_mem_type = input_Y.GetTensorMemoryInfo().GetMemoryType();`
+  ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
+
+  // copy the second input to GPU
+  const int64_t y_size =  input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
+  float* Y_cuda {};
+  cudaMalloc(&Y_cuda, y_size * sizeof(float));
+  cudaMemcpy(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice);
+
+
+  // Setup output
+  auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
+  auto output = ctx.GetOutput(0, dimensions);
+  float* out = output.GetTensorMutableData<float>();
+
+  auto output_info = output.GetTensorTypeAndShapeInfo();
+  int64_t size = output_info.GetElementCount();
+
+  // Do computation
+
+  // Launch on stream 0 or user provided stream
+  cuda_add(size, out, X, Y_cuda, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  // cudaStreamSynchronize(nullptr);
+  // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
+  // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
+  // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
+  //     stream to launch the custom op (OR)
+  // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
+  //     and use the same compute stream to launch the custom op.
+  // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
+  cudaFree(Y_cuda);
+}
+#endif
 
 void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   // Setup inputs

@@ -158,7 +158,6 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
     }
 
-    int32_t data_type = -1;
     // Ignore if not constant initializers.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph.GetConstantInitializer(
         origin_initializer_node_arg->Name(), true);
@@ -181,7 +180,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     size_t value_id = t_disp.InvokeRet<size_t, GetOrAddValueInConstantStoreDispatcher>(initializer, const_value_store);
 
     // Construct a string by data type, value, and rank. Used as a key in pattern_key_to_shared_arg_map.
-    const std::string pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, value_id, "_", data_type, "_",
+    const std::string pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, value_id, "_", tensor_proto->data_type(), "_",
                                                origin_initializer_node_arg->Shape()->dim_size());
 
     // If there is no such existing scalar pattern, add a new one.

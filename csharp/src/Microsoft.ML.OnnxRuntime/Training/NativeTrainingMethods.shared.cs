@@ -32,6 +32,7 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr CopyBufferToParameters;
             public IntPtr ReleaseTrainingSession;
             public IntPtr ReleaseCheckpointState;
+            public IntPtr ExportModelForInferencing;
         }
 
         internal static class NativeTrainingMethods
