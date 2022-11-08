@@ -32,6 +32,8 @@ void RegisterDmlSchemas() {
     .Input(0, "X", "", "T")
     .Input(1, "W", "", "T")
     .Input(2, "B", "", "T", OpSchema::Optional)
+    .Input(3, "Min", "", "tensor(float)", OpSchema::Optional)
+    .Input(4, "Max", "", "tensor(float)", OpSchema::Optional)
     .Output(0, "Y", "", "T")
     .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
     .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
@@ -47,6 +49,8 @@ void RegisterDmlSchemas() {
     .Attr(AttrName::FusedBeta, "", onnx::AttributeProto::FLOAT, false)
     .Attr(AttrName::FusedGamma, "", onnx::AttributeProto::FLOAT, false)
     .Attr(AttrName::FusedRatio, "", onnx::AttributeProto::FLOAT, false)
+    .Attr(AttrName::FusedMin, "", onnx::AttributeProto::FLOAT, false)
+    .Attr(AttrName::FusedMax, "", onnx::AttributeProto::FLOAT, false)
     .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
       ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
@@ -76,6 +80,8 @@ void RegisterDmlSchemas() {
     .Attr(AttrName::FusedBeta, "", onnx::AttributeProto::FLOAT, false)
     .Attr(AttrName::FusedGamma, "", onnx::AttributeProto::FLOAT, false)
     .Attr(AttrName::FusedRatio, "", onnx::AttributeProto::FLOAT, false)
+    .Attr(AttrName::FusedMin, "", onnx::AttributeProto::FLOAT, false)
+    .Attr(AttrName::FusedMax, "", onnx::AttributeProto::FLOAT, false)
     .TypeAndShapeInferenceFunction(
         [](ONNX_NAMESPACE::InferenceContext& ctx) { ONNX_NAMESPACE::convTransposeShapeInference(ctx); });
 

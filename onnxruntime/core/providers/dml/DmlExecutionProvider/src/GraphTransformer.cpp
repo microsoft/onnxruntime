@@ -99,7 +99,8 @@ namespace Dml
                 continue;
             }
 
-            if (outputNode.InputDefs().size() != 1)
+            bool isClip = outputNode.OpType() == "Clip";
+            if (outputNode.InputDefs().size() != 1 && !isClip)
             {
                 // Can only fuse activation functions that take a single input
                 continue;
@@ -148,6 +149,31 @@ namespace Dml
             {
                 fusedNode.inputs.push_back(graph->GetNodeArg(input->Name()));
             }
+
+            if (isClip)
+            {
+                for (const auto *input : activationNode.InputDefs())
+                {
+                    bool shouldSkip = false;
+                    // Do not add duplicate
+                    for (const auto *existingNode : fusedNode.inputs)
+                    {
+                        if (graph->GetNodeArg(input->Name()) == existingNode)
+                        {
+                            shouldSkip = true;
+                            break;
+                        }
+                    }
+
+                    if (shouldSkip)
+                    {
+                        continue;
+                    }
+
+                    fusedNode.inputs.push_back(graph->GetNodeArg(input->Name()));
+                }
+            }
+            
 
             // Outputs from the fused node are the outputs to the activation node
             for (const auto *output : activationNode.OutputDefs())

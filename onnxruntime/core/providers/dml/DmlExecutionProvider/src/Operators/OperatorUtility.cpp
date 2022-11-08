@@ -194,6 +194,10 @@ namespace Dml
             OperatorInfo{ "Softplus",           onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Softplus },
             OperatorInfo{ "ParametricSoftplus", onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ParametricSoftplus },
             OperatorInfo{ "Dropout",            onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Dropout },
+            OperatorInfo{ "Clip",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Clip },
+            OperatorInfo{ "Clip",               onnxruntime::kOnnxDomain, OnnxOperatorSet11::sc_sinceVer_Clip },
+            OperatorInfo{ "Clip",               onnxruntime::kOnnxDomain, OnnxOperatorSet12::sc_sinceVer_Clip },
+            OperatorInfo{ "Clip",               onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Clip },
         };
 
         std::optional<FusedOpProperties> TryGetFusedOp(
@@ -337,6 +341,12 @@ namespace Dml
             else if (activationName == "Dropout")
             {
                 return std::nullopt;
+            }
+            else if (activationName == "Clip")
+            {
+                activation.activationType = DML_OPERATOR_ELEMENT_WISE_CLIP;
+                activation.params.clip.Min = kernelInfo.GetAttribute<float>(AttrName::FusedMin);
+                activation.params.clip.Max = kernelInfo.GetAttribute<float>(AttrName::FusedMax);
             }
             else
             {
