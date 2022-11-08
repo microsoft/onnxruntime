@@ -87,7 +87,8 @@ class GenerateBase {
                          const Tensor* input_ids,
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
-                         const Tensor* attention_mask) const {
+                         const Tensor* attention_mask,
+                         const Tensor* presence_mask) const {
     const auto& dims = input_ids->Shape().GetDims();
     if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -153,6 +154,28 @@ class GenerateBase {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have 2 or 4 dimensions, got ", dims_attn.size());
       }
+    }
+
+    if (presence_mask != nullptr) {
+      const auto& dims_presence = presence_mask->Shape().GetDims();
+      if (dims_presence.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'presence_mask' is expected to have 2 dimensions, got ", dims_presence.size());
+      }
+
+      // presence_mask first dimension should be same as the first dimension of input_ids
+      if (static_cast<int>(dims_presence[0]) != static_cast<int>(dims[0])) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "input_ids and presence_mask must have the same batch_size");
+      }
+
+      if (static_cast<int>(dims_presence[1]) != parameters->vocab_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'presence_mask' shape[1] shall be vocab_size, got ", dims_presence[1]);
+      }
+
+      // store prefix vocab mask in parameters.
+      parameters->presence_mask = presence_mask->DataAsSpan<int32_t>();
     }
 
     return Status::OK();
