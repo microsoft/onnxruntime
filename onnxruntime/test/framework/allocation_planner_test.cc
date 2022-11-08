@@ -1577,7 +1577,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
   ASSERT_TRUE(so.config_options.AddConfigEntry("session.node_partition_config_file",
-                                               "./testdata/multi_stream_models/simplified_ssd.csv")
+                                               "./testdata/multi_stream_models/simplified_ssd_cpu.csv")
                   .IsOK());
   InferenceSession sess{so, GetEnvironment()};
 
