@@ -136,6 +136,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         cudaMemcpyAsync(input_A.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost, Stream());
         cudaMemcpyAsync(input_B.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost, Stream());
 
+        cudaStreamSynchronize(Stream());
+
         size_t subnormal_cnt_A = 0;
         size_t subnormal_cnt_B = 0;
 
