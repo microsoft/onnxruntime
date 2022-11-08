@@ -130,6 +130,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       if (flush_denormals_to_zero_) {
         cudaDeviceSynchronize();
 
+#ifdef _WIN32
         SubnormalFlush(Stream(),
                        const_cast<Tensor*>(left_X)->MutableDataRaw(),
                        768,
@@ -141,6 +142,20 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                        768,
                        1,
                        128);
+#else
+        SubnormalFlush(Stream(),
+                       const_cast<Tensor*>(left_X)->MutableDataRaw(),
+                       768,
+                       32,
+                       128);
+
+        SubnormalFlush(Stream(),
+                       const_cast<Tensor*>(right_X)->MutableDataRaw(),
+                       768,
+                       32,
+                       128);
+#endif
+
         /*
 
         // Flush sub-normals to zero
