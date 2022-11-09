@@ -6,6 +6,8 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
+#include "core/framework/float16.h"
+#include <fstream>
 
 namespace onnxruntime {
 namespace cuda {
@@ -95,6 +97,40 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
 
+  if (Node().Name() == "MatMul_688") {
+    bool randomize_weights = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE_WEIGHTS", false);
+    std::string file_prefix = "slow";
+
+    if (randomize_weights) {
+      file_prefix = "fast";
+    }
+
+    std::ofstream myfile_left;
+    std::ofstream myfile_right;
+
+    myfile_left.open(file_prefix + "_left.txt");
+    myfile_right.open(file_prefix + "_right.txt");
+
+    std::vector<uint16_t> host_left_X(left_X->Shape().Size(), 0);
+    std::vector<uint16_t> host_right_Y(right_X->Shape().Size(), 0);
+
+    cudaDeviceSynchronize();
+    cudaMemcpy(host_left_X.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_right_Y.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+
+    for (const auto& e : host_left_X) {
+      myfile_left << e << std::endl;
+    }
+
+    for (const auto& e : host_right_Y) {
+      myfile_right << e << std::endl;
+    }
+
+    myfile_left.close();
+    myfile_right.close();
+  }
+
   // Ignore the transpose flag if rank of input being 1.
   // Be noted: numpy.transpose on vector does not change anything.
   bool transa = trans_A_;
@@ -143,7 +179,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                        static_cast<int>(right_X->Shape()[1]),
                        1,
                        static_cast<int>(right_X->Shape()[0]),
-                       flush_all_to_zero_ ? 1: 0);
+                       flush_all_to_zero_ ? 1 : 0);
 #else
         SubnormalFlush(Stream(),
                        const_cast<Tensor*>(left_X)->MutableDataRaw(),
@@ -222,8 +258,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       std::cout << std::endl;
       //float frac = ((subnormal_cnt_A + subnormal_cnt_B) * 100.f) / (left_X->Shape().Size() + right_X->Shape().Size());
-      std::cout << Node().Name() << " : " << duration.count() << std::endl;
-
+      if (Node().Name() == "MatMul_688") {
+        std::cout << Node().Name() << " : " << duration.count() << std::endl;
+      }
     } else {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
