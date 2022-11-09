@@ -147,7 +147,8 @@ template <unsigned TPB>
 __global__ void SubnormalFlushKernel(half* output,
                                      const int hidden_size,
                                      int batch_size,
-                                     int sequence_length) {
+                                     int sequence_length,
+                                     int flush_all_to_zero) {
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
 
   const int output_offset = sequence_position * hidden_size;
@@ -155,12 +156,16 @@ __global__ void SubnormalFlushKernel(half* output,
   for (int it = threadIdx.x; it < hidden_size; it += TPB) {
     int offset = output_offset + it;
     short temp = *reinterpret_cast<short*>(&output[offset]);
-
-    if ((temp & 0x7C00) == 0) {
+    if (flush_all_to_zero == 1) {
       output[offset] = half(0);    
     } else {
-      output[offset] = output[offset];    
+      if ((temp & 0x7C00) == 0) {
+        output[offset] = half(0);
+      } else {
+        output[offset] = output[offset];
+      }
     }
+
   }
 }
 
@@ -168,13 +173,14 @@ void SubnormalFlush(cudaStream_t stream,
                     void* output,
                     const int hidden_size,
                     int batch_size,
-                    int sequence_length) {
+                    int sequence_length,
+                    int flush_all_to_zero) {
   constexpr int tpb = 256;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
 
   SubnormalFlushKernel<tpb>
-      <<<grid, block, 0, stream>>>(reinterpret_cast<half*>(output), hidden_size, batch_size, sequence_length);
+      <<<grid, block, 0, stream>>>(reinterpret_cast<half*>(output), hidden_size, batch_size, sequence_length, flush_all_to_zero);
 }
 
 }  // namespace cuda

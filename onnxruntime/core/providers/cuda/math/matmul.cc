@@ -127,7 +127,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
-      if (flush_denormals_to_zero_) {
+      if (flush_denormals_to_zero_ || flush_all_to_zero_) {
         cudaDeviceSynchronize();
 
 #ifdef _WIN32
@@ -135,25 +135,29 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                        const_cast<Tensor*>(left_X)->MutableDataRaw(),
                        768,
                        1,
-                       128);
+                       128,
+                       flush_all_to_zero_ ? 1 : 0);
 
         SubnormalFlush(Stream(),
                        const_cast<Tensor*>(right_X)->MutableDataRaw(),
-                       768,
+                       static_cast<int>(right_X->Shape()[1]),
                        1,
-                       128);
+                       static_cast<int>(right_X->Shape()[0]),
+                       flush_all_to_zero_ ? 1: 0);
 #else
         SubnormalFlush(Stream(),
                        const_cast<Tensor*>(left_X)->MutableDataRaw(),
                        768,
                        32,
-                       128);
+                       128,
+                       flush_all_to_zero_ ? 1 : 0);
 
         SubnormalFlush(Stream(),
                        const_cast<Tensor*>(right_X)->MutableDataRaw(),
-                       768,
-                       32,
-                       128);
+                       static_cast<int>(right_X->Shape()[1]),
+                       1,
+                       static_cast<int>(right_X->Shape()[0]),
+                       flush_all_to_zero_ ? 1 : 0);
 #endif
 
         /*

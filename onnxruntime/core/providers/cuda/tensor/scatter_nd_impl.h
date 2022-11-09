@@ -22,9 +22,10 @@ Status ScatterNDImpl(
 void cudaRandomUniform(cudaStream_t stream, void* buffer, const int size);
 
 void SubnormalFlush(cudaStream_t stream,
-                                  void* output,                    // output tensor
-                                  const int hidden_size,           // hidden size (that is head_size * num_heads)
-                                  int batch_size,                  // batch size
-                                  int sequence_length);            // sequence length
+                    void* output,           // output tensor
+                    const int hidden_size,  // hidden size (that is head_size * num_heads)
+                    int batch_size,         // batch size
+                    int sequence_length,    // sequence length
+                    int flush_all_to_zero = 0);
 }  // namespace cuda
 }  // namespace onnxruntime
