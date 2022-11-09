@@ -668,8 +668,21 @@ namespace Dml
         // downstream nodes consuming them.
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
 
+        std::vector<onnxruntime::NodeIndex> tentativeNodes;
+        tentativeNodes.reserve(toplogicalOrder.size());
+
+        for (onnxruntime::NodeIndex nodeIndex : toplogicalOrder)
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+            const auto* kernelInfo = kernel_lookup.LookUpKernel(node);
+            if (kernelInfo != nullptr)
+            {
+                tentativeNodes.push_back(nodeIndex);
+            }
+        }
+
         // Get the list of nodes that should stay on the CPU
-        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, toplogicalOrder, false);
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes);
 
         for (size_t nodeIndex : toplogicalOrder)
         {
