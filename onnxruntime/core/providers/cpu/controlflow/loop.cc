@@ -497,6 +497,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
                                     // because the fetch[0] is the loop condition which we need to access on CPU,
                                     // have to perofrm a stream sync to make sure the data arrived.
                                     true);
+    ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
 

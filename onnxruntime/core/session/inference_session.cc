@@ -1004,8 +1004,10 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-  auto model_version = std::stoi(fbs_ort_model_version->str());
-  bool is_supported = IsOrtModelVersionSupported(model_version);
+  const auto model_version = std::stoi(fbs_ort_model_version->str());
+  const bool is_supported = IsOrtModelVersionSupported(model_version);
+
+  OrtFormatLoadOptions load_options{};
 
 #if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
@@ -1018,16 +1020,34 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else
-  // models prior to v5 can be handled by inserting the kernel constraints in a full build
-  bool is_supported_with_update = !is_supported && model_version < 5;
+#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+  const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
+    if (const auto* fbs_model = fbs_session.model()) {
+      if (const auto* fbs_graph = fbs_model->graph()) {
+        if (const auto* fbs_runtime_opts = fbs_graph->runtime_optimizations()) {
+          if (const auto* fbs_runtime_opt_records = fbs_runtime_opts->records()) {
+            return fbs_runtime_opt_records->size() > 0;
+          }
+        }
+      }
+    }
+    return false;
+  };
 
-  // currently this means the model is using a future version
-  // i.e. attempted load of model created with future version of ORT
+  // models prior to v5 can be handled by inserting the kernel constraints in a full build
+  const bool is_supported_with_update = model_version < 5;
+
+  if (is_supported_with_update && has_saved_runtime_optimizations(*fbs_session)) {
+    LOGS(*session_logger_, WARNING)
+        << "The old ORT format model (version " << fbs_ort_model_version->string_view()
+        << ") has saved runtime optimizations. They will be ignored.";
+    load_options.ignore_saved_runtime_optimizations = true;
+  }
+
   ORT_RETURN_IF_NOT(is_supported || is_supported_with_update,
                     "The ORT format model version [", fbs_ort_model_version->string_view(),
-                    "] is not supported in this build ", ORT_VERSION, ". ");
-#endif
+                    "] is not supported in this build ", ORT_VERSION, ".");
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
@@ -1038,19 +1058,18 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // if that is the case we also allow creating initializers that directly use those bytes.
   const auto& config_options = session_options_.config_options;
   using_ort_model_bytes_for_initializers_ =
-      ort_format_model_bytes_data_holder_.empty() &&
-      config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "0") == "1";
+      load_options.can_use_flatbuffer_for_initializers =
+          ort_format_model_bytes_data_holder_.empty() &&
+          config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "0") == "1";
 
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model,
                                                HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                               using_ort_model_bytes_for_initializers_,
-                                               *session_logger_, tmp_model));
+                                               load_options, *session_logger_, tmp_model));
 #else
-  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, using_ort_model_bytes_for_initializers_, *session_logger_,
-                                               tmp_model));
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, load_options, *session_logger_, tmp_model));
 #endif
 
   ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
