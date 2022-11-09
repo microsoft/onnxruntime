@@ -135,7 +135,7 @@ __global__ void cuda_random_uniform_kernel(half* buffer, const int size) {
   curand_init((unsigned long long int)1337, idx, 0, &local_state);
   for (int index = idx; index < size; index += blockDim.x * gridDim.x) {
     buffer[index] = (half)(curand_uniform(&local_state) * 0.2f - 0.1f);
-    // buffer[index] = (T)(0.0f);
+    //buffer[index] = (T)(0.0f);
   }
 }
 
@@ -157,10 +157,10 @@ __global__ void SubnormalFlushKernel(half* output,
     int offset = output_offset + it;
     short temp = *reinterpret_cast<short*>(&output[offset]);
     if (flush_all_to_zero == 1) {
-      output[offset] = half(0);    
+      output[offset] = half(0.5);    
     } else {
       if ((temp & 0x7C00) == 0) {
-        output[offset] = half(0);
+        output[offset] = half(0.5);
       } else {
         output[offset] = output[offset];
       }
