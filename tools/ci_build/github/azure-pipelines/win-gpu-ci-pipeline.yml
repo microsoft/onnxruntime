@@ -14,6 +14,6 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  steps:    
-  - script: echo “do nothing”
+  steps: 
+  - script: |
    displayName: 'dummpy step'
