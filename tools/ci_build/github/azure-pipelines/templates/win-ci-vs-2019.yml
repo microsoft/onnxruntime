@@ -117,9 +117,9 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
 
+      #Build.py disables running training python frontend tests on Windows, so here we don't install pytorch.
       - ${{ if eq(parameters.isTraining, true) }}:
           - script: |
-             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.6\requirements.txt
              python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
             workingDirectory: '$(Build.BinariesDirectory)'
             displayName: 'Install python modules'
@@ -142,7 +142,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --build_csharp --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -234,7 +234,7 @@ jobs:
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
           msBuildArchitecture: amd64
-          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
           msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
           excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
           rulesetName: Custom
