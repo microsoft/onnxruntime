@@ -453,8 +453,6 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
       int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
       d_logits_in_out[original_index] = (T)filter_value;
     }
-  } else {
-    int original_index = batch_id * vocab_size + d_sorted_indices[index];
   }
 }
 

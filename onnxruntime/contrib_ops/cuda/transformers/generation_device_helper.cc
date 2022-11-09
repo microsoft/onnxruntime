@@ -556,36 +556,42 @@ Status GreedySearchProcessLogits(
   // TODO(wy): support output_scores in greedy search
   ORT_UNUSED_PARAMETER(output_scores);
 
-  BufferUniquePtr& storage_buffer = sampling_state->storage_buffer;
+
   if (do_sampling) {
 
     gsl::span<int>& d_index_in = sampling_state->d_index_in;
     gsl::span<int>& d_offset = sampling_state->d_offset;
 
-    size_t temp_storage_bytes = cuda::GetTempStorageSize<CudaT>(reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                                                d_index_in.data(),
-                                                                d_offset.data(),
-                                                                parameters->batch_size * parameters->vocab_size,
-                                                                parameters->batch_size,
-                                                                cuda_stream);
+    BufferUniquePtr& storage_buffer = sampling_state->storage_buffer;
+    std::cout << "step" << step << std::endl;
+    size_t temp_storage_bytes = 0;
+    if (step == 1) {
+      temp_storage_bytes = cuda::GetTempStorageSize<CudaT>(reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                                           d_index_in.data(),
+                                                           d_offset.data(),
+                                                           parameters->batch_size * parameters->vocab_size,
+                                                           parameters->batch_size,
+                                                           cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("temp_storage_bytes", temp_storage_bytes, true);
 #endif
 
-    cuda::LaunchSetupParamsKernel(d_index_in.data(),
-                                  d_offset.data(),
-                                  parameters->batch_size,
-                                  parameters->vocab_size,
-                                  cuda_stream);
+      cuda::LaunchSetupParamsKernel(d_index_in.data(),
+                                    d_offset.data(),
+                                    parameters->batch_size,
+                                    parameters->vocab_size,
+                                    cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_offset_buffer", d_offset.data(), batch_size + 1, 1);
 #endif
 
-    void* temp_storage = allocator->Alloc(temp_storage_bytes);
-    BufferUniquePtr temp_storage_buffer(temp_storage, BufferDeleter(allocator));
-    storage_buffer = std::move(temp_storage_buffer);
+      void* temp_storage = allocator->Alloc(temp_storage_bytes);
+      BufferUniquePtr temp_storage_buffer(temp_storage, BufferDeleter(allocator));
+      storage_buffer = std::move(temp_storage_buffer);
+    }
+
     gsl::span<T> d_sorted_score = sampling_state->d_sorted_score;
     gsl::span<int> d_index_out = sampling_state->d_index_out;
     cuda::LaunchSortPairsDescending<CudaT>(storage_buffer.get(),
