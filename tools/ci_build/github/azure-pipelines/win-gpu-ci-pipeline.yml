@@ -1,20 +1,15 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      release:
-        BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
+  pool: 'Win-GPU-2019'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env.bat
+    EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
