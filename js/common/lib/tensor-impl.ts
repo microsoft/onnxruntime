@@ -167,6 +167,53 @@ export class Tensor implements TensorInterface {
   }
   // #endregion
 
+// #region factory
+static fromImage(Image: ImageData): Tensor;
+static fromImage(Image: HTMLImageElement): Tensor;
+static fromImage(image: ImageData|HTMLImageElement): Tensor {
+
+  const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' &&
+  image instanceof HTMLImageElement;
+  const isImageDataEle = typeof (ImageData) !== 'undefined' &&
+  image instanceof ImageData;
+
+  var data: Uint8ClampedArray;
+  var ImgH: number;
+  var ImgW: number;
+
+  if(isHTMLImageEle){
+    let Pixels2DContext: CanvasRenderingContext2D | null;
+
+    Pixels2DContext = document.createElement('canvas').getContext('2d');
+
+    if(Pixels2DContext != null){
+      data = Pixels2DContext.getImageData(0, 0, image.width, image.height).data;
+    }else{
+      throw new Error('Can not access image data');
+    }
+    ImgH = image.height;
+    ImgW = image.width;
+  }else if (isImageDataEle){
+    data = (image as ImageData).data;
+    ImgH = image.height;
+    ImgW = image.width;
+  }else{
+    throw new Error('Input data provided is not supported - aborted tensor creation');
+  }
+
+  var offset = ImgH*ImgW*3;
+  const float32Data = new Float32Array(offset);
+
+  for (let i=0, RIndex = 0, GIndex = ImgH*ImgW, BIndex = ImgH*ImgW*2; i < offset; i += 4) {
+    float32Data[RIndex++] = data[i] / 255.;
+    float32Data[GIndex++] = data[i+1] / 255.;
+    float32Data[BIndex++] = data[i+2] / 255.;
+  }
+
+  // Float32Array -> ort.Tensor
+  const inputTensor = new Tensor("float32", float32Data, [1, 3, ImgH, ImgW]);
+  return inputTensor;
+}
   // #region fields
   readonly dims: readonly number[];
   readonly type: TensorType;

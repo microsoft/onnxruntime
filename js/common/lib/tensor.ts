@@ -3,7 +3,7 @@
 
 import {Tensor as TensorImpl} from './tensor-impl';
 import {TypedTensorUtils} from './tensor-utils';
-
+/// <reference lib="dom" />
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 /**
@@ -232,6 +232,19 @@ export interface TensorConstructor {
    */
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
   // #endregion
+}
+export interface TensorFactory {
+  /**
+   * Create a new tensor object from image object
+   * @param image - Image object holding the image data
+   */
+  fromImage(image: ImageData): Tensor;
+
+  /**
+   * Create a new tensor object from image object
+   * @param image - Image object holding the image data
+   */
+  fromImage(image: HTMLImageElement): Tensor;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
