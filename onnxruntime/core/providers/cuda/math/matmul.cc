@@ -119,12 +119,22 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     cudaMemcpy(host_right_Y.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
 
+    size_t counter = 0;
     for (const auto& e : host_left_X) {
-      myfile_left << e << std::endl;
+      myfile_left << e;
+
+      if (++counter != static_cast<size_t>(left_X->Shape().Size())) {
+        myfile_left << std::endl;
+      }
     }
 
+    counter = 0;
     for (const auto& e : host_right_Y) {
-      myfile_right << e << std::endl;
+      myfile_right << e;
+
+      if (++counter != static_cast<size_t>(right_X->Shape().Size())) {
+        myfile_right << std::endl;
+      }
     }
 
     myfile_left.close();
