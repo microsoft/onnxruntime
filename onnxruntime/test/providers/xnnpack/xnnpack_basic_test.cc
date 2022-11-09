@@ -187,12 +187,12 @@ static void RunModelTest(
 
 static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
                                  std::function<void(const Graph&)> graph_verifier = nullptr,
-                                 float err_tolerance = .2f) {
+                                 float abs_err_tolerance = .2f) {
   EPVerificationParams params;
   params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   // Xnnpack has higher precision than CPU_S8S8,
   // we can either give a higher tolerance,or disable Graph_Optimizations for cpu-ep
-  params.fp32_abs_err = err_tolerance;
+  params.fp32_abs_err = abs_err_tolerance;
   if (graph_verifier) {
     params.graph_verifier = &graph_verifier;
   }
@@ -539,91 +539,6 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_pytorch_half_pixel) {
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
 }
 
-TEST(XnnpackEP, TestMaxUnpool_stride) {
-  const std::vector<int64_t> input_shape = {3, 3, 3, 3};
-
-  auto modelCreater = [input_shape](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape,
-                                               std::numeric_limits<float>::min(),
-                                               std::numeric_limits<float>::max());
-
-    // generate unique indice
-    int64_t const indice_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
-    std::vector<int64_t> indice_value(indice_size * 3);
-    std::iota(indice_value.begin(), indice_value.end(), 0);
-    std::shuffle(indice_value.begin(), indice_value.end(), std::mt19937(std::random_device()()));
-    indice_value.resize(indice_size);
-    auto* index_arg = builder.MakeInput<int64_t>(input_shape,
-                                                 indice_value);
-    auto* output_arg = builder.MakeOutput();
-
-    // add MaxUnpool
-    Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg}, {output_arg});
-    maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
-    maxunpool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
-  };
-  RunModelTest(modelCreater,
-               "xnnpack_test_graph_maxunpool",
-               {ExpectedEPNodeAssignment::Some});
-}
-
-TEST(XnnpackEP, TestMaxUnpool_pad) {
-  const std::vector<int64_t> input_shape = {3, 3, 3, 3};
-
-  auto modelCreater = [input_shape](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape,
-                                               std::numeric_limits<float>::min(),
-                                               std::numeric_limits<float>::max());
-    // generate unique indice
-    int64_t const indice_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
-    std::vector<int64_t> indice_value(indice_size * 3);
-    std::iota(indice_value.begin(), indice_value.end(), 0);
-    std::shuffle(indice_value.begin(), indice_value.end(), std::mt19937(std::random_device()()));
-    indice_value.resize(indice_size);
-    auto* index_arg = builder.MakeInput<int64_t>(input_shape,
-                                                 indice_value);
-    auto* output_arg = builder.MakeOutput();
-
-    // add MaxUnpool
-    Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg}, {output_arg});
-    maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
-    maxunpool_node.AddAttribute("strides", std::vector<int64_t>{3, 3});
-    maxunpool_node.AddAttribute("pads", std::vector<int64_t>{1, 2, 1, 2});
-  };
-  RunModelTest(modelCreater,
-               "xnnpack_test_graph_maxunpool",
-               {ExpectedEPNodeAssignment::Some});
-}
-
-TEST(XnnpackEP, TestMaxUnpool_output_shape) {
-  const std::vector<int64_t> input_shape = {3, 2, 3, 3};
-
-  auto modelCreater = [input_shape](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape,
-                                               std::numeric_limits<float>::min(),
-                                               std::numeric_limits<float>::max());
-    // generate unique indice
-    int64_t const indice_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
-    std::vector<int64_t> indice_value(indice_size * 4);
-    std::iota(indice_value.begin(), indice_value.end(), 0);
-    std::shuffle(indice_value.begin(), indice_value.end(), std::mt19937(std::random_device()()));
-    indice_value.resize(indice_size);
-    auto* index_arg = builder.MakeInput<int64_t>(input_shape,
-                                                 indice_value);
-    auto output_shape = input_shape;
-    output_shape[2] = output_shape[3] = 7;
-    auto* ouputshape_arg = builder.MakeInitializer<int64_t>(std::vector<int64_t>{4}, output_shape);
-    auto* output_arg = builder.MakeOutput();
-
-    // add MaxUnpool
-    Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg, ouputshape_arg}, {output_arg});
-    maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
-    maxunpool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
-  };
-  RunModelTest(modelCreater,
-               "xnnpack_test_graph_maxunpool",
-               {ExpectedEPNodeAssignment::Some});
-}
 #endif
 
 }  // namespace test

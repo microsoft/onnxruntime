@@ -21,7 +21,6 @@
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/resize.h"
 #include "core/providers/xnnpack/nn/softmax.h"
-#include "core/providers/xnnpack/nn/max_unpool.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -96,7 +95,6 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"MaxPool", MaxPool::IsOnnxNodeSupported},
       {"AveragePool", AveragePool::IsOnnxNodeSupported},
       {"Softmax", Softmax::IsOnnxNodeSupported},
-      {"MaxUnpool", MaxUnpool::IsOnnxNodeSupported},
       {"Resize", Resize::IsOnnxNodeSupported},
   };
 
