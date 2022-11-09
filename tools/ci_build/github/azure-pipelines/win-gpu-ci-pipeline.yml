@@ -1,9 +1,24 @@
 jobs:
 - job: 'build'
+  pool: 'Win-CPU-2019'
+  strategy:
+    maxParallel: 2
+    matrix:
+      release:
+        BuildConfig: 'RelWithDebInfo'
+        UseOmp: ''
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
-  steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+  steps:    
+  - script: echo “do nothing”
+   displayName: 'dummpy step'
