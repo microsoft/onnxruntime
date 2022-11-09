@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-Win2019-GPU-T4'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
