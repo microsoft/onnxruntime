@@ -66,6 +66,20 @@ struct IGreedySearchState {
   gsl::span<int32_t> next_tokens;       // shape (batch_size)
 };
 
+template <typename T>
+struct ISamplingCudaState {
+  gsl::span<int> d_index_in;
+  gsl::span<int> d_index_out;
+  gsl::span<int> d_offset;
+  gsl::span<T> d_sorted_score;
+  gsl::span<float> d_sorted_softmaxed_score;
+  gsl::span<float> d_softmaxed_score;
+  gsl::span<float> d_sampled;
+  gsl::span<int64_t> d_indices;
+
+  BufferUniquePtr storage_buffer;
+};
+
 class ISequences {
  public:
   virtual ~ISequences() {}

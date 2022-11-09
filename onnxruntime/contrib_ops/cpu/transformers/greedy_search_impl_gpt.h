@@ -142,10 +142,17 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
                     parameters->max_length,
                     this->IsCuda());
 
+  SamplingState<T> sampling_state;
+  if (std::is_same<ParametersT, SamplingParameters>::value) {
+    sampling_state.Init(this->temp_space_allocator_,
+                        static_cast<int>(parameters->BatchBeamSize()),
+                        static_cast<int>(parameters->vocab_size),
+                        this->IsCuda());
+  }
+
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
-
   init_greedy_state_func_(&greedy_state,
                           greedy_state.sequence_lengths,
                           this->cuda_stream_);
@@ -198,6 +205,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 next_tokens,
                                                 greedy_state,
+                                                sampling_state,
                                                 iteration_counter,
                                                 parameters->eos_token_id));
     // When all batches are finished, stop earlier to avoid wasting computation.

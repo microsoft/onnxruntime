@@ -430,6 +430,10 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
                                    int vocab_size) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
 
+  if (index >= batch_size * vocab_size) {
+    return;
+  }
+
   int vocab_idx = index % vocab_size;
   int batch_id = index / vocab_size;
   int start_index = batch_id * vocab_size;
@@ -449,6 +453,8 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
       int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
       d_logits_in_out[original_index] = (T)filter_value;
     }
+  } else {
+    int original_index = batch_id * vocab_size + d_sorted_indices[index];
   }
 }
 

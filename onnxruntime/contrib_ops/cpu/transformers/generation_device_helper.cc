@@ -178,9 +178,9 @@ Status CreateGptInputs(
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
   if (num_beams == 1) {
-    expanded_input_ids = input_ids;
-    expanded_position_ids = position_ids;
-    expanded_attention_mask = attention_mask;
+    expanded_input_ids = std::move(input_ids);
+    expanded_position_ids = std::move(position_ids);
+    expanded_attention_mask = std::move(attention_mask);
   } else {
     // bugbug: 4d not supported here
     ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
@@ -408,6 +408,7 @@ template <typename T>
 Status GreedySearchProcessLogits(
   const OrtValue& logits,                                     // logits output of subgraph
   transformers::IGreedySearchState<T>* greedy_state,          // state
+  transformers::ISamplingCudaState<T>* sampling_state,    // sampling_state
   transformers::ISequences* sequences,                        // sequences
   AllocatorPtr& allocator,                                    // default allocator
   onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
@@ -417,6 +418,7 @@ Status GreedySearchProcessLogits(
   int step,                                                   // iteration counter
   void* stream,                                               // cuda stream (for CUDA only)
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
+  ORT_UNUSED_PARAMETER(sampling_state);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -890,6 +892,7 @@ template Status ProcessLogits<float>(
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
+    transformers::ISamplingCudaState<float>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
