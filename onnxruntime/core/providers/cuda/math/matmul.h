@@ -25,6 +25,13 @@ class MatMul final : public CudaKernel {
     } else {
       std::cout << "using CublasLtMatmul" << std::endl;
     }
+
+    if (flush_denormals_to_zero_) {
+      std::cout << "Denormals to zero" << std::endl;
+   
+    } else if (flush_all_to_zero_) {
+      std::cout << "All to zero" << std::endl;    
+    }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
