@@ -15,6 +15,12 @@
 #pragma comment(lib, "WinMM.lib")
 #endif
 
+#ifdef ORT_NO_RTTI
+#define GTEST_SKIP_IF_NO_RTTI() GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+#define GTEST_SKIP_IF_NO_RTTI()
+#endif
+
 using namespace std::chrono_literals;
 
 namespace onnxruntime {
@@ -268,6 +274,8 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
 };
 
 TEST(TunableOp, SelectFast) {
+  GTEST_SKIP_IF_NO_RTTI();
+
   const int a = 7500000;
   const int b = 42;
   int c{};
@@ -292,6 +300,8 @@ class TunableVecAddSelectSupported : public TunableOp<VecAddParamsRecordLastRun>
 };
 
 TEST(TunableOp, SelectSupported) {
+  GTEST_SKIP_IF_NO_RTTI();
+
   const int a = 7500000;
   const int b = 42;
   int c{};
@@ -319,6 +329,8 @@ class TunableVecAddSelectFastestIfSupported : public TunableOp<VecAddParamsRecor
 };
 
 TEST(TunableOp, SelectFastestIfSupported) {
+  GTEST_SKIP_IF_NO_RTTI();
+
   const int a[] = {0, 1, 2, 3};
   const int b[] = {42, 42, 42, 42};
   int c[4] = {};
@@ -340,6 +352,8 @@ TEST(TunableOp, SelectFastestIfSupported) {
 }
 
 TEST(TunableOp, DisabledWithManualSelection) {
+  GTEST_SKIP_IF_NO_RTTI();
+
   const int a = 7500000;
   const int b = 42;
   int c{};
@@ -392,6 +406,8 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 };
 
 TEST(TunableOp, HandleInplaceUpdate) {
+  GTEST_SKIP_IF_NO_RTTI();
+
   const int a = 7500000;
   const int b = 42;
   int c{};
