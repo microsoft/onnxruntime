@@ -16,4 +16,5 @@ jobs:
     clean: all
   steps: 
   - script: |
-   displayName: 'dummpy step'
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'dummpy step'
