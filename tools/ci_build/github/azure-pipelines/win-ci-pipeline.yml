@@ -8,7 +8,7 @@ stages:
 - stage: x64_debug
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
@@ -27,7 +27,7 @@ stages:
 - stage: x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -48,7 +48,7 @@ stages:
 - stage: x64_release_dnnl
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -67,7 +67,7 @@ stages:
 - stage: x64_release_xnnpack
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -86,7 +86,7 @@ stages:
 - stage: x64_release_winml
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -107,7 +107,7 @@ stages:
 - stage: x86_release
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_x86.bat
@@ -126,7 +126,7 @@ stages:
 - stage: training_x64_debug
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
@@ -145,7 +145,7 @@ stages:
 - stage: training_x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -164,7 +164,7 @@ stages:
 - stage: training_on_device_x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
