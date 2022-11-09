@@ -70,7 +70,7 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 
   while (input_counters) {
     // Copy the input data over
-    block_size = innermost_dim * element_size;
+    block_size = SafeInt<size_t>(innermost_dim) * element_size;
     memcpy(output, input, block_size);
     output += block_size;
     input += block_size;
@@ -85,7 +85,7 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 
     // Tile data for other axes
     while (input_counters.Increment()) {
-      ptrdiff_t pitch = output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()];
+      ptrdiff_t pitch = onnxruntime::narrow<size_t>(output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()]);
       block_size = pitch * element_size;
       copy = output - block_size;
       num_repeats = repeats[input_counters.Axis()] - 1;
@@ -113,17 +113,17 @@ bool IsTileMemcpy(const TensorShape& input_shape,
                   /*out*/ size_t& num_of_batch_copies) {
   for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
     if (repeats[i] != 1) {
-      if (input_shape.SizeToDimension(i) == 1) {
+      if (input_shape.SizeToDimension(onnxruntime::narrow<size_t>(i)) == 1) {
         num_of_copies_per_batch = 1;
         for (int64_t j = 0; j <= i; ++j) {
-          num_of_copies_per_batch *= repeats[j];
+          num_of_copies_per_batch *= onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(j)]);
         }
         is_batched_memcpy = false;
         return true;
       } else if (i == 1) {  // else check if the previous dim is just the batch dim
         num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
-        num_of_copies_per_batch = repeats[i];
-        num_of_batch_copies = repeats[0];
+        num_of_copies_per_batch = onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(i)]);
+        num_of_batch_copies = onnxruntime::narrow<size_t>(repeats[0]);
         is_batched_memcpy = true;
         return true;
       } else {
