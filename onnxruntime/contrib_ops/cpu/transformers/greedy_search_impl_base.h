@@ -29,6 +29,8 @@ struct SamplingState : public ISamplingCudaState<T> {
     this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
     this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size));
     this->d_indices = AllocateBuffer<int64_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size));
+    // TODO: do not allocate this buffer there's no presence_mask
+    this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count));
   }
 
  private:
@@ -40,6 +42,7 @@ struct SamplingState : public ISamplingCudaState<T> {
   BufferUniquePtr d_softmaxed_score_buffer_;
   BufferUniquePtr d_sampled_buffer_;
   BufferUniquePtr d_indices_buffer_;
+  BufferUniquePtr d_presence_mask_buffer_;
 };
 
 template <typename T>

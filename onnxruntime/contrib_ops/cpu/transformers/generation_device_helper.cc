@@ -506,6 +506,8 @@ Status GreedySearchProcessLogits(
                                                           1,
                                                           generator,
                                                           *sampled_idx));
+    // TODO: update presense_mask
+
 #ifdef DEBUG_GENERATION
     dumper->Print("sampled_idx", *sampled_idx);
 #endif

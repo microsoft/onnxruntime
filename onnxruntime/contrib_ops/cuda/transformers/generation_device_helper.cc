@@ -318,7 +318,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       next_token_scores.data(),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
-      parameters->presence_mask.data(),
+      nullptr,                                                    // parameters->presence_mask.data(),
       parameters->presence_penalty,
       parameters->temperature,
       parameters->batch_size,
@@ -531,11 +531,18 @@ Status GreedySearchProcessLogits(
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
 
+  // Copy parameters->presence_mask to sampling_state->presence_mask
+  gsl::span<int>& presence_mask = sampling_state->d_presence_mask;
+  if (step == 1 && parameters->presence_mask.data() != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(presence_mask.data(), parameters->presence_mask.data(),
+                         sizeof(int) * batch_size * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
+  }
+
   cuda::LaunchLogitsProcessKernel<CudaT>(
       reinterpret_cast<CudaT*>(next_token_scores.data()),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
-      parameters->presence_mask.data(),
+      parameters->presence_mask.data() ? presence_mask.data() : nullptr,
       parameters->presence_penalty,
       parameters->temperature,
       parameters->batch_size,
@@ -558,7 +565,6 @@ Status GreedySearchProcessLogits(
 
 
   if (do_sampling) {
-
     gsl::span<int>& d_index_in = sampling_state->d_index_in;
     gsl::span<int>& d_offset = sampling_state->d_offset;
 
@@ -655,6 +661,7 @@ Status GreedySearchProcessLogits(
     std::uniform_real_distribution<float> distribution(0.0, 1.0);
     std::vector<float> sampled(parameters->batch_size);
     distribution(generator); // the first one is subnormal numbers
+    // need to optimize the random generation. current version is for debug.
     for (int i = 0; i < parameters->batch_size; ++i) {
       sampled[i] = distribution(generator);
 #ifdef DEBUG_GENERATION
@@ -679,6 +686,7 @@ Status GreedySearchProcessLogits(
                                          d_indices.data(),
                                          parameters->batch_size,
                                          parameters->vocab_size,
+                                         presence_mask.data(),
                                          cuda_stream);
 
 #ifdef DEBUG_GENERATION

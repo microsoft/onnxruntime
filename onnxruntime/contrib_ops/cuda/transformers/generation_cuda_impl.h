@@ -30,7 +30,7 @@ void LaunchLogitsProcessKernel(
     T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
-    const int* presence_mask,
+    int* presence_mask,
     float presence_penalty,
     float temperature,
     int batch_size,
@@ -100,6 +100,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int64_t* d_output,
                                     int batch_size,
                                     int vocab_size,
+                                    int* d_presence_mask,
                                     cudaStream_t stream);
 
 }  // namespace cuda

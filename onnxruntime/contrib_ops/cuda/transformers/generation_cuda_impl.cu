@@ -162,7 +162,7 @@ void LaunchLogitsProcessKernel(
     T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
-    const int* presence_mask,
+    int* presence_mask,
     float presence_penalty,
     float temperature,
     int batch_size,
@@ -201,7 +201,7 @@ template void LaunchLogitsProcessKernel(
     float* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
-    const int* presence_mask,
+    int* presence_mask,
     float presence_penalty,
     float temperature,
     int batch_size,
@@ -219,7 +219,7 @@ template void LaunchLogitsProcessKernel(
     half* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
-    const int* presence_mask,
+    int* presence_mask,
     float presence_penalty,
     float temperature,
     int batch_size,
@@ -505,7 +505,8 @@ __global__ void sampleMultinomialOnce(
     scalar_t* sampled,
     scalar_t* dist,
     int stride_dist, // dist->stride(0)
-    int stride_categories // dist->stride(1)
+    int stride_categories, // dist->stride(1)
+    int* d_presence_mask
 ) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
@@ -616,6 +617,17 @@ __global__ void sampleMultinomialOnce(
       }
     }
   }
+
+  // update presence mask
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= distributions * categories) {
+    return;
+  }
+  int dist_idx = index / categories;
+  int cat_idx = index % categories;
+  if (dest[dist_idx] == cat_idx) {
+    d_presence_mask[index] = 1;
+  }
 }
 
 // Only support n_sample = 1
@@ -624,6 +636,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int64_t* d_output,
                                     int batch_size,
                                     int vocab_size,
+                                    int* d_presence_mask,
                                     cudaStream_t stream)
 {
   // Store the props in class variables
@@ -652,7 +665,8 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_sampled,
                                                 d_input,
                                                 vocab_size,
-                                                batch_size);
+                                                batch_size,
+                                                d_presence_mask);
   } else {
     printf("Please add more cases for block size");
   }
