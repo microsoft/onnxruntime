@@ -166,54 +166,83 @@ export class Tensor implements TensorInterface {
     this.size = size;
   }
   // #endregion
+  static bufferToTensor(buffer: Uint8ClampedArray, imgH: number, imgW: number, format:string = "RGBA", norm:boolean = false): Tensor {
+    var offset = imgH*imgW*3;
+    const float32Data = new Float32Array(offset);
+    var step: number;
+    var R_ptr: number;
+    var G_ptr: number;
+    var B_ptr: number;
+    var normValue: number = 255.;
 
-// #region factory
-static fromImage(Image: ImageData): Tensor;
-static fromImage(Image: HTMLImageElement): Tensor;
-static fromImage(image: ImageData|HTMLImageElement): Tensor {
-
-  const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' &&
-  image instanceof HTMLImageElement;
-  const isImageDataEle = typeof (ImageData) !== 'undefined' &&
-  image instanceof ImageData;
-
-  var data: Uint8ClampedArray;
-  var ImgH: number;
-  var ImgW: number;
-
-  if(isHTMLImageEle){
-    let Pixels2DContext: CanvasRenderingContext2D | null;
-
-    Pixels2DContext = document.createElement('canvas').getContext('2d');
-
-    if(Pixels2DContext != null){
-      data = Pixels2DContext.getImageData(0, 0, image.width, image.height).data;
+    if(format=="RGBA"){
+      step = 4;
+      R_ptr = 0;
+      G_ptr = 1;
+      B_ptr = 2;
     }else{
-      throw new Error('Can not access image data');
+      step = 4;
+      R_ptr = 0;
+      G_ptr = 1;
+      B_ptr = 2;
     }
-    ImgH = image.height;
-    ImgW = image.width;
-  }else if (isImageDataEle){
-    data = (image as ImageData).data;
-    ImgH = image.height;
-    ImgW = image.width;
-  }else{
-    throw new Error('Input data provided is not supported - aborted tensor creation');
+
+    if(norm){
+      var maxValue:number = -300;
+      for (let i=0; i < imgH*imgW*step; i++) {
+        if(buffer[i]>maxValue) maxValue = buffer[i];
+      }
+      normValue = maxValue;
+    }
+
+    for (let i=0, RIndex = 0, GIndex = imgH*imgW, BIndex = imgH*imgW*2; i < imgH*imgW; i++,R_ptr+=step,B_ptr+=step,G_ptr+=step) {
+      float32Data[RIndex++] = buffer[R_ptr] / normValue;
+      float32Data[GIndex++] = buffer[G_ptr] / normValue;
+      float32Data[BIndex++] = buffer[B_ptr] / normValue;
+    }
+
+    // Float32Array -> ort.Tensor
+    const inputTensor = new Tensor("float32", float32Data, [1, 3, imgH, imgW]);
+    return inputTensor;
   }
 
-  var offset = ImgH*ImgW*3;
-  const float32Data = new Float32Array(offset);
+  // #region factory
+  static fromImage(image: ImageData): Tensor;
+  static fromImage(image: HTMLImageElement): Tensor;
+  static fromImage(image: ImageData|HTMLImageElement): Tensor {
 
-  for (let i=0, RIndex = 0, GIndex = ImgH*ImgW, BIndex = ImgH*ImgW*2; i < offset; i += 4) {
-    float32Data[RIndex++] = data[i] / 255.;
-    float32Data[GIndex++] = data[i+1] / 255.;
-    float32Data[BIndex++] = data[i+2] / 255.;
+    const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' &&
+    image instanceof HTMLImageElement;
+    const isImageDataEle = typeof (ImageData) !== 'undefined' &&
+    image instanceof ImageData;
+
+    var data: Uint8ClampedArray;
+    var imgH: number;
+    var imgW: number;
+
+    if(isHTMLImageEle){
+      let Pixels2DContext: CanvasRenderingContext2D | null;
+
+      Pixels2DContext = document.createElement('canvas').getContext('2d');
+
+      if(Pixels2DContext != null){
+        data = Pixels2DContext.getImageData(0, 0, image.width, image.height).data;
+      }else{
+        throw new Error('Can not access image data');
+      }
+      imgH = image.height;
+      imgW = image.width;
+    }else if (isImageDataEle){
+      data = (image as ImageData).data;
+      imgH = image.height;
+      imgW = image.width;
+    }else{
+      throw new Error('Input data provided is not supported - aborted tensor creation');
+    }
+
+    return Tensor.bufferToTensor(data, imgH, imgW);
   }
 
-  // Float32Array -> ort.Tensor
-  const inputTensor = new Tensor("float32", float32Data, [1, 3, ImgH, ImgW]);
-  return inputTensor;
-}
   // #region fields
   readonly dims: readonly number[];
   readonly type: TensorType;
