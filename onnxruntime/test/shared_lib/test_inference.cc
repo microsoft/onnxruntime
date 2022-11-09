@@ -2199,12 +2199,11 @@ TEST(CApiTest, GH_11717) {
 #endif
 
 TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
-  const auto* model_path = SIMPLIFIED_SSD_MODEL_URI;
   Ort::SessionOptions session_options{};
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
   session_options.AddConfigEntry("session.node_partition_config_file",
                                  "./testdata/multi_stream_models/simplified_ssd_cpu.csv");
-  Ort::Session session{*ort_env, model_path, session_options};
+  Ort::Session session{*ort_env, SIMPLIFIED_SSD_MODEL_URI, session_options};
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   std::vector<Ort::Value> ort_inputs;
   const char* input_names[] = {"graph_in"};
