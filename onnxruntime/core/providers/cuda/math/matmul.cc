@@ -97,48 +97,49 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
 
+  std::vector<uint16_t> host_left_X(left_X->Shape().Size(), 0);
+  std::vector<uint16_t> host_right_Y(right_X->Shape().Size(), 0);
+
+  cudaDeviceSynchronize();
+  cudaMemcpy(host_left_X.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_right_Y.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+
   if (Node().Name() == "MatMul_688") {
-    bool randomize_weights = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE_WEIGHTS", false);
-    std::string file_prefix = "slow";
+    if (dump_matmul_inputs_) {
+      std::string file_prefix = "slow";
 
-    if (randomize_weights) {
-      file_prefix = "fast";
-    }
-
-    std::ofstream myfile_left;
-    std::ofstream myfile_right;
-
-    myfile_left.open(file_prefix + "_left.txt");
-    myfile_right.open(file_prefix + "_right.txt");
-
-    std::vector<uint16_t> host_left_X(left_X->Shape().Size(), 0);
-    std::vector<uint16_t> host_right_Y(right_X->Shape().Size(), 0);
-
-    cudaDeviceSynchronize();
-    cudaMemcpy(host_left_X.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_right_Y.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-
-    size_t counter = 0;
-    for (const auto& e : host_left_X) {
-      myfile_left << e;
-
-      if (++counter != static_cast<size_t>(left_X->Shape().Size())) {
-        myfile_left << std::endl;
+      if (randomize_weights_) {
+        file_prefix = "fast";
       }
-    }
 
-    counter = 0;
-    for (const auto& e : host_right_Y) {
-      myfile_right << e;
+      std::ofstream myfile_left;
+      std::ofstream myfile_right;
 
-      if (++counter != static_cast<size_t>(right_X->Shape().Size())) {
-        myfile_right << std::endl;
+      myfile_left.open(file_prefix + "_left.txt");
+      myfile_right.open(file_prefix + "_right.txt");
+
+      size_t counter = 0;
+      for (const auto& e : host_left_X) {
+        myfile_left << e;
+
+        if (++counter != static_cast<size_t>(left_X->Shape().Size())) {
+          myfile_left << std::endl;
+        }
       }
-    }
 
-    myfile_left.close();
-    myfile_right.close();
+      counter = 0;
+      for (const auto& e : host_right_Y) {
+        myfile_right << e;
+
+        if (++counter != static_cast<size_t>(right_X->Shape().Size())) {
+          myfile_right << std::endl;
+        }
+      }
+
+      myfile_left.close();
+      myfile_right.close();
+    }
   }
 
   // Ignore the transpose flag if rank of input being 1.

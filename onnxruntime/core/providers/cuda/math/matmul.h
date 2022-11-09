@@ -39,6 +39,9 @@ class MatMul final : public CudaKernel {
  private:
   bool flush_denormals_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_DENORMALS", false);
   bool flush_all_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_ALL", false);
+  bool randomize_weights_ = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE_WEIGHTS", false);
+  bool dump_matmul_inputs_ = ParseEnvironmentVariableWithDefault<bool>("ORT_DUMP_INPUTS", false);
+
 
   const bool should_use_cublas_gemm_ = true;
   const float alpha_;
