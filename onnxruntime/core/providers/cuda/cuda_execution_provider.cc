@@ -198,6 +198,40 @@ void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGrap
 }
 #endif
 
+std::optional<std::string> LoadEnv(const std::string& name, const std::unordered_set<std::string>& valid_values) {
+  ORT_ENFORCE(!valid_values.empty());
+  auto env = onnxruntime::GetEnvironmentVar(name);
+  if (env.empty()) {
+    return std::nullopt;
+  }
+
+  LOGS_DEFAULT(WARNING) << "Environment variable "<< name << " is used. It is reserved for internal testing prupose. "
+                           "End users should opt for provider options or session options and must not rely on it.";
+
+  if (valid_values.find(env) == valid_values.cend()) {
+    std::ostringstream oss;
+    auto it = valid_values.cbegin();
+    oss << *it++;
+    while(it != valid_values.cend()) {
+      oss << ", " << *it++;
+    }
+    ORT_THROW("Value of environment variable ", name," must be ",oss.str(), ", but got ", env);
+  }
+
+  return env;
+}
+
+void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
+  std::optional<std::string> env;
+
+  env = LoadEnv("ORT_CUDA_TUNABLE_OP_ENABLED", {"0", "1"});
+  const bool env_tunable_op_enabled = env == "1";
+  if (env.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_ENABLED is set to " << env_tunable_op_enabled;
+    info.tunable_op.enabled = env_tunable_op_enabled;
+  }
+}
+
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
       info_{info} {
@@ -224,6 +258,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+
+  OverrideTunableOpInfoByEnv(info_);
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -244,6 +280,20 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
+}
+
+void CUDAExecutionProvider::EnableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp for CUDA Execution Provider";
+  info_.tunable_op.enabled = true;
+}
+
+void CUDAExecutionProvider::DisableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp for CUDA Execution Provider";
+  info_.tunable_op.enabled = false;
+}
+
+bool CUDAExecutionProvider::IsTunableOpEnabled() const {
+  return info_.tunable_op.enabled;
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
