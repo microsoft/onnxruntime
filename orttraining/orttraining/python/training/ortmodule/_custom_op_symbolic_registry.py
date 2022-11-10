@@ -87,7 +87,8 @@ def _check_input_output_types(lhs_scalar_type, rhs_scalar_type):
         return -1, rhs_onnx_type  # need type demotion
     else:
         warnings.warn(
-            f"Type promotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type} ",
+            f"Type promotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type}, "
+            f"which implies potential performance loss. ",
             UserWarning,
         )
         return 1, rhs_onnx_type  # need type promotion
@@ -133,7 +134,8 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
 
 @register_symbolic("cross_entropy_loss", need_context=True)
 def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, label_smoothing=0.0):
-    if not weight.node().mustBeNone():
+    has_weight = not weight.node().mustBeNone()
+    if has_weight:
         _enforce_check(
             _check_all_tensor_type_match([input, weight]),
             f"custom exporter for cross_entropy_loss: input and weight must have the same type: {input}, {weight}",
@@ -149,11 +151,15 @@ def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, 
 
     loss_output = outputs[0]
     flag, rhs_onnx_type = _check_input_output_types(input.type().scalarType(), loss_output.type().scalarType())
+    weight_cast = weight
     if flag > 0:
         # do input type promotion
         input_cast = g.op("Cast", input, to_i=rhs_onnx_type)
+        if has_weight:
+            weight_cast = g.op("Cast", weight, to_i=rhs_onnx_type)
     else:
         input_cast = input
+
 
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, "i")
@@ -164,7 +170,7 @@ def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, 
         "com.microsoft::SoftmaxCrossEntropyLossInternal",
         input_cast,
         target,
-        weight,
+        weight_cast,
         ignore_index,
         reduction_s=reduction,
         outputs=2,
