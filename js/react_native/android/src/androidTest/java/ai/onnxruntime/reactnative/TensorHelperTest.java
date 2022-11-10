@@ -117,7 +117,7 @@ public class TensorHelperTest {
     JavaOnlyArray dims = new JavaOnlyArray();
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
-    inputTensorMap.putString("type", TensorHelper.JsTensorTypeByte);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeUnsignedByte);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
     dataByteBuffer.put(Byte.MIN_VALUE);
