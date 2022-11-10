@@ -71,7 +71,6 @@ namespace ImageTestHelper {
         // TODO: for Gray8
         else {
             std::cerr << "Unsupported pixelFormat";
-            std::cerr << "test";
         }
         return tf;
     }
