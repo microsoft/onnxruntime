@@ -177,11 +177,10 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
   cudaMemsetAsync(beam_state->next_token_logits.data(), 0, beam_state->next_token_logits.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes(), cuda_stream);
-  cudaMemsetAsync(beam_state->topk_scores.data(), 0, beam_state->topk_scores.size_bytes(), cuda_stream);
-  cudaMemsetAsync(beam_state->topk_indices.data(), 0, beam_state->topk_indices.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_tokens.data(), 0, beam_state->next_tokens.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_indices.data(), 0, beam_state->next_indices.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_scores.data(), 0, beam_state->next_scores.size_bytes(), cuda_stream);
+  cudaMemsetAsync(beam_state->topk_buffer.data(), 0, beam_state->topk_buffer.size_bytes(), cuda_stream);
 
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
   cuda::LaunchInitKernel(beam_state->beam_scores.data(), batch_size, num_beams, reinterpret_cast<cudaStream_t>(stream));
@@ -327,7 +326,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                              batch_size, num_beams, vocab_size, cuda_stream);
 
 #ifdef DEBUG_GENERATION
-    dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
+  dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
   if (output_scores) {
@@ -417,36 +416,32 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       cpu_state->topk_scores.data(),
       static_cast<typename gsl::span<float>::size_type>(topk_scores->Shape().Size()));
 #else
+  constexpr size_t max_parts_of_vocab = 128;
+  float* topk_tmp_buffer = beam_state->topk_buffer.data();
+  float* topk_scores_1st_stage = topk_tmp_buffer;
+  int32_t* topk_tokens_1st_stage = reinterpret_cast<int32_t*>(topk_scores_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
+  float* topk_scores_2nd_stage = reinterpret_cast<float*>(topk_tokens_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
+  int32_t* topk_tokens_2nd_stage = reinterpret_cast<int32_t*>(topk_scores_2nd_stage + batch_beam_size * 2 * num_beams);
 
-  float* topk_scores = beam_state->topk_scores.data();
-  int32_t* topk_indices = beam_state->topk_indices.data();
-  float* topk_scores_tmp = topk_scores + batch_beam_size * num_beams * 2;
-  int32_t* topk_indices_tmp = topk_indices + batch_beam_size * num_beams * 2;
-
-  cuda::LaunchTopK<float>(next_token_scores.data(), batch_size, num_beams, vocab_size, 2 * num_beams, topk_scores, topk_indices, topk_scores_tmp, topk_indices_tmp, reinterpret_cast<cudaStream_t>(stream));
-
-  // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
-#ifdef DEBUG_GENERATION
-    dumper->Print("topk_scores_tmp", topk_scores_tmp, batch_size, num_beams, 2 * num_beams);
-    dumper->Print("topk_indices_tmp", topk_indices_tmp, batch_size, num_beams, 2 * num_beams);
-    dumper->Print("topk_scores", topk_scores, batch_size, num_beams, 2 * num_beams);
-    dumper->Print("topk_indices", topk_indices, batch_size, num_beams, 2 * num_beams);
-#endif
-
-  cuda::LanuchBatchTopKKernel(topk_scores,
-                              topk_indices,
-                              beam_state->next_indices.data(),
-                              beam_state->next_tokens.data(),
-                              beam_state->next_scores.data(),
-                              batch_size,
-                              num_beams,
-                              cuda_stream);
+  cuda::BeamSearchTopK(next_token_scores.data(),
+                       batch_size,
+                       num_beams,
+                       vocab_size,
+                       2 * num_beams,
+                       topk_scores_1st_stage,
+                       topk_tokens_1st_stage,
+                       topk_scores_2nd_stage,
+                       topk_tokens_2nd_stage,
+                       beam_state->next_scores.data(),
+                       beam_state->next_tokens.data(),
+                       beam_state->next_indices.data(),
+                       cuda_stream);
 
   // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
 #ifdef DEBUG_GENERATION
-    dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
-    dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
-    dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
+  dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
+  dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
+  dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),

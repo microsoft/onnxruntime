@@ -20,6 +20,7 @@
 
 #include <cub/cub.cuh>
 
+#include "beam_search_impl.h"
 #include "reduce_kernel_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
@@ -207,52 +208,112 @@ void TopKLauncherMaxK(
 }
 
 template <typename T>
-void LaunchTopK(
+void BeamSearchTopK(
     const T* input,
-    int batch_size,
-    int num_beams,
-    int vocab_size,
-    int K,
+    int32_t batch_size,
+    int32_t num_beams,
+    int32_t vocab_size,
+    int32_t k,
+    T* tmp_values_1st_stage,
+    int32_t* tmp_indices_1st_stage,
+    T* tmp_values_2nd_stage,
+    int32_t* tmp_indices_2nd_stage,
     T* output_values,
+    int32_t* output_tokens,
     int32_t* output_indices,
-    T* output_values_tmp,
-    int32_t* output_indices_tmp,
     cudaStream_t stream) {
-  ORT_ENFORCE(K <= 64, "Online TopK doesn't support K > 64");
-  if (K <= 4) {
-    return TopKLauncherMaxK<T, 4>(input, batch_size, num_beams, vocab_size, K, output_values, output_indices, output_values_tmp, output_indices_tmp, stream);
-  } else if (K <= 8) {
-    return TopKLauncherMaxK<T, 8>(input, batch_size, num_beams, vocab_size, K, output_values, output_indices, output_values_tmp, output_indices_tmp, stream);
-  } else if (K <= 16) {
-    return TopKLauncherMaxK<T, 16>(input, batch_size, num_beams, vocab_size, K, output_values, output_indices, output_values_tmp, output_indices_tmp, stream);
-  } else if (K <= 32) {
-    return TopKLauncherMaxK<T, 32>(input, batch_size, num_beams, vocab_size, K, output_values, output_indices, output_values_tmp, output_indices_tmp, stream);
+  ORT_ENFORCE(k <= 64, "Online TopK doesn't support K > 64");
+  if (k <= 4) {
+    TopKLauncherMaxK<T, 4>(input,
+                           batch_size,
+                           num_beams,
+                           vocab_size,
+                           k, tmp_values_2nd_stage,
+                           tmp_indices_2nd_stage,
+                           tmp_values_1st_stage,
+                           tmp_indices_1st_stage,
+                           stream);
+  } else if (k <= 8) {
+    TopKLauncherMaxK<T, 8>(input,
+                           batch_size,
+                           num_beams,
+                           vocab_size,
+                           k, tmp_values_2nd_stage,
+                           tmp_indices_2nd_stage,
+                           tmp_values_1st_stage,
+                           tmp_indices_1st_stage,
+                           stream);
+  } else if (k <= 16) {
+    TopKLauncherMaxK<T, 16>(input,
+                            batch_size,
+                            num_beams,
+                            vocab_size,
+                            k, tmp_values_2nd_stage,
+                            tmp_indices_2nd_stage,
+                            tmp_values_1st_stage,
+                            tmp_indices_1st_stage,
+                            stream);
+  } else if (k <= 32) {
+    TopKLauncherMaxK<T, 32>(input,
+                            batch_size,
+                            num_beams,
+                            vocab_size,
+                            k, tmp_values_2nd_stage,
+                            tmp_indices_2nd_stage,
+                            tmp_values_1st_stage,
+                            tmp_indices_1st_stage,
+                            stream);
   } else {
-    return TopKLauncherMaxK<T, 64>(input, batch_size, num_beams, vocab_size, K, output_values, output_indices, output_values_tmp, output_indices_tmp, stream);
+    TopKLauncherMaxK<T, 64>(input,
+                            batch_size,
+                            num_beams,
+                            vocab_size,
+                            k, tmp_values_2nd_stage,
+                            tmp_indices_2nd_stage,
+                            tmp_values_1st_stage,
+                            tmp_indices_1st_stage,
+                            stream);
   }
+
+  cuda::LanuchBatchTopKKernel(tmp_values_2nd_stage,
+                              tmp_indices_2nd_stage,
+                              output_indices,
+                              output_tokens,
+                              output_values,
+                              batch_size,
+                              num_beams,
+                              stream);
 }
 
-template void LaunchTopK(const float* input,
-                         int batch_size,
-                         int num_beams,
-                         int vocab_size,
-                         int K,
-                         float* output_values,
-                         int32_t* output_indices,
-                         float* output_values_tmp,
-                         int32_t* output_indices_tmp,
-                         cudaStream_t stream);
+template void BeamSearchTopK(
+    const float* input,
+    int32_t batch_size,
+    int32_t num_beams,
+    int32_t vocab_size,
+    int32_t k,
+    float* tmp_values_1st_stage,
+    int32_t* tmp_indices_1st_stage,
+    float* tmp_values_2st_stage,
+    int32_t* tmp_indices_2st_stage,
+    float* output_values,
+    int32_t* output_tokens,
+    int32_t* output_indices,
+    cudaStream_t stream);
 
-template void LaunchTopK(const half* input,
-                         int batch_size,
-                         int num_beams,
-                         int vocab_size,
-                         int K,
-                         half* output_values,
-                         int32_t* output_indices,
-                         half* output_values_tmp,
-                         int32_t* output_indices_tmp,
-                         cudaStream_t stream);
+template void BeamSearchTopK(
+    const half* input,
+    int32_t batch_size,
+    int32_t num_beams,
+    int32_t vocab_size,
+    int32_t k,
+    half* tmp_values_1st_stage,
+    int32_t* tmp_indices_1st_stage,
+    half* tmp_values_2st_stage,
+    int32_t* tmp_indices_2st_stage,
+    half* output_values,
+    int32_t* output_tokens,
+    int32_t* output_indices,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

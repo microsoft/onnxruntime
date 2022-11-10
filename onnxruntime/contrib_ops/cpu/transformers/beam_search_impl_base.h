@@ -28,15 +28,15 @@ struct BeamSearchState : public IBeamSearchState<T> {
     this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
     this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
 
-    size_t topk_size = SafeInt<size_t>(batch_beam_size) * batch_beam_size * 2 * 130;
-    this->topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, topk_size);
-    this->topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, topk_size);
-
     this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+
+    constexpr size_t max_parts_of_vocab = 128;
+    size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * num_beams * 2 * 2;
+    this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size);
 
     if (use_position) {
       this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
@@ -62,6 +62,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
+  BufferUniquePtr topk_temp_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {
