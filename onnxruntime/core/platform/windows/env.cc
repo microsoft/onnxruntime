@@ -86,11 +86,11 @@ class WindowsThread : public EnvThread {
       thread_affinity.Group = static_cast<WORD>(affinities[offset]);
       thread_affinity.Mask = affinities[offset + 1];
       if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
-        LOGS_DEFAULT(WARNING) << "Set group affinity for sub-thread " << p->index << ", "
+        LOGS_DEFAULT(WARNING) << "Set group affinity for thread " << p->index << ", "
                               << " group: " << thread_affinity.Group << ", "
                               << " mask: " << thread_affinity.Mask;
       } else {
-        LOGS_DEFAULT(WARNING) << "Failed to set group affinity for sub-thread " << p->index << ", "
+        LOGS_DEFAULT(WARNING) << "Failed to set group affinity for thread " << p->index << ", "
                               << " group: " << thread_affinity.Group << ", "
                               << " mask: " << thread_affinity.Mask << ","
                               << " error code: " << GetLastError();
@@ -192,7 +192,7 @@ class WindowsEnv : public Env {
   // 1. Fill the pair of <group_id, processor_mask> for all matched processor in that group;
   // 2. Break from the loop to stop searching the next group, this is because windows API will fail if the interval
   //    spans across group boundaries. 
-  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int processor_from, int processor_to) {
+  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int processor_from, int processor_to) const {
     if (processor_from > processor_to) {
       LOGS_DEFAULT(ERROR) << "Processor <from> must be smaller or equal to <to>";
       return {-1, 0};
@@ -222,7 +222,7 @@ class WindowsEnv : public Env {
   }
 
   // processor_id_strs are simply utf-8 strings
-  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(const std::vector<std::string>& processor_id_strs) {
+  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(const std::vector<std::string>& processor_id_strs) const {
     if (processor_id_strs.empty()) {
       return {-1, 0};
     }
@@ -264,7 +264,7 @@ class WindowsEnv : public Env {
     return {group_id, processor_mask};
   }
 
-  size_t ReadThreadAffinityConfig(const std::string& affinity_str, std::vector<size_t>& affinities) {
+  size_t ReadThreadAffinityConfig(const std::string& affinity_str, std::vector<size_t>& affinities) const override {
     if (affinity_str.empty()) {
       return 0;
     }

@@ -1178,7 +1178,7 @@ struct OrtApi {
   /**
   * Setting intra op thread affinity - only implemented on windows for the branch
   * affinity string follows format:
-  * logic_processor_id,logic_processor_id;logic_processor_id,logic_processor_id
+  * logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id
   * semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.
   * e.g. 1,2,3;4,5
   * specifies affinities for two threads, with the 1st thread attach to the 1st, 2nd, and 3rd processor, and 2nd thread to the 4th and 5th processor.
@@ -1187,7 +1187,7 @@ struct OrtApi {
   * orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
   * Note:
   * 1. Once set, the number of affinities must equal to intra_op_num_threads - 1, since ort does not set affinity on the main thread.
-  * 2. For windows, ort will infer the group id from a logic processor id, e.g., assume there are two groups with each has 64 logic processors,
+  * 2. For windows, ort will infer the group id from a logical processor id, e.g., assume there are two groups with each has 64 logical processors,
   *    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be treated as the 1st processor of the second group.
   *    Hence 64-65 is an invalid configuration since a windows thread cannot be attached to processors crossing group boundary.
   */

@@ -32,7 +32,7 @@ std::wstring ToWideString(const std::string& s) {
   return ret;
 }
 
-std::vector<std::string> SplitStr(const std::string& s, const char& separator) {
+std::vector<std::string> SplitStr(const std::string& s, const char separator) {
   std::vector<std::string> ans;
   std::string tmp;
   std::stringstream ss;

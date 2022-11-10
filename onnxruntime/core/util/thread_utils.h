@@ -18,7 +18,7 @@ struct OrtThreadPoolParams {
 
   unsigned int stack_size = 0;
 
-  // A utf-8 string of affitiy settings, format be like:
+  // A utf-8 string of affinity settings, format be like:
   // <1st_thread_affinity_config>;<2nd_thread_affinity_config>;<3rd_thread_affinity_config>...
   // ith_thread_affinity_config could be:
   // 1,2,3
@@ -49,8 +49,6 @@ enum class ThreadPoolType : uint8_t {
   INTRA_OP,
   INTER_OP
 };
-
-//bool ExtractAffinityFromString(const char*, ThreadAffinities&);
 
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
                                              ThreadPoolType tpool_type);

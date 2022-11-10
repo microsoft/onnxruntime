@@ -283,7 +283,7 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-std::vector<std::string> SplitStr(const std::string& s, const char& separator);
+std::vector<std::string> SplitStr(const std::string& s, const char separator);
 
 bool IsDigit(const std::string& s);
 
