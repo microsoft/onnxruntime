@@ -104,7 +104,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   // for one reason, we have to store allocator and keep it alive among the whole life cycle of process.
   // 1. xnn_initialize only take effect at the first call,it means the first allocator is shared
   // by all following xnnpack EP sessions. A static allocator is used to extend its life cycle.
-  auto [stored_allocator, xnn_allocator] = GetStoredAllocator();
+  const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
   auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
   if (!cpu_alloc) {
@@ -120,7 +120,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
                                                                 OrtAllocatorType::OrtDeviceAllocator));
           });
       // only the first time we create the allocator do we pass in the xnn_allocator
-      cpu_alloc = (*stored_allocator) ? (*stored_allocator) : CreateAllocator(allocator_info);
+      cpu_alloc = stored_allocator ? stored_allocator : CreateAllocator(allocator_info);
       // enable sharing of our allocator
       allocator_manager.InsertAllocator(cpu_alloc);
     }
@@ -128,8 +128,8 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  if (!(*stored_allocator)) {
-    *stored_allocator = cpu_alloc;
+  if (!stored_allocator) {
+    stored_allocator = cpu_alloc;
   }
 
   xnn_allocator->context = cpu_alloc.get();
