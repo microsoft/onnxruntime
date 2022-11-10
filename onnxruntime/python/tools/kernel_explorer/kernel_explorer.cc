@@ -4,9 +4,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include "python/tools/kernel_explorer/device_array.h"
-#include "python/tools/kernel_explorer/kernels/gemm.h"
 #include "python/tools/kernel_explorer/kernels/vector_add.h"
 #include "python/tools/kernel_explorer/kernels/rocm/fast_gelu.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm.h"
 #include "python/tools/kernel_explorer/kernels/rocm/skip_layer_norm.h"
 
 namespace py = pybind11;

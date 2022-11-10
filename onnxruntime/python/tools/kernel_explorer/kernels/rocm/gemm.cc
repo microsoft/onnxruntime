@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if USE_ROCM
-#include "python/tools/kernel_explorer/kernels/gemm.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm.h"
 
 #include <pybind11/pybind11.h>
 #include <type_traits>
@@ -32,4 +31,3 @@ void InitGemm(py::module mod) {
 }
 
 }  // namespace onnxruntime
-#endif
