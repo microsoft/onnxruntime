@@ -737,6 +737,39 @@ TEST(TransposeOpTest, Transpose0312) {  // Will trigger Transpose3DImpl() becaus
   TestTranspose(perm, X_dims, Y_dims);
 }
 
+TEST(TransposeOpTest, Transpose3DImpl) {
+  // Flattening dims 2 and 3 into one dim.
+  {
+    const std::vector<int64_t> X_dims{64, 128, 16, 64};
+    const std::vector<int64_t> perm{0, 2, 3, 1};
+    const std::vector<int64_t> Y_dims{64, 16, 64, 128};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
+
+  // Flattening dims 1 and 2 into one dim.
+  {
+    const std::vector<int64_t> X_dims{64, 16, 64, 128};
+    const std::vector<int64_t> perm{0, 3, 1, 2};
+    const std::vector<int64_t> Y_dims{64, 128, 16, 64};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
+
+  // dim-1 or dim-2 is not power of 2.
+  {
+    const std::vector<int64_t> X_dims{64, 12, 128};
+    const std::vector<int64_t> perm{0, 2, 1};
+    const std::vector<int64_t> Y_dims{64, 128, 12};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
+
+  {
+    const std::vector<int64_t> X_dims{64, 99, 24};
+    const std::vector<int64_t> perm{0, 2, 1};
+    const std::vector<int64_t> Y_dims{64, 24, 99};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
+}
+
 #endif
 
 }  // namespace test
