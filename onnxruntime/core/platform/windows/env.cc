@@ -187,6 +187,11 @@ class WindowsEnv : public Env {
     return kAffinities.size() >> 1;
   }
 
+  // The function will go over group_info_vec_ searching for processors between [processor_from, processor_to]
+  // whenever found a match in a group, two things will happen sequentially:
+  // 1. Fill the pair of <group_id, processor_mask> for all matched processor in that group;
+  // 2. Break from the loop to stop searching the next group, this is because windows API will fail if the interval
+  //    spans across group boundaries. 
   std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int processor_from, int processor_to) {
     if (processor_from > processor_to) {
       LOGS_DEFAULT(ERROR) << "Processor <from> must be smaller or equal to <to>";
@@ -196,7 +201,7 @@ class WindowsEnv : public Env {
     int processor_count = 0;
     KAFFINITY group_id = 0;
     KAFFINITY processor_mask = 0;
-    for (const auto& group_info : this->group_info_vec_) {
+    for (const auto& group_info : group_info_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
         if (processor_id >= processor_from && processor_id <= processor_to) {
           processor_mask |= BitOne << i;
