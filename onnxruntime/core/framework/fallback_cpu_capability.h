@@ -16,9 +16,11 @@ namespace onnxruntime {
   @param graph Graph viewer
   @param kernel_lookup The kernel lookup for the target execution provider
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
+  @param requires_matching_kernel If no matching kernels are found, assumes that the kernel should be on the CPU
   */
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                     const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                    gsl::span<const NodeIndex> tentative_nodes);
+                                                    gsl::span<const NodeIndex> tentative_nodes,
+                                                    bool requires_matching_kernel = true);
 
 }  // namespace onnxruntime
