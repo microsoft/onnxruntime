@@ -97,16 +97,15 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
 
-  std::vector<uint16_t> host_left_X(left_X->Shape().Size(), 0);
-  std::vector<uint16_t> host_right_Y(right_X->Shape().Size(), 0);
+  if (dump_matmul_inputs_&& Node().Name() == "MatMul_688") {
+    std::vector<uint16_t> host_left_X(left_X->Shape().Size(), 0);
+    std::vector<uint16_t> host_right_Y(right_X->Shape().Size(), 0);
 
-  cudaDeviceSynchronize();
-  cudaMemcpy(host_left_X.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_right_Y.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
+    cudaMemcpy(host_left_X.data(), left_X->DataRaw(), left_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_right_Y.data(), right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
 
-  if (Node().Name() == "MatMul_688") {
-    if (dump_matmul_inputs_) {
       std::string file_prefix = "slow";
 
       if (randomize_weights_) {
@@ -139,7 +138,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       myfile_left.close();
       myfile_right.close();
-    }
   }
 
   // Ignore the transpose flag if rank of input being 1.
@@ -174,6 +172,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (should_use_cublas_gemm_) {
+      /*
       if (flush_denormals_to_zero_ || flush_all_to_zero_) {
         cudaDeviceSynchronize();
 
@@ -207,8 +206,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                        flush_all_to_zero_ ? 1 : 0);
 #endif
 
-        /*
-
+ 
         // Flush sub-normals to zero
         std::vector<uint16_t> input_A(left_X->Shape().Size(), 0);
         std::vector<uint16_t> input_B(right_X->Shape().Size(), 0);
@@ -237,8 +235,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         cudaMemcpyAsync(const_cast<Tensor*>(left_X)->MutableDataRaw(), input_A.data(), left_X->SizeInBytes(), cudaMemcpyHostToDevice, Stream());
         cudaMemcpyAsync(const_cast<Tensor*>(right_X)->MutableDataRaw(), input_B.data(), right_X->SizeInBytes(), cudaMemcpyHostToDevice, Stream());
          
-         */
       }
+      */
 
       cudaDeviceSynchronize();
 
@@ -261,15 +259,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           ldc,
           device_prop));
 
-      cudaStreamSynchronize(Stream());
+      cudaDeviceSynchronize();
 
       auto stop = high_resolution_clock::now();
 
       auto duration = duration_cast<microseconds>(stop - start);
 
-      std::cout << std::endl;
-      //float frac = ((subnormal_cnt_A + subnormal_cnt_B) * 100.f) / (left_X->Shape().Size() + right_X->Shape().Size());
-      if (Node().Name() == "MatMul_688") {
+      if (print_latency_ && Node().Name() == "MatMul_688") {
         std::cout << Node().Name() << " : " << duration.count() << std::endl;
       }
     } else {

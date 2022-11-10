@@ -37,8 +37,10 @@ class MatMul final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool flush_denormals_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_DENORMALS", false);
-  bool flush_all_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_ALL", false);
+  //bool flush_denormals_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_DENORMALS", false);
+  //bool flush_all_to_zero_ = ParseEnvironmentVariableWithDefault<bool>("ORT_FLUSH_ALL", false);
+
+  bool print_latency_ = ParseEnvironmentVariableWithDefault<bool>("ORT_PRINT_LATENCY", false);
   bool randomize_weights_ = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE_WEIGHTS", false);
   bool dump_matmul_inputs_ = ParseEnvironmentVariableWithDefault<bool>("ORT_DUMP_INPUTS", false);
 
