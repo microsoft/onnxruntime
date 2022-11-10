@@ -196,6 +196,8 @@ static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 static constexpr PATH_TYPE RESIZE_AND_CROP_MODEL_URI = TSTR("testdata/crop_and_resize.onnx");
 #endif
 
+static constexpr PATH_TYPE SIMPLIFIED_SSD_MODEL_URI = TSTR("testdata/multi_stream_models/simplified_ssd.onnx");
+
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
@@ -2195,3 +2197,30 @@ TEST(CApiTest, GH_11717) {
   EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
 }
 #endif
+
+TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
+  Ort::SessionOptions session_options{};
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  session_options.AddConfigEntry("session.node_partition_config_file",
+                                 "./testdata/multi_stream_models/simplified_ssd_cpu.csv");
+  Ort::Session session{*ort_env, SIMPLIFIED_SSD_MODEL_URI, session_options};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  const char* input_names[] = {"graph_in"};
+  std::unique_ptr<float[]> input_data = std::make_unique<float[]>(3 * 3 * 300 * 300);
+  for (int i = 0; i < 3 * 3 * 300 * 300; ++i) {
+    input_data[i] = 1.f;
+  }
+  int64_t input_dims[] = {3, 3, 300, 300};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, input_data.get(), 3 * 3 * 300 * 300, input_dims, 4U));
+  const char* output_names[] = {"graph_out"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names,
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+  ASSERT_TRUE(ort_outputs.size() == 1);
+  ASSERT_TRUE(ort_outputs[0].IsTensor());
+  const auto& type_shape_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_dims = type_shape_info.GetShape();
+  std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
+  ASSERT_TRUE(output_dims == expected_output_dims);
+}
