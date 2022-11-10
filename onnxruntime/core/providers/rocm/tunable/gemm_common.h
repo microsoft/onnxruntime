@@ -29,7 +29,7 @@ inline std::string BlasOpToString(BlasOp op) {
       return "T";
     // following is unreachable, compiler is producing false-positive warning, unfortunately.
     default:
-      return "_";
+      ORT_THROW("unreachable");
   }
 }
 

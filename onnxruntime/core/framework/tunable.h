@@ -44,6 +44,8 @@ class Timer {
 
   virtual void Start() = 0;
   virtual void End() = 0;
+
+  /// Computes the elapsed time in milliseconds between Start() and End() over the specified stream.
   virtual float Duration() = 0;
 
  protected:

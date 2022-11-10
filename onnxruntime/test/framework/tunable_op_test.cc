@@ -38,19 +38,19 @@ class Timer : public ::onnxruntime::tunable::Timer<StreamT> {
   ~Timer() = default;
 
   void Start() override {
-    start_ = std::chrono::high_resolution_clock::now();
+    start_ = std::chrono::steady_clock::now();
   }
 
   void End() override {
-    end_ = std::chrono::high_resolution_clock::now();
+    end_ = std::chrono::steady_clock::now();
   }
 
   float Duration() override {
-    return std::chrono::duration_cast<std::chrono::duration<float, std::micro>>(end_ - start_).count();
+    return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end_ - start_).count();
   }
 
  private:
-  using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
+  using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
 
   TimePoint start_;
   TimePoint end_;
