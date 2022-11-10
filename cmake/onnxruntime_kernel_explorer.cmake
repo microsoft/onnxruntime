@@ -26,9 +26,13 @@ set_source_files_properties(${kernel_explorer_srcs} PROPERTIES LANGUAGE HIP)
 file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/kernels/*.cc")
 set_source_files_properties(${kernel_explorer_kernel_srcs} PROPERTIES LANGUAGE HIP)
 
+file(GLOB kernel_explorer_kernel_codegen_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/kernels/codegen/*.cc")
+set_source_files_properties(${kernel_explorer_kernel_codegen_srcs} PROPERTIES LANGUAGE HIP)
+
 onnxruntime_add_shared_library_module(kernel_explorer
   ${kernel_explorer_srcs}
-  ${kernel_explorer_kernel_srcs})
+  ${kernel_explorer_kernel_srcs}
+  ${kernel_explorer_kernel_codegen_srcs})
 set_target_properties(kernel_explorer PROPERTIES PREFIX "_")
 target_include_directories(kernel_explorer PUBLIC
   $<TARGET_PROPERTY:onnxruntime_pybind11_state,INCLUDE_DIRECTORIES>

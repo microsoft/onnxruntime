@@ -9,6 +9,6 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-void InitVectorAdd(py::module m);
+void InitTritonVectorAdd(py::module m);
 
 }

@@ -3,7 +3,10 @@
 
 #pragma once
 
-#include <hip/hip_runtime.h>
+
+//#include "hip/hip_runtime.h"
+//#include "hip/hip_ext.h"
+#include "hip/hip_runtime_api.h"
 
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/tunable/util.h"
@@ -13,14 +16,20 @@
 using onnxruntime::rocm::CeilDiv;
 using onnxruntime::rocm::aligned_vector;
 
+#define HIP_CHECK(status)                                       \
+	if (status != hipSuccess) {                             \
+		ORT_RETURN_IF(false, hipGetErrorName(status));  \
+	}
+
+
 namespace onnxruntime {
 
 template <typename T, int BlockSize>
-std::string GenerateTritonKernelName() {
+const char* GenerateTritonKernelName() {
   return "add_kernel";
 }
 
-std::string GenerateTritonCodeFile() {
+const char* GenerateTritonCodeFile() {
   return "add_kernel.hsaco";
 }
 
@@ -35,14 +44,15 @@ Status LaunchTritonVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, i
   hipModule_t Module;
   hipFunction_t Function;
   HIP_CHECK(hipModuleLoad(&Module, GenerateTritonCodeFile()));
-  HIP_CHECK(hipModuleGetFunction(&Function, Module, GenerateTritonKernelName()));
+  HIP_CHECK(hipModuleGetFunction(&Function, Module, GenerateTritonKernelName<T,BlockSize>()));
 
   struct {
-      void* _Ad;
-      void* _Bd;
-      void* _Cd;
-      int   _nz;
-  } args = {x,y,z,n};
+      void* _Xd;
+      void* _Yd;
+      void* _Zd;
+      int   _Nz;
+  } args = {(void*)x, (void*)y, (void*)z,n};
+
   size_t size = sizeof(args);
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, &args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &size,
                     HIP_LAUNCH_PARAM_END};
@@ -50,8 +60,6 @@ Status LaunchTritonVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, i
   HIP_CHECK(hipModuleLaunchKernel(Function, CeilDiv(n, 1024), 1, 1,
                                   BlockSize, 1, 1, 0, 0, NULL, (void**)&config));
 
-  auto status = hipGetLastError();
-  ORT_RETURN_IF(status != hipSuccess, hipGetErrorName(status));
   return Status::OK();
 }
 
