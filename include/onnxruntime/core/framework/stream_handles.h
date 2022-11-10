@@ -88,11 +88,9 @@ class Stream {
   // update the stream lookup table with the snapshot saved in notification.
   void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
     for (const auto& kv : clock) {
-      auto it = other_stream_clock_.find(kv.first);
-      if (it == other_stream_clock_.end()) {
-        other_stream_clock_.insert(kv);
-      } else {
-        it->second = std::max(it->second, kv.second);
+      auto ret = other_stream_clock_.insert(kv);
+      if (!ret.second) {
+        ret.first->second = std::max(ret.first->second, kv.second);
       }
     }
   }
