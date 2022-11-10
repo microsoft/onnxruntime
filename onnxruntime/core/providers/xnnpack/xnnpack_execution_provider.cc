@@ -99,7 +99,7 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice const cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  const OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
   // for one reason, we have to store allocator and keep it alive among the whole life cycle of process.
   // 1. xnn_initialize only take effect at the first call,it means the first allocator is shared
@@ -113,7 +113,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 
     if (!cpu_alloc) {
       // create our allocator
-      AllocatorCreationInfo const allocator_info(
+      const AllocatorCreationInfo allocator_info(
           [](int) {
             // lazy create the allocator
             return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
