@@ -410,4 +410,78 @@ TEST(ThreadPoolTest, TestStackSize) {
 }
 #endif
 
+TEST(ThreadPoolTest, TestAffinityString) {
+  std::vector<size_t> default_affinities;
+  int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
+  ASSERT_TRUE(default_threadpool_size > 0);
+#ifdef _WIN32
+  int num_non_default_affinities;
+  std::vector<size_t> non_default_affinities;
+  int num_logical_processors = default_threadpool_size << 1;
+  for (int num_threads = 2; num_threads <= num_logical_processors; num_threads += 1) {
+    if (num_logical_processors % num_threads) {
+      continue;
+    }
+    int num_logical_processors_per_thread = num_logical_processors / num_threads;
+    std::stringstream affinity_stream_comma;
+    std::stringstream affinity_stream_hyphen;
+    for (int processor_id_start = 1; processor_id_start <= num_logical_processors; processor_id_start += num_logical_processors_per_thread) {
+      int processor_id_end = processor_id_start + num_logical_processors_per_thread - 1;
+      if (processor_id_start > 1) {
+        affinity_stream_comma << ";";
+        affinity_stream_hyphen << ";";
+      }
+      for (int i = processor_id_start; i <= processor_id_end; ++i) {
+        affinity_stream_comma << (i == processor_id_start ? "" : ",") << i;
+      }
+      affinity_stream_hyphen << processor_id_start << "-" << processor_id_end;
+    }
+    non_default_affinities.clear();
+    num_non_default_affinities = static_cast<int>(Env::Default().ReadThreadAffinityConfig(affinity_stream_comma.str(), non_default_affinities));
+    std::cout << num_non_default_affinities << " : " << affinity_stream_comma.str() << std::endl;
+    ASSERT_TRUE(num_non_default_affinities == num_threads);
+    non_default_affinities.clear();
+    std::cout << affinity_stream_hyphen.str() << std::endl;
+    num_non_default_affinities = static_cast<int>(Env::Default().ReadThreadAffinityConfig(affinity_stream_hyphen.str(), non_default_affinities));
+    std::cout << num_non_default_affinities << " : " << affinity_stream_hyphen.str() << std::endl;
+    ASSERT_TRUE(num_non_default_affinities == num_threads);
+  }
+#endif
+}
+
+TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
+  std::vector<size_t> default_affinities;
+  int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
+  ASSERT_TRUE(default_threadpool_size > 0);
+#ifdef _WIN32
+  // test only one machines has more than 8 logical processors
+  if (default_threadpool_size >= 4) {
+    std::vector<size_t> affinities;
+    // case - test with processor id that's out of boundary 
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("0", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(std::to_string(default_threadpool_size*2+1), affinities));
+    // case - test with empty strings
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(",", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(",1", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(";", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(";1", affinities));
+    // case - test with invalid chars
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("2,a,1", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("*4,3,)", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("3,5,1;^.2", affinities));
+    // case - test with comma wrongly couple with hyphen
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1,-5", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("2,3,-", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("3,5-1;6,8", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("-,-", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-2;3-4,", affinities));
+    // case - test hyphen of invalid intervals
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("6-2", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("-2", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-2;4-3", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1--2;3-4", affinities));
+    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-3-4", affinities));
+  }
+#endif
+}
 }  // namespace onnxruntime

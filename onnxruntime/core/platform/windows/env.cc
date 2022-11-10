@@ -195,7 +195,7 @@ class WindowsEnv : public Env {
   std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int processor_from, int processor_to) const {
     if (processor_from > processor_to) {
       LOGS_DEFAULT(ERROR) << "Processor <from> must be smaller or equal to <to>";
-      return {-1, 0};
+      return {0, 0};
     }
     int processor_id = 1;
     int processor_count = 0;
@@ -216,7 +216,7 @@ class WindowsEnv : public Env {
     }
     if (processor_count < processor_to - processor_from + 1) {
       LOGS_DEFAULT(ERROR) << "Processor <from> or <to> cross group boundary";
-      return {-1,0};
+      return {0, 0};
     }
     return {group_id, processor_mask};
   }
@@ -224,7 +224,7 @@ class WindowsEnv : public Env {
   // processor_id_strs are simply utf-8 strings
   std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(const std::vector<std::string>& processor_id_strs) const {
     if (processor_id_strs.empty()) {
-      return {-1, 0};
+      return {0, 0};
     }
     // use a set, in case of dups
     std::set<int> processor_ids;
@@ -238,7 +238,7 @@ class WindowsEnv : public Env {
                     }
                   });
     if (processor_ids.size() != processor_id_strs.size()) {
-      return {-1, 0};
+      return {0, 0};
     }
     int processor_id = 1;
     int processor_count = 0;
@@ -259,7 +259,7 @@ class WindowsEnv : public Env {
     }
     if (processor_count < processor_ids.size()) {
       LOGS_DEFAULT(ERROR) << "Processor id(s) cross group boundary";
-      return {-1, 0};
+      return {0, 0};
     }
     return {group_id, processor_mask};
   }
@@ -286,7 +286,7 @@ class WindowsEnv : public Env {
           int from = stoi(partition_by_hyphen[0]);
           int to = stoi(partition_by_hyphen[1]);
           auto group_affinity = GetGroupAffinity(from, to);
-          if (group_affinity.first == -1) {
+          if (group_affinity.second == 0) {
             return 0;
           }
           kAffinities.push_back(group_affinity.first);
@@ -298,7 +298,7 @@ class WindowsEnv : public Env {
             return 0;
           } else {
             auto group_affinity = GetGroupAffinity(partition_by_comma);
-            if (group_affinity.first == -1) {
+            if (group_affinity.second == 0) {
               return 0;
             }
             kAffinities.push_back(group_affinity.first);
