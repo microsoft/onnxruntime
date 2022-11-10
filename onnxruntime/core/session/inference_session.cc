@@ -1979,6 +1979,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                    session_options_.execution_mode, run_options.terminate, run_logger,
+                                                   run_options.synchronize_execution_providers,
                                                    run_options.only_execute_path_to_fetches));
     }
     ORT_CATCH(const std::exception& e) {

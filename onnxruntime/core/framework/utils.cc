@@ -712,7 +712,8 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches,
+                            const logging::Logger& logger, bool sync_execution_provider,
+                            bool only_execute_path_to_fetches,
                             Stream* parent_stream) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
@@ -726,7 +727,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                  device_stream_collection,
                                  only_execute_path_to_fetches,
                                  parent_stream);
-  ORT_CHECK_AND_SET_RETVAL(device_stream_collection.CleanUp());
+  ORT_CHECK_AND_SET_RETVAL(device_stream_collection.CleanUp(sync_execution_provider));
   return retval;
 }
 
@@ -854,7 +855,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   auto retval = ExecutePartialGraphImpl(session_state, feeds_fetches_manager, feeds, fetches,
                                         logger, state, cache, terminate_flag, device_stream_collection,
                                         parent_stream);
-  ORT_CHECK_AND_SET_RETVAL(device_stream_collection.CleanUp());
+  ORT_CHECK_AND_SET_RETVAL(device_stream_collection.CleanUp(false));
   return retval;
 }
 #endif
@@ -870,7 +871,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream);
-  ORT_CHECK_AND_SET_RETVAL(device_stream_collection.CleanUp());
+  ORT_CHECK_AND_SET_RETVAL(device_stream_collection.CleanUp(false));
   if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {
     parent_stream->Flush();
   }

@@ -40,7 +40,7 @@ class DeviceStreamCollection {
 
   // Since the collection may be reused for future iteration,
   // This API is used to cleanup some resources at the end of an iteration.
-  Status CleanUp();
+  Status CleanUp(bool sync_streams);
 
  private:
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;
