@@ -723,7 +723,6 @@ class WindowsEnv : public Env {
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
 
     if (!GetLogicalProcessorInformationEx(RelationGroup, processorInfos, &returnLength)) {
-      last_error = GetLastError();
       return {};
     }
 

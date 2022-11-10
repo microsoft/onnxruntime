@@ -194,11 +194,11 @@ class PosixEnv : public Env {
     return std::thread::hardware_concurrency();
   }
 
-  size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinity) const override {
-    affinity.clear();
-    affinity.resize(std::thread::hardware_concurrency()>>1);
-    std::iota(affinity.begin(), affinity.end(), 0);
-    return affinity.size();
+  size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinities) const override {
+    affinities.clear();
+    affinities.resize(std::thread::hardware_concurrency() >> 1);
+    std::iota(affinities.begin(), affinities.end(), 0);
+    return affinities.size();
   }
 
   size_t ReadThreadAffinityConfig(const std::string&, std::vector<size_t>&) override {
