@@ -1138,6 +1138,8 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
 }
 #endif
 
+#if not defined(__wasm__)
+
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1641,6 +1643,8 @@ TEST_F(PlannerTest, TestMultiStreamConfigMisshaped) {
               graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
               graph_partitioner_cpu_gpu->Devices() == 0);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
