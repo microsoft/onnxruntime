@@ -44,7 +44,7 @@ struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
-  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
       !((params->ld <= 1024 && params->ld % VecSize == 0 &&
          params->ld <= ThreadsPerBlock * VecSize && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)));
   SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
@@ -58,7 +58,7 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormRegularOp(const SkipLayerNormParams<T>* params) {
-  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
       !((params->ld > 0 && params->ld % VecSize == 0 &&
          (params->ld >= ThreadsPerBlock * VecSize ||
           (params->ld < GPU_WARP_SIZE && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)))));

@@ -107,7 +107,7 @@ void LaunchVecAddKernel(const int* a, const int* b, int* c, int num_elem, int be
 }
 
 Status VecAddFunc(const VecAddParams* params) {
-  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(params->c == nullptr, "output buffer cannot be nullptr");
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->c == nullptr, "output buffer cannot be nullptr");
   LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
   return Status::OK();
 }
@@ -260,7 +260,7 @@ Status FastFull(const VecAddParamsRecordLastRun* params) {
 
 Status FastestNarrow(const VecAddParamsRecordLastRun* params) {
   *(params->last_run) = "FastestNarrow";
-  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(params->num_elem != 4, "FastestNarrow only supports VecAdd 4 elements");
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->num_elem != 4, "FastestNarrow only supports VecAdd 4 elements");
   LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
   return Status::OK();
 }

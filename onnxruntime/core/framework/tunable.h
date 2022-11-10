@@ -64,13 +64,13 @@ class Op {
   Status operator()(const ParamsT* param) { return (*callable_)(param); }
 
  private:
-  struct ICallbale {
-    virtual ~ICallbale() = default;
+  struct ICallable {
+    virtual ~ICallable() = default;
     virtual Status operator()(const ParamsT*) = 0;
   };
 
   template <typename T>
-  struct CallableImpl : ICallbale {
+  struct CallableImpl : ICallable {
     explicit CallableImpl(T&& c) : c_{std::move(c)} {}
     Status operator()(const ParamsT* param) override { return c_(param); }
 
@@ -78,13 +78,13 @@ class Op {
     T c_;
   };
 
-  std::unique_ptr<ICallbale> callable_;
+  std::unique_ptr<ICallable> callable_;
 };
 
 // NOTE: onnxruntime's Status currently does not have a StatusCode::UNSUPPORTED. Currently, we do not want to extend the
 // enum. So we reuse StatusCode::INVALID_ARGUMENT for this purpose. It can be interpreted as "The input argument is not
 // valid for this specialized kernel implementation.". This semantic is crucial for the tuning mechanism.
-#define TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(condition, ...)   \
+#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...)   \
   do {                                                             \
     if (condition) {                                               \
       return ORT_MAKE_STATUS(NONE, INVALID_ARGUMENT, __VA_ARGS__); \
