@@ -400,7 +400,8 @@ MLASCALL
 MlasReorderOutputNchw(
     const int64_t* OutputShape,
     const float* S,
-    float* D
+    float* D,
+    MLAS_THREADPOOL* p
     )
 /*++
 
@@ -428,69 +429,74 @@ Return Value:
     const size_t OutputChannels = size_t(OutputShape[1]);
     const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
 
+    const size_t NumTasksPerBatch = ceil(((float)OutputChannels) / BlockSize);
+    const size_t NumTasksTotal = BatchCount * NumTasksPerBatch;
+    const size_t LastNumTaskInBatch = NumTasksPerBatch - 1;
+
     //
     // Transpose NCHWc blocks from the source buffer to the destination buffer.
     //
 
-    for (size_t batch = 0; batch < BatchCount; batch++) {
+    MLAS_THREADPOOL::TryBatchParallelFor(p, static_cast<int32_t>(NumTasksTotal), 
+        [&](ptrdiff_t TaskID) {
 
-        for (size_t o = OutputChannels; o > 0;) {
+        size_t NumBatch = TaskID / NumTasksPerBatch;
+        size_t NumTaskInBatch = TaskID % NumTasksPerBatch;
 
-            const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
-            const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
-            o -= OutputChannelsThisIteration;
+        const size_t OutputChannelsThisIteration = (NumTaskInBatch > 0) ? 
+            BlockSize : OutputChannels - BlockSize * LastNumTaskInBatch;
+        const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
 
-            const float* s = S;
-            float* d = D;
-            size_t OutputSizeRemaining = OutputSize;
+        const float* s = S + BlockSize * OutputSize * 
+            (NumBatch *  NumTasksPerBatch + LastNumTaskInBatch - NumTaskInBatch);
+        float* d = D + OutputSize * 
+            (NumBatch * OutputChannels + BlockSize * (LastNumTaskInBatch - NumTaskInBatch));
+        size_t OutputSizeRemaining = OutputSize;
 
-            for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
+        for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
 
-                const float* ss = s;
-                float* dd = d;
-                size_t bc = 0;
+            const float* ss = s;
+            float* dd = d;
+            size_t bc = 0;
 
-                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
-                    MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
-                    ss += 4;
-                    dd += 4 * OutputSize;
-                }
-
-                for (; bc < OutputChannelsThisIteration; bc += 1) {
-                    MlasReorderGatherFloat32x4(ss, dd, BlockSize);
-                    ss += 1;
-                    dd += OutputSize;
-                }
-
-                s += 4 * BlockSize;
-                d += 4;
+            for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
+                ss += 4;
+                dd += 4 * OutputSize;
             }
 
-            for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
-
-                const float* ss = s;
-                float* dd = d;
-                size_t bc = 0;
-
-                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
-                    MlasReorderScatterFloat32x4(ss, dd, OutputSize);
-                    ss += 4;
-                    dd += 4 * OutputSize;
-                }
-
-                for (; bc < OutputChannelsThisIteration; bc += 1) {
-                    *dd = *ss++;
-                    dd += OutputSize;
-                }
-
-                s += BlockSize;
-                d += 1;
+            for (; bc < OutputChannelsThisIteration; bc += 1) {
+                MlasReorderGatherFloat32x4(ss, dd, BlockSize);
+                ss += 1;
+                dd += OutputSize;
             }
 
-            S += BlockSize * OutputSize;
-            D += OutputChannelsThisIteration * OutputSize;
+            s += 4 * BlockSize;
+            d += 4;
         }
-    }
+
+        for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
+
+            const float* ss = s;
+            float* dd = d;
+            size_t bc = 0;
+
+            for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                MlasReorderScatterFloat32x4(ss, dd, OutputSize);
+                ss += 4;
+                dd += 4 * OutputSize;
+            }
+
+            for (; bc < OutputChannelsThisIteration; bc += 1) {
+                *dd = *ss++;
+                dd += OutputSize;
+            }
+
+            s += BlockSize;
+            d += 1;
+        }
+            
+    }, 0);
 }
 
 void
