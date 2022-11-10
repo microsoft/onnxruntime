@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -179,6 +180,10 @@ void RunMatMulTest(int32_t opset_version) {
 }
 
 TEST(MathOpTest, MatMulFloatType) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
   RunMatMulTest<float>(7, false, false);
 }
 
@@ -187,6 +192,10 @@ TEST(MathOpTest, MatMulDoubleType) {
 }
 
 TEST(MathOpTest, MatMulFloatTypeInitializer) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
   RunMatMulTest<float>(7, false, true);
 }
 
@@ -239,12 +248,18 @@ TEST(MathOpTest, MatMul_Float16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-TEST(MathOpTest, MatMul_BFloat16) {
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+TEST(MathOpTest, MatMul_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -264,6 +279,8 @@ TEST(MathOpTest, MatMul_BFloat16) {
 
   execution_providers.clear();
   execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+#elif USE_DNNL
+  execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();

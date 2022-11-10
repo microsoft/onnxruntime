@@ -2634,6 +2634,19 @@ Example 4:
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuickGeluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("QuickGeluGrad")
+      .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

@@ -15,7 +15,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -274,8 +274,8 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
   const QLinearSoftmax::EXP_OUT_DTYPE Y_scale = std::floor(1.0F / (*(Y_scale_tensor->Data<float>())));
   const auto& X_shape = input.Shape();
-  const size_t N = X_shape.SizeToDimension(axis);
-  const size_t D = X_shape.SizeFromDimension(axis);
+  const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   common::Status status;
   if (is_signed_) {
     using T = int8_t;

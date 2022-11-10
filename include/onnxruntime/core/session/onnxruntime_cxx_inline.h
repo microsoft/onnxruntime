@@ -415,6 +415,11 @@ inline Env& Env::DisableTelemetryEvents() {
   return *this;
 }
 
+inline Env& Env::UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level) {
+  ThrowOnError(GetApi().UpdateEnvWithCustomLogLevel(p_, log_severity_level));
+  return *this;
+}
+
 inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
   ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
   return *this;
@@ -748,13 +753,6 @@ inline AllocatedStringPtr ConstSessionImpl<T>::GetOverridableInitializerNameAllo
 }
 
 template <typename T>
-inline AllocatedStringPtr ConstSessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
-  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-template <typename T>
 inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
@@ -812,6 +810,13 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const
 template <typename T>
 inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& io_binding) {
   ThrowOnError(GetApi().RunWithBinding(this->p_, run_options, io_binding));
+}
+
+template <typename T>
+inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) {
+  char* out = nullptr;
+  ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
 }  // namespace detail
@@ -1555,7 +1560,9 @@ inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue
 
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
-  return GetTensorData<T>(value);
+  T* data = nullptr;
+  Ort::ThrowOnError(api_.GetTensorMutableData(const_cast<OrtValue*>(value), reinterpret_cast<void**>(&data)));
+  return data;
 }
 
 inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {

@@ -242,7 +242,7 @@ endif()
 
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
-   if(onnxruntime_DEV_MODE AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+   if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
       target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
    endif()
 endif()
@@ -431,18 +431,17 @@ if (onnxruntime_USE_CUDA)
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
   endif()
-  if (onnxruntime_DEV_MODE)
-	  if (UNIX)
-		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
-				"$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
-		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
-				"$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-	  else()
-		#mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
-		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
-		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
-	  endif()
+  if (UNIX)
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+  else()
+    #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
   endif()
+
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
@@ -470,10 +469,6 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_NVTX_PROFILE)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
-  endif()
-
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
@@ -550,7 +545,7 @@ if (onnxruntime_USE_DNNL)
   add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared project_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR} ${DNNL_OCL_INCLUDE_DIR})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
-  target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${ABSEIL_LIBS})
+  target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${ABSEIL_LIBS} ${GSL_TARGET})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
@@ -749,7 +744,7 @@ if (onnxruntime_USE_OPENVINO)
   )
 
   if (WIN32)
-	  set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
+      set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
   endif()
 
   # Header paths
@@ -1093,11 +1088,13 @@ if (onnxruntime_USE_DML)
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
-	    target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
+        target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_common)
+  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
   else()
@@ -1268,18 +1265,15 @@ if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
   include(onnxruntime_rocm_hipify.cmake)
 
-  # Add search paths for default hip installation
-  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME} ${onnxruntime_ROCM_HOME}/hip ${onnxruntime_ROCM_HOME}/hcc ${onnxruntime_ROCM_HOME}/miopen ${onnxruntime_ROCM_HOME}/hiprand ${onnxruntime_ROCM_HOME}/rocrand)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
 
-  set(CMAKE_MODULE_PATH "${onnxruntime_ROCM_HOME}/hip/cmake" ${CMAKE_MODULE_PATH})
   find_package(HIP)
   find_package(hiprand REQUIRED)
-  find_library(HIP_LIB amdhip64 REQUIRED)
-  find_library(ROC_BLAS rocblas REQUIRED)
-  find_library(MIOPEN_LIB MIOpen REQUIRED)
+  find_package(rocblas REQUIRED)
+  find_package(MIOpen REQUIRED)
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
-  set(ONNXRUNTIME_ROCM_LIBS ${HIP_LIB} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB} ${ROCTRACER_LIB})
+  set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
@@ -1346,30 +1340,12 @@ if (onnxruntime_USE_ROCM)
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_generated_training_ops_cc_srcs} ${onnxruntime_rocm_generated_training_ops_cu_srcs})
   endif()
 
-  set(HIP_CXX_FLAGS -fPIC)
-  list(APPEND HIP_CXX_FLAGS -std=c++17)
-
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND HIP_CXX_FLAGS -g)
-      #list(APPEND HIP_CXX_FLAGS -O0)
-  endif(CMAKE_BUILD_TYPE MATCHES Debug)
-
-  list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
-  list(APPEND HIP_CLANG_FLAGS ${CMAKE_HIP_FLAGS})
-
-  # Generate GPU code during compilation
-  list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
-
-  # Generate GPU code
-  foreach(HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
-    list(APPEND HIP_CLANG_FLAGS --offload-arch=${HIP_ARCH})
-  endforeach()
-
   auto_set_source_files_hip_language(${onnxruntime_providers_rocm_src})
   onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
+  target_compile_options(onnxruntime_providers_rocm PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
 
   if(NOT MSVC)
-    target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
+    target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-unused-parameter)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()

@@ -7,7 +7,7 @@
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
@@ -55,7 +55,7 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   T* target = expanded_data;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * sequence_length, sizeof(T) * sequence_length);
+      memcpy(target, input_data + i * sequence_length, sizeof(T) * SafeInt<size_t>(sequence_length));
       target += sequence_length;
     }
   }
@@ -95,7 +95,7 @@ Status ExpandBuffer(void* stream,
   T* target = expanded_data;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
+      memcpy(target, input_data + i * chunk_size, sizeof(T) * SafeInt<size_t>(chunk_size));
       target += chunk_size;
     }
   }
@@ -524,16 +524,16 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
 
-    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
-    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
-    for (gsl::index j = 0; j < beam_indices.length(); j++) {
+    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
+    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
+    for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
-      gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam,
-                                                              block_size_per_beam);
+      gsl::span<const T> present_key = present_span.subspan(beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * SafeInt<size_t>(block_size_per_beam),
+                                                              onnxruntime::narrow<size_t>(block_size_per_beam));
 
-      gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
-      gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
+      gsl::span<T> past_key = past_span.subspan(j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+      gsl::span<T> past_value = past_span.subspan(past_key_size + j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
       gsl::copy(present_key, past_key);
       gsl::copy(present_value, past_value);
     }
@@ -563,7 +563,7 @@ Status UpdateGptFeeds(
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
@@ -710,12 +710,12 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
 
-    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
-    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
-    for (gsl::index j = 0; j < beam_indices.length(); j++) {
+    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
+    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
+    for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
-      gsl::span<const T> present_beam = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<T> past_beam = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
+      gsl::span<const T> present_beam = present_span.subspan(beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+      gsl::span<T> past_beam = past_span.subspan(j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
       gsl::copy(present_beam, past_beam);
     }
 
@@ -750,7 +750,7 @@ Status UpdateDecoderFeeds(
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
 
   // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;

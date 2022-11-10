@@ -254,7 +254,7 @@ Status QkvToContext(
   } else if (nullptr != mask_index) {  // 1d mask index
     ORT_ENFORCE(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
-    const int* mask_start = (mask_index_dims.at(0) > batch_size) ? mask_index + batch_size : nullptr;
+    const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
         stream, total_sequence_length, sequence_length, batch_size, num_heads,
         mask_index, mask_start, data.extra_add_qk, scratch1, scratch2, parameters.is_unidirectional));

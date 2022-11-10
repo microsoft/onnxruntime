@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include <cfenv>
 
@@ -50,6 +51,11 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_UInt8) {
 }
 
 TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_Int8) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
   OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
   float X_scale = 0.025f;
   //int8_t X_zero_point = 0;

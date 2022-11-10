@@ -136,8 +136,6 @@ std::unordered_map<std::string, std::string> disabledTests(
      {"Inception_1_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
      {"Faster_R_CNN_R_50_FPN_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
      {"BERT_Squad_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"FCN_ResNet_50_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"FCN_ResNet_101_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
      {"EfficientNet_Lite4_qdq_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
      {"EfficientNet_Lite4_int8_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
     }
