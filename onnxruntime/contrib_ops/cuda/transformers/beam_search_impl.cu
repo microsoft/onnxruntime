@@ -288,8 +288,8 @@ __launch_bounds__(THREADBLOCK_SIZE) __global__
     TopK<T, MAX_K> partial;
     if (thread_id == 0) {
         for (int i = 0; i < MAX_K; ++i) {
-            partial.p[i] = -1;
-            partial.u[i] = MIN_T_VAL;
+            partial.key[i] = -1;
+            partial.value[i] = MIN_T_VAL;
         }
 
         int index_block = 2 * block_id * num_beams * num_beams;
@@ -299,9 +299,9 @@ __launch_bounds__(THREADBLOCK_SIZE) __global__
 
         int index_next = block_id * 2 * num_beams;
         for (int i = 0; i < 2 * num_beams; i++) {
-            next_tokens[index_next + i] = topk_indices[partial.p[i]];
-            next_indices[index_next + i] = (partial.p[i] - index_block) / (2 * num_beams);
-            next_scores[index_next + i] = partial.u[i];
+            next_tokens[index_next + i] = topk_indices[partial.key[i]];
+            next_indices[index_next + i] = (partial.key[i] - index_block) / (2 * num_beams);
+            next_scores[index_next + i] = partial.value[i];
         }
     }
 }
