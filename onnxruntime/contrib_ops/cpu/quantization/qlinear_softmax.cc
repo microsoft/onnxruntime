@@ -119,7 +119,7 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
   if (opset_ < OPSET13) {
     return ComputeInternal(ctx, *X, *Y, lookup_table, axis, thread_pool);
   } else {
-    return ComputeImplOpset13(ctx, *X, *Y, lookup_table, thread_pool);
+    return ComputeImplOpset13(ctx, *X, *Y, lookup_table, axis, thread_pool);
   }
 }
 
@@ -294,12 +294,12 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
 // opset-13 and above
 Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
                                           const Tensor& input, Tensor& output,
-                                          gsl::span<const EXP_OUT_DTYPE> lookup_table,
+                                          gsl::span<const EXP_OUT_DTYPE> lookup_table, int axis,
                                           concurrency::ThreadPool* thread_pool) const {
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();
 
-  bool is_transpose_required = (size_t(axis_) != (rank - 1));
+  bool is_transpose_required = (size_t(axis) != (rank - 1));
   Tensor transposed_input;
   Tensor intermediate_output;  // output that the softmax implementation will write into while using transposed input
   std::vector<size_t> permutation(rank);
@@ -310,8 +310,8 @@ Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
     std::iota(std::begin(permutation), std::end(permutation), 0);
 
     // swap the innermost dim with the dim corresponding to axis
-    permutation[axis_] = rank - 1;
-    permutation[rank - 1] = axis_;
+    permutation[axis] = rank - 1;
+    permutation[rank - 1] = axis;
     std::vector<int64_t> transposed_input_dims(rank);
     std::transform(permutation.cbegin(), permutation.cend(),
                    transposed_input_dims.begin(), [&X_shape](size_t e) { return X_shape[e]; });
