@@ -60,3 +60,24 @@ jobs:
           level: warning
           filter_mode: diff_context
           glob_pattern: "**/*.py"
+
+lint-python-format:
+    # Separated black/isort from other Python linters because we want this job to
+    # fail and not affect other linters
+    name: Python format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          level: warning
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+          level: warning
+      - uses: psf/black@stable
+        with:
+          options: "--check --diff --color"
+          level: warning
+      - uses: isort/isort-action@master
+        with:
+          level: warning

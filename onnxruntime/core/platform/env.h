@@ -58,15 +58,12 @@ struct ThreadOptions {
   // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
   unsigned int stack_size = 0;
 
+  // A vector hosting affinity settings for sub-threads in the threadpool
+  // Note - affinity.size() does not necessarily amount to thread_pool_size - 1
   std::vector<size_t> affinity;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
-
-//#ifdef _WIN32
-//  // thread affinity setting for each thread except main
-//  ThreadAffinities thread_affinities;
-//#endif
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
@@ -108,6 +105,7 @@ class Env {
   virtual int GetNumCpuCores() const = 0;
 
   // Return default threadpool size, and set default affinity vector
+  // Note - affinity.size() does not necessarily amount to the threadpool size
   virtual size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinity) const = 0;
 
   // Read affinity setting from a string, and return the number of threads the affinities vector will be applied to

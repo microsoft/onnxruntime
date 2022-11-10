@@ -187,8 +187,8 @@ class WindowsEnv : public Env {
     return kAffinities.size() >> 1;
   }
 
-  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int procssor_from, int processor_to) {
-    if (procssor_from > processor_to) {
+  std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int processor_from, int processor_to) {
+    if (processor_from > processor_to) {
       LOGS_DEFAULT(ERROR) << "Processor <from> must be smaller or equal to <to>";
       return {-1, 0};
     }
@@ -198,7 +198,7 @@ class WindowsEnv : public Env {
     KAFFINITY processor_mask = 0;
     for (const auto& group_info : this->group_info_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
-        if (processor_id >= procssor_from && processor_id <= processor_to) {
+        if (processor_id >= processor_from && processor_id <= processor_to) {
           processor_mask |= BitOne << i;
           processor_count += 1;
         }
@@ -209,13 +209,14 @@ class WindowsEnv : public Env {
       }
       group_id++;
     }
-    if (processor_count < processor_to - procssor_from + 1) {
+    if (processor_count < processor_to - processor_from + 1) {
       LOGS_DEFAULT(ERROR) << "Processor <from> or <to> cross group boundary";
       return {-1,0};
     }
     return {group_id, processor_mask};
   }
 
+  // processor_id_strs are simply utf-8 strings
   std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(const std::vector<std::string>& processor_id_strs) {
     if (processor_id_strs.empty()) {
       return {-1, 0};
@@ -722,8 +723,8 @@ class WindowsEnv : public Env {
     }
 
     std::vector<PROCESSOR_GROUP_INFO> group_info_vec;
-    auto num_processor_info = returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
-    for (int64_t i = 0; i < static_cast<int64_t>(num_processor_info); ++i) {
+    int64_t num_processor_info = static_cast<int64_t>(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
+    for (int64_t i = 0; i < num_processor_info; ++i) {
       if (processorInfos[i].Relationship != RelationGroup) {
         continue;
       }
