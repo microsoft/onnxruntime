@@ -377,8 +377,8 @@ BFCArena::Chunk* BFCArena::SplitFreeChunkFromBin(BFCArena::Bin::FreeChunkSet* fr
                                                  const BFCArena::Bin::FreeChunkSet::iterator& citer,
                                                  size_t rounded_bytes,
                                                  size_t num_bytes) {
-  RemoveFreeChunkIterFromBin(free_chunks, citer);
   const BFCArena::ChunkHandle h = (*citer);
+  RemoveFreeChunkIterFromBin(free_chunks, citer);
   BFCArena::Chunk* chunk = ChunkFromHandle(h);
   // If we can break the size of the chunk into two reasonably large
   // pieces, do so.  In any case don't waste more than
@@ -415,8 +415,7 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
     Bin* b = BinFromIndex(bin_num);
-    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end();
-         ++citer) {
+    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end(); ++citer) {
       const BFCArena::ChunkHandle h = (*citer);
       BFCArena::Chunk* chunk = ChunkFromHandle(h);
       ORT_ENFORCE(!chunk->in_use());
