@@ -25,7 +25,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     // 1) integers have a limited number of bits
     // 2) bit-masks of integers can only represent numbers 0 -63, but on VMs the actual logical processor numbering
     //    may not start with zero for a given core and may be way beyond 63.
-    // 3) Customers would be forced to concoct bit-masks which is far less convenient than simply an array of processor integers. 
+    // 3) Customers would be forced to concoct bit-masks which is far less convenient than simply an array of processor integers.
     to.affinity.reserve(options.affinity_vec_len);
     std::transform(options.affinity_vec, options.affinity_vec + options.affinity_vec_len, std::back_inserter(to.affinity),
                    [](size_t affinity) {
@@ -40,6 +40,18 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     options.thread_pool_size = static_cast<int>(cpu_list.size());
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
+  } else {
+    to.affinity = Env::Default().GetThreadAffinityMasks();
+    // Set current thread affinity to the last set of processors
+    const auto last = options.thread_pool_size - 1;
+    if (to.affinity.size() > last) {
+      const auto& log_processors = to.affinity[last];
+      DWORD_PTR mask = 0;
+      for (auto id : log_processors) {
+        mask |= DWORD_PTR{1} << id;
+      }
+      (void*)SetThreadAffinityMask(GetCurrentThread(), mask);
+    }
   }
 
   to.set_denormal_as_zero = options.set_denormal_as_zero;

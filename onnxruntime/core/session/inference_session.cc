@@ -285,8 +285,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.set_denormal_as_zero = set_denormal_as_zero;
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
-        to.auto_set_affinity = to.thread_pool_size == 0 &&
-                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+        to.auto_set_affinity = session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                                to.affinity_vec_len == 0;
         to.allow_spinning = allow_intra_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
@@ -311,8 +310,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         OrtThreadPoolParams to = session_options_.inter_op_param;
         // If the thread pool can use all the processors, then
         // we set thread affinity.
-        to.auto_set_affinity =
-            to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
+        to.auto_set_affinity = to.affinity_vec_len == 0;
         std::basic_stringstream<ORTCHAR_T> ss;
         if (to.name) {
           ss << to.name << ORT_TSTR("-");
