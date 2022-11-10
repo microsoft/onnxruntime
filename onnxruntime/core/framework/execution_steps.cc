@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "core/framework/execution_steps.h"
 #include "core/framework/sequential_executor.h"
 namespace onnxruntime {
