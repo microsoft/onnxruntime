@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
+
 import torch
 import torch.onnx.symbolic_helper as sym_help
 from packaging.version import Version
@@ -10,6 +12,85 @@ from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
 from onnxruntime.training import ortmodule
+
+
+def _enforce_check(condition, message):
+    if not condition:
+        raise RuntimeError("Enforced failure: {}".format(message))
+
+
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": [torch.onnx.TensorProtoDataType.UINT8, 1],
+    "Char": [torch.onnx.TensorProtoDataType.INT8, 1],
+    "Double": [torch.onnx.TensorProtoDataType.DOUBLE, 8],
+    "Float": [torch.onnx.TensorProtoDataType.FLOAT, 4],
+    "Half": [torch.onnx.TensorProtoDataType.FLOAT16, 2],
+    "Int": [torch.onnx.TensorProtoDataType.INT32, 4],
+    "Long": [torch.onnx.TensorProtoDataType.INT64, 8],
+    "Short": [torch.onnx.TensorProtoDataType.INT16, 2],
+    "Bool": [torch.onnx.TensorProtoDataType.BOOL, 1],
+    "ComplexFloat": [torch.onnx.TensorProtoDataType.COMPLEX64, 8],
+    "ComplexDouble": [torch.onnx.TensorProtoDataType.COMPLEX128, 16],
+    "BFloat16": [torch.onnx.TensorProtoDataType.BFLOAT16, 2],
+    "Undefined": [torch.onnx.TensorProtoDataType.UNDEFINED, -1],
+}
+
+
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
+
+
+def wrap_custom_export_function(original_func):
+    # Starting from PyTorch 1.11, there has been a change to symbolic function signature
+    # in terms of how additional context is accessed. More info at
+    # https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
+    # This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
+    try:
+        from torch.onnx import SymbolicContext
+
+        def _export_with_ctx(ctx: SymbolicContext, g, *args, **kwargs):
+            n = ctx.cur_node
+            return original_func(g, n, *args, **kwargs)
+
+        return _export_with_ctx
+    except ImportError:
+        return original_func
+
+
+def _check_all_tensor_type_match(tensors):
+    if len(tensors) == 0:
+        return True
+    first_type = tensors[0].type().scalarType()
+    for t in tensors:
+        if t.type().scalarType() != first_type:
+            return False
+    return True
+
+
+def _check_input_output_types(lhs_scalar_type, rhs_scalar_type):
+    lhs_onnx_type, lhs_byte_per_elem = _CAST_PYTORCH_TO_ONNX[lhs_scalar_type]
+    rhs_onnx_type, rhs_byte_per_elem = _CAST_PYTORCH_TO_ONNX[rhs_scalar_type]
+    _enforce_check(lhs_onnx_type != torch.onnx.TensorProtoDataType.UNDEFINED, "lhs type is undefined")
+    _enforce_check(rhs_onnx_type != torch.onnx.TensorProtoDataType.UNDEFINED, "rhs type is undefined")
+
+    if lhs_byte_per_elem == rhs_byte_per_elem:
+        return 0, rhs_onnx_type  # no type conversion needed
+    elif lhs_byte_per_elem > rhs_byte_per_elem:
+        warnings.warn(
+            f"Type demotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type} ",
+            UserWarning,
+        )
+        return -1, rhs_onnx_type  # need type demotion
+    else:
+        warnings.warn(
+            f"Type promotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type} ",
+            UserWarning,
+        )
+        return 1, rhs_onnx_type  # need type promotion
 
 
 class CustomOpSymbolicRegistry:
@@ -30,7 +111,7 @@ class CustomOpSymbolicRegistry:
             )
 
 
-def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None):
+def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None, need_context=False):
     def symbolic_wrapper(fn):
         need_register = True
         if torch_version_start is not None and Version(torch.__version__) < Version(torch_version_start):
@@ -38,35 +119,58 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
         # torch_version_end is exclusive.
         if torch_version_end is not None and Version(torch.__version__) >= Version(torch_version_end):
             need_register = False
+
+        updated_fn = fn
+        if need_context is True:
+            updated_fn = wrap_custom_export_function(fn)
+
         if need_register:
-            CustomOpSymbolicRegistry.register(name, domain, fn)
-        return fn
+            CustomOpSymbolicRegistry.register(name, domain, updated_fn)
+        return updated_fn
 
     return symbolic_wrapper
 
 
-@register_symbolic("cross_entropy_loss")
-@parse_args("v", "v", "v", "i", "v", "v")
-def cross_entropy_loss(g, self, target, weight, reduction, ignore_index, label_smoothing=0.0):
+@register_symbolic("cross_entropy_loss", need_context=True)
+def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, label_smoothing=0.0):
+    if not weight.node().mustBeNone():
+        _enforce_check(
+            _check_all_tensor_type_match([input, weight]),
+            f"custom exporter for cross_entropy_loss: input and weight must have the same type: {input}, {weight}",
+        )
+
+    outputs = [o for o in node.outputs()]
+    _enforce_check(
+        _check_all_tensor_type_match(outputs), "custom exporter for cross_entropy_loss: outputs must have the same type"
+    )
+
     label_smoothing = sym_help._maybe_get_const(label_smoothing, "f")
-    if label_smoothing > 0.0:
-        raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
+    _enforce_check(not (label_smoothing > 0.0), "Unsupported: ONNX does not support label_smoothing")
+
+    loss_output = outputs[0]
+    flag, rhs_onnx_type = _check_input_output_types(input.type().scalarType(), loss_output.type().scalarType())
+    if flag > 0:
+        # do input type promotion
+        input_cast = g.op("Cast", input, to_i=rhs_onnx_type)
+    else:
+        input_cast = input
 
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, "i")
     reduction_vals = ["none", "mean", "sum"]
     reduction = reduction_vals[reduction]
+
     output, log_prob = g.op(
         "com.microsoft::SoftmaxCrossEntropyLossInternal",
-        self,
+        input_cast,
         target,
         weight,
         ignore_index,
         reduction_s=reduction,
         outputs=2,
     )
-    output.setType(self.type())
-    log_prob.setType(self.type())
+    output.setType(input_cast.type())
+    log_prob.setType(input_cast.type())
     return output
 
 
