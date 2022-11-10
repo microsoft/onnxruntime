@@ -177,7 +177,9 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 }
 
 /*
-Fuse Range->Gather to Slice.
+Fuse Range->Gather to Slice. Slice kernel is faster than Gather kernel in this case,
+and SliceGrad is much faster than GatherGrad.
+*/
 */
 Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                       const logging::Logger& logger) const {
