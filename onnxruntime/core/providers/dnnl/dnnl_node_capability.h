@@ -97,7 +97,7 @@ class DnnlDefaultNodeCapability : public DnnlNodeCapability {
 * DnnlDefaultMultiInputNodeCapability({T1, T2});
 *
 * The number of inputs and the number of unordered_sets must match. For this reason
-* this capability class is not sutable for nodes that may have a varible number of
+* this capability class is not suitable for nodes that may have a variable number of
 * inputs.
 *
 * All types for all inputs must be specified.
@@ -239,7 +239,7 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
 };
 
 /**
- * Decide if aSum op is supported by DnnlExecutionProvider
+ * Decide if a Sum op is supported by DnnlExecutionProvider
  * OneDNN does not support Numpy-style broadcasting for 'Sum'
  */
 class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
