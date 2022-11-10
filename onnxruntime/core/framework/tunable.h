@@ -173,7 +173,7 @@ class TunableOp {
 
   std::string OpSignature() const {
 #ifdef ORT_NO_RTTI
-    ORT_THROW("TunableOp must be built with RTTI enabled")
+    ORT_THROW("TunableOp must be built with RTTI enabled");
 #else
 #ifndef _WIN32
     const auto* name = typeid(*this).name();
