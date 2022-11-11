@@ -18,12 +18,12 @@ class BaseOpBuilder : public IOpBuilder {
   virtual ~BaseOpBuilder() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BaseOpBuilder);
 
-  Status IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
+  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model) const override ORT_MUST_USE_RESULT;
 
-  Status AddToModelBuilder(QnnModelWrapper* qnn_model_wrapper,
+  Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const NodeUnit& node_unit,
                            const logging::Logger& logger,
                            bool is_quantized_model,
@@ -32,21 +32,21 @@ class BaseOpBuilder : public IOpBuilder {
   std::string GetOpBuilderType() const override;
 
  protected:
-  virtual Status ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+  virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
                                bool is_quantized_model,
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
-  virtual Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
                                              const std::vector<std::string>& input_names,
                                              const logging::Logger& logger,
                                              bool is_quantized_model,
                                              bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
-  virtual Status ProcessOutputs(QnnModelWrapper* qnn_model_wrapper,
+  virtual Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                 const NodeUnit& node_unit,
                                 const std::vector<std::string>& input_names,
                                 std::vector<QnnParamWrapper>&& node_params,
@@ -229,11 +229,11 @@ class BaseOpBuilder : public IOpBuilder {
     }
   }
 
-  Status ProcessAxisAttribute(const QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit,
                               std::vector<QnnParamWrapper>& node_params,
                               int32_t& default_axis_value) const;
-  Qnn_TensorType_t GetInputTensorType(QnnModelWrapper* qnn_model_wrapper, const std::string& input_name) const;
+  Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const;
 
   mutable size_t output_count_ = std::numeric_limits<uint32_t>::max();
 

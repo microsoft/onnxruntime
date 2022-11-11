@@ -22,14 +22,14 @@ class SliceOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SliceOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -37,21 +37,21 @@ class SliceOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplictOpCheck(QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
   typedef struct {
     int32_t begin, end, stride;
   } Range;
   mutable std::vector<Range> ranges_;
 };
 
-Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   size_t input_count = node_unit.Inputs().size();
   ORT_RETURN_IF_NOT(input_count >= SLICE_MIN_INPUT && input_count <= SLICE_MAX_INPUT,
                     "For ONNX Slice operation the expected number of inputs is between 3 and 5.");
   // Skip the first input. All other input need to be initializer
   for (size_t i = 1; i < node_unit.Inputs().size(); i++) {
     const auto& next_input = node_unit.Inputs()[i].node_arg.Name();
-    if (!qnn_model_wrapper->IsInitializerInput(next_input)) {
+    if (!qnn_model_wrapper.IsInitializerInput(next_input)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic slice.");
     }
   }
@@ -60,7 +60,7 @@ Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper* qnn_model_wrapper, const 
 }
 
 // Note: For ONNX Slice operation the expected number of inputs is between 3 and 5
-Status SliceOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
@@ -85,10 +85,10 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
       // Ignore unspecified/unused optional input
       continue;
     }
-    if (qnn_model_wrapper->QnnContainsTensor(input_name)) {
+    if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
       LOGS(logger, VERBOSE) << "Tensor already added or the input is not named, skip it: " << input_name;
       input_names.push_back(input_name);
-      ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[input_i].node_arg, input0_shape), "Cannot get shape");
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input0_shape), "Cannot get shape");
       continue;
     }
 
@@ -97,17 +97,17 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
 
     std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->ProcessQuantizationParameter(inputs[input_i].quant_param,
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[input_i].quant_param,
                                                                       quantize_param.scaleOffsetEncoding.scale,
                                                                       quantize_param.scaleOffsetEncoding.offset),
                       "Cannot get quantization parameter");
 
     std::vector<uint8_t> unpacked_tensor;
-    bool is_initializer_input = qnn_model_wrapper->IsInitializerInput(input_name);
+    bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
     if (is_initializer_input) {
-      const auto& input_tensor = qnn_model_wrapper->GetInitializerTensors().at(input_name);
+      const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
       size_t tensor_byte_size = unpacked_tensor.size();
       const auto data_type = input_tensor->data_type();
@@ -154,7 +154,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
     Qnn_QuantizeParams_t quantize_params = QNN_QUANTIZE_PARAMS_INIT;
     QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_params,
                                          std::move(input_shape), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
   TensorShapeVector input_dimensions(input0_shape.cbegin(), input0_shape.cend());
   onnxruntime::SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
@@ -170,7 +170,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                    const NodeUnit& node_unit,
                                                    const std::vector<std::string>& input_names,
                                                    const logging::Logger& logger,

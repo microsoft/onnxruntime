@@ -19,7 +19,7 @@ class GatherOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GatherOpBuilder);
 
  protected:
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -27,7 +27,7 @@ class GatherOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
                                                     const std::vector<std::string>& input_names,
                                                     const logging::Logger& logger,
@@ -41,9 +41,9 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   // if indicies is scalar shape, then need to add Reshape node
   ORT_ENFORCE(input_names.size() == 2, "Gather should has 2 inputs at least!");
   Qnn_Tensor_t input;
-  qnn_model_wrapper->GetQnnTensor(input_names[0], input);
+  qnn_model_wrapper.GetQnnTensor(input_names[0], input);
   Qnn_Tensor_t indices_input;
-  qnn_model_wrapper->GetQnnTensor(input_names[1], indices_input);
+  qnn_model_wrapper.GetQnnTensor(input_names[1], indices_input);
 
   // Calcualte the output shape
   std::vector<uint32_t> qnn_output_shape;
@@ -51,7 +51,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
 
   const auto& gather_indices = node_unit.Inputs()[1];
   std::vector<uint32_t> indices_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(gather_indices.node_arg, indices_shape),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_indices.node_arg, indices_shape),
                     "Cannot get shape");
 
   // replace the dimension for p.axis with the shape from the indices
@@ -77,15 +77,15 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   int32_t onnx_data_type;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->ProcessQuantizationParameter(gather_output.quant_param,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(gather_output.quant_param,
                                                                     quantize_param.scaleOffsetEncoding.scale,
                                                                     quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
   std::vector<uint32_t> target_output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(gather_output.node_arg, target_output_shape),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_output.node_arg, target_output_shape),
                     "Cannot get shape");
 
-  bool is_graph_output = qnn_model_wrapper->IsGraphOutput(output_name);
+  bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
   std::string name = output_name + (reshape_required ? "_reshape" : "");
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
@@ -94,7 +94,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   std::vector<QnnTensorWrapper> output_tensors;
   output_tensors.emplace_back(std::move(gather_output_wrapper));
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->AddNode(GetNodeName(node_unit),            // Node Name
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddNode(GetNodeName(node_unit),            // Node Name
                                                qnn_def::package_name,             // Package Name
                                                GetQnnOpType(node_unit.OpType()),  //
                                                std::move(node_params),            // Qnn Node Type
@@ -114,7 +114,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
     std::vector<QnnTensorWrapper> reshape_output_tensors;
     reshape_output_tensors.emplace_back(std::move(reshape_output));
     const static std::string qnn_node_type = "Reshape";
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->AddNode(output_name,                        // Node Name
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddNode(output_name,                        // Node Name
                                                  qnn_def::package_name,              // Package Name
                                                  qnn_node_type,                      // Qnn Node Type
                                                  {},                                 // Node Params

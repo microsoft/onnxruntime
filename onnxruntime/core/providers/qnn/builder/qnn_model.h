@@ -75,7 +75,7 @@ class QnnModel {
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;
-  bool GetGraphInfoFromModel(QnnModelWrapper* model_wrapper);
+  bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper);
 
   onnxruntime::AllocatorPtr GetAllocator() {
     if (cpu_allocator_ == nullptr) {
@@ -87,7 +87,7 @@ class QnnModel {
   Status GetQnnTensorDataLength(uint32_t* data_dimensions,
                                 uint32_t rank,
                                 Qnn_DataType_t data_type,
-                                size_t& data_length);
+                                size_t& data_length) const;
 
   Status SetupTensors(std::vector<Qnn_Tensor_t>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers, bool is_input = true);
 

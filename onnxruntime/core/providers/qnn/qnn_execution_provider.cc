@@ -70,7 +70,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                                                   rpc_control_latency_);
 }
 
-bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit,
+bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                            std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
                                            std::unordered_set<std::string> initializer_input_lookup,
                                            const logging::Logger& logger) const {
@@ -146,19 +146,19 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
   std::unordered_map<std::string, size_t> model_output_index_map;
   std::unordered_map<std::string, qnn::OnnxTensorInfo> inputs_info;
   std::unordered_map<std::string, qnn::OnnxTensorInfo> outputs_info;
-  auto qnn_model_wrapper = std::make_unique<qnn::QnnModelWrapper>(graph_viewer, logger, qnn_interface,
+  auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger, qnn_interface,
                                                                   model_input_index_map,
                                                                   model_output_index_map,
                                                                   inputs_info, outputs_info,
                                                                   initializer_input_lookup, cpu_allocator_);
-  bool rt = qnn_model_wrapper->Initialize(context, graph_viewer.Name().c_str());
+  bool rt = qnn_model_wrapper.Initialize(context, graph_viewer.Name().c_str());
   if (!rt) {
     return supported_nodes;
   }
 
   for (const auto& node : graph_viewer.Nodes()) {
     const NodeUnit* node_unit = node_unit_map.at(&node);
-    const bool supported = IsNodeSupported(qnn_model_wrapper.get(),
+    const bool supported = IsNodeSupported(qnn_model_wrapper,
                                            *node_unit,
                                            node_unit_supported_result,
                                            initializer_input_lookup,

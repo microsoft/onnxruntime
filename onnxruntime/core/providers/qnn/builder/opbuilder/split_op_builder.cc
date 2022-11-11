@@ -20,14 +20,14 @@ class SplitOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SplitOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -35,7 +35,7 @@ class SplitOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-Status SplitOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
@@ -51,7 +51,7 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   auto inputs = node_unit.Inputs();
   auto& input_name = inputs[0].node_arg.Name();
 
-  if (qnn_model_wrapper->QnnContainsTensor(input_name)) {
+  if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
     return Status::OK();
@@ -62,16 +62,16 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
 
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->ProcessQuantizationParameter(inputs[0].quant_param,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[0].quant_param,
                                                                     quantize_param.scaleOffsetEncoding.scale,
                                                                     quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
 
   std::vector<uint8_t> unpacked_tensor;
-  bool is_initializer_input = qnn_model_wrapper->IsInitializerInput(input_name);
+  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
   if (is_initializer_input) {
-    const auto& input_tensor = qnn_model_wrapper->GetInitializerTensors().at(input_name);
+    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
   }
 
@@ -80,12 +80,12 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   Qnn_TensorDataFormat_t data_format = 0;
 
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
 }
 
-Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                    const NodeUnit& node_unit,
                                                    const std::vector<std::string>& input_names,
                                                    const logging::Logger& logger,
@@ -98,10 +98,10 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wr
   std::vector<uint32_t> split_index;
   if (node_unit.Inputs().size() > 1) {
     auto& input_name = node_unit.Inputs()[1].node_arg.Name();
-    bool is_initializer_input = qnn_model_wrapper->IsInitializerInput(input_name);
+    bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
     if (is_initializer_input) {
       std::vector<uint8_t> unpacked_tensor;
-      const auto& input_tensor = qnn_model_wrapper->GetInitializerTensors().at(input_name);
+      const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
       const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       size_t tensor_byte_size = unpacked_tensor.size();
@@ -129,7 +129,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wr
   if (split_index.size() == 0) {
     auto axis = node_params[0].GetQnnParam().scalarParam.uint32Value;
     std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
                       "Cannot get shape");
     ORT_ENFORCE(input_shape.size() > axis, "axis not valid!");
     ORT_RETURN_IF_NOT(input_shape.at(axis) > 0, "Shape value not valid!");

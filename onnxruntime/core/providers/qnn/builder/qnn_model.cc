@@ -13,14 +13,14 @@
 namespace onnxruntime {
 namespace qnn {
 
-bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper* model_wrapper) {
+bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper) {
   bool rt = true;
 
-  graph_info_ = std::make_unique<GraphInfo>(model_wrapper->GetQnnGraph(),
-                                            model_wrapper->GetQnnGraphName(),
-                                            model_wrapper->GetGraphInputTensorWrappers(),
-                                            model_wrapper->GetGraphOutputTensorWrappers(),
-                                            model_wrapper->GetModelTensorsMap());
+  graph_info_ = std::make_unique<GraphInfo>(model_wrapper.GetQnnGraph(),
+                                            model_wrapper.GetQnnGraphName(),
+                                            model_wrapper.GetGraphInputTensorWrappers(),
+                                            model_wrapper.GetGraphOutputTensorWrappers(),
+                                            model_wrapper.GetModelTensorsMap());
   if (graph_info_ == nullptr) {
     LOGS(logger_, ERROR) << "GetGraphInfoFromModel() failed to allocate graphsInfo. make_unique returned nullptr.";
     return false;
@@ -104,13 +104,13 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
 
   QNN_INTERFACE_VER_TYPE qnn_interface = qnn_backend_manager_->GetQnnInterface();
   Qnn_ContextHandle_t context = qnn_backend_manager_->GetQnnContext();
-  std::unique_ptr<QnnModelWrapper> qnn_model_wrapper = std::make_unique<QnnModelWrapper>(graph_viewer, logger_, qnn_interface,
-                                                                                         model_input_index_map_,
-                                                                                         model_output_index_map_,
-                                                                                         inputs_info_, outputs_info_,
-                                                                                         initializer_inputs_, cpu_allocator);
+  QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger_, qnn_interface,
+                                                      model_input_index_map_,
+                                                      model_output_index_map_,
+                                                      inputs_info_, outputs_info_,
+                                                      initializer_inputs_, cpu_allocator);
   bool rt = true;
-  rt = qnn_model_wrapper->Initialize(context, graph_name.c_str(), debug);
+  rt = qnn_model_wrapper.Initialize(context, graph_name.c_str(), debug);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }
@@ -134,13 +134,13 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
 
     if (const auto* op_builder = GetOpBuilder(node->OpType())) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper.get(), node_unit, logger_,
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_,
                                                         is_quantized_model_));
     }
   }
 
   LOGS(logger_, VERBOSE) << "GetGraphInfoFromModel started.";
-  rt = GetGraphInfoFromModel(qnn_model_wrapper.get());
+  rt = GetGraphInfoFromModel(qnn_model_wrapper);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetGraphInfoFromModel failed.");
   }
@@ -245,7 +245,7 @@ Status QnnModel::ExecuteGraph(Ort::CustomOpApi& ort, OrtKernelContext* context) 
 Status QnnModel::GetQnnTensorDataLength(uint32_t* data_dimensions,
                                         uint32_t rank,
                                         Qnn_DataType_t data_type,
-                                        size_t& data_length) {
+                                        size_t& data_length) const {
   ORT_RETURN_IF(nullptr == data_dimensions, "Tensor dimensions is nullptr");
 
   data_length = utils::GetElementSizeByType(data_type);

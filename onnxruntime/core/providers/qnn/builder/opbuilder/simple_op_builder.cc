@@ -20,7 +20,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SimpleOpBuilder);
 
  protected:
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -28,17 +28,17 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplictOpCheck(const QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const;
-  Status ProcessPermAttribute(QnnModelWrapper* qnn_model_wrapper,
+  Status ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit, std::vector<QnnParamWrapper>& node_params) const;
-  Status ProcessAxesAttribute(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAxesAttribute(QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit, std::vector<QnnParamWrapper>& node_params) const;
-  Status ProcessAlphaAttribute(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const std::string input_name) const;
 };
 
-Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   if (node_unit.OpType() == "ReduceSum") {
     // TODO: still can handle it if axes input is initializer
     if (node_unit.Inputs().size() > 1) {
@@ -51,7 +51,7 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper* qnn_model_wrapper,
     std::vector<QnnParamWrapper> node_params;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, node_params, default_axis));
     std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
                      "Cannot get shape");
     // For Softmax opset < 13, it's still supported if axis=rank-1
     if (default_axis == static_cast<int32_t>(input_shape.size() - 1)) {
@@ -64,14 +64,14 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper* qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper* qnn_model_wrapper,
+Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
                                              std::vector<QnnParamWrapper>& node_params) const {
   std::vector<uint32_t> perm_shape;
   std::vector<uint32_t> perm_data;
   auto inputs = node_unit.Inputs();
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   // set default perm
   uint32_t rank = static_cast<uint32_t>(input_shape.size());
   std::vector<int64_t> transpose_perm(rank);
@@ -93,14 +93,14 @@ Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper* qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessAxesAttribute(QnnModelWrapper* qnn_model_wrapper,
+Status SimpleOpBuilder::ProcessAxesAttribute(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
                                              std::vector<QnnParamWrapper>& node_params) const {
   std::vector<uint32_t> axes_shape;
   std::vector<uint32_t> axes_data;
   auto inputs = node_unit.Inputs();
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   uint32_t rank = static_cast<uint32_t>(input_shape.size());
   std::vector<int64_t> reduce_axes(rank);
   for (uint32_t i = 0; i < rank; ++i) {
@@ -125,7 +125,7 @@ Status SimpleOpBuilder::ProcessAxesAttribute(QnnModelWrapper* qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit, const std::string input_name) const {
+Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, const std::string input_name) const {
   NodeAttrHelper node_helper(node_unit);
   union {
     float alpha;
@@ -140,11 +140,11 @@ Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper* qnn_model_wrapper
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;
   Qnn_TensorDataFormat_t data_format = 0;
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_data));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
                                                     const std::vector<std::string>& input_names,
                                                     const logging::Logger& logger,

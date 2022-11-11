@@ -49,7 +49,7 @@ class QnnModelWrapper {
                   bool debug = false,
                   const QnnGraph_Config_t** graph_configs = nullptr);
 
-  size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
+  size_t GetElementSizeByType(const Qnn_DataType_t& data_type) const;
 
   bool AddQnnTensor(const std::string& node_name, const std::string& tensor_name, const Qnn_Tensor_t& qnn_tensor, bool is_param = false);
 
@@ -70,7 +70,7 @@ class QnnModelWrapper {
 
   Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
 
-  std::string GetQnnGraphName() { return graph_name_; }
+  std::string GetQnnGraphName() const { return graph_name_; }
 
   std::vector<QnnTensorWrapper>&& GetGraphInputTensorWrappers() {
     return std::move(model_input_tensor_wrappers_);
@@ -86,24 +86,21 @@ class QnnModelWrapper {
 
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  bool IsInitializerInput(std::string input_name) {
-    if (initializer_lookup_.find(input_name) == initializer_lookup_.end()) {
-      return false;
-    }
-
-    return true;
+  bool IsInitializerInput(std::string input_name) const {
+    return initializer_lookup_.find(input_name) != initializer_lookup_.end();
   }
+
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
 
   bool ProcessOffset(const std::string& offset_name,
-                     int32_t& offset_value);
+                     int32_t& offset_value) const;
 
   bool ProcessScale(const std::string& scale_name,
-                    float& scale_value);
+                    float& scale_value) const;
 
   bool ProcessQuantizationParameter(const std::optional<NodeUnitIODef::QuantParam>& quant_param,
                                     float& scale_value,
-                                    int32_t& offset_value);
+                                    int32_t& offset_value) const;
 
   bool QnnContainsTensor(const std::string& tensor_name) const;
 
@@ -182,7 +179,7 @@ class QnnModelWrapper {
   }
 
  private:
-  bool IsQDQNode(const Node& node) {
+  bool IsQDQNode(const Node& node) const {
     if (node.OpType() == "QuantizeLinear" || node.OpType() == "DequantizeLinear") {
       return true;
     }

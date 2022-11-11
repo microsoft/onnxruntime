@@ -19,20 +19,20 @@ class ResizeOpBuilder : public BaseOpBuilder {
   ResizeOpBuilder() : BaseOpBuilder("ResizeOpBuilder") {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResizeOpBuilder);
 
-  Status IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
+  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  Status ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -44,7 +44,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
-Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
+Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
                                       bool is_quantized_model) const {
@@ -69,7 +69,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
 
   auto input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only support 2D!");
   }
@@ -82,7 +82,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
   return Status::OK();
 }
 
-Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
                                       bool is_quantized_model,
@@ -97,7 +97,7 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   const auto& input_name = inputs[0].node_arg.Name();
 
-  if (qnn_model_wrapper->QnnContainsTensor(input_name)) {
+  if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
     return Status::OK();
@@ -108,16 +108,16 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
 
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->ProcessQuantizationParameter(inputs[0].quant_param,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[0].quant_param,
                                                                     quantize_param.scaleOffsetEncoding.scale,
                                                                     quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
 
   std::vector<uint8_t> unpacked_tensor;
-  bool is_initializer_input = qnn_model_wrapper->IsInitializerInput(input_name);
+  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
   if (is_initializer_input) {
-    const auto& input_tensor = qnn_model_wrapper->GetInitializerTensors().at(input_name);
+    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
   }
 
@@ -127,12 +127,12 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
 
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
 }
 
-Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
                                                     const std::vector<std::string>& input_names,
                                                     const logging::Logger& logger,
@@ -180,22 +180,22 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   int32_t onnx_data_type;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->ProcessQuantizationParameter(resize_output.quant_param,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(resize_output.quant_param,
                                                                     quantize_param.scaleOffsetEncoding.scale,
                                                                     quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
   std::vector<uint32_t> output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(resize_output.node_arg, output_shape),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(resize_output.node_arg, output_shape),
                     "Cannot get shape");
 
-  bool is_graph_output = qnn_model_wrapper->IsGraphOutput(output_name);
+  bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   Qnn_TensorDataFormat_t data_format = 0;
   QnnTensorWrapper qnn_output(output_name, tensor_type, data_format, qnn_data_type, quantize_param,
                               std::move(output_shape));
   qnn_outputs.push_back(std::move(qnn_output));
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->AddNode(GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddNode(GetNodeName(node_unit),
                                                qnn_def::package_name,
                                                qnn_node_type,
                                                std::move(node_params),

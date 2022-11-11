@@ -17,7 +17,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
   ArgMaxMinOpBuilder() : BaseOpBuilder("ArgMaxMinOpBuilder") {}
 
  protected:
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -25,7 +25,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                        const NodeUnit& node_unit,
                                                        const std::vector<std::string>& input_names,
                                                        const logging::Logger& logger,

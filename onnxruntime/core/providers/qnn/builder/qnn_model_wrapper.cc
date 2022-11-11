@@ -290,7 +290,7 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
 }
 
 bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
-                                    int32_t& offset_value) {
+                                    int32_t& offset_value) const {
   const auto& graph_initializers = GetInitializerTensors();
   auto offset_it = graph_initializers.find(offset_name);
   if (offset_it == graph_initializers.end()) {
@@ -333,7 +333,7 @@ bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
 }
 
 bool QnnModelWrapper::ProcessScale(const std::string& scale_name,
-                                   float& scale_value) {
+                                   float& scale_value) const {
   const auto& graph_initializers = GetInitializerTensors();
   auto offset_it = graph_initializers.find(scale_name);
   if (offset_it == graph_initializers.end()) {
@@ -351,7 +351,7 @@ bool QnnModelWrapper::ProcessScale(const std::string& scale_name,
 
 bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitIODef::QuantParam>& quant_param,
                                                    float& scale_value,
-                                                   int32_t& offset_value) {
+                                                   int32_t& offset_value) const {
   if (quant_param.has_value()) {
     // Parse scale & zero_point
     const auto& scale_name = quant_param->scale.Name();

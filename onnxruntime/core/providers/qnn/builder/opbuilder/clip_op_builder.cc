@@ -19,14 +19,14 @@ class ClipOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ClipOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -34,28 +34,28 @@ class ClipOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplictOpCheck(QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
   mutable float min_value_ = std::numeric_limits<float>::lowest();
   mutable float max_value_ = std::numeric_limits<float>::max();
 };
 
-Status ClipOpBuilder::ExplictOpCheck(QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status ClipOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   if (node_unit.Inputs().size() > 1) {
     const auto& min_input_name = node_unit.Inputs()[1].node_arg.Name();
-    if (!min_input_name.empty() && !qnn_model_wrapper->IsInitializerInput(min_input_name)) {
+    if (!min_input_name.empty() && !qnn_model_wrapper.IsInitializerInput(min_input_name)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic min/max.");
     }
   }
   if (node_unit.Inputs().size() > 2) {
     const auto& max_input_name = node_unit.Inputs()[2].node_arg.Name();
-    if (!max_input_name.empty() && !qnn_model_wrapper->IsInitializerInput(max_input_name)) {
+    if (!max_input_name.empty() && !qnn_model_wrapper.IsInitializerInput(max_input_name)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic min/max.");
     }
   }
   return Status::OK();
 }
 
-Status ClipOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
+Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
                                     bool is_quantized_model,
@@ -75,7 +75,7 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
       // Ignore unspecified/unused optional input
       continue;
     }
-    if (qnn_model_wrapper->QnnContainsTensor(input_name)) {
+    if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
       LOGS(logger, VERBOSE) << "Tensor already added or the input is not named, skip it: " << input_name;
       input_names.push_back(input_name);
       continue;
@@ -86,18 +86,18 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
 
     std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->ProcessQuantizationParameter(inputs[input_i].quant_param,
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[input_i].quant_param,
                                                                       quantize_param.scaleOffsetEncoding.scale,
                                                                       quantize_param.scaleOffsetEncoding.offset),
                       "Cannot get quantization parameter");
 
     float* ini_data = nullptr;
     std::vector<uint8_t> unpacked_tensor;
-    bool is_initializer_input = qnn_model_wrapper->IsInitializerInput(input_name);
+    bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
     if (is_initializer_input) {
-      const auto& input_tensor = qnn_model_wrapper->GetInitializerTensors().at(input_name);
+      const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
       ini_data = reinterpret_cast<float*>(unpacked_tensor.data());
       if (input_i == 1) {
@@ -116,13 +116,13 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper* qnn_model_wrapper,
     Qnn_TensorDataFormat_t data_format = 0;
     QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
 
   return Status::OK();
 }
 
-Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   const std::vector<std::string>& input_names,
                                                   const logging::Logger& logger,

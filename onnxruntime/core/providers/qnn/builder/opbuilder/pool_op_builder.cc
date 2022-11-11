@@ -19,13 +19,13 @@ class PoolOpBuilder : public BaseOpBuilder {
   PoolOpBuilder() : BaseOpBuilder("PoolOpBuilder") {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PoolOpBuilder);
 
-  Status IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
+  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
                        bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  Status ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
                                      const logging::Logger& logger,
@@ -44,7 +44,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
-Status PoolOpBuilder::IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
+Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
                                     bool is_quantized_model) const {
@@ -58,7 +58,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper* qnn_model_wrapper,
   }
 
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Conv only support 2D!");
   }
@@ -126,7 +126,7 @@ Status PoolOpBuilder::SetParamForMaxPool(const NodeAttrHelper& node_helper,
   return Status::OK();
 }  // namespace qnn
 
-Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wrapper,
+Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   const std::vector<std::string>& input_names,
                                                   const logging::Logger& logger,
@@ -136,7 +136,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
   // Get the NCHW from input data, use HW for the pool filter size and pool stride
   const auto& inputs = node_unit.Inputs();
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   ORT_RETURN_IF_NOT(input_shape.size() == 4, "Input should have 4 dimension NCHW.");
   // Default value for GlobalAveragePool
   // Pool use filter & stride with shape [filter_height, filter_width]
@@ -151,7 +151,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_wra
   if (node_unit.OpType() == "MaxPool") {
     const auto& outputs = node_unit.Outputs();
     std::vector<uint32_t> output_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(outputs[0].node_arg, output_shape), "Cannot get shape");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[0].node_arg, output_shape), "Cannot get shape");
 
     ORT_RETURN_IF_ERROR(SetParamForMaxPool(node_helper, filter_size, pad_amount, stride, ceil_mode, std::move(input_shape), std::move(output_shape)));
   }
