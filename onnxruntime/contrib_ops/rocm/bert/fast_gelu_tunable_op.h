@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 
@@ -35,7 +35,7 @@ struct FastGeluParams : onnxruntime::rocm::tunable::OpParams {
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status FastGeluOp(const FastGeluParams<T>* params) {
   // TODO(anyone): Add tail handling for FastGelu
-  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
       !((params->bias_length > 0 && params->bias_length % VecSize == 0 && params->input_length % VecSize == 0) ||
         (params->bias_length == 0 && params->input_length % VecSize == 0)));
 
