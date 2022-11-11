@@ -202,7 +202,7 @@ void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGrap
 void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
   auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<int>(
       "ORT_CUDA_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
-  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+  if (env_tunable_op_enabled.has_value() && *env_tunable_op_enabled != info.tunable_op.enabled) {
     LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
     info.tunable_op.enabled = *env_tunable_op_enabled;
   }
