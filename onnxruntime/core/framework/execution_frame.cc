@@ -558,10 +558,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
     if (stream_aware_alloc) {
       size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
-      // the reused memory must from same EP
-      auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-          current_stream->GetDevice().Type(), current_stream->GetDevice().Type());
-      void* p_data = stream_aware_alloc->AllocOnStream(buffer_size, current_stream, wait_handle);
+      void* p_data = stream_aware_alloc->AllocOnStream(buffer_size, current_stream);
       Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
     } else {
       Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);

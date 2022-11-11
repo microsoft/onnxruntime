@@ -83,7 +83,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
       auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
       if (stream_aware_alloc && target_stream) {
         size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-        void* p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+        void* p_data = stream_aware_alloc->AllocOnStream(len, target_stream);
         Tensor::InitOrtValue(source_tensor.DataType(),
                              source_tensor.Shape(),
                              p_data,

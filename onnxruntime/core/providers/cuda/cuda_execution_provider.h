@@ -58,10 +58,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   // GPU scratch buffer need to be allocated on stream
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream) const {
     if (count_or_bytes == 0)
       return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream);
   }
 
   template <typename T>

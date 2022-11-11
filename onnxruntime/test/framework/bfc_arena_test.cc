@@ -317,31 +317,31 @@ struct StreamMock : public Stream {
 };
 
 TEST(StreamAwareArenaTest, TwoStreamAllocation) {
-  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, false);
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   CheckStats(&a, 0, 0, 0, 0);
 
   OrtDevice tmp;
 
   StreamMock stream1(tmp), stream2(tmp);
 
-  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);
-  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1);
+  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2);
   a.Free(stream1_chunk_a);
-  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2);
   // stream2 can't reuse stream1's chunk
   EXPECT_NE(stream2_chunk_b, stream1_chunk_a);
   a.Free(stream2_chunk_a);
-  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1);
   // it should pick the first chunk
   EXPECT_EQ(stream1_chunk_c, stream1_chunk_a);
 
-  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1);
   // it shouldn't pick stream2_chunk_a's buffer
   EXPECT_NE(stream1_chunk_d, stream2_chunk_a);
   a.Free(stream2_chunk_b);
   // test clean stream2
   a.ReleaseStreamBuffers(&stream2);
-  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1, nullptr);
+  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1);
   // now it should pick the stream2_chunk_a's buffer
   EXPECT_EQ(stream1_chunk_e, stream2_chunk_a);
   a.Free(stream1_chunk_c);
@@ -350,21 +350,21 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   auto stream1_notification_a = stream1.CreateNotification(1);
   stream1_notification_a->ActivateAndUpdate();
   stream2.UpdateStreamClock(stream1_notification_a->GetStreamSyncTable());
-  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2);
   // it should pick the first chunk
   EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);
-  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2);
   // it should pick the third slot
   EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);
   // continue allocate on stream1
-  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1);
   a.Free(stream1_chunk_f);
-  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);
+  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2);
   EXPECT_NE(stream2_chunk_e, stream1_chunk_f);
   a.Free(stream1_chunk_e);
   // test clean stream1
   a.ReleaseStreamBuffers(&stream1);
-  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2, nullptr);
+  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2);
   // now it should pick stream1_chunk_e
   EXPECT_EQ(stream2_chunk_f, stream1_chunk_e);
 

@@ -48,7 +48,7 @@ constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr size_t kAllocAlignment = 256;
 
 class IAllocator;
-void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream);
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -139,7 +139,7 @@ class IAllocator {
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
                                               bool use_reserve = false,
-                                              Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
+                                              Stream* stream = nullptr) {
     if (allocator == nullptr) return nullptr;
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
@@ -158,7 +158,7 @@ class IAllocator {
     }
 
     // allocate
-    T* p = static_cast<T*>(AllocateBufferWithOptions(allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    T* p = static_cast<T*>(AllocateBufferWithOptions(allocator, alloc_size, use_reserve, stream));
     return IAllocatorUniquePtr<T>{
         p,
         [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};

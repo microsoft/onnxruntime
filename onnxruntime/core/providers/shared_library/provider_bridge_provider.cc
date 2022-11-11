@@ -621,7 +621,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
-void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
+void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream); }
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
