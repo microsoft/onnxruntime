@@ -3,6 +3,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/shared_library/provider_api.h"
+#include <core/platform/env_var_utils.h>
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -198,37 +199,12 @@ void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGrap
 }
 #endif
 
-std::optional<std::string> LoadEnv(const std::string& name, const std::unordered_set<std::string>& valid_values) {
-  ORT_ENFORCE(!valid_values.empty());
-  auto env = onnxruntime::GetEnvironmentVar(name);
-  if (env.empty()) {
-    return std::nullopt;
-  }
-
-  LOGS_DEFAULT(WARNING) << "Environment variable "<< name << " is used. It is reserved for internal testing prupose. "
-                           "End users should opt for provider options or session options and must not rely on it.";
-
-  if (valid_values.find(env) == valid_values.cend()) {
-    std::ostringstream oss;
-    auto it = valid_values.cbegin();
-    oss << *it++;
-    while(it != valid_values.cend()) {
-      oss << ", " << *it++;
-    }
-    ORT_THROW("Value of environment variable ", name," must be ",oss.str(), ", but got ", env);
-  }
-
-  return env;
-}
-
 void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
-  std::optional<std::string> env;
-
-  env = LoadEnv("ORT_CUDA_TUNABLE_OP_ENABLED", {"0", "1"});
-  const bool env_tunable_op_enabled = env == "1";
-  if (env.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
-    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_ENABLED is set to " << env_tunable_op_enabled;
-    info.tunable_op.enabled = env_tunable_op_enabled;
+  auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<int>(
+      "ORT_CUDA_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
+  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
+    info.tunable_op.enabled = *env_tunable_op_enabled;
   }
 }
 
