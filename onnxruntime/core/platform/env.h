@@ -110,7 +110,7 @@ class Env {
   // the first pair (0,1) will be applied to a thread, the second pair (0,2) will be applied to another,
   // so the returned value will be 2.
   // For POSIX, the implementation is entirely different, affinity.size() will be rightly the threadpool size.
-  virtual size_t GetDefaultThreadpoolSetting(std::vector<size_t>& affinity) const = 0;
+  virtual size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinity) const = 0;
 
   // Read affinity setting from a string, and return the number of threads that the affinity_str represents.
   // NOTE - affinities.size() may or may not be the returned value.
@@ -118,7 +118,7 @@ class Env {
   // the first pair (0,1) will be applied to a thread, the second pair (0,2) will be applied to another,
   // so the returned value will be 2.
   // For POSIX of this branch, the function is not implemented, customer will have an exception when trying to set affinity by a string.
-  virtual size_t ReadThreadAffinityConfig(const std::string& affinity_str, std::vector<size_t>& affinities) const = 0;
+  virtual size_t ReadThreadAffinityConfig(const std::string& affinity_str, std::vector<uint64_t>& affinities) const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
