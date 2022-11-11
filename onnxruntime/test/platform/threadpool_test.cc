@@ -454,25 +454,25 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
   // test only one machines has more than 8 logical processors
   if (default_threadpool_size >= 4) {
     std::vector<size_t> affinities;
-    // case - test with processor id that's out of boundary 
+    // cases - test processor id that's out of boundary 
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("0", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(std::to_string(default_threadpool_size*2+1), affinities));
-    // case - test with empty strings
+    // cases - test empty strings
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(",", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(",1", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(";", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(";1", affinities));
-    // case - test with invalid chars
+    // cases - test invalid chars
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("2,a,1", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("*4,3,)", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("3,5,1;^.2", affinities));
-    // case - test with comma wrongly couple with hyphen
+    // cases - test comma wrongly coupled with hyphen
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1,-5", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("2,3,-", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("3,5-1;6,8", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("-,-", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-2;3-4,", affinities));
-    // case - test hyphen of invalid intervals
+    // cases - test hyphen of invalid intervals
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("6-2", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("-2", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-2;4-3", affinities));

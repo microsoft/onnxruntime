@@ -155,7 +155,7 @@ class WindowsEnv : public Env {
   }
 
   size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinities) const override {
-    ORT_ENFORCE(sizeof(KAFFINITY) <= sizeof(uint64_t), "KAFFINITY is bigger than uint64_t, cannot save it to uint64 vector");
+    ORT_ENFORCE(sizeof(KAFFINITY) <= sizeof(uint64_t), "KAFFINITY is bigger than uint64_t, cannot save it to an uint64_t vector");
     affinities.clear();
     KAFFINITY group_id = 0;
     for (const auto& group_info : group_info_vec_) {
@@ -262,7 +262,7 @@ class WindowsEnv : public Env {
   }
 
   size_t ReadThreadAffinityConfig(const std::string& affinity_str, std::vector<uint64_t>& affinities) const override {
-    ORT_ENFORCE(sizeof(KAFFINITY) <= sizeof(uint64_t), "KAFFINITY is bigger than uint64_t, cannot save it to uint64 vector");
+    ORT_ENFORCE(sizeof(KAFFINITY) <= sizeof(uint64_t), "KAFFINITY is bigger than uint64_t, cannot save it to an uint64_t vector");
     if (affinity_str.empty()) {
       return 0;
     }
