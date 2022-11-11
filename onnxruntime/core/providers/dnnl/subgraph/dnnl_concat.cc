@@ -58,7 +58,6 @@ int64_t DnnlConcat::GetAxis(DnnlNode& node, int64_t input_rank) {
   ORT_ENFORCE(axis_attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT,
     "Axis value is not an integer");
 
-  // We need to do sign comparisons so we have to cast
   int64_t signed_axis = axis_attr->second().i();  
   ORT_ENFORCE(((signed_axis < 0) && (signed_axis >= -input_rank)) || ((signed_axis >= 0) && (signed_axis <= (input_rank - 1))),
     "Axis value ", signed_axis, "is not between input rank ", -input_rank, " and ", input_rank - 1);

@@ -1075,4 +1075,95 @@ bool DnnlLayerNormalizationNodeCapability::IsDimensionSupported(const Node* node
   return true;
 }
 
+// DnnlConcatNodeCapability class
+//-------------------------------------
+
+bool DnnlConcatNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) {
+    return false;
+  }
+  if (!AreAllInputsOfSameType(node)) {
+    return false;
+  }
+  if (!AreAxisAndDimensionsSupported(node)) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlConcatNodeCapability::AreAllInputsOfSameType(const Node* node) const {
+  // All inputs must be of the same type
+  const auto node_inputs = node->InputDefs();
+  if (!node_inputs.empty() && node_inputs[0]->TypeAsProto() != nullptr) {
+    const auto node_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
+    // Ensure that any other inputs have the same datatype as the first
+    for (size_t i=1; i<node_inputs.size(); ++i) {
+      if (node_inputs[i]->TypeAsProto() != nullptr && 
+          node_inputs[i]->TypeAsProto()->tensor_type().elem_type() != node_datatype) {
+        return false;
+      }
+    }
+  }
+  return true;
+}  
+
+bool DnnlConcatNodeCapability::AreAxisAndDimensionsSupported(const Node* node) const {
+  const auto& attributes = node->GetAttributes();
+  auto axis_attr = attributes.find("axis");
+  if (axis_attr != attributes.end()) {
+    if (axis_attr->second().type() != ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
+      // Axis must be an integer
+      return false;
+    }
+  } else {
+    // Axis is required.
+    return false;
+  }    
+
+  const auto& node_inputs = node->InputDefs();
+
+  // Validate axis
+  int64_t signed_axis = axis_attr->second().i();  
+  const auto first_input_shape = node_inputs[0]->Shape();
+  if (first_input_shape != nullptr) {
+    const auto first_input_rank = first_input_shape->dim_size();      
+    // Axis must be b/w [-first_input_rank, first_input_rank-1]
+    if (signed_axis < 0 && signed_axis < -first_input_rank) {
+      return false;
+    }
+    if (signed_axis >= 0 && signed_axis >= first_input_rank) {
+      return false;
+    }
+
+    // Verify that dimensions of all other inputs match except on the axis.
+    const auto actual_axis = (signed_axis >= 0) ? signed_axis : signed_axis + first_input_rank;    
+    for (size_t i=1; i<node_inputs.size(); ++i) {
+      const auto& other_input_shape = node_inputs[i]->Shape();
+      if (other_input_shape == nullptr) {
+        // Unknown shape for other input
+        return false;
+      }
+      if (other_input_shape->dim_size() != first_input_rank) {
+        // Rank doesn't match first input.
+        return false;
+      }
+      for (int d=0; d<first_input_rank; ++d) {
+        // The axis dim is not expected to match.
+        if (d == actual_axis) {
+          continue;
+        }
+        const auto& first_input_dim = first_input_shape->dim(d);
+        const auto& other_input_dim = other_input_shape->dim(d);
+        if (first_input_dim.has_dim_value() && other_input_dim.has_dim_value()) {
+          if (first_input_dim.dim_value() != other_input_dim.dim_value()) {
+            return false;
+          }        
+        }
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace onnxruntime

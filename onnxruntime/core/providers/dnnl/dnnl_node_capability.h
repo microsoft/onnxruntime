@@ -128,7 +128,7 @@ class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
  * DnnlDefaultOptionalMultiInputNodeCapability(rules)
  *
  * In general node_data consist of a tuple that has:
- * (INPUT_POS, <IsThisInputMandatory?(true or false)>, {list, of, suppurted, types})
+ * (INPUT_POS, <IsThisInputMandatory?(true or false)>, {list, of, supported, types})
  *
  * We always asume that the input 0 of the map corresponds to the node input with index 0,
  * so if a node has M mandatory inputs and O optional, the map should contain the first
@@ -454,5 +454,20 @@ class DnnlSkipLayerNormalizationNodeCapability : public DnnlLayerNormalizationNo
                                                                                     type_float16}) {}
 };
 
+class DnnlConcatNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlConcatNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool AreAllInputsOfSameType(const Node* node) const;
+  bool AreAxisAndDimensionsSupported(const Node* node) const;
+};
 
 }  // namespace onnxruntime
