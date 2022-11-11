@@ -22,17 +22,18 @@ class DeviceStreamCollectionImpl {
   ~DeviceStreamCollectionImpl() {
   }
 
-  Status CleanUp() {
-    for (auto& device_stream : device_streams_) {
-      if (device_stream) {
-        ORT_RETURN_IF_ERROR(device_stream->CleanUpOnRunEnd());
-#ifndef ENABLE_TRAINING
-        if (is_main_graph_) {
-          device_stream->Flush();
+  Status CleanUp(bool sync_streams) {
+    if (sync_streams) {
+      for (auto& device_stream : device_streams_) {
+        if (device_stream) {
+          ORT_RETURN_IF_ERROR(device_stream->CleanUpOnRunEnd());
+          if (is_main_graph_) {
+            device_stream->Flush();
+          }
         }
-#endif
       }
     }
+
     // only clean the streams that is owned by current context
     for (auto& stream : owned_streams_) {
       if (stream) {
@@ -107,8 +108,8 @@ size_t DeviceStreamCollection::NumStreams() const {
   return impl_->NumStreams();
 }
 
-Status DeviceStreamCollection::CleanUp() {
-  return impl_->CleanUp();
+Status DeviceStreamCollection::CleanUp(bool sync_streams) {
+  return impl_->CleanUp(sync_streams);
 }
 
 Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {

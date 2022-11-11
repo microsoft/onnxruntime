@@ -85,6 +85,7 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                            bool sync_execution_provider,
                             bool only_execute_path_to_fetches = false,
                             Stream* parent_stream = nullptr);
 

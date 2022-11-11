@@ -149,7 +149,7 @@ class PlannerImpl {
                     const logging::Logger& logger);
 
  private:
-  const ISequentialPlannerContext* context_;
+  gsl::not_null<const ISequentialPlannerContext*> context_;
   SequentialExecutionPlan& plan_;
 
   const Node* parent_node_;
@@ -1294,11 +1294,11 @@ class PlannerImpl {
   }
 
   Status ComputeReusePlan() {
-    auto* backup_context = context_;
+    gsl::not_null<const ISequentialPlannerContext*> backup_context = context_;
     SequentialPlannerContext no_mem_reuse_context(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false);
     if (!IsSingleStream()) {
       // use parallel execution context to generate a baseline first (no memory sharing)
-      context_ = &no_mem_reuse_context;
+      context_ = gsl::not_null<const ISequentialPlannerContext*>(&no_mem_reuse_context);
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // copy the use counts to a vector, before computing reuse

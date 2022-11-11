@@ -91,7 +91,7 @@ class Tensor final {
                                            gsl::span<const int64_t> strides = {});
 
   /**
-   * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
+   * Deprecated. The original design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
