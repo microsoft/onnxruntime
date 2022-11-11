@@ -129,23 +129,13 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, k
                                       "T", DataTypeImpl::GetTensorType<float>()),
                                   ConvTranspose);
 
-ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
                         KernelDefBuilder()
-                        //.TypeConstraint(
-                        //    "T",
-                        //    {DataTypeImpl::GetTensorType<uint8_t>(),
-                        //     DataTypeImpl::GetTensorType<int8_t>()}),
-                        ,
+                            .TypeConstraint(
+                                "T1",
+                                {DataTypeImpl::GetTensorType<uint8_t>(),
+                                 DataTypeImpl::GetTensorType<int8_t>()}),
                         ConvTranspose);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder()
-                                  //.TypeConstraint(
-                                  //    "T",
-                                  //    {DataTypeImpl::GetTensorType<uint8_t>(),
-                                  //     DataTypeImpl::GetTensorType<int8_t>()}),
-                                  ,
-                                  ConvTranspose);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

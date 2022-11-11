@@ -155,6 +155,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     if (inputs.size() > 2) {
       def.inputs.push_back(inputs[2].node_arg.Name());
     }
+    if (qtype == QuantizedOpType::QDQConvTranspose) {
+      def.since_version = 1;
+    }
   } else if (qtype == QuantizedOpType::QDQAvgPool || qtype == QuantizedOpType::QDQSoftmax) {
     // x x-scale x-zp
     std::for_each(inputs.cbegin(), inputs.cend(),

@@ -1240,5 +1240,308 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("F", {"tensor(float16)"}, "Be compatible with float version.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+void convTransposeShapeInference(InferenceContext& ctx,
+                                 bool require_kernel_shape,
+                                 int input1Idx,
+                                 int input2Idx) {
+  // we need the first input shape for this inference.
+  if (!hasInputShape(ctx, input1Idx)) {
+    return;
+  }
+  // if kernel shape is an input (and not attribute)
+  // we need the shape of the second input.
+  if (!require_kernel_shape && !hasInputShape(ctx, input2Idx)) {
+    return;
+  }
+
+  int64_t group = getAttribute(ctx, "group", 1);
+
+  auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+  if (input_shape.dim_size() < 2) {
+    return;  // Input tensor should have at least two dimensions.
+  }
+
+  // first dim is the batch axis and the next is the number of channels.
+  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+
+  std::vector<int64_t> dilations;
+  if (getRepeatedAttribute(ctx, "dilations", dilations)) {
+    if (dilations.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    dilations.assign(n_input_dims, 1);
+  }
+
+  std::vector<int64_t> strides;
+  if (getRepeatedAttribute(ctx, "strides", strides)) {
+    if (strides.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    strides.assign(n_input_dims, 1);
+  }
+
+  std::vector<int64_t> kernel_shape;
+  if (getRepeatedAttribute(ctx, "kernel_shape", kernel_shape)) {
+    if (kernel_shape.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    auto second_input_shape = ctx.getInputType(input2Idx)->tensor_type().shape();
+    for (int i = 2; i < second_input_shape.dim_size(); ++i) {
+      if (!second_input_shape.dim(i).has_dim_value()) {
+        return;
+      }
+      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+    }
+  }
+
+  std::vector<int64_t> effective_kernel_shape = kernel_shape;
+  for (int i = 0; i < static_cast<int>(kernel_shape.size()); i++) {
+    // accounting for dilation, how big is the kernel in this dimension
+    effective_kernel_shape[i] = (effective_kernel_shape[i] - 1) * dilations[i] + 1;
+  }
+
+  std::vector<int64_t> pads;
+  if (getRepeatedAttribute(ctx, "pads", pads)) {
+    if (pads.size() != n_input_dims * 2) {
+      fail_shape_inference("Attribute pads has incorrect size");
+    }
+    const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
+    if (nullptr != auto_pad_attr && auto_pad_attr->s() != "NOTSET") {
+      fail_shape_inference("The pads attribute cannot be used simultaneously with auto_pad attribute");
+    }
+  } else {
+    pads.assign(n_input_dims * 2, 0);
+    const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
+    if ((nullptr != auto_pad_attr) && (auto_pad_attr->s() != "VALID")) {
+      int input_dims_size = static_cast<int>(n_input_dims);
+      for (int i = 0; i < input_dims_size; ++i) {
+        int64_t total_pad = effective_kernel_shape[i] - strides[i];
+        if (total_pad < 0)
+          total_pad = 0;
+        int64_t half_pad_small = total_pad >> 1;
+        int64_t half_pad_big = total_pad - half_pad_small;
+        if (auto_pad_attr->s() == "SAME_UPPER") {
+          pads[i] = half_pad_small;
+          pads[i + input_dims_size] = half_pad_big;
+        } else if (auto_pad_attr->s() == "SAME_LOWER") {
+          pads[i] = half_pad_big;
+          pads[i + input_dims_size] = half_pad_small;
+        }
+      }
+    }
+  }
+
+  std::vector<int64_t> output_shape;
+  bool output_shape_presented = true;
+  if (getRepeatedAttribute(ctx, "output_shape", output_shape)) {
+    if (output_shape.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    output_shape_presented = false;
+  }
+
+  std::vector<int64_t> output_padding;
+  if (getRepeatedAttribute(ctx, "output_padding", output_padding)) {
+    if (output_padding.size() != n_input_dims) {  // Added only to one side.
+      return;
+    }
+  } else {
+    output_padding.assign(n_input_dims, 0);
+  }
+
+  auto final_output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  *final_output_shape->add_dim() = input_shape.dim(0);
+  *final_output_shape->add_dim() =
+      ctx.getInputType(input2Idx)->tensor_type().shape().dim(1) * group;  // channels should be the second dim of second input
+                                                                          // multiply group.
+
+  int size_of_output;
+  if (output_shape_presented) {
+    size_of_output = static_cast<int>(output_shape.size());
+    for (int i = 0; i < size_of_output; ++i) {
+      if (input_shape.dim(i + 2).has_dim_value()) {
+        if (output_shape[i] < input_shape.dim(i + 2).dim_value()) {
+          // TODO: throw exception?
+          return;  // output shape value cannot be smaller than the input shape
+                   // value
+        }
+      }
+      final_output_shape->add_dim()->set_dim_value(output_shape[i]);
+    }
+    return;
+  } else {
+    size_of_output = input_shape.dim_size() - 2;
+    for (int i = 0; i < size_of_output; ++i) {
+      if (input_shape.dim(i + 2).has_dim_value()) {
+        int64_t output_shape_dim = strides[i] * (input_shape.dim(i + 2).dim_value() - 1) + output_padding[i] +
+                                   effective_kernel_shape[i] - pads[i] - pads[i + n_input_dims];
+        final_output_shape->add_dim()->set_dim_value(output_shape_dim);
+      } else {
+        final_output_shape->add_dim();
+      }
+    }
+    return;
+  }
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    QLinearConvTranspose,
+    1,
+    OpSchema()
+        .SetDoc(R"DOC( Similiar to ConvTranspose in onnx, but with quantization.
+The convolution transpose operator consumes an input tensor and a filter,
+and computes the output.
+
+If the pads parameter is provided the shape of the output is calculated via the following equation:
+
+  output_shape[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - pads[start_i] - pads[end_i]
+
+output_shape can also be explicitly specified in which case pads values are auto generated using these equations:
+
+  total_padding[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i]
+  If (auto_pads == SAME_UPPER): pads[start_i] = total_padding[i]/2; pads[end_i] = total_padding[i] - (total_padding[i]/2)
+  Else: pads[start_i] = total_padding[i] - (total_padding[i]/2); pads[end_i] = (total_padding[i]/2).
+
+    )DOC")
+        .Input(
+            0,
+            "x",
+            "Input data tensor from previous layer; has size (N x C x H x W)"
+            ", where N is the batch size, C is the number of channels, and"
+            " H and W are the height and width. Note that this is for the 2D image. "
+            "Otherwise the size is (N x C x D1 x D2 ... x Dn)",
+            "T1")
+        .Input(
+            1,
+            "x_scale",
+            "Scale tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
+            "tensor(float)")
+        .Input(
+            2,
+            "x_zero_point",
+            "Zero point tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
+            "T1")
+        .Input(
+            3,
+            "w",
+            "The weight tensor that will be used in the "
+            "convolutions; has size (C x M/group x kH x kW), where C "
+            "is the number of channels, and kH and kW are the "
+            "height and width of the kernel, and M is the number "
+            "of feature maps. ",
+            "T2")
+        .Input(
+            4,
+            "w_scale",
+            "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
+            "tensor(float)")
+        .Input(
+            5,
+            "w_zero_point",
+            "Zero point tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
+            "T2")
+        .Input(
+            6,
+            "y_scale",
+            "Scale tensor for output 'y'. It's a scalar, which means a per-tensor/layer quantization.",
+            "tensor(float)")
+        .Input(
+            7,
+            "y_zero_point",
+            "Zero point tensor for output 'y'. It's a scalar, which means a per-tensor/layer quantization.",
+            "T3")
+        .Input(
+            8,
+            "B",
+            "Optional 1D bias to be added to the convolution, has size of M. "
+            "Bias must be quantized using scale = x_scale * w_scale and zero_point = 0",
+            "T4",
+            OpSchema::Optional)
+        .Output(
+            0,
+            "y",
+            "Output data tensor that contains the result of the "
+            "convolution. The output dimensions are functions "
+            "of the kernel size, stride size, and pad lengths.",
+            "T3")
+        .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain filter type to 8-bit integer tensor.")
+        .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
+        .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
+        .Attr(
+            "kernel_shape",
+            "The shape of the convolution kernel. If not present, should be inferred from input W.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "output_shape",
+            "The shape of the output can be explicitly set which will cause pads values to be auto generated. If output_shape is specified "
+            "pads values are ignored. See doc for details for equations to generate pads",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "output_padding",
+            "Additional elements added to the side with higher coordinate indices in the output. "
+            "Each padding value in \"output_padding\" must be less than the corresponding stride/dilation dimension. "
+            "By default, this attribute is a zero vector. "
+            "Note that this attribute doesn't directly affect the computed output values. "
+            "It only controls the selection of the computed values, "
+            "so changing this attribute only adds or removes output elements. "
+            "If \"output_shape\" is explicitly provided, "
+            "\"output_padding\" does not contribute additional size to \"output_shape\" but "
+            "participates in the computation of the needed padding amount. "
+            "This is also called adjs or adjustment in some frameworks.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "dilations",
+            "dilation value along each spatial axis of the filter. If not present, the dilation defaults to 1 along each spatial axis.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "strides",
+            "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr("auto_pad",
+              "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
+              "default value is NOTSET",
+              AttributeProto::STRING, std::string("NOTSET"))
+        .Attr("pads", "Padding for the beginning and ending along each spatial axis", AttributeProto::INTS, OPTIONAL_VALUE)
+        .Attr(
+            "group",
+            "number of groups input channels and output channels are divided into.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          auto x_type = ctx.getInputType(0);
+          auto w_type = ctx.getInputType(3);
+          if (nullptr == x_type || nullptr == w_type || x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+              w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+            fail_type_inference("inputs are expected to have tensor type.");
+          }
+
+          auto x_zero_point_type = ctx.getInputType(2);
+          if (nullptr == x_zero_point_type ||
+              x_zero_point_type->tensor_type().elem_type() != x_type->tensor_type().elem_type()) {
+            fail_type_inference("input and zero_point pair is expected to have be same type.");
+          }
+
+          auto w_zero_point_type = ctx.getInputType(5);
+          if (nullptr == w_zero_point_type ||
+              w_zero_point_type->tensor_type().elem_type() != w_type->tensor_type().elem_type()) {
+            fail_type_inference("weight and zero_point pair is expected to have same type.");
+          }
+
+          propagateElemTypeFromInputToOutput(ctx, 7, 0);
+
+          convTransposeShapeInference(ctx, false, 0, 3);
+        }));
+
 }  // namespace contrib
 }  // namespace onnxruntime

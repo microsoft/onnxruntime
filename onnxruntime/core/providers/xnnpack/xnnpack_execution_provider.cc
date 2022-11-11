@@ -39,8 +39,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, QLinearConvTranspose);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, QLinearConvTranspose);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize);
@@ -65,8 +64,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(11, Conv),
       KERNEL_CREATE_INFO(11, ConvTranspose),
       KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose),
-      KERNEL_CREATE_INFO(11, QLinearConvTranspose),
-      KERNEL_CREATE_INFO_VERSIONED(1, 10, QLinearConvTranspose),
+      KERNEL_CREATE_INFO(1, QLinearConvTranspose),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
       KERNEL_CREATE_INFO(11, AveragePool),
@@ -151,7 +149,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 // For ops are not lay-out sensitive and does not defined in
 // onnx-domain, it will be created dynamicly
 static bool RequestDynamicSchema(const NodeUnit& node_unit) {
-  static const InlinedHashSet<std::string_view> dynamic_schema_set = {"QLinearSoftmax", "QLinearConvTranspose"};
+  static const InlinedHashSet<std::string_view> dynamic_schema_set = {"QLinearSoftmax"};
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
                         ? "QLinear" + node_unit.OpType()
                         : node_unit.OpType();
