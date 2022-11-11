@@ -411,12 +411,12 @@ TEST(ThreadPoolTest, TestStackSize) {
 #endif
 
 TEST(ThreadPoolTest, TestAffinityString) {
-  std::vector<size_t> default_affinities;
+  std::vector<uint64_t> default_affinities;
   int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
   ASSERT_TRUE(default_threadpool_size > 0);
 #ifdef _WIN32
   int num_non_default_affinities;
-  std::vector<size_t> non_default_affinities;
+  std::vector<uint64_t> non_default_affinities;
   int num_logical_processors = default_threadpool_size << 1;
   for (int num_threads = 2; num_threads <= num_logical_processors; num_threads += 1) {
     if (num_logical_processors % num_threads) {
@@ -447,13 +447,13 @@ TEST(ThreadPoolTest, TestAffinityString) {
 }
 
 TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
-  std::vector<size_t> default_affinities;
+  std::vector<uint64_t> default_affinities;
   int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
   ASSERT_TRUE(default_threadpool_size > 0);
 #ifdef _WIN32
   // test only one machines has more than 8 logical processors
   if (default_threadpool_size >= 4) {
-    std::vector<size_t> affinities;
+    std::vector<uint64_t> affinities;
     // cases - test processor id that's out of boundary 
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("0", affinities));
     ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(std::to_string(default_threadpool_size*2+1), affinities));
