@@ -50,9 +50,6 @@ constexpr size_t kAllocAlignment = 256;
 class IAllocator;
 void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
-// forward declaration
-class SessionState;
-
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 

@@ -47,10 +47,10 @@ class Stream {
   // 1. Current timestamp
   // 2. A lookup table that for a given stream, what is its timestamp when the
   //    last synchronization happened with current stream.
-  // 3. When a notificaiton is activated, it take a snapshot of current stream's
+  // 3. When a notification is activated, it take a snapshot of current stream's
   //    lookup table.
   // 4. When synchronization happened (current stream wait on a notification),
-  //    update its lookup table with the table snapshot in notificaiton.
+  //    update its lookup table with the table snapshot in notification.
   // The memory reusing strategy is:
   // A kernel in current stream is safe to reuse another stream's memory chunk
   // as long as the reused chunk's timestamp is less than the last synchonized
@@ -71,7 +71,7 @@ class Stream {
   }
 
   // make a copy of the current stream lookup table.
-  // this is used to create a snapshot of the stream lookup table in notificaiton.
+  // this is used to create a snapshot of the stream lookup table in notification.
   void CloneCurrentStreamSyncTable(std::unordered_map<Stream*, uint64_t>& output) const {
     output.reserve(other_stream_clock_.size());
     output.insert(other_stream_clock_.begin(), other_stream_clock_.end());
@@ -88,11 +88,9 @@ class Stream {
   // update the stream lookup table with the snapshot saved in notification.
   void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
     for (const auto& kv : clock) {
-      auto it = other_stream_clock_.find(kv.first);
-      if (it == other_stream_clock_.end()) {
-        other_stream_clock_.insert(kv);
-      } else {
-        it->second = std::max(it->second, kv.second);
+      auto ret = other_stream_clock_.insert(kv);
+      if (!ret.second) {
+        ret.first->second = std::max(ret.first->second, kv.second);
       }
     }
   }
@@ -124,7 +122,7 @@ class Notification {
     stream_clock_[&stream_] = stream_.BumpTimeStampAndReturn();
   }
 
-  // return the timestamp lookup table saved in the notificaiton.
+  // return the timestamp lookup table saved in the notification.
   const std::unordered_map<Stream*, uint64_t>& GetStreamSyncTable() {
     return stream_clock_;
   }

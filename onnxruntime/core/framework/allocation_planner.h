@@ -94,6 +94,7 @@ class IGraphPartitioner {
                                 const ExecutionProviders& execution_providers,
                                 std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
   virtual const std::string& Name() const = 0;
+  int Devices() const { return devices_; };
 
  protected:
   static InlinedVector<std::string> Split(const std::string& line, char splitor);
@@ -101,6 +102,7 @@ class IGraphPartitioner {
   IGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
   const logging::Logger& logger_;
   std::string configuration_file_{};
+  int devices_ = 0;
 };
 
 class SequentialPlanner {
