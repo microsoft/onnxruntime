@@ -22,12 +22,9 @@ class Flatten final : public OpKernel {
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
     const TensorShape& X_shape = X->Shape();
-    auto axis = axis_;
 
     // Valid axis range is [-rank, rank] instead of [-rank, rank-1], add additional check to only handle neg axis case.
-    if (axis < 0) {
-      axis = HandleNegativeAxis(axis, X_shape.NumDimensions());  // handle negative and enforce axis is valid
-    }
+    size_t axis = onnxruntime::narrow<size_t>(axis_ < 0 ? HandleNegativeAxis(axis, X_shape.NumDimensions()) : axis_);
 
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis, "The rank of input tensor must be >= axis");
 
