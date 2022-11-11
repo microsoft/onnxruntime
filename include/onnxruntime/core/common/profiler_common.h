@@ -10,6 +10,63 @@
 namespace onnxruntime {
 namespace profiling {
 
+class ProfilerActivityBuffer {
+ public:
+  ProfilerActivityBuffer()
+      : data_(nullptr), size_(0) {}
+
+  ProfilerActivityBuffer(const char* data, size_t size)
+      : data_(std::make_unique<char[]>(size)), size_(size) {
+    memcpy(data_.get(), data, size);
+  }
+
+  ProfilerActivityBuffer(const ProfilerActivityBuffer& other)
+      : ProfilerActivityBuffer(other.data_.get(), other.size_) {}
+
+  ProfilerActivityBuffer(ProfilerActivityBuffer&& other)
+      : ProfilerActivityBuffer() {
+    std::swap(data_, other.data_);
+    std::swap(size_, other.size_);
+  }
+
+  ProfilerActivityBuffer& operator=(const ProfilerActivityBuffer& other) {
+    if (&other == this) {
+      return *this;
+    }
+
+    size_ = other.size_;
+    data_ = std::make_unique<char[]>(other.size_);
+    memcpy(data_.get(), other.data_.get(), size_);
+    return *this;
+  }
+
+  ProfilerActivityBuffer& operator=(ProfilerActivityBuffer&& other) {
+    if (&other == this) {
+      return *this;
+    }
+    std::swap(data_, other.data_);
+    std::swap(size_, other.size_);
+    return *this;
+  }
+
+  // accessors
+  char* GetData() { return data_.get(); }
+  const char* GetData() const { return data_.get(); }
+  size_t GetSize() const { return size_; }
+
+  static ProfilerActivityBuffer CreateFromPreallocatedBuffer(char* data, size_t size) {
+    ProfilerActivityBuffer res{};
+    res.data_ = data;
+    res.size_ = size;
+    return res;
+  }
+
+ private:
+  std::unique_ptr<char[]> data_;
+  size_t size_;
+};
+
+
 enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
@@ -23,7 +80,8 @@ static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
     "Session",
     "Node",
     "Kernel",
-    "Api"};
+    "Api"
+};
 
 // Timing record for all events.
 struct EventRecord {

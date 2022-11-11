@@ -18,37 +18,7 @@
 namespace onnxruntime {
 namespace profiling {
 
-class RoctracerActivityBuffer {
- public:
-  RoctracerActivityBuffer()
-      : data_(nullptr), size_(0) {}
-
-  RoctracerActivityBuffer(const char* data, size_t size)
-      : data_(std::make_unique<char[]>(size)), size_(size) {
-    memcpy(data_.get(), data, size);
-  }
-
-  RoctracerActivityBuffer(const RoctracerActivityBuffer& other)
-      : RoctracerActivityBuffer(other.data_.get(), other.size_) {}
-
-  RoctracerActivityBuffer(RoctracerActivityBuffer&& other)
-      : RoctracerActivityBuffer() {
-    std::swap(data_, other.data_);
-    std::swap(size_, other.size_);
-  }
-
-  RoctracerActivityBuffer& operator=(const RoctracerActivityBuffer& other);
-  RoctracerActivityBuffer& operator=(RoctracerActivityBuffer&& other);
-
-  // accessors
-  char* GetData() { return data_.get(); }
-  const char* GetData() const { return data_.get(); }
-  size_t GetSize() const { return size_; }
-
- private:
-  std::unique_ptr<char[]> data_;
-  size_t size_;
-};
+using RoctracerActivityBuffer = ProfilerActivityBuffer;
 
 struct ApiCallRecord {
   uint32_t domain_;

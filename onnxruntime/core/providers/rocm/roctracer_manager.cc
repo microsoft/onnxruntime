@@ -22,27 +22,6 @@ const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
     "hipExtModuleLaunchKernel",
 };
 
-// Implementation of RoctracerActivityBuffer
-RoctracerActivityBuffer& RoctracerActivityBuffer::operator=(const RoctracerActivityBuffer& other) {
-  if (&other == this) {
-    return *this;
-  }
-
-  size_ = other.size_;
-  data_ = std::make_unique<char[]>(other.size_);
-  memcpy(data_.get(), other.data_.get(), size_);
-  return *this;
-}
-
-RoctracerActivityBuffer& RoctracerActivityBuffer::operator=(RoctracerActivityBuffer&& other) {
-  if (&other == this) {
-    return *this;
-  }
-  std::swap(data_, other.data_);
-  std::swap(size_, other.size_);
-  return *this;
-}
-
 // Implementation of RoctracerManager
 RoctracerManager& RoctracerManager::GetInstance() {
   static RoctracerManager instance;
