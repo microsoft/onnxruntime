@@ -444,10 +444,10 @@ TEST(XnnpackEP, TestQDQConvTransposeS8S8) {
                                              int32_t /* BiasType */,
                                              int8_t /* OutputType */>(
                    {1, 2, 8, 5} /* input_shape */,
-                   {2, 3, 3, 3} /* weights_shape */),
+                   {2, 2, 3, 3} /* weights_shape */),
                "xnnpack_qdq_test_graph_convtranspose_s8s8",
                // web requires higher err tolerance
-               {ExpectedEPNodeAssignment::Some, 0.3f});
+               {ExpectedEPNodeAssignment::Some, 0.2f});
 }
 
 TEST(XnnpackEP, TestQDQConvTransposeU8U8) {
@@ -455,8 +455,8 @@ TEST(XnnpackEP, TestQDQConvTransposeU8U8) {
                                              uint8_t /* WeightType */,
                                              int32_t /* BiasType */,
                                              uint8_t /* OutputType */>(
-                   {1, 2, 8, 5} /* input_shape */,
-                   {2, 3, 3, 3} /* weights_shape */),
+                   {1, 3, 8, 5} /* input_shape */,
+                   {3, 3, 3, 3} /* weights_shape */),
                "xnnpack_qdq_test_graph_convtranspose_u8u8",
                {ExpectedEPNodeAssignment::Some, 0.2f});
 }
