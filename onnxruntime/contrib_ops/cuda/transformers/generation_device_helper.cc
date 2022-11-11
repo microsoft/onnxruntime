@@ -133,7 +133,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   }
 
   if (!buffer) {
-    buffer = provider->GetScratchBuffer<char>(total_bytes, ort_stream, WaitCudaNotificationOnDevice);
+    buffer = provider->GetScratchBuffer<char>(total_bytes, ort_stream);
   }
 
   char* gpu_data = buffer.get();
