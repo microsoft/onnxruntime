@@ -58,7 +58,7 @@ struct ThreadOptions {
   // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
   unsigned int stack_size = 0;
 
-  // A vector hosting affinity settings for sub-threads in the threadpool
+  // A vector hosting affinity settings for threads in the threadpool
   // Note - affinity.size() does not necessarily amount to thread_pool_size - 1
   std::vector<uint64_t> affinity;
 

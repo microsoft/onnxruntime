@@ -133,7 +133,8 @@ class WindowsEnv : public Env {
  public:
 
   explicit WindowsEnv() {
-    group_info_vec_ = GetProcessorGroups();
+    group_vec_ = GetProcessorGroups();
+    core_vec_ = GetProcessorCores();
   }
 
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
@@ -148,7 +149,7 @@ class WindowsEnv : public Env {
 
   int GetNumCpuCores() const override {
     int num_cores = 0;
-    for (const auto& group_info : group_info_vec_) {
+    for (const auto& group_info : group_vec_) {
       num_cores += group_info.ActiveProcessorCount;
     }
     return num_cores;
@@ -156,39 +157,26 @@ class WindowsEnv : public Env {
 
   size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinities) const override {
     ORT_ENFORCE(sizeof(KAFFINITY) <= sizeof(uint64_t), "KAFFINITY is bigger than uint64_t, cannot save it to an uint64_t vector");
-    affinities.clear();
-    KAFFINITY group_id = 0;
-    for (const auto& group_info : group_info_vec_) {
-      size_t bit_offset = 0;
-      constexpr size_t bit_limit = sizeof(KAFFINITY) << 3;
-      KAFFINITY active_processor_mask = group_info.ActiveProcessorMask;
-      for (int i = 0; i < (group_info.ActiveProcessorCount >> 1); ++i) {
-        KAFFINITY processor_mask = 0;
-        size_t processor_count = 0;
-        while (processor_count < 2 && bit_offset < bit_limit) {
-          KAFFINITY current_bit = BitOne << bit_offset;
-          if (active_processor_mask & current_bit) {
-            processor_mask |= current_bit;
-            processor_count++;
-          }
-          bit_offset++;
-        }
-        affinities.push_back(static_cast<uint64_t>(group_id));
-        affinities.push_back(static_cast<uint64_t>(processor_mask));
+    for (const auto& core : core_vec_) {
+      if (core.GroupCount != 1) {
+        LOGS_DEFAULT(ERROR) << "core assigned to " << core.GroupCount << " groups, skip the core";
+        continue;
       }
-      group_id++;
+      affinities.push_back(static_cast<uint64_t>(core.GroupMask[0].Group));
+      affinities.push_back(static_cast<uint64_t>(core.GroupMask[0].Mask));
     }
     if (affinities.empty()) {
-      return std::thread::hardware_concurrency() >> 1;
+      return std::thread::hardware_concurrency() / 2;
     }
-    return affinities.size() >> 1;
+    return affinities.size() / 2;
   }
 
-  // The function will go over group_info_vec_ searching for processors between [processor_from, processor_to]
+  // The function will go over group_vec_ searching for processors between [processor_from, processor_to]
   // whenever found a match in a group, two things will happen sequentially:
   // 1. Fill the pair of <group_id, processor_mask> for all matched processor in that group;
   // 2. Break from the loop to stop searching the next group, this is because windows API will fail if the interval
-  //    spans across group boundaries. 
+  //    spans across group boundaries.
+  // Note, pair::second == 0 stands for failure of getting the affinity
   std::pair<KAFFINITY, KAFFINITY> GetGroupAffinity(int processor_from, int processor_to) const {
     if (processor_from > processor_to) {
       LOGS_DEFAULT(ERROR) << "Processor <from> must be smaller or equal to <to>";
@@ -198,7 +186,7 @@ class WindowsEnv : public Env {
     int processor_count = 0;
     uint64_t group_id = 0;
     uint64_t processor_mask = 0;
-    for (const auto& group_info : group_info_vec_) {
+    for (const auto& group_info : group_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
         if (processor_id >= processor_from && processor_id <= processor_to) {
           processor_mask |= BitOne << i;
@@ -219,6 +207,7 @@ class WindowsEnv : public Env {
   }
 
   // processor_id_strs are simply utf-8 strings
+  // Note, pair::second == 0 stands for failure of getting the affinity
   std::pair<uint64_t, uint64_t> GetGroupAffinity(const std::vector<std::string>& processor_id_strs) const {
     if (processor_id_strs.empty()) {
       return {0, 0};
@@ -241,7 +230,7 @@ class WindowsEnv : public Env {
     int processor_count = 0;
     uint64_t group_id = 0;
     uint64_t processor_mask = 0;
-    for (const auto& group_info : this->group_info_vec_) {
+    for (const auto& group_info : this->group_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
         if (processor_ids.count(processor_id)) {
           processor_mask |= BitOne << i;
@@ -705,6 +694,7 @@ class WindowsEnv : public Env {
     return std::string();
   }
 
+  // Read ligical processor information per group
   static std::vector<PROCESSOR_GROUP_INFO> GetProcessorGroups() {
     DWORD returnLength = 0;
     GetLogicalProcessorInformationEx(RelationGroup, nullptr, &returnLength);
@@ -734,11 +724,39 @@ class WindowsEnv : public Env {
     return group_info_vec;
   }
 
+  // Read ligical processor information per group
+  static std::vector<PROCESSOR_RELATIONSHIP> GetProcessorCores() {
+    DWORD returnLength = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &returnLength);
+    auto last_error = GetLastError();
+    if (last_error != ERROR_INSUFFICIENT_BUFFER) {
+      return {};
+    }
+
+    std::unique_ptr<char[]> allocation = std::make_unique<char[]>(returnLength);
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
+
+    if (!GetLogicalProcessorInformationEx(RelationProcessorCore, processorInfos, &returnLength)) {
+      return {};
+    }
+
+    std::vector<PROCESSOR_RELATIONSHIP> core_vec;
+    int64_t num_processor_info = static_cast<int64_t>(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
+    for (int64_t i = 0; i < num_processor_info; ++i) {
+      if (processorInfos[i].Relationship != RelationProcessorCore) {
+        continue;
+      }
+      core_vec.push_back(processorInfos[i].Processor);
+    }
+    return core_vec;
+  }
+
  private:
 
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
-  std::vector<PROCESSOR_GROUP_INFO> group_info_vec_;
+  std::vector<PROCESSOR_GROUP_INFO> group_vec_;
+  std::vector<PROCESSOR_RELATIONSHIP> core_vec_;
   static constexpr uint64_t BitOne = 1;
 };
 }  // namespace
