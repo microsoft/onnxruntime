@@ -27,7 +27,7 @@ Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::st
   ORT_ENFORCE(proto.data_type() == proto_type,
               "Unexpected type (", proto.data_type(), "(for attribute '", name, "'.");
 
-  n_elements = proto.dims()[0];
+  n_elements = onnxruntime::narrow<size_t>(proto.dims()[0]);
   ORT_ENFORCE(n_elements > 0, "Attribute '", name, "' has one dimension but is empty.");
   return Status::OK();
 }
