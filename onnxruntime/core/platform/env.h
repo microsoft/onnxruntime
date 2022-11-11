@@ -60,7 +60,7 @@ struct ThreadOptions {
 
   // A vector hosting affinity settings for sub-threads in the threadpool
   // Note - affinity.size() does not necessarily amount to thread_pool_size - 1
-  std::vector<size_t> affinity;
+  std::vector<uint64_t> affinity;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;

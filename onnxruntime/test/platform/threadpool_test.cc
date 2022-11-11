@@ -438,12 +438,9 @@ TEST(ThreadPoolTest, TestAffinityString) {
     }
     non_default_affinities.clear();
     num_non_default_affinities = static_cast<int>(Env::Default().ReadThreadAffinityConfig(affinity_stream_comma.str(), non_default_affinities));
-    std::cout << num_non_default_affinities << " : " << affinity_stream_comma.str() << std::endl;
     ASSERT_TRUE(num_non_default_affinities == num_threads);
     non_default_affinities.clear();
-    std::cout << affinity_stream_hyphen.str() << std::endl;
     num_non_default_affinities = static_cast<int>(Env::Default().ReadThreadAffinityConfig(affinity_stream_hyphen.str(), non_default_affinities));
-    std::cout << num_non_default_affinities << " : " << affinity_stream_hyphen.str() << std::endl;
     ASSERT_TRUE(num_non_default_affinities == num_threads);
   }
 #endif
