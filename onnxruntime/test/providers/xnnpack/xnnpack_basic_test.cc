@@ -211,7 +211,7 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RandomValueGenerator generator;
   TensorShape input_shape_x{input_shape};
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
-                                                        -128, 128);
+                                                        -64, 64);
   OrtValue ml_value_x;
   CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
   NameMLValMap feeds;
@@ -431,6 +431,11 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
                    ExpectedEPNodeAssignment::Some,
                    1e-2f /* fp32_abs_err */,
                });
+}
+
+TEST(XnnpackEP, TestConvTranspose_qdq) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.2f);
 }
 
 TEST(XnnpackEP, TestQDQConvTransposeS8S8) {
