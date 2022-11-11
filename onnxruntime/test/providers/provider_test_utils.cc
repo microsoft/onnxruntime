@@ -392,10 +392,12 @@ struct TensorCheck<BFloat16> {
     }
 
     /// XXX: May need to adjust threshold as BFloat is coarse
+    float abs_threshold = 0.0001f;
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
     threshold = 0.05f;  // expect at least 95% close
 #endif
+
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
@@ -405,9 +407,17 @@ struct TensorCheck<BFloat16> {
         // the default for existing tests
         const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
         if (max_value != 0) {  // max_value = 0 means output and expected are 0s.
-          const float rel_error = fabs(f_expected[i] - f_output[i]) / max_value;
-          EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
-                                               << provider_type;
+          const float abs_error = fabs(f_expected[i] - f_output[i]);
+          if (abs_error <= abs_threshold) {
+            // if the absolute error is small enough, then no need to calculate realative error
+            EXPECT_NEAR(0, abs_error, abs_threshold) << "provider_type: "
+                                                 << provider_type;
+          } else {
+            //default for existing tests.
+            const float rel_error = abs_error / max_value;
+            EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
+                                                 << provider_type;
+          }
         }
       }
     }

@@ -209,11 +209,22 @@ struct GemmWeights {
     } else {
       is_prepacked_ = false;
       buffer_ = weights_data + weights_size * idx;
+      weights_size_ = weights_size;
     }
+  }
+
+  /// <summary>
+  /// Get span
+  /// </summary>
+  /// <returns></returns>
+  gsl::span<const T> GetUnpackedSpan() const {
+    ORT_ENFORCE(!is_prepacked_, "Can not get unpacked span from prepacked weights");
+    return gsl::span<const T>(reinterpret_cast<const T*>(buffer_), weights_size_);
   }
 
   bool is_prepacked_{false};
   const void* buffer_{nullptr};
+  size_t weights_size_{0};
   QuantizationParameter* quant_para_{nullptr};
 };
 

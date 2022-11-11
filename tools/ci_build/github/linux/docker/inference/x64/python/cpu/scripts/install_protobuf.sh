@@ -34,7 +34,7 @@ function GetFile {
   return $?
 }
 
-aria2c -q -o protobuf_src.tar.gz https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz 
+GetFile https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz protobuf_src.tar.gz 
 tar -xf protobuf_src.tar.gz
 cd protobuf-3.18.1
 cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo

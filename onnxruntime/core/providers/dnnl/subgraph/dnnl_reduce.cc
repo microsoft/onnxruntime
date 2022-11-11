@@ -4,6 +4,7 @@
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
 #include "core/providers/common.h"
+#include "dnnl_util.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -32,37 +33,27 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   };
 
   ReduceOp reduce_op = ReduceSum;
-  dnnl::algorithm algo = dnnl::algorithm::reduction_sum;
+  dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
   if (node.OpType() == "ReduceL1") {
     reduce_op = ReduceL1;
-    algo = dnnl::algorithm::reduction_norm_lp_power_p_sum;
   } else if (node.OpType() == "ReduceL2") {
     reduce_op = ReduceL2;
-    algo = dnnl::algorithm::reduction_norm_lp_sum;
   } else if(node.OpType() == "ReduceLogSum") {
     reduce_op = ReduceLogSum;
-    algo = dnnl::algorithm::reduction_sum;
   } else if(node.OpType() == "ReduceLogSumExp") {
     reduce_op = ReduceLogSumExp;
-    algo = dnnl::algorithm::reduction_sum;
   } else if (node.OpType() == "ReduceMax") {
     reduce_op = ReduceMax;
-    algo = dnnl::algorithm::reduction_max;
   } else if (node.OpType() == "ReduceMean") {
     reduce_op = ReduceMean;
-    algo = dnnl::algorithm::reduction_mean;
   } else if (node.OpType() == "ReduceMin") {
     reduce_op = ReduceMin;
-    algo = dnnl::algorithm::reduction_min;
   } else if (node.OpType() == "ReduceProd") {
     reduce_op = ReduceProd;
-    algo = dnnl::algorithm::reduction_mul;
   } else if (node.OpType() == "ReduceSum") {
     reduce_op = ReduceSum;
-    algo = dnnl::algorithm::reduction_sum;
   } else if (node.OpType() == "ReduceSumSquare") {
     reduce_op = ReduceSumSquare;
-    algo = dnnl::algorithm::reduction_sum;
   }
 
 
@@ -328,7 +319,7 @@ std::vector<int64_t> DnnlReduce::ReadAxes(DnnlNode& node) {
 
 bool DnnlReduce::Keepdims(DnnlNode& node) {
   auto attr = node.Attributes().find("keepdims");
-  if (attr != node.Attributes().end() && 
+  if (attr != node.Attributes().end() &&
       attr->second().i() == 0) {
     return false;
   }
