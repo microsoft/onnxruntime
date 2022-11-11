@@ -723,13 +723,13 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 ## XNNPACK
 
-Usage of XNNPACK on Android/Windows/Linux platforms is via the XNNPACK EP.
+Usage of XNNPACK on Android/Windows/Linux/iOS platforms is via the XNNPACK EP.
 
 See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
 
 The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
 
-We don't support XNNPACK on iOS currently.
+We don't have a pre-built package for iOS currently, you can build it following the below steps if you want.
 
 If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
 
@@ -761,6 +761,13 @@ Linux example:
 ```bash
 ./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
 ```
+### Build for iOS
+A Mac is required to build package for iOS. Please follow this [guide](./ios.md) to prepare environment.
+```dos
+<ONNX Runtime repository root>./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> --use_xnnpack
+```
+
 ### Build for Windows
 ```dos
 <ONNX Runtime repository root>.\build.bat --config <Release|Debug|RelWithDebInfo> --use_xnnpack

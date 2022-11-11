@@ -1169,19 +1169,19 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     //Xnnpack
-    "android,C-API,ARM64,XNNPACK":
+    "ios,android,C-API,ARM64,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
-    "android,C++,ARM64,XNNPACK":
+    "ios,android,C++,ARM64,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
     "android,Java,ARM64,XNNPACK":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
 
-    "android,C-API,ARM32,XNNPACK":
+    "ios,android,C-API,ARM32,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
-    "android,C++,ARM32,XNNPACK":
+    "ios,android,C++,ARM32,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
     "android,Java,ARM32,XNNPACK":

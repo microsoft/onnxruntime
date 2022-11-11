@@ -8,7 +8,7 @@ nav_order: 9
 
 # XNNPACK Execution Provider
 
-Accelerate ONNX models on Android devices and WebAssembly with ONNX Runtime and the XNNPACK execution provider. [(XNNPACK)](https://github.com/google/XNNPACK) is a highly optimized library of floating-point neural network inference operators for ARM, WebAssembly, and x86 platforms.
+Accelerate ONNX models on Android/iOS devices and WebAssembly with ONNX Runtime and the XNNPACK execution provider. [(XNNPACK)](https://github.com/google/XNNPACK) is a highly optimized library of floating-point neural network inference operators for ARM, WebAssembly, and x86 platforms.
 
 ## Contents
 {: .no_toc }
@@ -23,12 +23,13 @@ Accelerate ONNX models on Android devices and WebAssembly with ONNX Runtime and 
 Pre-built packages of ONNX Runtime([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) with XNNPACK EP for Android are published on Maven.
 See [here](../install/index.md#install-on-android) for installation instructions.
 
-There is no pre-built package for iOS yet. We will update it once it is ready.
+Pre-built packages of ONNX Runtime with XNNPACK EP for iOS is not ready.
+
 ## Build
 
 Please see the [Build page](../build/eps.md#xnnpack) for instructions on building a package that includes the XNNPACK EP.
 
-Support build for Android/Windows/Linux
+Support build for Android/iOS/Windows/Linux
 
 ## Usage
 
