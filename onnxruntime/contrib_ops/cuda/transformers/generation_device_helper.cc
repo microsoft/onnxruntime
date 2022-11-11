@@ -16,8 +16,6 @@
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 
-// #define DEBUG_GENERATION
-
 namespace onnxruntime {
 namespace concurrency {
 class ThreadPool;

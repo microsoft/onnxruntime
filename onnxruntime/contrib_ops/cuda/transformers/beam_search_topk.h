@@ -10,19 +10,6 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-void LaunchTopK(
-    const T* input,
-    int batch_size,
-    int num_beams,
-    int vocab_size,
-    int K,
-    T* output_values,
-    int32_t* output_indices,
-    T* output_values_tmp,
-    int32_t* output_indices_tmp,
-    cudaStream_t stream);
-
-template <typename T>
 void BeamSearchTopK(
     const T* input,
     int32_t batch_size,

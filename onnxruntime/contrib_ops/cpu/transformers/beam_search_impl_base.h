@@ -54,8 +54,6 @@ struct BeamSearchState : public IBeamSearchState<T> {
  private:
   BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
-  BufferUniquePtr topk_scores_buffer_;
-  BufferUniquePtr topk_indices_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
   BufferUniquePtr next_scores_buffer_;
