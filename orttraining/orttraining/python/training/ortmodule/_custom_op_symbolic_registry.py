@@ -16,7 +16,7 @@ from onnxruntime.training import ortmodule
 
 def _enforce_check(condition, message):
     if not condition:
-        raise RuntimeError("Enforced failure: {}".format(message))
+        raise RuntimeError(f"Enforced failure: {message}")
 
 
 # Mapping from pytorch scalar type to onnx scalar type.
@@ -37,11 +37,11 @@ _CAST_PYTORCH_TO_ONNX = {
 }
 
 
-def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+def pytorch_type_to_onnx_type(scalar_type: str) -> torch.onnx.TensorProtoDataType:
     try:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
     except AttributeError:
-        return _CAST_PYTORCH_TO_ONNX[scalar_type]
+        return _CAST_PYTORCH_TO_ONNX[scalar_type][0]
 
 
 def wrap_custom_export_function(original_func):
@@ -52,9 +52,9 @@ def wrap_custom_export_function(original_func):
     try:
         from torch.onnx import SymbolicContext
 
-        def _export_with_ctx(ctx: SymbolicContext, g, *args, **kwargs):
-            n = ctx.cur_node
-            return original_func(g, n, *args, **kwargs)
+        def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
+            node = ctx.cur_node
+            return original_func(graph, node, *args, **kwargs)
 
         return _export_with_ctx
     except ImportError:
@@ -65,8 +65,8 @@ def _check_all_tensor_type_match(tensors):
     if len(tensors) == 0:
         return True
     first_type = tensors[0].type().scalarType()
-    for t in tensors:
-        if t.type().scalarType() != first_type:
+    for tensor in tensors:
+        if tensor.type().scalarType() != first_type:
             return False
     return True
 
@@ -79,19 +79,19 @@ def _check_input_output_types(lhs_scalar_type, rhs_scalar_type):
 
     if lhs_byte_per_elem == rhs_byte_per_elem:
         return 0, rhs_onnx_type  # no type conversion needed
-    elif lhs_byte_per_elem > rhs_byte_per_elem:
+    if lhs_byte_per_elem > rhs_byte_per_elem:
         warnings.warn(
             f"Type demotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type} ",
             UserWarning,
         )
         return -1, rhs_onnx_type  # need type demotion
-    else:
-        warnings.warn(
-            f"Type promotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type}, "
-            f"which implies potential performance loss. ",
-            UserWarning,
-        )
-        return 1, rhs_onnx_type  # need type promotion
+
+    warnings.warn(
+        f"Type promotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type}, "
+        f"which implies potential performance loss to keep precision in ORT. ",
+        UserWarning,
+    )
+    return 1, rhs_onnx_type  # need type promotion
 
 
 class CustomOpSymbolicRegistry:
@@ -133,15 +133,15 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
 
 
 @register_symbolic("cross_entropy_loss", need_context=True)
-def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, label_smoothing=0.0):
+def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index, label_smoothing=0.0):
     has_weight = not weight.node().mustBeNone()
     if has_weight:
         _enforce_check(
-            _check_all_tensor_type_match([input, weight]),
-            f"custom exporter for cross_entropy_loss: input and weight must have the same type: {input}, {weight}",
+            _check_all_tensor_type_match([logits, weight]),
+            f"custom exporter for cross_entropy_loss: logits and weight must have the same type: {logits}, {weight}",
         )
 
-    outputs = [o for o in node.outputs()]
+    outputs = list(node.outputs())
     _enforce_check(
         _check_all_tensor_type_match(outputs), "custom exporter for cross_entropy_loss: outputs must have the same type"
     )
@@ -150,16 +150,15 @@ def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, 
     _enforce_check(not (label_smoothing > 0.0), "Unsupported: ONNX does not support label_smoothing")
 
     loss_output = outputs[0]
-    flag, rhs_onnx_type = _check_input_output_types(input.type().scalarType(), loss_output.type().scalarType())
-    weight_cast = weight
+    flag, rhs_onnx_type = _check_input_output_types(logits.type().scalarType(), loss_output.type().scalarType())
+    weight_casted = weight
     if flag > 0:
         # do input type promotion
-        input_cast = g.op("Cast", input, to_i=rhs_onnx_type)
+        logits_casted = g.op("Cast", logits, to_i=rhs_onnx_type)
         if has_weight:
-            weight_cast = g.op("Cast", weight, to_i=rhs_onnx_type)
+            weight_casted = g.op("Cast", weight, to_i=rhs_onnx_type)
     else:
-        input_cast = input
-
+        logits_casted = logits
 
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, "i")
@@ -168,15 +167,15 @@ def cross_entropy_loss(g, node, input, target, weight, reduction, ignore_index, 
 
     output, log_prob = g.op(
         "com.microsoft::SoftmaxCrossEntropyLossInternal",
-        input_cast,
+        logits_casted,
         target,
-        weight_cast,
+        weight_casted,
         ignore_index,
         reduction_s=reduction,
         outputs=2,
     )
-    output.setType(input_cast.type())
-    log_prob.setType(input_cast.type())
+    output.setType(logits_casted.type())
+    log_prob.setType(logits_casted.type())
     return output
 
 

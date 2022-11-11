@@ -15,7 +15,7 @@ from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
 from . import _logger
-from ._custom_op_symbolic_registry import pytorch_type_to_onnx, wrap_custom_export_function
+from ._custom_op_symbolic_registry import pytorch_type_to_onnx_type, wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
@@ -68,7 +68,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             # FIXME: using privated modules
             from torch.onnx import _globals
 
-            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9, training_mode is still a bool type
+            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9,
+            # training_mode is still a bool type
             if isinstance(_globals.GLOBALS.training_mode, bool):
                 training_mode = _globals.GLOBALS.training_mode
             else:
@@ -107,7 +108,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_type_to_onnx_type(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -154,7 +155,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_type_to_onnx_type(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
@@ -198,7 +199,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         raise wrap_exception(ORTModuleONNXModelException, e)
 
 
-_export = wrap_custom_export_function(_export_pt_1_10)
+export_python_op_func = wrap_custom_export_function(_export_pt_1_10)
 
 
 def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):

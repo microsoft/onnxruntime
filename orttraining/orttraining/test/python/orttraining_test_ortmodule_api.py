@@ -1008,7 +1008,7 @@ def test_gradient_correctness_embedding(device, padding_idx):
 def test_gradient_correctness_cross_entropy_loss_fp16_boundary_set(use_fp16):
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_class, hidden_size):
-            super(NeuralNetCrossEntropyLoss, self).__init__()
+            super().__init__()
             self.fc1 = torch.nn.Linear(num_class, hidden_size, bias=False)
             with torch.no_grad():
                 self.fc1.weight.fill_(1.0)
