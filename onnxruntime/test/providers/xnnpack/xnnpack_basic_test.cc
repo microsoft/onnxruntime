@@ -447,7 +447,7 @@ TEST(XnnpackEP, TestQDQConvTransposeS8S8) {
                    {2, 2, 3, 3} /* weights_shape */),
                "xnnpack_qdq_test_graph_convtranspose_s8s8",
                // web requires higher err tolerance
-               {ExpectedEPNodeAssignment::Some, 0.2f});
+               {ExpectedEPNodeAssignment::Some, 0.4f});
 }
 
 TEST(XnnpackEP, TestQDQConvTransposeU8U8) {
