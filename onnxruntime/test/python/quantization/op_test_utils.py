@@ -25,15 +25,17 @@ class TestDataFeeds(CalibrationDataReader):
     def rewind(self):
         self.iter_next = iter(self.data_feeds)
 
-class TempModelDir():
+
+class TempModelDir:
     def __init__(self, path):
         Path(path).mkdir(parents=True, exist_ok=True)
         self.name = path
 
+
 class TestCaseTempDir(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        tmp_model_dir_path = os.getenv('TMP_MODEL_DIR')
+        tmp_model_dir_path = os.getenv("TMP_MODEL_DIR")
         if tmp_model_dir_path is None:
             cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_op.")
         else:
@@ -41,7 +43,7 @@ class TestCaseTempDir(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if os.getenv('TMP_MODEL_DIR') is None:
+        if os.getenv("TMP_MODEL_DIR") is None:
             cls._tmp_model_dir.cleanup()
 
 
