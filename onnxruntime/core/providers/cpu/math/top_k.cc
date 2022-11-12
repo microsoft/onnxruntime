@@ -124,7 +124,7 @@ template <class Comparator>
 static void SelectTopK(const Comparator& comparer,
                        int64_t row_offset, int64_t num_blocks, int64_t block_slice, int64_t inter_block_offset,
                        const unsigned k, bool sort_top_k, std::vector<int64_t>& data_holder) {
-  for (size_t l = 0; l < num_blocks; ++l) {
+  for (size_t l = 0; l < onnxruntime::narrow<size_t>(num_blocks); ++l) {
     data_holder[l] = (row_offset + (l * block_slice + inter_block_offset));
   }
 
