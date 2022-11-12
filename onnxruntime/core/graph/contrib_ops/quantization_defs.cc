@@ -1393,7 +1393,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     QLinearConvTranspose,
     1,
     OpSchema()
-        .SetDoc(R"DOC( Similiar to ConvTranspose in onnx, but with quantization.
+        .SetDoc(R"DOC( Similar to ConvTranspose in onnx, but with quantization.
 The convolution transpose operator consumes an input tensor and a filter,
 and computes the output.
 
