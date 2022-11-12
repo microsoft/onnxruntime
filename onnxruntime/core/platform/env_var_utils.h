@@ -52,7 +52,7 @@ T ParseEnvironmentVariableWithDefault(const std::string& name, const T& default_
 /**
  * Parses an environment variable value for testing convenience.
  *
- * This function ensures the value is valid and also produce a warning on its usage.
+ * This function ensures the value is valid and also produces a warning on its usage.
  */
 template <typename T>
 std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
@@ -64,7 +64,7 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
     return std::nullopt;
   }
 
-  std::string default_hint = "End users should opt for provider options or session options and must not rely on it.";
+  std::string default_hint = "End users should opt for provider options or session options.";
   const std::string& logged_hint = hint.empty() ? default_hint : hint;
 
   LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "

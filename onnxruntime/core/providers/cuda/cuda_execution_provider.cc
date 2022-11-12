@@ -3,7 +3,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/shared_library/provider_api.h"
-#include <core/platform/env_var_utils.h>
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
