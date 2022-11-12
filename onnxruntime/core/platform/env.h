@@ -58,8 +58,18 @@ struct ThreadOptions {
   // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
   unsigned int stack_size = 0;
 
-  // A vector hosting affinity settings for threads in the threadpool
-  // Note - affinity.size() does not necessarily amount to thread_pool_size - 1
+  // This is a vector hosting affinity settings for threads in the threadpool.
+  // Note - affinity.size() does not necessarily amount to thread_pool_size - 1.
+  // POSIX and windows have different ways to fetch, save, and interpret the affinity vector.
+  // This is because, for windows, logical processors are organized in groups, which enforces that per-thread affinity must be set with a
+  // group_id + logic_processor_bitmastk pair, whereas POSIX simply does this by processor id(s).
+  // That being said, for windows, we are saving group_id and logic_processor_bitmask into the affinity vector per single thread,
+  // meaning each thread will be indexed to two elements in the vector, for POSIX, it is just one.
+  // e.g. for windows, assume we have 3 threads in the threadpool, indexed as 0,1,2.
+  // Then the affinity vector will have 6 elements, indexed as 0,1,2,3,4,5.
+  // Finally, we have threads[0] mapped to affinity[0] (which is a group_id), and affinity[1] (which is a logical_processor_bitmask),
+  // thread[1] mapped to affinity[2], and affinity[3],
+  // thread[2] mapped to affinity[4], and affinity[5].
   std::vector<uint64_t> affinity;
 
   // Set or unset denormal as zero.

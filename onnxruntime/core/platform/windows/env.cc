@@ -79,7 +79,7 @@ class WindowsThread : public EnvThread {
     std::unique_ptr<Param> p((Param*)param);
     const auto& affinities = p->thread_options.affinity;
     size_t num_affinity = affinities.size();
-    size_t offset = static_cast<size_t>(p->index) << 1;
+    size_t offset = static_cast<size_t>(p->index) * 2;
     if (offset + 1 < num_affinity) {
       GROUP_AFFINITY thread_affinity;
       memset(&thread_affinity, 0x0, sizeof(GROUP_AFFINITY));
@@ -229,7 +229,7 @@ class WindowsEnv : public Env {
     int processor_count = 0;
     uint64_t group_id = 0;
     uint64_t processor_mask = 0;
-    for (const auto& group_info : this->group_vec_) {
+    for (const auto& group_info : group_vec_) {
       for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
         if (processor_ids.count(processor_id)) {
           processor_mask |= BitOne << i;
@@ -295,7 +295,7 @@ class WindowsEnv : public Env {
         LOGS_DEFAULT(WARNING) << "no thread affinity setting can be read from affinity_str: " << affinity_str;
         return 0;
       }
-      return affinities.size() >> 1;
+      return affinities.size() / 2;
     } catch (const std::exception& ex) {
       LOGS_DEFAULT(ERROR) << "Exception caught in WindowsEnv::ReadThreadAffinityConfig: " << ex.what();
     }
