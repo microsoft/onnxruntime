@@ -68,7 +68,7 @@ auto GetCKGemmTypeStringAndOps() {
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
       auto one = ToHipType<T>::FromFloat(1.0f);
       auto zero = ToHipType<T>::FromFloat(0.0f);
-      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero,
           impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
 
@@ -77,8 +77,8 @@ auto GetCKGemmTypeStringAndOps() {
                                            params->m, params->n, params->k,
                                            params->lda, params->ldb, params->ldc,
                                            nop, nop, nop);
-      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                               impl->GetTypeString(), " does not support ", params->Signature());
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
+                                                impl->GetTypeString(), " does not support ", params->Signature());
       invoker->Run(arg.get(), StreamConfig{params->stream});
       return Status::OK();
     };
