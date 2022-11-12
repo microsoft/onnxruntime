@@ -14,7 +14,7 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import TestCaseTempDir, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
+from onnxruntime.quantization import DynamicQuantConfig, QuantFormat, QuantType, quantize, quantize_dynamic
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -60,7 +60,7 @@ class TestONNXModel(TestCaseTempDir):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def dynamic_quant_conv_test(self, weight_type, extra_options={}):
+    def dynamic_quant_conv_test(self, weight_type, extra_options={}, use_quant_config=False):
         np.random.seed(1)
         model_fp32_path = "conv_bias.fp32.onnx"
         temp_model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
@@ -74,12 +74,16 @@ class TestONNXModel(TestCaseTempDir):
         test_model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
 
         # Test Dynamic QOperator
-        quantize_dynamic(
-            temp_model_fp32_path,
-            test_model_int8_qop_path,
-            weight_type=weight_type,
-            extra_options=extra_options,
-        )
+        if use_quant_config:
+            quant_config = DynamicQuantConfig(weight_type=weight_type, extra_options=extra_options)
+            quantize(temp_model_fp32_path, test_model_int8_qop_path, quant_config)
+        else:
+            quantize_dynamic(
+                temp_model_fp32_path,
+                test_model_int8_qop_path,
+                weight_type=weight_type,
+                extra_options=extra_options,
+            )
         activation_proto_qtype = TensorProto.UINT8
         quant_nodes = {"ConvInteger": 2}
         check_op_type_count(self, test_model_int8_qop_path, **quant_nodes)
@@ -133,7 +137,8 @@ class TestONNXModel(TestCaseTempDir):
         )
 
     def test_quant_conv(self):
-        self.dynamic_quant_conv_test(QuantType.QUInt8, extra_options={})
+        for use_quant_config in [True, False]:
+            self.dynamic_quant_conv_test(QuantType.QUInt8, extra_options={}, use_quant_config=use_quant_config)
 
     # TODO: uncomment following after ConvInteger s8 supportted
     # def test_quant_conv_s8s8(self):

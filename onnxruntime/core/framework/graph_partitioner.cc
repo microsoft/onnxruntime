@@ -3,6 +3,7 @@
 
 #include "core/framework/graph_partitioner.h"
 
+#include <cassert>
 #include <functional>
 
 #include "core/framework/compute_capability.h"
@@ -44,7 +45,6 @@ NonCudaOps non_cuda;
 namespace onnxruntime {
 
 namespace {
-
 // contains some common parameters used by the partitioning helper functions
 struct PartitionParams {
   std::reference_wrapper<Graph> graph;
@@ -103,7 +103,7 @@ static bool TryAssignSingleNode(Graph& graph,
                                 const std::string& provider_type) {
   // The provider can run a single node in the <graph> if not using meta-defs.
   // A fused kernel is not supported in this case.
-  ORT_ENFORCE(1 == indexed_sub_graph.nodes.size());
+  assert(indexed_sub_graph.GetMetaDef() == nullptr && indexed_sub_graph.nodes.size() == 1);
 
   auto* node = graph.GetNode(indexed_sub_graph.nodes[0]);
   if (nullptr != node && node->GetExecutionProviderType().empty()) {
@@ -115,17 +115,31 @@ static bool TryAssignSingleNode(Graph& graph,
   return false;
 }
 
-static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr,
-                                 IExecutionProvider& current_ep, GraphPartitioner::Mode mode,
-                                 std::vector<std::unique_ptr<ComputeCapability>>& capabilities,
-                                 TransformLayoutFunction transform_layout) {
+namespace {
+struct GetCapabilityForEPParams {
+  std::reference_wrapper<Graph> graph;
+  std::reference_wrapper<const KernelRegistryManager> kernel_registry_mgr;
+  std::reference_wrapper<IExecutionProvider> current_ep;
+  std::reference_wrapper<std::vector<std::unique_ptr<ComputeCapability>>> capabilities;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  GraphPartitioner::Mode mode;
+  TransformLayoutFunction transform_layout;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+};
+}  // namespace
+
+static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
+  auto& current_ep = params.current_ep.get();
   const auto& ep_type = current_ep.Type();
 
-  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !transform_layout) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !params.transform_layout) {
     LOGS_DEFAULT(WARNING) << ep_type << " cannot be used with this model due to its ONNX opset not being supported by "
                                         "the layout transformer.";
     return Status::OK();
   }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   auto get_capabilities = [](const IExecutionProvider& ep,
                              const GraphViewer& graph_viewer,
@@ -142,10 +156,14 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     return capabilities;
   };
 
+  const auto& kernel_registry_mgr = params.kernel_registry_mgr.get();
   const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
   const KernelLookup kernel_lookup{ep_type,
                                    kernel_registries_for_ep,
                                    kernel_registry_mgr.GetKernelTypeStrResolver()};
+
+  auto& graph = params.graph.get();
+  auto& capabilities = params.capabilities.get();
 
   {
     const GraphViewer graph_viewer(graph);
@@ -159,7 +177,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Run layout transformer only for EPs other than CPU EP and provided the preferred layout is NHWC
   // CPU EP layout transformation happens later when level 3 transformers are run.
-  if (mode != GraphPartitioner::Mode::kAssignOnly &&
+  if (params.mode != GraphPartitioner::Mode::kAssignOnly &&
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
     for (auto& capability : capabilities) {
       TryAssignNodes(graph, *capability->sub_graph, ep_type);
@@ -169,7 +187,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
-    ORT_RETURN_IF_ERROR(transform_layout(graph, modified, current_ep));
+    ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep));
 
     // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
     // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
@@ -213,8 +231,6 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
       }
     }
   }
-#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  ORT_UNUSED_PARAMETER(mode);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   return Status::OK();
@@ -279,15 +295,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         std::string node_name = oss.str();
 
         Node* fused_node = nullptr;
-        // TODO1: The DML currently use some legacy approach.
-        // It registers a generic predefined kernel for all purpose fusion,
-        // so it rely on the function body in the fused node during kernel creation,
-        // which is after the graph partition phase.
-        // Ideally, it should be moved to "Compile" call.
-        // Here we temporary keep the function body for DML fusion
-        // Need to remove it after migrate DML to the Compile-based approach.
-        if (fusion_style == IExecutionProvider::FusionStyle::Function ||
-            provider_type == kDmlExecutionProvider) {
+        if (fusion_style == IExecutionProvider::FusionStyle::Function) {
           fused_node = &graph.FuseSubGraph(capability, node_name);
         } else {
           // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
@@ -354,8 +362,15 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-  ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep, mode, capabilities,
-                                         transform_layout_function));
+  const auto get_capability_params = GetCapabilityForEPParams{
+      std::ref(graph),
+      std::cref(kernel_registry_mgr),
+      std::ref(current_ep),
+      std::ref(capabilities),
+      mode,
+      transform_layout_function,
+  };
+  ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -448,10 +463,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
-  // TODO: The DML currently use some legacy approach.
-  // The fuse is done in FuseSubGraph function.
-  // Need to remove it later when DML migrate to Compile approach
-  if (!nodes_to_complete_fuse.empty() && type != kDmlExecutionProvider) {
+  if (!nodes_to_complete_fuse.empty()) {
     for (size_t j = 0, end = nodes_to_complete_fuse.size(); j < end; j++) {
       auto* node = nodes_to_complete_fuse[j];
 
@@ -570,16 +582,20 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
     }
   }
 
-  const std::string& type = current_ep.Type();
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+  // clang-format off
+  const auto get_capability_params = GetCapabilityForEPParams{
+      std::ref(graph),
+      std::cref(kernel_registry_mgr),
+      std::ref(current_ep),
+      std::ref(capabilities),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  TransformLayoutFunction transform_layout_function = partition_params.transform_layout_function;
-#else
-  TransformLayoutFunction transform_layout_function{};
-#endif
-  ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep,
-                                         GraphPartitioner::Mode::kOrtFormatLoad, capabilities,
-                                         transform_layout_function));
+      GraphPartitioner::Mode::kOrtFormatLoad,
+      partition_params.transform_layout_function,
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  };
+  // clang-format on
+  ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -594,6 +610,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   compilation_entries.reserve(capabilities.size());
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+  const std::string& type = current_ep.Type();
   for (const auto& capability : capabilities) {
     const IndexedSubGraph& indexed_sub_graph = *capability->sub_graph;
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();

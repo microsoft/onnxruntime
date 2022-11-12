@@ -8,7 +8,7 @@
 #endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
-#include <gsl/gsl>
+#include "core/common/narrow.h"
 #endif
 
 #include "core/common/common.h"
@@ -123,7 +123,7 @@ inline ORT_HOST_DEVICE bool operator<(const BFloat16& left, const BFloat16& righ
 // E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 inline MLFloat16 operator"" _f16(unsigned long long int v) {
-  return MLFloat16(gsl::narrow<uint16_t>(v));
+  return MLFloat16(narrow<uint16_t>(v));
 }
 
 inline MLFloat16 operator"" _fp16(long double v) {
@@ -131,7 +131,7 @@ inline MLFloat16 operator"" _fp16(long double v) {
 }
 
 inline BFloat16 operator"" _b16(unsigned long long int v) {
-  return BFloat16(gsl::narrow<uint16_t>(v), BFloat16::FromBits());
+  return BFloat16(narrow<uint16_t>(v), BFloat16::FromBits());
 }
 
 inline BFloat16 operator"" _bfp16(long double v) {

@@ -26,7 +26,7 @@
 #include "test_fixture.h"
 #include "utils.h"
 #include "custom_op_utils.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -228,7 +228,8 @@ TEST(CApiTest, dim_param) {
   // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
   int64_t dim_value = 0;
   const char* dim_param = nullptr;
-  in0_ttsi.GetDimensions(&dim_value, 1);
+  auto dims = in0_ttsi.GetShape();
+  if (!dims.empty()) dim_value = dims[0];
   in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
@@ -238,7 +239,10 @@ TEST(CApiTest, dim_param) {
   auto num_output_dims = out0_ttsi.GetDimensionsCount();
   ASSERT_EQ(num_output_dims, 1u);
 
-  out0_ttsi.GetDimensions(&dim_value, 1);
+  dim_value = 0;
+  dims = out0_ttsi.GetShape();
+  if (!dims.empty()) dim_value = dims[0];
+  
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
@@ -277,7 +281,7 @@ TEST(CApiTest, SparseOutputModel) {
 
   const auto* values_fetch = sparse_output.GetSparseTensorValues<float>();
   auto val_span = gsl::make_span(values_fetch, values.size());
-  ASSERT_TRUE(std::equal(values.cbegin(), values.cend(), val_span.cbegin(), val_span.cend()));
+  ASSERT_TRUE(std::equal(values.cbegin(), values.cend(), val_span.begin(), val_span.end()));
 
   auto indices_ts = sparse_output.GetSparseTensorIndicesTypeShapeInfo(ORT_SPARSE_COO_INDICES);
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, indices_ts.GetElementType());
@@ -287,7 +291,7 @@ TEST(CApiTest, SparseOutputModel) {
   const int64_t* indices = sparse_output.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_COO_INDICES, num_indices);
   ASSERT_EQ(num_indices, static_cast<size_t>(indices_shape[0]));
   auto ind_span = gsl::make_span(indices, num_indices);
-  ASSERT_TRUE(std::equal(coo_indices.cbegin(), coo_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+  ASSERT_TRUE(std::equal(coo_indices.cbegin(), coo_indices.cend(), ind_span.begin(), ind_span.end()));
 }
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -359,7 +363,7 @@ TEST(CApiTest, SparseInputModel) {
 
   const auto* result_vals = dense_Y.GetTensorData<float>();
   auto result_span = gsl::make_span(result_vals, Y_result.size());
-  ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
+  ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.begin(), result_span.end()));
 }
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
@@ -397,6 +401,39 @@ TEST(CApiTest, custom_op_handler) {
                        custom_op_domain, nullptr);
 #endif
 }
+
+#ifdef USE_CUDA
+TEST(CApiTest, custom_op_set_input_memory_type) {
+  std::cout << "Running custom op inference" << std::endl;
+
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  cudaStream_t compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  MyCustomOpSecondInputOnCpu custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
+
+  auto x_mem_type = custom_op.GetInputMemoryType(0);
+  auto y_mem_type = custom_op.GetInputMemoryType(1);
+  ASSERT_EQ(x_mem_type, OrtMemType::OrtMemTypeDefault);
+  ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+  cudaStreamDestroy(compute_stream);
+
+}
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 // disable test in reduced-op-build since TOPK and GRU are excluded there
@@ -1044,16 +1081,6 @@ TEST(CApiTest, io_binding) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, io_binding_cuda) {
-  struct CudaMemoryDeleter {
-    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
-      alloc_ = alloc;
-    }
-    void operator()(void* ptr) const {
-      alloc_->Free(ptr);
-    }
-
-    const Ort::Allocator* alloc_;
-  };
 
   Ort::SessionOptions session_options;
 #ifdef USE_TENSORRT
@@ -1071,8 +1098,7 @@ TEST(CApiTest, io_binding_cuda) {
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
-                                                             CudaMemoryDeleter(&cuda_allocator));
+  auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1082,8 +1108,7 @@ TEST(CApiTest, io_binding_cuda) {
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
-                                                              CudaMemoryDeleter(&cuda_allocator));
+  auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -1177,17 +1202,6 @@ TEST(CApiTest, cuda_graph) {
                   rel_cuda_options.get()) == nullptr);
 
   // Create IoBinding for inputs and outputs.
-  struct CudaMemoryDeleter {
-    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
-      alloc_ = alloc;
-    }
-    void operator()(void* ptr) const {
-      alloc_->Free(ptr);
-    }
-
-    const Ort::Allocator* alloc_;
-  };
-
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
@@ -1197,8 +1211,8 @@ TEST(CApiTest, cuda_graph) {
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
-                                                             CudaMemoryDeleter(&cuda_allocator));
+  auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
+  
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1208,8 +1222,8 @@ TEST(CApiTest, cuda_graph) {
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
-                                                              CudaMemoryDeleter(&cuda_allocator));
+  auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
+  
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory

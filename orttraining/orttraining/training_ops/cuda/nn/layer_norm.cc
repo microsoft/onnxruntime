@@ -33,6 +33,7 @@ REGISTER_GRADIENT_KERNEL_TYPED(float, float, float)
 REGISTER_GRADIENT_KERNEL_TYPED(double, double, double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float, MLFloat16)
 REGISTER_GRADIENT_KERNEL_TYPED(float, float, MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float, float)
 REGISTER_GRADIENT_KERNEL_TYPED(BFloat16, float, BFloat16)
 
 template <typename T, typename U, typename V, bool simplified>

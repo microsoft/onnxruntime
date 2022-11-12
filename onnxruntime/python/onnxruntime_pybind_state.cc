@@ -344,6 +344,18 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 }
 #endif
 
+#ifdef USE_CANN
+const CANNExecutionProviderInfo GetCannExecutionProviderInfo(ProviderInfo_CANN* cann_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map) {
+  ORT_ENFORCE(cann_provider_info);
+  const auto it = provider_options_map.find(kCannExecutionProvider);
+  CANNExecutionProviderInfo info;
+  if (it != provider_options_map.end())
+    cann_provider_info->CANNExecutionProviderInfo__FromProviderOptions(it->second, info);
+  return info;
+}
+#endif
+
 #ifdef USE_ROCM
 const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
                                                              const ProviderOptionsMap& provider_options_map) {
@@ -359,6 +371,7 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
     info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
+    info.tunable_op = tunable_op;
   }
   return info;
 }
@@ -750,6 +763,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
     return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
+#endif
+  } else if (type == kCannExecutionProvider) {
+#ifdef USE_CANN
+    if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
+      const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info,
+                                                                          provider_options_map);
+      return cann_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+    } else {
+      ORT_THROW("create CANN ExecutionProvider fail");
+    }
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -1308,6 +1331,8 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("synchronize_execution_providers", &RunOptions::synchronize_execution_providers,
+                     R"pbdoc(Synchronize execution providers after executing session.)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1526,6 +1551,22 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
         return fetches;
+      })
+      .def("run_with_ortvaluevector", [](
+        PyInferenceSession* sess,
+        RunOptions run_options,
+        const std::vector<std::string>& feed_names,
+        const std::vector<OrtValue>& feeds,
+        const std::vector<std::string>& fetch_names,
+        std::vector<OrtValue>& fetches,
+        const std::vector<OrtDevice>& fetch_devices) -> void {
+
+        {
+          // release GIL to allow multiple python threads to invoke Run() in parallel.
+          py::gil_scoped_release release;
+          OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
+        }
+
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();

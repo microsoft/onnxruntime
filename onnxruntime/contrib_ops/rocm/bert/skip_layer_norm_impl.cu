@@ -33,6 +33,7 @@ limitations under the License.
 #include <hip/hip_fp16.h>
 
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
+#include "contrib_ops/rocm/bert/skip_layer_norm_tunable_op.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -41,77 +42,30 @@ namespace rocm {
 template <typename T>
 Status LaunchSkipLayerNormKernel(
     hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
-    const T* beta, const T* bias, float epsilon, const int ld, const int element_count) {
-  // this must be true because n is the total size of the tensor
+    const T* beta, const T* bias, float epsilon, int ld, int element_count, bool tuning) {
+  // this must be true because element_count is the total size of the tensor
   assert(element_count % ld == 0);
-  bool hasBias = (bias == nullptr) ? false : true;
-  if (0 == (ld % 4)) {
-    const int grid_size = element_count / ld;
-    if (ld <= 32) {
-      constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 64) {
-      constexpr int block_size = 64 / 2;
-      SkipLayerNormKernelSmall<T, block_size, 2><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 128) {
-      constexpr int block_size = 128 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 384) {
-      constexpr int block_size = 384 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 768) {
-      constexpr int block_size = 768 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 1024) {
-      constexpr int block_size = 1024 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else {
-      constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
-    }
-  } else {
-    const int grid_size = element_count / ld;
-    if (ld <= 32) {
-      constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 64) {
-      constexpr int block_size = 64;
-      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld <= 128) {
-      constexpr int block_size = 128;
-      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else if (ld == 384) {
-      constexpr int block_size = 384;
-      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
-    } else {
-      constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(
-          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
-    }
+
+  SkipLayerNormParams<T> op_params(stream, output, input, skip, gamma, beta, bias, epsilon, ld, element_count);
+  static SkipLayerNormTunableOp<T> op;
+
+  // If disable tuning, the default implementation is SkipLayerNormStaticSelection.
+  if (tuning) {
+    op.EnableTuning();
   }
-  return HIP_CALL(hipPeekAtLastError());
+
+  return op(&op_params);
 }
 
 template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
                                                  const float* skip, const float* gamma, const float* beta,
-                                                 const float* bias, float epsilon, const int ld,
-                                                 const int element_count);
+                                                 const float* bias, float epsilon, int ld,
+                                                 int element_count, bool tuning);
 
 template Status LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, const half* input,
                                                 const half* skip, const half* gamma, const half* beta,
-                                                const half* bias, float epsilon, const int ld,
-                                                const int element_count);
+                                                const half* bias, float epsilon, int ld,
+                                                int element_count, bool tuning);
 
 }  // namespace rocm
 }  // namespace contrib

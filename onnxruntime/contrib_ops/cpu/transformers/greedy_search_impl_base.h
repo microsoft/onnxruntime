@@ -92,11 +92,13 @@ class GreedySearchBase : public GenerateBase {
     parameters_->ParseFromInputs(&context);
   }
 
+  ~GreedySearchBase() override = default;
+
   // Initialize by validating all the inputs, and allocating the output tensors.
-  Status Initialize();
+  Status Initialize() override;
 
   // Validate inputs.
-  Status CheckInputs(const OpKernelContextInternal& context);
+  Status CheckInputs(const OpKernelContextInternal& context) override;
 
  protected:
   // Process logits and append next tokens to sequences.
@@ -181,7 +183,7 @@ Status GreedySearchBase<T>::GenerateNextToken(
 
   gsl::span<bool>& eos_meet = greedy_state.eos_meet;
   for (size_t batch_id = 0; batch_id < next_tokens.size(); ++batch_id) {
-    if (next_tokens[batch_id] == eos_token_id) {
+    if (next_tokens[batch_id] == eos_token_id || eos_meet[batch_id] == true) {
       eos_meet[batch_id] = true;
       next_tokens[batch_id] = parameters_->pad_token_id;
     }

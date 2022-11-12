@@ -14,8 +14,6 @@ import sys
 from distutils.version import LooseVersion
 from pathlib import Path
 
-from amd_hipify import amd_hipify
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -69,10 +67,11 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
 
     choices1 = [
         "CPU_FP32_NO_PARTITION",
+        "CPU_FP16_NO_PARTITION",
         "GPU_FP32_NO_PARTITION",
         "GPU_FP16_NO_PARTITION",
         "VAD-M_FP16_NO_PARTITION",
@@ -171,7 +170,11 @@ def parse_arguments():
     )
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
-
+    parser.add_argument(
+        "--compile_no_warning_as_error",
+        action="store_true",
+        help="Preventing warnings from being treated as errors on compile.",
+    )
     # Training options
     parser.add_argument("--enable_nvtx_profile", action="store_true", help="Enable NVTX profile in ORT.")
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profile in ORT.")
@@ -652,6 +655,8 @@ def parse_arguments():
         help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.",
     )
+    parser.add_argument("--use_cann", action="store_true", help="Build with CANN")
+    parser.add_argument("--cann_home", help="Path to CANN installation dir")
 
     parser.add_argument(
         "--enable_rocm_profiling",
@@ -783,16 +788,18 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
 
 
 def use_dev_mode(args):
+    if args.compile_no_warning_as_error:
+        return False
     if args.use_acl:
-        return "OFF"
+        return False
     if args.use_armnn:
-        return "OFF"
+        return False
     if args.ios and is_macOS():
-        return "OFF"
+        return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")
     if SYSTEM_COLLECTIONURI and not SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/":
-        return "OFF"
-    return "ON"
+        return False
+    return True
 
 
 def add_default_definition(definition_list, key, default_value):
@@ -822,6 +829,7 @@ def generate_build_tree(
     armnn_home,
     armnn_libs,
     snpe_root,
+    cann_home,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -830,9 +838,11 @@ def generate_build_tree(
 ):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
-    cmake_args = [
-        cmake_path,
-        cmake_dir,
+    cmake_args = [cmake_path, cmake_dir]
+    if not use_dev_mode(args):
+        cmake_args += ["--compile-no-warning-as-error"]
+
+    cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
@@ -928,6 +938,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
@@ -950,9 +961,6 @@ def generate_build_tree(
     if args.llvm_config:
         cmake_args.append("-Donnxruntime_TVM_USE_LLVM=" + args.llvm_config)
 
-    # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
-    # And OFF for the people who are not actively developing onnx runtime.
-    add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
@@ -1003,6 +1011,9 @@ def generate_build_tree(
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
+    if cann_home and os.path.exists(cann_home):
+        cmake_args += ["-Donnxruntime_CANN_HOME=" + cann_home]
+
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
     if args.use_openvino:
@@ -1012,6 +1023,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_MYRIAD_NP="
@@ -1022,6 +1034,8 @@ def generate_build_tree(
             + ("ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP="
             + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
+            + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_M_NP="
             + ("ON" if args.use_openvino == "VAD-M_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_F_NP="
@@ -1365,6 +1379,23 @@ def setup_cuda_vars(args):
     return cuda_home, cudnn_home
 
 
+def setup_cann_vars(args):
+    cann_home = ""
+
+    if args.use_cann:
+        cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
+
+        cann_home_valid = cann_home is not None and os.path.exists(cann_home)
+
+        if not cann_home_valid:
+            raise BuildError(
+                "cann_home paths must be specified and valid.",
+                "cann_home='{}' valid={}.".format(cann_home, cann_home_valid),
+            )
+
+    return cann_home
+
+
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
     if args.use_tensorrt:
@@ -1439,24 +1470,17 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def setup_rocm_build(args, configs):
-
+def setup_rocm_build(args):
     rocm_home = None
-
     if args.use_rocm:
         print("rocm_home = {}".format(args.rocm_home))
         rocm_home = args.rocm_home or None
-
         rocm_home_not_valid = rocm_home and not os.path.exists(rocm_home)
-
         if rocm_home_not_valid:
             raise BuildError(
                 "rocm_home paths must be specified and valid.",
                 "rocm_home='{}' valid={}.".format(rocm_home, rocm_home_not_valid),
             )
-
-        for config in configs:
-            amd_hipify(get_config_build_dir(args.build_dir, config))
     return rocm_home or ""
 
 
@@ -2017,6 +2041,7 @@ def build_python_wheel(
     use_acl,
     use_armnn,
     use_dml,
+    use_cann,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2024,6 +2049,7 @@ def build_python_wheel(
     use_ninja=False,
     build_eager_mode=False,
     enable_training_on_device=False,
+    enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2045,6 +2071,8 @@ def build_python_wheel(
             args.append("--enable_training_on_device")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
+        if enable_rocm_profiling:
+            args.append("--enable_rocm_profiling")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2070,6 +2098,8 @@ def build_python_wheel(
             args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
+        elif use_cann:
+            args.append("--use_cann")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2082,7 +2112,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml
+    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2118,6 +2148,9 @@ def build_nuget_package(
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
+    elif use_snpe:
+        execution_provider = '/p:ExecutionProvider="snpe"'
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Snpe"'
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2340,7 +2373,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + str(diff))
 
-            diff_file(opkernel_doc_path, " with CPU and CUDA execution providers enabled")
+            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2361,7 +2394,7 @@ def main():
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
-    if not (args.update or args.clean or args.build or args.test):
+    if not (args.update or args.clean or args.build or args.test or args.gen_doc):
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
@@ -2472,7 +2505,10 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_build(args, configs)
+    rocm_home = setup_rocm_build(args)
+
+    # if using cann, setup cann paths
+    cann_home = setup_cann_vars(args)
 
     if args.update or args.build:
         for config in configs:
@@ -2672,6 +2708,7 @@ def main():
             armnn_home,
             armnn_libs,
             snpe_root,
+            cann_home,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,
@@ -2733,6 +2770,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
+                args.use_cann,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
@@ -2740,6 +2778,7 @@ def main():
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
                 enable_training_on_device=args.enable_training_on_device,
+                enable_rocm_profiling=args.enable_rocm_profiling,
             )
         if args.build_nuget:
             build_nuget_package(
@@ -2752,13 +2791,20 @@ def main():
                 args.use_dnnl,
                 args.use_tvm,
                 args.use_winml,
+                args.use_snpe,
             )
 
     if args.test and args.build_nuget:
         run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
 
-    if args.gen_doc and (args.build or args.test):
-        generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+    if args.gen_doc:
+        # special case CI where we create the build config separately to building
+        if args.update and not args.build:
+            pass
+        else:
+            # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
+            # documentation generation as a separate task post-build
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
 
     if args.gen_api_doc and (args.build or args.test):
         print("Generating Python doc for ORTModule...")

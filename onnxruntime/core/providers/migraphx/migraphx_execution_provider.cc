@@ -12,6 +12,7 @@
 #include "hip_fence.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_call.h"
+#include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
@@ -98,6 +99,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true}, device_id_(info.device_id) {
+  InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
   t_ = migraphx::target(info.target_device.c_str());
@@ -1038,9 +1040,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      Ort::CustomOpApi ort{*api};
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
+
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
       migraphx::target t = mgx_state->t;
       migraphx::program& prog = mgx_state->prog;
@@ -1057,9 +1060,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         for (auto& it : map_input_name_index) {
           auto& name = it.first;
           auto& index = it.second;
-          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, index);
-          auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-          const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+          auto input_tensor = ctx.GetInput(index);
+          auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+          const auto tensor_shape = tensor_info.GetShape();
           std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
           cmp_options.set_input_parameter_shape(name, ort_lens);
           input_shape_match = false;
@@ -1073,9 +1076,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         if (param_shapes.size() > 0) {
           for (auto&& name : param_shapes.names()) {
             if (map_input_name_index.count(name) > 0) {
-              const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_name_index[name]);
-              auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-              const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+              auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+              auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+              const auto tensor_shape = tensor_info.GetShape();
               std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
 
               auto mgx_s = param_shapes[name];
@@ -1115,11 +1118,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (param_shapes.size() > 0) {
         for (auto&& name : param_shapes.names()) {
           if (map_input_name_index.count(name) > 0) {
-            const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_name_index[name]);
-            auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-            const auto& tensor_shape = ort.GetTensorShape(tensor_info);
-            auto tensor_type = ort.GetTensorElementType(tensor_info);
-            ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+            auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+            auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+            const auto tensor_shape = tensor_info.GetShape();
+            const auto tensor_type = tensor_info.GetElementType();
 
             migraphx_shape_datatype_t mgx_type;
             getMIGraphXType(tensor_type, mgx_type);
@@ -1128,7 +1130,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             if (mgx_type != mgx_s.type()) {
               LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
             }
-            m.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(ort.GetTensorData<void>(input_tensor))));
+            m.add(name, migraphx::argument(param_shapes[name],
+                                           const_cast<void*>(input_tensor.GetTensorRawData())));
           }
           // It is a output argument
           else {
@@ -1149,8 +1152,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               auto mgx_output_shape = prog_output_shapes[output_index];
               auto lens = mgx_output_shape.lengths();
               std::vector<int64_t> ort_output_shape(lens.begin(), lens.end());
-              OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_output_shape.data(), ort_output_shape.size());
-              void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+              auto output_tensor = ctx.GetOutput(output_index, ort_output_shape.data(), ort_output_shape.size());
+              void* output_data = output_tensor.GetTensorMutableRawData();
 
               // argument shape
               auto mgx_arg_shape = param_shapes[name];
@@ -1163,9 +1166,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       {
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+
+        #ifdef MIGRAPHX_STREAM_SYNC
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(GetComputeStream()));
+        #else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
-
+        #endif
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
         if (prog_output_indices.size() < output_num) {
@@ -1176,8 +1183,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             migraphx::shape res_shape = gpu_res.get_shape();
             auto res_lens = res_shape.lengths();
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
-            OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, ort_shape.data(), ort_shape.size());
-            void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+            auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
+            void* output_data = output_tensor.GetTensorMutableRawData();
             HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
           }
         }
@@ -1190,5 +1197,33 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
   return Status::OK();
 }
+
+#ifdef MIGRAPHX_STREAM_SYNC
+
+Status MIGraphXExecutionProvider::Sync() const {
+  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
+
+  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  if (status != hipSuccess) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
+  }
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunStart()
+{
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunEnd(bool) {
+  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+
+  if (status != hipSuccess) {
+    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+  }
+  return Status::OK();
+}
+
+#endif
 
 }  // namespace onnxruntime

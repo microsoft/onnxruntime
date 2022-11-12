@@ -6,6 +6,7 @@
 #include <limits>
 #include <unordered_map>
 
+#include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
@@ -32,10 +33,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 }  // namespace op_kernel_type_control
 
 namespace {
-using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                 Slice, Input, 0);
-using IndicesTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                    Slice, Input, 1);
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Slice, Input, 0);
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
@@ -45,15 +42,15 @@ using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuE
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -61,16 +58,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 // Check if it's possible to combine innermost dimensions so we copy larger blocks.
@@ -78,8 +75,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 // Updates starts and steps to match flattened_output_dims if it is.
 // e.g. if input shape is { 2, 2, 2 }, output shape is { 1, 2, 2 }, and the 'steps' value for the last two dims is 1,
 // we are keeping all the data of the inner most two dimensions so can combine those into dims of { 1, 4 }
-static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
-                              const gsl::span<const int64_t>& output_dims,
+static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
+                              gsl::span<const int64_t> output_dims,
                               TensorShapeVector& starts,
                               TensorShapeVector& ends,
                               TensorShapeVector& steps,
@@ -87,7 +84,7 @@ static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
   int num_to_combine = 0;
   for (int64_t i = static_cast<int64_t>(starts.size()) - 1; i >= 0; --i) {
     // if we're keeping all the data for the dimension and not reversing the direction we can potentially combine it
-    if (steps[i] == 1 && input_dimensions[i] == output_dims[i])
+    if (steps[narrow<size_t>(i)] == 1 && input_dimensions[narrow<size_t>(i)] == output_dims[narrow<size_t>(i)])
       ++num_to_combine;
     else
       break;
@@ -95,7 +92,7 @@ static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
 
   if (num_to_combine > 1) {
     auto num_dims = output_dims.size() - num_to_combine + 1;
-    flattened_output_dims->assign(output_dims.cbegin(), output_dims.cend());
+    flattened_output_dims->assign(output_dims.begin(), output_dims.end());
     flattened_output_dims->resize(num_dims);
 
     int64_t dim_value = 1;
@@ -119,9 +116,9 @@ static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
 }
 
 // Slice V1-9 & DynamicSlice
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
@@ -130,10 +127,10 @@ Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
 }
 
 // DynamicSlice & Slice V10
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
-                                    const gsl::span<const int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
+                                    gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
@@ -153,17 +150,17 @@ void CopyData(const Tensor& start_tensor,
               TensorShapeVector& input_axes,
               TensorShapeVector& input_steps) {
   auto start_data = start_tensor.DataAsSpan<T>();
-  std::copy(start_data.cbegin(), start_data.cend(), std::back_inserter(input_starts));
+  std::copy(start_data.begin(), start_data.end(), std::back_inserter(input_starts));
   auto ends_data = ends_tensor.DataAsSpan<T>();
-  std::copy(ends_data.cbegin(), ends_data.cend(), std::back_inserter(input_ends));
+  std::copy(ends_data.begin(), ends_data.end(), std::back_inserter(input_ends));
   if (nullptr != axes_tensor) {
     auto axes_data = axes_tensor->DataAsSpan<T>();
-    std::copy(axes_data.cbegin(), axes_data.cend(), std::back_inserter(input_axes));
+    std::copy(axes_data.begin(), axes_data.end(), std::back_inserter(input_axes));
   }
   // Slice V10
   if (nullptr != steps_tensor) {
     auto steps_data = steps_tensor->DataAsSpan<T>();
-    std::copy(steps_data.cbegin(), steps_data.cend(), std::back_inserter(input_steps));
+    std::copy(steps_data.begin(), steps_data.end(), std::back_inserter(input_steps));
   }
 }
 }  // namespace
@@ -186,13 +183,13 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                     "Starts and steps shape mismatch");
 
   const auto size = start_tensor.Shape().Size();
-  input_starts.reserve(size);
-  input_ends.reserve(size);
+  input_starts.reserve(narrow<size_t>(size));
+  input_ends.reserve(narrow<size_t>(size));
   if (nullptr != axes_tensor)
-    input_axes.reserve(size);
+    input_axes.reserve(narrow<size_t>(size));
   // Slice V10
   if (nullptr != steps_tensor)
-    input_steps.reserve(size);
+    input_steps.reserve(narrow<size_t>(size));
 
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();
@@ -227,17 +224,11 @@ static Status SliceImpl(OpKernelContext* ctx,
   const auto* output_end = output + output_tensor.Shape().Size();
 
   auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
-    if (slice_input_iterator.SolitaryInnerStep()) {
-      while (output < output_end) {
-        output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
-      }
-    } else {
-      while (output < output_end) {
-        output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
-      }
+    while (output < output_end) {
+      output = slice_input_iterator.CopyContiguousInnermostAxes(output);
     }
 
-    ORT_ENFORCE(output == output_end);
+     ORT_ENFORCE(output == output_end);
   };
 
   if (compute_metadata.p_flattened_output_dims_) {

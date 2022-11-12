@@ -9,7 +9,7 @@
 #include <memory>
 #include <chrono>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -200,7 +200,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
 
     // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
     // back alive here.
-    return false;
+    return true;
   }
 #endif
 } g_info;

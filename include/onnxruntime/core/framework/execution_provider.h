@@ -99,6 +99,9 @@ class IExecutionProvider {
      * The return value is non-null if and only if a matching kernel was found.
      */
     virtual const KernelCreateInfo* LookUpKernel(const Node& node) const = 0;
+
+   protected:
+    ~IKernelLookup() = default;
   };
 
   /**
@@ -236,7 +239,7 @@ class IExecutionProvider {
   };
 
   virtual FusionStyle GetFusionStyle() const {
-    // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
+    // All the ORT build in EP has migrate to FilteredGraphViewer style.
     // For newer EPs, please avoid use Function style as it is deprecated.
     return FusionStyle::FilteredGraphViewer;
   }

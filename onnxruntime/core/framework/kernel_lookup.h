@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "gsl/gsl"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
@@ -18,7 +17,7 @@ namespace onnxruntime {
  * Utility class for performing kernel lookup.
  * Primary usage pattern is to be created during graph partitioning and passed to IExecutionProvider::GetCapability().
  */
-class KernelLookup : public IExecutionProvider::IKernelLookup {
+class KernelLookup final : public IExecutionProvider::IKernelLookup {
  public:
   KernelLookup(ProviderType provider_type,
                gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries,

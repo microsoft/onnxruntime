@@ -8,8 +8,13 @@ set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
 set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
 set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
 
-if(onnxruntime_BUILD_WEBASSEMBLY)
-  execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
+# BF16 instructions cause ICE in Android NDK compiler
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
+  set(XNNPACK_ENABLE_ARM_BF16 OFF)
+ENDIF()
+
+if(onnxruntime_BUILD_WEBASSEMBLY OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
 endif()
 
 add_subdirectory(external/FP16)
@@ -59,10 +64,6 @@ if(onnxruntime_BUILD_WEBASSEMBLY)
     set(${target_srcs} ${bazel_srcs} PARENT_SCOPE)
   endfunction()
 
-  if(onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    target_compile_options(XNNPACK PRIVATE "-pthread")
-  endif()
-
   GetSrcListFromBazel("PROD_SCALAR_WASM_MICROKERNEL_SRCS" prod_scalar_wasm_srcs)
   GetSrcListFromBazel("ALL_WASM_MICROKERNEL_SRCS" all_wasm_srcs)
   GetSrcListFromBazel("WASM32_ASM_MICROKERNEL_SRCS" wasm32_asm_srcs)
@@ -82,9 +83,6 @@ if(onnxruntime_BUILD_WEBASSEMBLY)
   if(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     GetSrcListFromBazel("ALL_WASMSIMD_MICROKERNEL_SRCS" all_wasmsimd_srcs)
     message(DEBUG "all_wasmsimd_srcs: ${all_wasmsimd_srcs}")
-
-    target_compile_options(params_init PRIVATE "-msimd128")
-    target_compile_options(XNNPACK PRIVATE "-msimd128")
     target_sources(XNNPACK PRIVATE ${all_wasmsimd_srcs})
   endif()
 endif()

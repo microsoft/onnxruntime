@@ -25,7 +25,7 @@ Status TrainingSession::RegisterScheduler(
     const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
     std::optional<float> initial_lr) {
   ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
-  scheduler_ = std::move(get_scheduler(optimizer_));
+  scheduler_ = get_scheduler(optimizer_);
   ORT_RETURN_IF_NOT(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
 
   if (initial_lr.has_value()) {
@@ -108,6 +108,11 @@ Status TrainingSession::CopyParametersToBuffer(OrtValue& parameters_buffer, cons
 
 Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
   return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
+}
+
+Status TrainingSession::ExportModelForInferencing(const std::string& inference_model_path,
+                                                  gsl::span<const std::string> graph_output_names) const {
+  return module_->ExportModelForInferencing(inference_model_path, graph_output_names);
 }
 
 }  // namespace api

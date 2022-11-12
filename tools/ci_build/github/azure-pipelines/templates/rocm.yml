@@ -5,18 +5,39 @@ parameters:
 - name: RocmVersion
   type: string
 
-
+- name: BuildConfig
+  type: string
+  default: 'Release'
 
 jobs:
-- job: wheels_python_${{ replace(parameters.PythonVersion,'.','_') }}_rocm_${{ replace(parameters.RocmVersion,'.','_') }}
+- job: wheels_python_${{ replace(parameters.PythonVersion,'.','_') }}_rocm_${{ replace(parameters.RocmVersion,'.','_') }}_${{ parameters.BuildConfig }}
   workspace:
     clean: all
   timeoutInMinutes: 180
   pool: Ubuntu-2004-rocm-aiinfra
   variables:
-    PythonVersion: ${{ parameters.PythonVersion }}
+    - name: PythonVersion
+      value: ${{ parameters.PythonVersion }}
+    - name: EnableProfiling
+      ${{ if eq(parameters.BuildConfig, 'Release') }}:
+        value: ''
+      ${{ else }}:
+        value: '--enable_rocm_profiling'
+    - name: ArtifactName
+      ${{ if eq(parameters.BuildConfig, 'Release') }}:
+        value: 'onnxruntime_rocm'
+      ${{ else }}:
+        value: 'onnxruntime_rocm_enable_profiling'
 
   steps:
+  - task: CmdLine@2
+    displayName: 'check variables'
+    inputs:
+      script: |
+        echo "BuildConfig is "${{ parameters.BuildConfig }} && \
+        echo "EnableProfiling is "${{ variables['EnableProfiling'] }} && \
+        echo "ArtifactName is "${{ variables['ArtifactName'] }}
+
   - checkout: self
     clean: true
     submodules: recursive
@@ -34,6 +55,7 @@ jobs:
         --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
         --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
       Repository: onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }}
+
   - task: CmdLine@2
     inputs:
       script: |
@@ -53,7 +75,7 @@ jobs:
           --user onnxruntimedev \
           onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
             /onnxruntime_src/tools/ci_build/build.py \
-              --config Release \
+              --config ${{ parameters.BuildConfig }} \
               --use_rocm \
               --rocm_version=${{ parameters.RocmVersion }} \
               --rocm_home=/opt/rocm \
@@ -65,8 +87,11 @@ jobs:
               --build_wheel \
               --skip_tests \
               --enable_training \
-              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
-              --enable_training_torch_interop
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+                onnxruntime_BUILD_UNIT_TESTS=OFF \
+              --enable_training_torch_interop \
+              ${{ variables['EnableProfiling'] }}
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime (in container)'
 
@@ -83,18 +108,19 @@ jobs:
       render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
       echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
       echo "##vso[task.setvariable variable=render]$render_gid"
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
     displayName: 'Find video and render gid to be mapped into container'
 
   - task: CopyFiles@2
     displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)'
-      Contents: 'Release/dist/*.whl'
+      Contents: "${{ parameters.BuildConfig }}/dist/*.whl"
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CmdLine@2
     displayName: 'Build Python Documentation'
-    condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
+    condition: and(succeeded(), ne('${{ parameters.PythonVersion }}', '3.9'), eq('${{ parameters.BuildConfig }}', 'Release'))  # tensorflow not available on python 3.9
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -121,7 +147,7 @@ jobs:
 
   - task: CopyFiles@2
     displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-    condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
+    condition: and(succeeded(), ne('${{ parameters.PythonVersion }}', '3.9'), eq('${{ parameters.BuildConfig }}', 'Release'))  # tensorflow not available on python 3.9
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
       Contents: '**'
@@ -130,10 +156,10 @@ jobs:
   - task: PublishBuildArtifacts@1
     displayName: 'Upload Rocm wheel as build artifact'
     inputs:
-      ArtifactName: onnxruntime_rocm
+      ArtifactName: ${{ variables['ArtifactName'] }}
 
   - script: |
-      files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+      files=($(Build.ArtifactStagingDirectory)/${{ parameters.BuildConfig }}/dist/*.whl) && \
       echo ${files[0]} && \
       python3 tools/ci_build/upload_python_package_to_azure_storage.py \
           --python_wheel_path ${files[0]} \

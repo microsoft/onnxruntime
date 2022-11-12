@@ -12,7 +12,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
 stages:
 
@@ -36,7 +36,6 @@ stages:
   - template: templates/py-packaging-stage.yml
     parameters:
       enable_linux_gpu: true
-      enable_linux_gpu_tests: false
       enable_ubuntu_cpu: false
       enable_linux_cpu: false
       enable_windows_cpu: false

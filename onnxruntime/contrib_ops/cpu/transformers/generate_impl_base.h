@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
@@ -55,6 +56,8 @@ class GenerateBase {
                          .Get(onnxruntime::kCpuExecutionProvider)
                          ->GetAllocator(0, OrtMemTypeDefault);
   }
+
+  virtual ~GenerateBase() = default;
 
   // Initialize by validating all the inputs, and allocating the output tensors.
   virtual Status Initialize() = 0;
@@ -140,7 +143,7 @@ class GenerateBase {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
       }
-      if (dims_attn != dims) {
+      if (!SpanEq(dims_attn, dims)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have same shape as input_ids");
       }

@@ -3,8 +3,9 @@
 
 #include "core/providers/cpu/tensor/split.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -22,8 +23,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 
@@ -32,7 +31,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
@@ -42,7 +40,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
@@ -51,7 +48,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     Split,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
@@ -63,11 +59,11 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
 
-  before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
-  after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
+  before_dims = narrow<int>(input_shape.SizeToDimension(axis));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(axis + 1));
 
   if (split_sizes.empty()) {
     // equal split based on number of outputs
@@ -169,7 +165,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
 
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
-    auto split_size = gsl::narrow<int>(split_sizes[i]);
+    auto split_size = narrow<int>(split_sizes[i]);
     output_dimensions[axis] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});

@@ -215,9 +215,9 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
     compute_info.release_state_func = [](FunctionState /*state*/) {
     };
 
-    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtApi* c_api,
+    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtApi* /*c_api*/,
                                         OrtKernelContext* context) -> Status {
-      Ort::CustomOpApi api{*c_api};  // use C++ API for convenience
+      Ort::KernelContext ctx(context);
 
       const auto outputs = node.OutputDefs();
       const size_t num_outputs = outputs.size();
@@ -239,12 +239,12 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
         }
 
         // create the output_tensor.
-        auto* ortvalue = api.KernelContext_GetOutput(context, i, shape.GetDims().data(), shape.GetDims().size());
+        auto ortvalue = ctx.GetOutput(i, shape.GetDims().data(), shape.GetDims().size());
 
         // and fill with zeros
-        auto* tensor = ortvalue->GetMutable<Tensor>();
-        void* data = tensor->MutableDataRaw();
-        auto bytes = tensor->SizeInBytes();
+        auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(ortvalue.GetTensorTypeAndShapeInfo().GetElementType())->GetElementType();
+        void* data = ortvalue.GetTensorMutableRawData();
+        const auto bytes = shape.Size() * ml_type->Size();
         memset(data, 0, bytes);
       };
 

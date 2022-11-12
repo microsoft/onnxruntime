@@ -152,15 +152,16 @@ void GenerateRandomDataWithOneHot(std::vector<std::vector<float>>& x_datas, std:
 void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain,
                          const int opset_version = 9,
                          std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-                         std::function<float(float)>* transformer = nullptr) {
+                         std::function<float(float)>* transformer = nullptr,
+                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {},
+                         float error_tolerance = 1e-3f) {
   TensorShape shape({2, 3, 4});
   TensorInfo x_info{shape, true, transformer};
   float max_error;
-  float error_tolerance = 1e-3f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type, domain, opset_version};
 
-  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {shape}, &max_error, {}, true, false,
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {shape}, &max_error, attributes, true, false,
                                                          execution_providers));
 
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
@@ -423,6 +424,8 @@ TEST(GradientCheckerTest, MatMulGrad) {
 }
 
 TEST(GradientCheckerTest, SinGrad) { UnaryOpGradientTest("Sin"); }
+
+TEST(GradientCheckerTest, CosGrad) { UnaryOpGradientTest("Cos"); }
 
 TEST(GradientCheckerTest, NegGrad) { UnaryOpGradientTest("Neg"); }
 
@@ -1545,6 +1548,23 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
 #endif
 
 TEST(GradientCheckerTest, SigmoidGrad) { UnaryOpGradientTest("Sigmoid"); }
+
+TEST(GradientCheckerTest, QuickGeluGrad) {
+  // Default alpha = 1.702, relax the tolerance due failure on Win for some seed.
+  { UnaryOpGradientTest("QuickGelu", kMSDomain, 1, nullptr, nullptr, {}, 5e-2f); }
+
+  // Silu, alpha = 1.0.
+  {
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {MakeAttribute("alpha", 1.0f)};
+    UnaryOpGradientTest("QuickGelu", kMSDomain, 1, nullptr, nullptr, attributes, 5e-2f);
+  }
+
+  // Negative alpha.
+  {
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {MakeAttribute("alpha", -1.702f)};
+    UnaryOpGradientTest("QuickGelu", kMSDomain, 1, nullptr, nullptr, attributes, 5e-2f);
+  }
+}
 
 void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 11) {
   TensorShape shape({2, 3, 4});
