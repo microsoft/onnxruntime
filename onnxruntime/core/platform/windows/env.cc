@@ -147,11 +147,11 @@ class WindowsEnv : public Env {
   }
 
   int GetNumCpuCores() const override {
-    int num_cores = 0;
-    for (const auto& group_info : group_vec_) {
-      num_cores += group_info.ActiveProcessorCount;
+    if (core_vec_.empty()) {
+      return static_cast<int>(std::thread::hardware_concurrency());
+    } else {
+      return static_cast<int>(core_vec_.size());
     }
-    return num_cores;
   }
 
   size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinities) const override {
