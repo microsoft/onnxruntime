@@ -133,8 +133,7 @@ class WindowsEnv : public Env {
  public:
 
   explicit WindowsEnv() {
-    group_vec_ = GetProcessorGroups();
-    core_vec_ = GetProcessorCores();
+    GetSystemInfo(group_vec_, core_vec_);
   }
 
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
@@ -694,61 +693,35 @@ class WindowsEnv : public Env {
     return std::string();
   }
 
-  // Read ligical processor information per group
-  static std::vector<PROCESSOR_GROUP_INFO> GetProcessorGroups() {
+  static void GetSystemInfo(std::vector<PROCESSOR_GROUP_INFO>& group_vec, std::vector<PROCESSOR_RELATIONSHIP>& core_vec) {
     DWORD returnLength = 0;
-    GetLogicalProcessorInformationEx(RelationGroup, nullptr, &returnLength);
+    GetLogicalProcessorInformationEx(RelationAll, nullptr, &returnLength);
     auto last_error = GetLastError();
     if (last_error != ERROR_INSUFFICIENT_BUFFER) {
-      return {};
+      return;
     }
 
     std::unique_ptr<char[]> allocation = std::make_unique<char[]>(returnLength);
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
 
-    if (!GetLogicalProcessorInformationEx(RelationGroup, processorInfos, &returnLength)) {
-      return {};
+    if (!GetLogicalProcessorInformationEx(RelationAll, processorInfos, &returnLength)) {
+      return;
     }
 
-    std::vector<PROCESSOR_GROUP_INFO> group_info_vec;
-    int64_t num_processor_info = static_cast<int64_t>(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
-    for (int64_t i = 0; i < num_processor_info; ++i) {
-      if (processorInfos[i].Relationship != RelationGroup) {
-        continue;
+    const BYTE* iter = reinterpret_cast<const BYTE*>(processorInfos);
+    const BYTE* end = iter + returnLength;
+    while (iter < end) {
+      auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
+      auto size = processor_info->Size;
+      if (processor_info->Relationship == RelationGroup) {
+        for (int i = 0; i < static_cast<int>(processor_info->Group.ActiveGroupCount); ++i) {
+          group_vec.push_back(processor_info->Group.GroupInfo[i]);
+        }
+      } else if (processor_info->Relationship == RelationProcessorCore) {
+        core_vec.push_back(processor_info->Processor);
       }
-      for (int64_t j = 0; j < static_cast<int>(processorInfos[i].Group.ActiveGroupCount); ++j) {
-        const auto& groupInfo = processorInfos[i].Group.GroupInfo[j];
-        group_info_vec.push_back(groupInfo);
-      }
+      iter += size;
     }
-    return group_info_vec;
-  }
-
-  // Read ligical processor information per group
-  static std::vector<PROCESSOR_RELATIONSHIP> GetProcessorCores() {
-    DWORD returnLength = 0;
-    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &returnLength);
-    auto last_error = GetLastError();
-    if (last_error != ERROR_INSUFFICIENT_BUFFER) {
-      return {};
-    }
-
-    std::unique_ptr<char[]> allocation = std::make_unique<char[]>(returnLength);
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
-
-    if (!GetLogicalProcessorInformationEx(RelationProcessorCore, processorInfos, &returnLength)) {
-      return {};
-    }
-
-    std::vector<PROCESSOR_RELATIONSHIP> core_vec;
-    int64_t num_processor_info = static_cast<int64_t>(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
-    for (int64_t i = 0; i < num_processor_info; ++i) {
-      if (processorInfos[i].Relationship != RelationProcessorCore) {
-        continue;
-      }
-      core_vec.push_back(processorInfos[i].Processor);
-    }
-    return core_vec;
   }
 
  private:
