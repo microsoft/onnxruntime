@@ -110,13 +110,16 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_uint8() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new byte[] {Byte.MAX_VALUE, 2, Byte.MAX_VALUE});
+    OnnxTensor outputTensor =
+        OnnxTensor.createTensor(ortEnvironment, ByteBuffer.wrap(new byte[] {Byte.MAX_VALUE, 2, Byte.MAX_VALUE}),
+                                new long[] {3}, OnnxJavaType.UINT8);
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
     JavaOnlyArray dims = new JavaOnlyArray();
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
+
     inputTensorMap.putString("type", TensorHelper.JsTensorTypeUnsignedByte);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
