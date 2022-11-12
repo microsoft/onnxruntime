@@ -2040,7 +2040,10 @@ namespace OperatorHelper
     {
         if (opsetVersion >= 13) // Axes are a dynamic input parameter.
         {
-            ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            if (kernelInformation.IsInputValid(1))
+            {
+                ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            }
         }
         else // Axes were a constant attribute parameter.
         {
