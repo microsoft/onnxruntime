@@ -415,6 +415,11 @@ inline Env& Env::DisableTelemetryEvents() {
   return *this;
 }
 
+inline Env& Env::UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level) {
+  ThrowOnError(GetApi().UpdateEnvWithCustomLogLevel(p_, log_severity_level));
+  return *this;
+}
+
 inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
   ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
   return *this;

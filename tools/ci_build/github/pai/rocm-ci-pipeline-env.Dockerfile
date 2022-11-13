@@ -33,7 +33,6 @@ RUN pip install \
       sacremoses \
       scipy \
       scikit-learn \
-      sklearn \
       tokenizers \
       sentencepiece \
       dill==0.3.4 \

@@ -61,6 +61,22 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+#ifdef ENABLE_TRAINING
+// Specifies a list of op types for memory footprint reduction.
+// The value should be a ","-delimited list of pair of
+// <subgraph string : optimization strategy : number of subgraph to apply>.
+// For example, "Gelu+Cast+:1:0,Dropout+:1:1".
+//   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
+//   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
+//   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
+//   the memory.
+static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
+
+// Specifies the level for detecting subgraphs for memory footprint reduction.
+// The value should be an integer. The default value is 0.
+static const char* const kOrtSessionOptionsMemoryOptimizerProbeLevel = "optimization.enable_memory_probe_recompute_level";
+#endif
+
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
@@ -81,9 +97,9 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
-/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization. 
-/// Requires `session.use_ort_model_bytes_directly` to be true. 
-/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire 
+/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
+/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =

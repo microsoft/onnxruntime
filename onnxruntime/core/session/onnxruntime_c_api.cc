@@ -169,6 +169,16 @@ ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env)
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env,
+                    OrtLoggingLevel log_severity_level) {
+  API_IMPL_BEGIN
+  LoggingManager* default_logging_manager = ort_env->GetLoggingManager();
+  int severity_level = static_cast<int>(log_severity_level);
+  default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity_level));
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len,
                                 _Inout_ OrtAllocator* allocator, OrtValue& value) {
   TensorShape tensor_shape(shape, shape_len);
@@ -2595,6 +2605,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
 
     // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
+    &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::KernelInfo_GetInputCount,
     &OrtApis::KernelInfo_GetOutputCount,
     &OrtApis::KernelInfo_GetInputInfo,
@@ -2603,7 +2614,8 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::KernelIOInfo_GetName,
     &OrtApis::KernelIOInfo_GetTypeInfo,
     &OrtApis::HasSessionConfigEntry,
-    &OrtApis::GetSessionConfigEntry};
+    &OrtApis::GetSessionConfigEntry,
+};
 
 
 

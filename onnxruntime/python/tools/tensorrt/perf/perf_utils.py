@@ -71,6 +71,30 @@ extended = "extended"
 enable_all = "all"
 
 
+def is_benchmark_mode(running_mode):
+    """
+    Returns True if the script's running mode requires running benchmarks.
+
+    :param running_mode: A string denoting the script's running mode (i.e., 'benchmark', 'validate', or 'both')
+
+    :return: True if benchmarking is required.
+    """
+
+    return running_mode == "benchmark" or running_mode == "both"
+
+
+def is_validate_mode(running_mode):
+    """
+    Returns True if the script's running mode requires running inference validation.
+
+    :param running_mode: A string denoting the script's running mode (i.e., 'benchmark', 'validate', or 'both')
+
+    :return: True if validation is required.
+    """
+
+    return running_mode == "validate" or running_mode == "both"
+
+
 def is_standalone(ep):
     return ep == standalone_trt or ep == standalone_trt_fp16
 
@@ -277,14 +301,25 @@ def calculate_trt_latency_percentage(trt_op_map):
     return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
 
 
-def get_profile_metrics(path, profile_already_parsed, logger=None):
-    logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
-    p1 = subprocess.Popen(
-        ["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"],
+def get_profile_metrics(path, profile_file_prefix, logger):
+    """
+    Parses a session profile file to obtain information on operator usage per EP.
+
+    :param path: The path containing the session profile file.
+    :param profile_file_prefix: Custom prefix for session profile names. Refer to ORT SessionOptions.
+    :param logger: The logger object to use for debug/info logging.
+
+    :return: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
+    """
+
+    logger.debug("Parsing/Analyzing profiling files in %s ...", path)
+
+    find_proc = subprocess.Popen(
+        ["find", path, "-name", f"{profile_file_prefix}*", "-printf", "%T+\t%p\n"],
         stdout=subprocess.PIPE,
     )
-    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
+    sort_proc = subprocess.Popen(["sort"], stdin=find_proc.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = sort_proc.communicate()
     stdout = stdout.decode("ascii").strip()
     profiling_files = stdout.split("\n")
     logger.info(profiling_files)
@@ -292,18 +327,15 @@ def get_profile_metrics(path, profile_already_parsed, logger=None):
     data = []
     for profile in profiling_files:
         profile = profile.split("\t")[1]
-        if profile in profile_already_parsed:
-            continue
-        profile_already_parsed.add(profile)
 
-        logger.info("start to parse {} ...".format(profile))
-        with open(profile) as f:
-            op_map = parse_single_file(f)
+        logger.debug("Parsing profile %s ...", profile)
+        with open(profile, encoding="utf-8") as fd:
+            op_map = parse_single_file(fd)
             if op_map:
                 data.append(op_map)
 
     if len(data) == 0:
-        logger.info("No profile metrics got.")
+        logger.debug("No profile metrics found.")
         return None
 
     return data[-1]

@@ -3592,6 +3592,15 @@ struct OrtApi {
   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
+  /* \brief Update the OrtEnv instance with custom log severity level
+   *
+   * \param[in] ort_env The OrtEnv instance being used
+   * \param[in] log_severity_level The log severity level.
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
+
   /// @}
   /// \name OrtKernelInfo
   /// @{
