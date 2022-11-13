@@ -60,89 +60,93 @@ class TestONNXModel(TestCaseTempDir):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def dynamic_quant_conv_test(self, weight_type, extra_options={}, use_quant_config=False):
+    def dynamic_qop_conv_test(self, weight_type, extra_options={}, use_quant_config=False):
         np.random.seed(1)
-        model_fp32_path = "conv_bias.fp32.onnx"
-        temp_model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
-        self.construct_model(temp_model_fp32_path)
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath("conv_bias.fp32.onnx").as_posix()
+        self.construct_model(model_fp32_path)
 
+        activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_qdq_path = "conv_bias.quant.qdq.{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_int8_qop_path = "conv_bias.quant.qop.{}{}.onnx".format(activation_type_str, weight_type_str)
-        test_model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
-        test_model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
+        conf_type_str = ".conf" if (use_quant_config) else ""
+        model_qop_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath("conv_bias.qop.{}{}{}.onnx".format(activation_type_str, weight_type_str, conf_type_str))
+            .as_posix()
+        )
 
         # Test Dynamic QOperator
         if use_quant_config:
             quant_config = DynamicQuantConfig(weight_type=weight_type, extra_options=extra_options)
-            quantize(temp_model_fp32_path, test_model_int8_qop_path, quant_config)
+            quantize(model_fp32_path, model_qop_path, quant_config)
         else:
             quantize_dynamic(
-                temp_model_fp32_path,
-                test_model_int8_qop_path,
+                model_fp32_path,
+                model_qop_path,
                 weight_type=weight_type,
                 extra_options=extra_options,
             )
-        activation_proto_qtype = TensorProto.UINT8
         quant_nodes = {"ConvInteger": 2}
-        check_op_type_count(self, test_model_int8_qop_path, **quant_nodes)
+        check_op_type_count(self, model_qop_path, **quant_nodes)
         qnode_io_qtypes = {"ConvInteger": [["i", 2, activation_proto_qtype]]}
-        check_qtype_by_node_type(self, test_model_int8_qop_path, qnode_io_qtypes)
+        check_qtype_by_node_type(self, model_qop_path, qnode_io_qtypes)
         check_model_correctness(
             self,
-            temp_model_fp32_path,
-            test_model_int8_qop_path,
+            model_fp32_path,
+            model_qop_path,
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 
-        # Test Dynamic QDQ / Weight QUInt8, Activation QUInt8
+    def dynamic_qdq_conv_test(self, activation_type, weight_type, extra_options={}):
+        np.random.seed(1)
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath("conv_bias.fp32.onnx").as_posix()
+        self.construct_model(model_fp32_path)
+
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
+        activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
+        weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
+        model_qdq_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath("conv_bias.qdq.{}{}.onnx".format(activation_type_str, weight_type_str))
+            .as_posix()
+        )
+
+        # Test Dynamic QDQ
         quantize_dynamic(
-            temp_model_fp32_path,
-            test_model_int8_qdq_path,
+            model_fp32_path,
+            model_qdq_path,
             quant_format=QuantFormat.QDQ,
             weight_type=weight_type,
+            activation_type=activation_type,
             extra_options=extra_options,
         )
-        quant_nodes = {"Conv": 2}
-        check_op_type_count(self, test_model_int8_qdq_path, **quant_nodes)
-        qnode_io_qtypes = {"Conv": [["i", 1, 1]]}
-        check_qtype_by_node_type(self, test_model_int8_qdq_path, qnode_io_qtypes)
+        quant_nodes = {"ComputeQuantizationParameters": 1, "QuantizeLinear": 1, "DequantizeLinear": 3, "Conv": 2}
+        check_op_type_count(self, model_qdq_path, **quant_nodes)
+        # TODO: check weight type
+        qnode_io_qtypes = {
+            "QuantizeLinear": [
+                ["i", 2, activation_proto_qtype],
+                ["o", 0, activation_proto_qtype],
+            ],
+        }
+        check_qtype_by_node_type(self, model_qdq_path, qnode_io_qtypes)
         check_model_correctness(
             self,
-            temp_model_fp32_path,
-            test_model_int8_qdq_path,
-            {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
-        )
-
-        # Test Dynamic QDQ / Weight QInt8, Activation QInt8
-        quantize_dynamic(
-            temp_model_fp32_path,
-            test_model_int8_qdq_path,
-            quant_format=QuantFormat.QDQ,
-            weight_type=QuantType.QInt8,
-            activation_type=QuantType.QInt8,
-            extra_options=extra_options,
-        )
-
-        quant_nodes = {"Conv": 2}
-        check_op_type_count(self, test_model_int8_qdq_path, **quant_nodes)
-        qnode_io_qtypes = {"Conv": [["i", 1, 1]]}
-        check_qtype_by_node_type(self, test_model_int8_qdq_path, qnode_io_qtypes)
-        check_model_correctness(
-            self,
-            temp_model_fp32_path,
-            test_model_int8_qdq_path,
+            model_fp32_path,
+            model_qdq_path,
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 
     def test_quant_conv(self):
         for use_quant_config in [True, False]:
-            self.dynamic_quant_conv_test(QuantType.QUInt8, extra_options={}, use_quant_config=use_quant_config)
+            self.dynamic_qop_conv_test(QuantType.QUInt8, use_quant_config=use_quant_config)
+        for activation_type in [QuantType.QInt8, QuantType.QUInt8]:
+            for weight_type in [QuantType.QInt8, QuantType.QUInt8]:
+                self.dynamic_qdq_conv_test(activation_type, weight_type)
 
     # TODO: uncomment following after ConvInteger s8 supportted
     # def test_quant_conv_s8s8(self):
-    #    self.dynamic_quant_conv_test(QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+    #    self.dynamic_qop_conv_test(QuantType.QInt8, extra_options={'ActivationSymmetric': True})
 
 
 if __name__ == "__main__":
