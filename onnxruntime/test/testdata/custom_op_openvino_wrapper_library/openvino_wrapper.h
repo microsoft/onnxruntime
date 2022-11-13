@@ -24,7 +24,6 @@ struct KernelOpenVINO {
   void Compute(OrtKernelContext* context);
 
  private:
-  Ort::CustomOpApi ort_;
   ov::CompiledModel compiled_model_;
   ov::OutputVector ov_inputs_;
   ov::OutputVector ov_outputs_;
@@ -33,7 +32,8 @@ struct KernelOpenVINO {
 };
 
 struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
-  CustomOpOpenVINO(Ort::ConstSessionOptions session_options);
+  CustomOpOpenVINO(Ort::ConstSessionOptions session_options) : session_options_(session_options){};
+
   void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const;
   const char* GetName() const;
   size_t GetInputTypeCount() const;

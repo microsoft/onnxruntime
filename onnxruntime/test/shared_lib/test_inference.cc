@@ -166,6 +166,10 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+#ifdef USE_OPENVINO
+static constexpr PATH_TYPE CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI = TSTR(
+    "testdata/custom_op_openvino_wrapper_library/custom_op_mnist_ov_wrapper.onnx");
+#endif
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
@@ -874,13 +878,14 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
-#if defined(REDUCED_OPS_BUILD) || !defined(USE_OPENVINO)
+
+#ifndef USE_OPENVINO
 TEST(CApiTest, DISABLED_test_custom_op_openvino_wrapper_library) {
 #else
-TEST(CApiTest, DISABLED_test_custom_op_openvino_wrapper_library) {
+TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
 #endif
   std::vector<Input> inputs(1);
-  inputs[0].name = "";
+  inputs[0].name = "Input3";
   inputs[0].dims = {1, 1, 28, 28};
 
   // Float image with the digit "1".
@@ -913,8 +918,47 @@ TEST(CApiTest, DISABLED_test_custom_op_openvino_wrapper_library) {
                       0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                       0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  // TODO: Finish porting example.
+  // prepare expected outputs
+  std::vector<int64_t> expected_output_dims = {1, 10};
 
+  // Digit 1 (index 1) has the highest probability (before applying softmax)
+  std::vector<float> expected_vals = {-5.34957457f, 13.1904755f, -4.79670954f, -3.59232116f, 2.31260920f,
+                                      -4.27866220f, -4.31867933f, 0.587718308f, -2.33952785f, -3.88515306f};
+
+  void* lib_handle = nullptr;
+  const char* lib_name;
+#if defined(_WIN32)
+  lib_name = "custom_op_openvino_wrapper_library.dll";
+#elif defined(__APPLE__)
+  lib_name = "libcustom_op_openvino_wrapper_library.dylib";
+#else
+lib_name = "./libcustom_op_openvino_wrapper_library.so";
+#endif
+
+  {
+    // Add session config entry for the custom op.
+    Ort::SessionOptions session_opts;
+    session_opts.AddCustomOpConfigEntry("OpenVINO_Wrapper", "device_type", "CPU");
+    lib_handle = session_opts.RegisterCustomOpsLibrary(lib_name);
+
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
+
+#ifdef _WIN32
+  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(lib_handle));
+  ORT_ENFORCE(success, "Error while closing custom op shared library");
+#else
+  int retval = dlclose(library_handle);
+  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+#endif
 }
 
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed

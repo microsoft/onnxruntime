@@ -116,8 +116,8 @@ static bool ValidateInputsAndOutputs(const Ort::ConstKernelInfo& kinfo, const ov
   return true;
 }
 
-KernelOpenVINO::KernelOpenVINO(const OrtApi& api, const OrtKernelInfo* info,
-                               const std::unordered_map<std::string, std::string>& session_configs) : ort_(api) {
+KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info,
+                               const std::unordered_map<std::string, std::string>& session_configs) {
   Ort::ConstKernelInfo kinfo(info);
 
   // Extract OpenVINO .bin and .xml contents from node attributes.
@@ -196,9 +196,6 @@ void KernelOpenVINO::Compute(OrtKernelContext* context) {
 //
 // CustomOpOpenVINO
 //
-
-CustomOpOpenVINO::CustomOpOpenVINO(Ort::ConstSessionOptions session_options) : session_options_(session_options) {
-}
 
 void* CustomOpOpenVINO::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
   std::unordered_map<std::string, std::string> session_configs;
