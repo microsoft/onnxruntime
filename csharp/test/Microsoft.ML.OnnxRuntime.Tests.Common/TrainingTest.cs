@@ -23,6 +23,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             this.output = o;
         }
 
+#if !__TRAINING_ENABLED__
+        [Fact(DisplayName = "TestLoadCheckpointThrows")]
+        public void TestLoadCheckpointThrows()
+        {
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            var ex = Assert.Throws<InvalidOperationException>(() => { var opt = new CheckpointState(path); });
+            Assert.Contains("Training is disabled in the current build.", ex.Message);
+        }
+#endif
+
+#if __TRAINING_ENABLED__
         [Fact(DisplayName = "TestLoadCheckpoint")]
         public void TestLoadCheckpoint()
         {
@@ -304,5 +315,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return x.GetHashCode();
             }
         }
-    }
+#endif
+        }
 }

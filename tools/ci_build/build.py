@@ -2112,7 +2112,8 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe
+    source_dir, build_dir, configs, use_cuda, use_openvino,
+    use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe, enable_training_on_device
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2131,7 +2132,12 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = '/p:ExecutionProvider="None"'
     package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
-    if use_winml:
+    if enable_training_on_device:
+        if use_cuda:
+            package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
+        else:
+            package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training"'
+    elif use_winml:
         package_name = '/p:OrtPackageId="Microsoft.AI.MachineLearning"'
         target_name = "/t:CreateWindowsAIPackage"
     elif use_openvino:
@@ -2191,7 +2197,7 @@ def build_nuget_package(
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            if use_openvino or use_tvm:
+            if not use_winml:
                 # user needs to make sure nuget is installed and added to the path variable
                 nuget_exe = "nuget.exe"
             else:
@@ -2218,7 +2224,8 @@ def build_nuget_package(
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
-def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl):
+def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
+                     use_tensorrt, use_dnnl, enable_training_on_device):
     # Currently only running tests on windows.
     if not is_windows():
         return
@@ -2244,17 +2251,23 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
     ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_build_dir + '"'
 
+    # enable training tests
+    training_enabled = '/p:TrainingEnabledNativeBuild="false"'
+    if enable_training_on_device:
+        training_enabled = '/p:TrainingEnabledNativeBuild="true"'
+
     # Skip pretrained models test. Only run unit tests as part of the build
     # add "--verbosity", "detailed" to this command if required
     cmd_args = [
         "dotnet",
         "test",
-        "test\\Microsoft.ML.OnnxRuntime.Tests\\Microsoft.ML.OnnxRuntime.Tests.csproj",
+        "test\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj",
         "--filter",
         "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
         is_linux_build,
         define_constants,
         ort_build_dir,
+        training_enabled
     ]
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
@@ -2792,10 +2805,11 @@ def main():
                 args.use_tvm,
                 args.use_winml,
                 args.use_snpe,
+                args.enable_training_on_device
             )
 
     if args.test and args.build_nuget:
-        run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
+        run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl, args.enable_training_on_device)
 
     if args.gen_doc:
         # special case CI where we create the build config separately to building
