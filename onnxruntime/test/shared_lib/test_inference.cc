@@ -716,7 +716,7 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   for (size_t i = 0; i < ort_outputs.size(); ++i) {
     auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
     ASSERT_EQ(type_info.GetShape(), expected_dims[i]);
-    ASSERT_EQ(type_info.GetElementCount(), 1);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
 
     int64_t* lens_data = ort_outputs[i].GetTensorMutableData<int64_t>();
     ASSERT_EQ(lens_data[0], expected_lens[i][0]);
