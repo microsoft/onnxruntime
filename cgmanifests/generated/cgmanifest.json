@@ -113,16 +113,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
-          "repositoryUrl": "https://github.com/NVlabs/cub.git"
-        },
-        "comments": "git submodule at cmake/external/cub"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "3c73d91c0b04e2b59462f0a741be8c07024c1bc0",
           "repositoryUrl": "https://github.com/jarro2783/cxxopts.git"
         },

@@ -34,11 +34,11 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   size_t output_iter = 0;
 
   for (size_t iter = 0, end = ordered_subscript_indices_in_candidate.size(); iter < end; ++iter) {
-    auto output_index = subscript_indices_to_output_indices[ordered_subscript_indices_in_candidate[iter]];
+    auto output_index = subscript_indices_to_output_indices[onnxruntime::narrow<size_t>(ordered_subscript_indices_in_candidate[iter])];
 
     // If output_index is -1, then this dimension does not show up in the op's output and has been reduced along the way
     if (output_index != -1) {
-      output_permutation[output_index] = output_iter++;
+      output_permutation[onnxruntime::narrow<size_t>(output_index)] = output_iter++;
       candidate_output_shape_without_reduced_dims.push_back(candidate_output_dims[iter]);
     } else {
       // This dim doesn't show up in the op's output and hence we check if the dim has been reduced in the candidate output
@@ -144,8 +144,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   size_t reduce_dims_size = reduce_dims.size();
 
   for (int64_t i = 0; i < left_rank; ++i) {
-    int64_t left_dim = left_dims[i];
-    int64_t right_dim = right_dims[i];
+    int64_t left_dim = left_dims[onnxruntime::narrow<size_t>(i)];
+    int64_t right_dim = right_dims[onnxruntime::narrow<size_t>(i)];
 
     bool has_left_dim = left_dim > 1;    // non-trivial dimension (dim_value != 1)
     bool has_right_dim = right_dim > 1;  // non-trivial dimension (dim_value != 1)
@@ -177,17 +177,17 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
       // They must be equal
       if (has_left_dim && has_right_dim) {
         ORT_ENFORCE(left_dim == right_dim, "Einsum op: Input shapes do not align");
-        lro.push_back(i);
+        lro.push_back(onnxruntime::narrow<size_t>(i));
         lro_size *= left_dim;
       } else if (has_left_dim) {
         // The left operand has non-trivial dimension value
-        lo.push_back(i);
+        lo.push_back(onnxruntime::narrow<size_t>(i));
         lo_size *= left_dim;
       } else {
         // The right operand may or may not have non-trivial dim value
         // If it has trivial dim value (1),
         // it will just form a trailing dimension for the right operand
-        ro.push_back(i);
+        ro.push_back(onnxruntime::narrow<size_t>(i));
         ro_size *= right_dim;
       }
     }
@@ -286,7 +286,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
       output_permutation[lo[i]] = iter++;
     }
     for (size_t i = 0; i < reduce_dims.size(); ++i) {
-      output_permutation[reduce_dims[i]] = iter++;
+      output_permutation[onnxruntime::narrow<size_t>(reduce_dims[i])] = iter++;
     }
     for (size_t i = 0; i < ro.size(); ++i) {
       output_permutation[ro[i]] = iter++;
@@ -358,10 +358,10 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     TensorShapeVector reduced_dims;
     TensorShapeVector preserved_dims;              // dims which were not reduced
     TensorShapeVector preserved_shape;             // shape pertaining to only the dims that were preserved (not reduced)
-    reduced_dims.reserve(num_subscript_labels);    // num_subscript_labels is the upper bound. No harm in over-reserving.
-    preserved_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
+    reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));    // num_subscript_labels is the upper bound. No harm in over-reserving.
+    preserved_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving.
 
-    for (int64_t i = 0; i < num_subscript_labels; ++i) {
+    for (size_t i = 0; i < onnxruntime::narrow<size_t>(num_subscript_labels); ++i) {
       if (mapped_indices_to_last_input_index[i] == 0) {
         reduced_dims.push_back(i);
       } else {
@@ -398,9 +398,9 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     // Keep processing each input pair-wise
     for (int input = 1; input < num_inputs; ++input) {
       TensorShapeVector reduced_dims;
-      reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
+      reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
       for (int64_t dim = 0; dim < num_subscript_labels; ++dim) {
-        if (mapped_indices_to_last_input_index[dim] == input) {
+        if (mapped_indices_to_last_input_index[onnxruntime::narrow<size_t>(dim)] == input) {
           // This is the last input we are seeing this dimension (and it doesn't occur in the output), so reduce along the dimension
           reduced_dims.push_back(dim);
         }

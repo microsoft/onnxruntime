@@ -3,9 +3,22 @@
 
 #pragma once
 
+#include "core/providers/rocm/backward_guard.h"
 #include "core/providers/rocm/rocm_common.h"
 
+#define ORT_ROCBLAS_VERSION_DECIMAL (ROCBLAS_VERSION_MAJOR * 100 + ROCBLAS_VERSION_MINOR)
+#if ORT_ROCBLAS_VERSION_DECIMAL >= 242
+#define FLAG rocblas_gemm_flags_fp16_alt_impl
+#else
+#define FLAG 0
+#endif
+
 using namespace onnxruntime;
+
+inline int get_flag() {
+  int result = BackwardPassGuard::is_backward_pass() ? FLAG : 0;
+  return result;
+}
 
 // Generalize library calls to be use in template functions
 
@@ -67,7 +80,7 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                          C, rocblas_datatype_f16_r, ldc,
                          C, rocblas_datatype_f16_r, ldc,
                          rocblas_datatype_f32_r,
-                         rocblas_gemm_algo_standard, 0, 0);
+                         rocblas_gemm_algo_standard, 0, get_flag());
 }
 
 inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
@@ -90,7 +103,7 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                          C, rocblas_datatype_f16_r, ldc,
                          C, rocblas_datatype_f16_r, ldc,
                          rocblas_datatype_f32_r,
-                         rocblas_gemm_algo_standard, 0, 0);
+                         rocblas_gemm_algo_standard, 0, get_flag());
 }
 
 inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
@@ -225,7 +238,7 @@ inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle,
                                  (void**)Carray, rocblas_datatype_f16_r, ldc,
                                  batchCount,
                                  rocblas_datatype_f32_r,
-                                 rocblas_gemm_algo_standard, 0, 0);
+                                 rocblas_gemm_algo_standard, 0, get_flag());
 }
 
 inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle,
@@ -329,7 +342,7 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          C, rocblas_datatype_f16_r, ldc, strideC,
                                          batchCount,
                                          rocblas_datatype_f32_r,
-                                         rocblas_gemm_algo_standard, 0, 0);
+                                         rocblas_gemm_algo_standard, 0, get_flag());
 }
 
 inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
@@ -357,7 +370,7 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          C, rocblas_datatype_f16_r, ldc, strideC,
                                          batchCount,
                                          rocblas_datatype_f32_r,
-                                         rocblas_gemm_algo_standard, 0, 0);
+                                         rocblas_gemm_algo_standard, 0, get_flag());
 }
 
 inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,

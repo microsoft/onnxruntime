@@ -31,9 +31,6 @@
 [submodule "cmake/external/mimalloc"]
 	path = cmake/external/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
-[submodule "cmake/external/cub"]
-	path = cmake/external/cub
-	url = https://github.com/NVlabs/cub.git
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
 	url = https://github.com/microsoft/wil.git

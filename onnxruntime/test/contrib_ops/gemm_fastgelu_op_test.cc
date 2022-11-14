@@ -183,7 +183,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
                          true);
 }
 
-TEST(GemmFastGeluTest, GemmFastGeluWithBias_BFloat16) {
+TEST(GemmFastGeluTest, GemmFastGeluWithBias_bfloat16) {
   OpTester tester("GemmFastGelu", 1, onnxruntime::kMSDomain);
 
   int batch_size = 1;
