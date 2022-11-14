@@ -40,12 +40,22 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         uint32_t inputIndex, 
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
+
+    STDMETHOD(TryGetConstantInputTensor)(
+        uint32_t inputIndex, 
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
 };
 
 interface __declspec(uuid("63bff199-0203-43c7-86c4-f442a599df4c"))
 IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContext 
 {
     STDMETHOD(GetConstantInputTensor)(
+        uint32_t inputIndex, 
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
+    STDMETHOD(TryGetConstantInputTensor)(
         uint32_t inputIndex, 
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
