@@ -80,7 +80,7 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
 
   auto env = onnxruntime::ParseEnvironmentVariable<T>(name);
 
-  std::string default_hint = "End users should opt for provider options or session options and must not rely on it.";
+  std::string default_hint = "End users should opt for provider options or session options.";
   const std::string& logged_hint = hint.empty() ? default_hint : hint;
 
   LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "
