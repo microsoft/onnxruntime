@@ -59,22 +59,15 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
                                                   const std::unordered_set<std::string>& valid_values,
                                                   const std::string& hint = "") {
   ORT_ENFORCE(!valid_values.empty());
-  auto env = onnxruntime::ParseEnvironmentVariable<T>(name);
-  if (!env.has_value()) {
-    return std::nullopt;
-  }
-
-  std::string default_hint = "End users should opt for provider options or session options.";
-  const std::string& logged_hint = hint.empty() ? default_hint : hint;
-
-  LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "
-                        << logged_hint;
 
 #ifndef SHARED_PROVIDER
   const std::string raw_env = Env::Default().GetEnvironmentVar(name);
 #else
   const std::string raw_env = GetEnvironmentVar(name);
 #endif
+  if (raw_env.empty()) {
+    return std::nullopt;
+  }
   if (valid_values.find(raw_env) == valid_values.cend()) {
     std::ostringstream oss;
     auto it = valid_values.cbegin();
@@ -84,6 +77,14 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
     }
     ORT_THROW("Value of environment variable ", name," must be ", oss.str(), ", but got ", raw_env);
   }
+
+  auto env = onnxruntime::ParseEnvironmentVariable<T>(name);
+
+  std::string default_hint = "End users should opt for provider options or session options and must not rely on it.";
+  const std::string& logged_hint = hint.empty() ? default_hint : hint;
+
+  LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "
+                        << logged_hint;
 
   return env;
 }
