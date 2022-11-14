@@ -154,7 +154,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         lda,
         &zero,
         reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        ldc,
+        static_cast<int>(50264),
         device_prop));
 
     if (Node().Name() == "/lm_head/MatMul") {
