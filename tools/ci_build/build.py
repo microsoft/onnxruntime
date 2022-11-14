@@ -2230,7 +2230,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
     if not is_windows():
         return
     csharp_source_dir = os.path.join(source_dir, "csharp")
-    is_linux_build = derive_linux_build_property()
 
     # define macros based on build args
     macros = ""
@@ -2264,7 +2263,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
         "test\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj",
         "--filter",
         "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
-        is_linux_build,
         define_constants,
         ort_build_dir,
         training_enabled

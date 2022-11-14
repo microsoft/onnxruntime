@@ -23,12 +23,12 @@
     <TrainingEnabledNativeBuild Condition="'$(TrainingEnabledNativeBuild)' == ''">false</TrainingEnabledNativeBuild>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(TrainingEnabledNativeBuild)' == 'true'">
-    <OrtConstants>__TRAINING_ENABLED__</OrtConstants>
+  <PropertyGroup Condition="'$(TrainingEnabledNativeBuild)'=='true'">
+    <DefineConstants>$(DefineConstants);__TRAINING_ENABLED__</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>
-    <DefineConstants>__NET_CORE_APP__;$(DefineConstants);$(OrtConstants)</DefineConstants>
+    <DefineConstants>__NET_CORE_APP__;$(DefineConstants)</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
