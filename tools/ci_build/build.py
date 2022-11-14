@@ -399,7 +399,7 @@ def parse_arguments():
         "--enable_wasm_exception_throwing_override",
         action="store_true",
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
-        "behavior when disable exceptions.",
+        "behavior when disable exceptions [deprecated].",
     )
 
     parser.add_argument(
@@ -926,8 +926,6 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
-        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
-        + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
