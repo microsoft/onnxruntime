@@ -41,12 +41,12 @@ struct GemmFastGeluParams : onnxruntime::rocm::tunable::OpParams {
   T* c;
   int64_t ldc;
   bool has_bias{true};
-  bool is_tuning{false};
+  bool tuning{false};
 };
 
 template <typename T>
-Status GemmFastGeluCombinationSelection(const GemmFastGeluParams<T>* params) {
-  if (Gemm(params->is_tuning, params->stream, params->handle,
+Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
+  if (Gemm(params->tuning, params->stream, params->handle,
            params->opb, params->opa,
            params->n, params->m, params->k,
            params->alpha, params->b, params->ldb, params->a, params->lda,
@@ -64,14 +64,14 @@ Status GemmFastGeluCombinationSelection(const GemmFastGeluParams<T>* params) {
                                  params->c,
                                  params->bias,
                                  params->c,
-                                 params->is_tuning);
+                                 params->tuning);
 }
 
 template <typename T>
 class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
-    this->ops_.emplace_back(GemmFastGeluCombinationSelection<T>);
+    this->ops_.emplace_back(GemmFastGeluUnfused<T>);
 
     this->SetDefaultId(0);
   }

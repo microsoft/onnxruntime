@@ -10,6 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
+from utils import get_gemm_bound
 
 
 def transab_to_suffix(transab):
@@ -43,24 +44,15 @@ def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, t
     b_shape = (n, k) if transb else (k, n)
 
     np.random.seed(0)
-    a = (np.random.rand(*a_shape) - 0.5).astype(dtype).astype("float64")
-    b = (np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64")
-    bias = np.random.rand(n).astype(dtype)
+    a = (np.random.rand(*a_shape)).astype(dtype).astype("float64")
+    b = (np.random.rand(*b_shape)).astype(dtype).astype("float64")
+    bias = (np.random.rand(n)).astype(dtype)
     temp_c = (a.T if transa else a) @ (b.T if transb else b)
+
+    bound = get_gemm_bound(dtype, a, b, temp_c, transa, transb)
+
+    temp_c = temp_c.astype(dtype)
     ref_c = fast_gelu(temp_c, bias)
-
-    # The machine epsilon, unit roundoff, the smallest positive floating point number n such that the floating point
-    # number that represents 1 + n is greater than 1.
-    machine_eps = 2.0 ** -(24 if dtype == "float32" else 11)
-
-    # The following implements error bound 5.7 in paper I. C. Ipsen and H. Zhou, “Probabilistic error analysis for
-    # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726–1741, 2020.
-    # NOTE: the bound is not tight for float16 when k is large
-    absa_mul_absb = np.abs(a.T if transa else a) @ np.abs(b.T if transb else b)
-    coeff = np.max(absa_mul_absb / np.abs(temp_c))
-    gamma_2k = (1.0 + machine_eps) ** (2 * k) - 1.0
-    bound_5_7 = coeff * np.sqrt(np.log(2 / 1e-10) * machine_eps * gamma_2k / 2)
-    bound = bound_5_7
 
     a = a.astype(dtype)
     b = b.astype(dtype)
@@ -88,7 +80,7 @@ def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, t
             f"{func:<50} : dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {bound}"
         )
         try:
-            np.testing.assert_allclose(my_c, ref_c, rtol=bound)
+            np.testing.assert_allclose(my_c, ref_c, rtol=max(bound, 1e-2))
         except Exception as err:
             header = "*" * 30 + func + "*" * 30
             print(header)
@@ -126,15 +118,13 @@ def get_bert_sizes(full=True):
     return bert_sizes
 
 
-# ck has various impls to be tested, use the full basic cases will result too many cases to test.
-# So we use a reduced combination here.
 reduced_basic_sizes = list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
 
 
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
-def test_ck_gemmfastgelu_bert_cases(dtype, size, transab):
+def test_gemmfastgelu_bert_cases(dtype, size, transab):
     for func in dtype_to_funcs(dtype):
         _test_gemmfastgelu(func, dtype, *size, *transab)
 

@@ -15,7 +15,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-Status LaunchGemmFastGeluKernel(bool is_tuning,
+Status LaunchGemmFastGeluKernel(bool tuning,
                                 hipStream_t stream,
                                 rocblas_handle handle,
                                 bool transa,
@@ -33,7 +33,7 @@ Status LaunchGemmFastGeluKernel(bool is_tuning,
                                 int64_t ldc,
                                 const T beta) {
   GemmFastGeluParams<T> params;
-  params.is_tuning = is_tuning;
+  params.tuning = tuning;
   params.stream = stream;
   params.handle = handle;
   params.opa = transa ? BlasOp::Trans : BlasOp::NonTrans;
@@ -53,11 +53,17 @@ Status LaunchGemmFastGeluKernel(bool is_tuning,
   params.ldc = ldc;
   params.has_bias = (bias != nullptr) ? true : false;
 
-  return GemmFastGeluCombinationSelection<T>(&params);
+  static GemmFastGeluTunableOp<T> op;
+
+  if (tuning) {
+    op.EnableTuning();
+  }
+
+  return op(&params);
 }
 
 #define SPECIALIZED_IMPL(T)                                                                     \
-  template Status LaunchGemmFastGeluKernel<T>(bool is_tuning,                                   \
+  template Status LaunchGemmFastGeluKernel<T>(bool tuning,                                      \
                                               hipStream_t stream, rocblas_handle handle,        \
                                               bool transa, bool transb,                         \
                                               int64_t m, int64_t n, int64_t k, const T alpha,   \

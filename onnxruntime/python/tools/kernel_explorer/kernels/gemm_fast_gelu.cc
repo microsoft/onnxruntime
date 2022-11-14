@@ -17,18 +17,18 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 template <typename T>
-class GemmFastGeluCombinationSelection : public IKernelExplorer {
+class GemmFastGeluUnfused : public IKernelExplorer {
  public:
-  GemmFastGeluCombinationSelection(BlasOp opa, BlasOp opb,
-                                   int64_t m, int64_t n, int64_t k,
-                                   double alpha,
-                                   DeviceArray& a, int64_t lda,
-                                   DeviceArray& b, int64_t ldb,
-                                   DeviceArray& bias,
-                                   double beta,
-                                   DeviceArray& c, int64_t ldc) : params_{} {
+  GemmFastGeluUnfused(BlasOp opa, BlasOp opb,
+                      int64_t m, int64_t n, int64_t k,
+                      double alpha,
+                      DeviceArray& a, int64_t lda,
+                      DeviceArray& b, int64_t ldb,
+                      DeviceArray& bias,
+                      double beta,
+                      DeviceArray& c, int64_t ldc) : params_{} {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    params_.is_tuning = true;
+    params_.tuning = true;
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -48,17 +48,17 @@ class GemmFastGeluCombinationSelection : public IKernelExplorer {
     params_.has_bias = (params_.bias != nullptr) ? true : false;
   }
 
-  ~GemmFastGeluCombinationSelection() {
+  ~GemmFastGeluUnfused() {
     ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
     rocblas_handle_ = nullptr;
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::GemmFastGeluCombinationSelection<T>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::GemmFastGeluUnfused<T>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::GemmFastGeluCombinationSelection<T>(&params_);
+    Status status = contrib::rocm::GemmFastGeluUnfused<T>(&params_);
     return status.IsOK();
   }
 
@@ -80,7 +80,7 @@ class GemmFastGeluTunableOp : public IKernelExplorer {
                         double beta,
                         DeviceArray& c, int64_t ldc) : params_{} {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    params_.is_tuning = true;
+    params_.tuning = true;
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -134,8 +134,8 @@ class GemmFastGeluTunableOp : public IKernelExplorer {
       .def("IsSupported", &name<type>::IsSupported);
 
 void InitGemmFastGelu(py::module m) {
-  REGISTER_OP(GemmFastGeluCombinationSelection, float)
-  REGISTER_OP(GemmFastGeluCombinationSelection, half)
+  REGISTER_OP(GemmFastGeluUnfused, float)
+  REGISTER_OP(GemmFastGeluUnfused, half)
 
   REGISTER_OP(GemmFastGeluTunableOp, float)
   REGISTER_OP(GemmFastGeluTunableOp, half)

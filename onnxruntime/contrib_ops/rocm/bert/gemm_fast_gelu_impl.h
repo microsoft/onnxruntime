@@ -13,7 +13,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-Status LaunchGemmFastGeluKernel(bool is_tuning,
+Status LaunchGemmFastGeluKernel(bool tuning,
                                 hipStream_t stream,
                                 rocblas_handle handle,
                                 bool transa,
