@@ -133,13 +133,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 outputs = trainingSession.TrainStep(pinnedInputs);
                 var outputBuffer = outputs.ElementAtOrDefault(0);
 
-                Assert.Equal("542.loss", outputBuffer.Name);
+                Assert.Equal("onnx::loss::21273", outputBuffer.Name);
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outputBuffer.ValueType);
                 Assert.Equal(TensorElementType.Float, outputBuffer.ElementType);
 
                 var outLabelTensor = outputBuffer.AsTensor<float>();
                 Assert.NotNull(outLabelTensor);
-                Assert.Equal(expectedOutput, outLabelTensor, new FloatComparer());
+                Assert.Equal(expectedOutput, outLabelTensor.ToArray(), new FloatComparer());
             }
         }
 
