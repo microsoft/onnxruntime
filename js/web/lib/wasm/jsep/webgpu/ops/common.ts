@@ -72,13 +72,19 @@ export const createIndicesHelper = (name: string, shape: readonly number[]): Ind
       shape.length < 2 ? `${varIndices}=${varOffset};` : `ih_o2i_${name}(${varOffset}, &${varIndices});`;
 
   const offsets: string[] = [];
-  for (let i = shape.length - 1; i >= 0; i--) {
-    offsets.push(`${strides[i]}u * ((*indices)[${i}])`);
+  if (shape.length === 0) {
+    offsets.push('0u');
+  } else if (shape.length < 2) {
+    offsets.push('(*indices)');
+  } else {
+    for (let i = shape.length - 1; i >= 0; i--) {
+      offsets.push(`${strides[i]}u * ((*indices)[${i}])`);
+    }
   }
 
   const i2oImpl = shape.length < 2 ? '' : `
   fn ih_i2o_${name}(indices: ptr<function, ${iType}>) -> u32 {
-    return ${offsets.length > 0 ? offsets.join('+') : '0u'};
+    return ${offsets.join('+')};
   }`;
 
   const i2oExpression = (varIndices: string, isPtr?: boolean) =>

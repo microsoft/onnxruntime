@@ -16,6 +16,7 @@ const void * JsepOutput(void * context, int index, void * data) {
         dims[i] = static_cast<int64_t>(*data_offset++);
     }
 
+        printf("JsepOutput(%d, %s)\n", index, onnxruntime::TensorShape(dims).ToString().c_str());
     auto output = reinterpret_cast<onnxruntime::OpKernelContext*>(context)->Output(index, onnxruntime::TensorShape(dims));
     return output->DataRaw();
 }

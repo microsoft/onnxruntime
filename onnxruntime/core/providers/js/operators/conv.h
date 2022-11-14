@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T>
+template <typename T, bool is_channels_last>
 class Conv : public JsKernel {
  public:
   Conv(const OpKernelInfo& info) : JsKernel(info), conv_attrs_(info) {
@@ -21,7 +21,7 @@ class Conv : public JsKernel {
 
     // currently only support Conv2D. TODO: support other
     JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
-        "format": "NHWC",
+        "format": $13 ? "NHWC" : "NCHW",
         "autopad": $1,
         "dilation0": $2,
         "dilation1": $3,
@@ -46,7 +46,8 @@ class Conv : public JsKernel {
     static_cast<int32_t>(conv_attrs_.pads[2]),
     static_cast<int32_t>(conv_attrs_.pads[3]),
     static_cast<int32_t>(conv_attrs_.strides[0]),
-    static_cast<int32_t>(conv_attrs_.strides[1])
+    static_cast<int32_t>(conv_attrs_.strides[1]),
+    static_cast<int32_t>(is_channels_last)
     );
   }
 

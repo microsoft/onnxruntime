@@ -31,7 +31,7 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const IKernelLookup& kernel_lookup) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {
-    printf("IExecutionProvider::GetCapability() calling on node: [%s][%s][%s]\n", node.Domain().c_str(), node.OpType().c_str(), node.Name().c_str());
+    //printf("IExecutionProvider::GetCapability() calling on node: [%s][%s][%s]\n", node.Domain().c_str(), node.OpType().c_str(), node.Name().c_str());
     if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
         kernel_create_info != nullptr) {
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();

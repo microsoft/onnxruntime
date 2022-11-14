@@ -58,7 +58,7 @@ const setExecutionProviders =
           case 'xnnpack':
             epName = 'XNNPACK';
             break;
-          case 'js':
+          case 'jsep-webgpu':
             epName = 'JS';
             break;
           case 'wasm':

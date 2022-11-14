@@ -17,24 +17,23 @@ namespace js {
       T,                                                                                   \
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);                                                                            \
+      Conv<T, true>);                                                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
-      kOnnxDomain,                                                               \
+      kOnnxDomain,                                                                         \
       11,                                                                                  \
       T,                                                                                   \
-      kJsExecutionProvider,                                                                         \
+      kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);
-
-//   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
-//       Conv,
-//       kOnnxDomain,
-//       1, 10,
-//       T,
-//       kJsExecutionProvider,
-//       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),
-//       Conv<T>);
+      Conv<T, false>);                                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Conv,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T, false>);
 
 
 

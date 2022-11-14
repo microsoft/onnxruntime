@@ -12,11 +12,18 @@ import {registerBackend} from 'onnxruntime-common';
 if (!BUILD_DEFS.DISABLE_WEBGL) {
   const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
   registerBackend('webgl', onnxjsBackend, -10);
+}
+
+if (!BUILD_DEFS.DISABLE_WEBGPU) {
+  const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
   registerBackend('webgpu', onnxjsBackend, 999);  // set to 999 as the highest priority
 }
+
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;
-  registerBackend('js', wasmBackend, 11);
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+    registerBackend('jsep-webgpu', wasmBackend, 11);
+  }
   registerBackend('cpu', wasmBackend, 10);
   registerBackend('wasm', wasmBackend, 10);
   registerBackend('xnnpack', wasmBackend, 9);

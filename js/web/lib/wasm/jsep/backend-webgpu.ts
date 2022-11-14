@@ -85,6 +85,7 @@ export class WebGpuBackend {
   flush(): void {
     this.endComputePass();
     this.device.queue.submit([this.getCommandEncoder().finish()]);
+    this.gpuDataManager.refreshPendingBuffers();
     this.commandEncoder = null;
     this.pendingDispatchNumber = 0;
   }
@@ -180,7 +181,7 @@ export class WebGpuBackend {
     const [name, kernelEntry, attributes] = kernel;
 
     // eslint-disable-next-line no-console
-    console.log(`[JS] Start to run kernel "${name}"...`);
+    console.log(`[js] Start to run kernel "${name}"...`);
     return kernelEntry(context, attributes);
   }
 }
