@@ -128,13 +128,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-      if (Node().Name() == "/lm_head/MatMul") {
-          std::cout << "Reached here";
+    if (Node().Name() == "/lm_head/MatMul") {
+      std::cout << "Reached here";
 
-          cudaDeviceSynchronize();
+      cudaDeviceSynchronize();
+    }
 
-          auto start = high_resolution_clock::now();   
-      }
+    auto start = high_resolution_clock::now();
 
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),
@@ -153,14 +153,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc,
         device_prop));
 
-      if (Node().Name() == "/lm_head/MatMul") {
-          cudaDeviceSynchronize();
+    if (Node().Name() == "/lm_head/MatMul") {
+      cudaDeviceSynchronize();
 
-          auto stop = high_resolution_clock::now();
+      auto stop = high_resolution_clock::now();
 
-          auto duration = duration_cast<microseconds>(stop - start);
+      auto duration = duration_cast<microseconds>(stop - start);
 
-          std::cout << duration.count() << std::endl;
+      std::cout << duration.count() << std::endl;
     }
 
     return Status::OK();
