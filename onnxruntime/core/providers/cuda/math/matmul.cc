@@ -5,6 +5,9 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include <chrono>
+
+using namespace std::chrono;
 
 namespace onnxruntime {
 namespace cuda {
@@ -125,6 +128,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
+      if (Node().Name() == "/lm_head/MatMul") {
+          std::cout << "Reached here";
+
+          cudaDeviceSynchronize();
+
+          auto start = high_resolution_clock::now();   
+      }
+
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),
         transB,
@@ -141,6 +152,17 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         ldc,
         device_prop));
+
+      if (Node().Name() == "/lm_head/MatMul") {
+          cudaDeviceSynchronize();
+
+          auto stop = high_resolution_clock::now();
+
+          auto duration = duration_cast<microseconds>(stop - start);
+
+          std::cout << (duration.count() / benchmark_runs) << std::endl;
+    }
+
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
