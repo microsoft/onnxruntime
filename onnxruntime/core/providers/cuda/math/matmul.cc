@@ -128,9 +128,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    if (Node().Name() == "/lm_head/MatMul") {
-      std::cout << "Reached here";
+    bool should_use_proxy_data = false;
 
+    if (Node().Name() == "/lm_head/MatMul") {
+      std::cout << "Reached here" << std::endl;
+      should_use_proxy_data = true;
+      cudaMemcpyAsync(data, right_X->DataRaw(), 768 * 50257 * 2, Stream());
       cudaDeviceSynchronize();
     }
 
@@ -140,11 +143,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         Base::CublasHandle(),
         transB,
         transA,
-        static_cast<int>(helper.N()),
+        should_use_proxy_data ? static_cast<int>(50264) : static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+        should_use_proxy_data ? reinterpret_cast<const CudaT*>(data)
+                              : reinterpret_cast<const CudaT*>(right_X->Data<T>()),
         ldb,
         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
