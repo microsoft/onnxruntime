@@ -133,6 +133,11 @@ def _json_to_df(profile_path, filter_matcher):
                 }
             )
 
+    if num_missing_kernel_launch_events > 0:
+        print(
+            f"WARNNG: Could not resolve shapes for {num_missing_kernel_launch_events} of {total_kernel_events} kernels."
+        )
+
     cpu_df = pd.DataFrame(cpu_entries)
     gpu_df = pd.DataFrame(gpu_entries)
     cpu_df["count"] = 1
