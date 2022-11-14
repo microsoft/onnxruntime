@@ -879,11 +879,8 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 #endif
 
 
-#ifndef USE_OPENVINO
-TEST(CApiTest, DISABLED_test_custom_op_openvino_wrapper_library) {
-#else
+#ifdef USE_OPENVINO
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
-#endif
   std::vector<Input> inputs(1);
   inputs[0].name = "Input3";
   inputs[0].dims = {1, 1, 28, 28};
@@ -954,12 +951,13 @@ lib_name = "./libcustom_op_openvino_wrapper_library.so";
 
 #ifdef _WIN32
   bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(lib_handle));
-  ORT_ENFORCE(success, "Error while closing custom op shared library");
+  ORT_ENFORCE(success, "Error while closing custom op OpenVINO wrapper shared library");
 #else
-  int retval = dlclose(library_handle);
-  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+  int retval = dlclose(lib_handle);
+  ORT_ENFORCE(retval == 0, "Error while closing custom op OpenVINO wrapper shared library");
 #endif
 }
+#endif
 
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
