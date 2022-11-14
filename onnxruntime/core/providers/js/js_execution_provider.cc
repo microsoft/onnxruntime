@@ -74,13 +74,58 @@ ONNX_OPERATOR_KERNEL_EX(
   BuildKernelCreateInfo<                          \
       ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, Start, type, Op)>
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 13, Abs);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, Abs);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Abs);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Abs);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Neg);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Neg);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Floor);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Floor);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Ceil);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Ceil);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Reciprocal);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Reciprocal);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Sqrt);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Sqrt);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Exp);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Exp);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, 12, Erf);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Erf);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, Sin);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, Cos);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, Tan);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, Asin);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, Acos);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, Atan);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Sinh);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Cosh);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Asinh);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Acosh);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Atanh);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, Elu);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 12, Add);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 13, Add);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, Add);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 12, Sub);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 13, Sub);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, Sub);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 12, Mul);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 13, Mul);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, Mul);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 12, Div);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 13, Div);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, Div);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 11, Pow);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, 12, Pow);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 14, Pow);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 15, Pow);
 
 //class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 1, 10, float, Conv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 11, float, Conv);
 
-// class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 10, float, Conv);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 10, float, Conv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, float, Conv);
 
 // class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
@@ -103,11 +148,63 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
-      KERNEL_CREATE_INFO_VERSIONED(1, 13, Abs),
-      KERNEL_CREATE_INFO(14, Abs),
+
+      // element-wise operators
+      // unary - math
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Abs),
+      KERNEL_CREATE_INFO(13, Abs),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Neg),
+      KERNEL_CREATE_INFO(13, Neg),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Floor),
+      KERNEL_CREATE_INFO(13, Floor),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Ceil),
+      KERNEL_CREATE_INFO(13, Ceil),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Reciprocal),
+      KERNEL_CREATE_INFO(13, Reciprocal),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Sqrt),
+      KERNEL_CREATE_INFO(13, Sqrt),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Exp),
+      KERNEL_CREATE_INFO(13, Exp),
+      KERNEL_CREATE_INFO_VERSIONED(9, 12, Erf),
+      KERNEL_CREATE_INFO(13, Erf),
+
+      KERNEL_CREATE_INFO(7, Sin),
+      KERNEL_CREATE_INFO(7, Cos),
+      KERNEL_CREATE_INFO(7, Tan),
+      KERNEL_CREATE_INFO(7, Asin),
+      KERNEL_CREATE_INFO(7, Acos),
+      KERNEL_CREATE_INFO(7, Atan),
+      KERNEL_CREATE_INFO(9, Sinh),
+      KERNEL_CREATE_INFO(9, Cosh),
+      KERNEL_CREATE_INFO(9, Asinh),
+      KERNEL_CREATE_INFO(9, Acosh),
+      KERNEL_CREATE_INFO(9, Atanh),
+
+      // activations
+      KERNEL_CREATE_INFO(6, Elu),
+
+      // binary - math
+      KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),
+      KERNEL_CREATE_INFO_VERSIONED(13, 13, Add),
+      KERNEL_CREATE_INFO(14, Add),
+      KERNEL_CREATE_INFO_VERSIONED(7, 12, Sub),
+      KERNEL_CREATE_INFO_VERSIONED(13, 13, Sub),
+      KERNEL_CREATE_INFO(14, Sub),
+      KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
+      KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
+      KERNEL_CREATE_INFO(14, Mul),
+      KERNEL_CREATE_INFO_VERSIONED(7, 12, Div),
+      KERNEL_CREATE_INFO_VERSIONED(13, 13, Div),
+      KERNEL_CREATE_INFO(14, Div),
+      KERNEL_CREATE_INFO_VERSIONED(7, 11, Pow),
+      KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
+      KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
+      KERNEL_CREATE_INFO(15, Pow),
+
+
       //BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 1, 10, float, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 11, float, Conv)>,
-      //BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 10, float, Conv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 10, float, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, float, Conv)>,
       // KERNEL_CREATE_INFO(11, Conv),
       // KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
@@ -166,16 +263,19 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     const IKernelLookup& kernel_lookup) const {
 
   auto list = IExecutionProvider::GetCapability(graph, kernel_lookup);
-  printf("JsExecutionProvider::GetCapability() results:\n");
+  //printf("JsExecutionProvider::GetCapability() results:\n");
 
   for (size_t i=0; i < list.size(); i++) {
-    printf("  subgraph %zu: %zu node(s)\n", i, list[i]->sub_graph->nodes.size());
+    //printf("  subgraph %zu: %zu node(s)\n", i, list[i]->sub_graph->nodes.size());
     for (size_t j=0;j<list[i]->sub_graph->nodes.size();j++) {
       auto node_index = list[i]->sub_graph->nodes[j];
       auto *node = graph.GetNode(node_index);
-      //auto *kernel_info = kernel_lookup.LookUpKernel(&node);
+      auto *kernel_info = kernel_lookup.LookUpKernel(*node);
 
-      printf("    node[%zu]: [%s][%s][%s]\n", node_index, node->Domain().c_str(), node->OpType().c_str(), node->Name().c_str());
+      (void)(node_index);
+      (void)(node);
+      (void)(kernel_info);
+      //printf("    node[%zu]: [%s][%s][%s]\n", node_index, node->Domain().c_str(), node->OpType().c_str(), node->Name().c_str());
     }
   }
 

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// import * as binaryOps from './ops/binary-op';
+import * as binaryOps from './ops/binary-op';
 // import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 // import {gather, parseGatherAttributes} from './ops/gather';
@@ -23,23 +23,23 @@ export type ParseAttributeFunction = (attributeRaw: unknown) => unknown;
 export type OperatorImplementation = [RunFunction]|[RunFunction, ParseAttributeFunction];
 
 export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new Map([
-  ['Abs', [unaryOps.abs]],
-  //, ['Acos', '', '7+', unaryOps.acos], ['Add', '', '7+', binaryOps.add],
+  ['Abs', [unaryOps.abs]], ['Acos', [unaryOps.acos]], ['Acosh', [unaryOps.acosh]], ['Add', [binaryOps.add]],
   // ['And', '', '7+', binaryOps.and],
-  //['Asin', '', '7+', unaryOps.asin], ['Atan', '', '7+', unaryOps.atan],
+  ['Asin', [unaryOps.asin]], ['Asinh', [unaryOps.asinh]], ['Atan', [unaryOps.atan]], ['Atanh', [unaryOps.atanh]],
   // TODO: support new attributes for AveragePool-10
   //['AveragePool', '', '7+', averagePool, parseAveragePoolAttributes],
   // ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   // ['Cast', '', '6+', cast, parseCastAttributes],
-  //['Ceil', '', '6+', unaryOps.ceil], ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
+  ['Ceil', [unaryOps.ceil]],
+  // ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
   //['Clip', '', '11+', unaryOps.clipV11], ['Concat', '', '4+', concat, parseConcatAttributes],
-  ['Conv', [conv, parseConvAttributes]],  //['Cos', '', '7+', unaryOps.cos], ['Div', '', '7+', binaryOps.div],
+  ['Conv', [conv, parseConvAttributes]], ['Cos', [unaryOps.cos]], ['Cosh', [unaryOps.cosh]], ['Div', [binaryOps.div]],
   // ['Dropout', '', '7+', unaryOps.identity],
   // ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   // ['Equal', '', '7+', binaryOps.equal],
-  //['Elu', '', '6+', unaryOps.elu, unaryOps.parseEluAttributes], ['Exp', '', '6+', unaryOps.exp],
+  ['Elu', [unaryOps.elu, unaryOps.parseEluAttributes]],  //['Exp', [unaryOps.exp]],
   // ['Flatten', '', '1+', flatten, parseFlattenAttributes],
-  //['Floor', '', '6+', unaryOps.floor],
+  ['Floor', [unaryOps.floor]],
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
   //['Gather', '', '1+', gather, parseGatherAttributes], ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   //['Gemm', '', '11+', gemm, parseGemmAttributesV11],
@@ -53,14 +53,15 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['Less', '', '7+', binaryOps.less],
   //['Log', '', '6+', unaryOps.log], ['MatMul', '', '1+', matMul, parseMatMulAttributes],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
-  //['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes], ['Mul', '', '7+', binaryOps.mul],
-  //['Neg', '', '6+', unaryOps.neg],
+  //['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes],
+  ['Mul', [binaryOps.mul]], ['Neg', [unaryOps.neg]],
   // ['Not', '', '1+', unaryOps.not],
   // ['Or', '', '7+', binaryOps.or],
   // ['Pad', '', '2-10', padV2, parsePadAttributesV2],
   // ['Pad', '', '11+', padV11, parsePadAttributesV11],
-  //['Pow', '', '7+', binaryOps.pow],
+  ['Pow', [binaryOps.pow]],
   // ['PRelu', '', '7+', binaryOps.pRelu],
+  ['Reciprocal', [unaryOps.reciprocal]],
   // ['ReduceLogSum', '', '1+', reduceLogSum, parseReduceAttributes],
   // ['ReduceMax', '', '1+', reduceMax, parseReduceAttributes],
   // ['ReduceMean', '', '1+', reduceMean, parseReduceAttributes],
@@ -71,7 +72,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   //['Relu', '', '6+', unaryOps.relu], ['Reshape', '', '5+', reshape],
   // ['Resize', '', '10', resize, parseResizeAttributesV10],
   // ['Resize', '', '11+', resize, parseResizeAttributesV11],
-  //['Shape', '', '1+', shape], ['Sigmoid', '', '6+', unaryOps.sigmoid], ['Sin', '', '7+', unaryOps.sin],
+  //['Shape', '', '1+', shape], ['Sigmoid', '', '6+', unaryOps.sigmoid],
+  ['Sin', [unaryOps.sin]], ['Sinh', [unaryOps.sinh]],
   //['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
   //['Slice', '', '1-9', slice, parseSliceAttributes],
   // // The "semantic" meaning of axis has changed in opset-13.
@@ -82,9 +84,11 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // // When the attribute is missing, we need the count of number of outputs
   // // so that we can determine the 'split' attribute from the runtime input to the Operator
   // ['Split', '', '2-12', split, parseSplitAttributes],
-  //['Sqrt', '', '6+', unaryOps.sqrt], ['Squeeze', '', '1-12', squeeze, parseSqueezeAttributes],
-  //['Squeeze', '', '13+', squeezeV13], ['Sub', '', '7+', binaryOps.sub], ['Sum', '', '6+', sum],
-  //['Tan', '', '7+', unaryOps.tan], ['Tanh', '', '6+', unaryOps.tanh],
+  ['Sqrt', [unaryOps.sqrt]],
+  // ['Squeeze', '', '1-12', squeeze, parseSqueezeAttributes],
+  //['Squeeze', '', '13+', squeezeV13],
+  ['Sub', [binaryOps.sub]],  // ['Sum', '', '6+', sum],
+  ['Tan', [unaryOps.tan]], ['Tanh', [unaryOps.tanh]],
   // ['Tile', '', '6+', tile],
   //['Transpose', '', '1+', transpose, parseTransposeAttributes],
   // ['Upsample', '', '7-8', upsample, parseUpsampleAttributesV7],

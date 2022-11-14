@@ -31,6 +31,8 @@ export interface GpuDataManager {
    * download the data from GPU.
    */
   download(id: GpuDataId): Promise<ArrayBufferLike>;
+
+  refreshPendingBuffers(): void;
 }
 
 interface StorageCacheValue {
@@ -39,7 +41,6 @@ interface StorageCacheValue {
 }
 
 interface DownloadCacheValue {
-  gpuData: GpuData;
   data: Promise<ArrayBufferLike>;
 }
 
@@ -58,9 +59,16 @@ class GpuDataManagerImpl implements GpuDataManager {
   // GPU Data ID => GPU Data ( read buffer )
   downloadCache: Map<GpuDataId, DownloadCacheValue>;
 
+  private buffersForUploadingPending: GPUBuffer[];
+  // private buffersForDownloadingPending: GPUBuffer[];
+  private buffersPending: GPUBuffer[];
+
   constructor(private backend: WebGpuBackend /* , private reuseBuffer: boolean */) {
     this.storageCache = new Map();
     this.downloadCache = new Map();
+    this.buffersForUploadingPending = [];
+    // this.buffersForDownloadingPending = [];
+    this.buffersPending = [];
   }
 
   upload(id: GpuDataId, data: Uint8Array): void {
@@ -91,13 +99,11 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     // GPU copy
     this.backend.getCommandEncoder().copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
-    this.backend.flush();
-
 
     // eslint-disable-next-line no-console
     console.log(`[js] GpuDataManager.upload(id=${id})`);
 
-    gpuBufferForUploading.destroy();
+    this.buffersForUploadingPending.push(gpuBufferForUploading);
   }
 
   create(size: number): GpuData {
@@ -135,13 +141,11 @@ class GpuDataManagerImpl implements GpuDataManager {
     console.log(`[js] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
 
     this.storageCache.delete(id);
-    cachedData.gpuData.buffer.destroy();
+    this.buffersPending.push(cachedData.gpuData.buffer);
+    // cachedData.gpuData.buffer.destroy();
 
     const downloadingData = this.downloadCache.get(id);
     if (downloadingData) {
-      void downloadingData.data.then(() => {
-        downloadingData.gpuData.buffer.destroy();
-      });
       this.downloadCache.delete(id);
     }
 
@@ -170,10 +174,26 @@ class GpuDataManagerImpl implements GpuDataManager {
     );
     this.backend.flush();
 
-    await gpuReadBuffer.mapAsync(GPUMapMode.READ);
-    return gpuReadBuffer.getMappedRange();
+    const readDataPromise = new Promise<ArrayBuffer>((resolve) => {
+      gpuReadBuffer.mapAsync(GPUMapMode.READ).then(() => {
+        const data = gpuReadBuffer.getMappedRange().slice(0);
+        gpuReadBuffer.destroy();
+        resolve(data);
+      });
+    });
 
-    // TODO: release gpuReadBuffer
+    this.downloadCache.set(id, {data: readDataPromise});
+
+    return readDataPromise;
+  }
+
+  refreshPendingBuffers(): void {
+    for (const buffer of this.buffersForUploadingPending) {
+      buffer.destroy();
+    }
+    for (const buffer of this.buffersPending) {
+      buffer.destroy();
+    }
   }
 }
 

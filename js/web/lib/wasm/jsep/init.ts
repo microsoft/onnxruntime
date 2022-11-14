@@ -74,7 +74,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepUpload(src, dst, size)
         (dataOffset: number, gpuDataId: number, size: number) => {
           // eslint-disable-next-line no-console
-          console.log(`jsepUpload: dataOffset=${dataOffset}, gpuDataId=${gpuDataId}, size=${size}`);
+          console.log(`[js] jsepUpload: dataOffset=${dataOffset}, gpuDataId=${gpuDataId}, size=${size}`);
           const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
           backend.upload(gpuDataId, data);
         },
@@ -85,7 +85,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
               const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
 
               // eslint-disable-next-line no-console
-              console.log(`jsepDownload: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+              console.log(`[js] jsepDownload: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
               await backend.download(gpuDataId, data);
             },

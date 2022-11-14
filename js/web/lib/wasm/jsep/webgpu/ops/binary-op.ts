@@ -40,7 +40,10 @@ const createBinaryOpProgramShader =
           const strides = ShapeUtil.computeStrides(dims);
           const offsets: string[] = [];
           for (let i = dims.length - 1; i >= 0; i--) {
-            offsets.push(`${strides[i]}u * ((*outputIndices)[${i + dimsOutput.length - dims.length}] % ${dims[i]}u)`);
+            const idx = dimsOutput.length === 0 ? '0u' :
+                (dimsOutput.length === 1)       ? '(*outputIndices)' :
+                                                  `(*outputIndices)[${i + dimsOutput.length - dims.length}]`;
+            offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
           }
           return offsets.length > 0 ? offsets.join('+') : '0u';
         };
@@ -48,11 +51,11 @@ const createBinaryOpProgramShader =
         broadcastImpl = `
   ${outputIndicesHelper.o2iImpl}
 
-  fn calcOffsetA(outputIndices: ptr<function, array<u32, ${dimsOutput.length}>>) -> u32 {
+  fn calcOffsetA(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
     return ${calcOffsetImpl(dimsA)};
   }
 
-  fn calcOffsetB(outputIndices: ptr<function, array<u32, ${dimsOutput.length}>>) -> u32 {
+  fn calcOffsetB(outputIndices: ptr<function, ${outputIndicesHelper.iType}>) -> u32 {
     return ${calcOffsetImpl(dimsB)};
   }
   `;

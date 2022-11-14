@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace js {
 
 #define JSEP_INIT_KERNEL(x) EM_ASM({ Module.jsepCreateKernel(#x, $0, undefined); }, this)
-#define JSEP_INIT_KERNEL_ATTRIBUTE(x, a, ...) EM_ASM({ Module.jsepCreateKernel(#x, $0, a); }, this, __VA_ARGS__)
+#define JSEP_INIT_KERNEL_ATTRIBUTE(x, attr, ...) EM_ASM({ Module.jsepCreateKernel(#x, $0, attr); }, this, __VA_ARGS__)
 
 #define JSEP_KERNEL_IMPL(classname, x)                       \
 class classname : public JsKernel {                          \
@@ -24,13 +24,32 @@ public:                                                      \
     }                                                        \
 };
 
-#define JSEP_CLASS_IMPL_ATTRIBUTE(classname, x, a, ...)      \
+#define JSEP_KERNEL_TYPED_IMPL(classname, x)                 \
+template<typename T>                                         \
 class classname : public JsKernel {                          \
 public:                                                      \
     classname(const OpKernelInfo& info) : JsKernel(info) {   \
-        JSEP_INIT_KERNEL_ATTRIBUTE(x, a, __VA_ARGS__);       \
+        JSEP_INIT_KERNEL(x);                                 \
     }                                                        \
 };
+
+#define JSEP_CLASS_IMPL_ATTRIBUTE(classname, x, attr_pre, attr, ...)       \
+class classname : public JsKernel {                                        \
+public:                                                                    \
+    classname(const OpKernelInfo& info) : JsKernel(info) {                 \
+        attr_pre                                                           \
+        JSEP_INIT_KERNEL_ATTRIBUTE(x, attr, __VA_ARGS__);                  \
+    }                                                                      \
+};
+
+#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(classname, x, attr_name, default_value, ...) \
+    JSEP_CLASS_IMPL_ATTRIBUTE(classname, x, , ({#attr_name:$1}), static_cast<double>(info.GetAttrOrDefault<float>(#attr_name, 1.0)))
+
+#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT(classname, x, attr_name, ...) \
+    JSEP_CLASS_IMPL_ATTRIBUTE(classname, x,                           \
+        float value;                                                  \
+        ORT_ENFORCE(info.GetAttr<float>(#attr_name, &value)); ,       \
+        , ({#attr_name:$1}), static_cast<double>(value))
 
 class JsKernel : public OpKernel {
  public:
@@ -46,12 +65,12 @@ class JsKernel : public OpKernel {
 
       //
       // temp_data_format (every item is (u)int32_t):
-      //    input_count | [input_data_0] ... [input_data_N-1]
+      //    context_prt | input_count | [input_data_0] ... [input_data_N-1]
       //
       // input_data_format:
       //    type | data_ptr | dim_size | dim[0] ... dim[N-1]
       //
-      size_t temp_data_size = sizeof(size_t);
+      size_t temp_data_size = sizeof(size_t) * 2;
       for (int i = 0; i < context->InputCount(); i++) {
         temp_data_size += sizeof(size_t) * (3 + context->Input<Tensor>(i)->Shape().NumDimensions());
       }
@@ -68,13 +87,15 @@ class JsKernel : public OpKernel {
         }
       }
 
-      printf("temp data size: %zu. Data: ", temp_data_size);
-      for (int i=0; i < (int)temp_data_size/4;i++) {printf("%u ", p_inputs_data[i]); }
-      printf("\n");
+      // printf("temp data size: %zu. Data: ", temp_data_size);
+      // for (int i=0; i < (int)temp_data_size/4;i++) {
+      //   printf("%u ", p_inputs_data[i]);
+      // }
+      // printf("\n");
 
       int status = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, p_inputs_data);
 
-      printf("outputs = %d. Y.data=%zu\n", context->OutputCount(), (size_t)(context->Output<Tensor>(0)->DataRaw()));
+      // printf("outputs = %d. Y.data=%zu\n", context->OutputCount(), (size_t)(context->Output<Tensor>(0)->DataRaw()));
 
       alloc->Free(p_inputs_data);
       if (status == 0) {

@@ -42,7 +42,7 @@ class JsExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
-  DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
+  //DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 

@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey} from '../attribute-with-cache-key';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {WORKGROUP_SIZE} from './common';
@@ -69,11 +69,20 @@ export const abs = (context: ComputeContext): number =>
 export const acos = (context: ComputeContext): number =>
     context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Acos', 'acos'));
 
+export const acosh = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Acosh', 'acosh'));
+
 export const asin = (context: ComputeContext): number =>
     context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Asin', 'asin'));
 
+export const asinh = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Asinh', 'asinh'));
+
 export const atan = (context: ComputeContext): number =>
     context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atan', 'atan'));
+
+export const atanh = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atanh', 'atanh'));
 
 export interface ClipAttributes extends AttributeWithCacheKey {
   readonly min: number;
@@ -107,40 +116,41 @@ export const clip = (context: ComputeContext, attributes: ClipAttributes): numbe
 //   return clip(handler, [inputs[0]], attributes);
 // };
 
-// export const ceil = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Ceil', 'ceil'), inputs);
+export const ceil = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Ceil', 'ceil'));
 
-// export const cos = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Cos', 'cos'), inputs);
+export const cos = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cos', 'cos'));
 
-// export interface EluAttributes extends AttributeWithCacheKey {
-//   readonly alpha: number;
-// }
+export const cosh = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cosh', 'cosh'));
 
-// export const elu = async(handler: WebGpuInferenceHandler, inputs: Tensor[], attributes: EluAttributes):
-//                        Promise<Tensor[] >=>handler.run(
-//                            createElementwiseProgramInfoLoader(
-//                                inputs[0], 'Elu', a => `elu_vf32(${a})`, `
-//     let elu_alpha_: f32 = f32(${attributes.alpha});
+export interface EluAttributes extends AttributeWithCacheKey {
+  readonly alpha: number;
+}
 
-//     fn elu_f32(a: f32) -> f32 {
-//       return select((exp(a) - 1.0) * elu_alpha_, a, a >= 0.0);
-//     }
+export const elu = (context: ComputeContext, attributes: EluAttributes): number =>
+    context.compute(createElementwiseProgramInfoLoader(
+        context.inputs[0], 'Elu', a => `elu_vf32(${a})`, `
+  const elu_alpha_: f32 = f32(${attributes.alpha});
 
-//     fn elu_vf32(v: vec4<f32>) -> vec4<f32> {
-//       return vec4(elu_f32(v.x), elu_f32(v.y), elu_f32(v.z), elu_f32(v.w));
-//     }`,
-//                                attributes.cacheKey),
-//                            inputs);
+  fn elu_f32(a: f32) -> f32 {
+  return select((exp(a) - 1.0) * elu_alpha_, a, a >= 0.0);
+  }
 
-// export const parseEluAttributes = (node: Graph.Node): EluAttributes =>
-//     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 1.0)});
+  fn elu_vf32(v: vec4<f32>) -> vec4<f32> {
+  return vec4(elu_f32(v.x), elu_f32(v.y), elu_f32(v.z), elu_f32(v.w));
+  }`,
+        attributes.cacheKey));
+
+export const parseEluAttributes = (attributes: Record<string, unknown>): EluAttributes =>
+    createAttributeWithCacheKey(attributes as {alpha: number});
 
 // export const exp = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
 //     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Exp', 'exp'), inputs);
 
-// export const floor = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Floor', 'floor'), inputs);
+export const floor = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
 
 // export interface LeakyReluAttributes extends AttributeWithCacheKey {
 //   readonly alpha: number;
@@ -168,11 +178,14 @@ export const clip = (context: ComputeContext, attributes: ClipAttributes): numbe
 // export const log = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
 //     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Log', 'log'), inputs);
 
-// export const neg = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Neg', a => `-${a}`), inputs);
+export const neg = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Neg', a => `-${a}`));
 
 // // export const not = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 // //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslNot()), inputs)];
+
+export const reciprocal = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
 
 // export const relu = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
 //     createElementwiseProgramInfoLoader(inputs[0], 'Relu', a => `max(${a}, vec4(0.0))`), inputs);
@@ -180,14 +193,17 @@ export const clip = (context: ComputeContext, attributes: ClipAttributes): numbe
 // export const sigmoid = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
 //     createElementwiseProgramInfoLoader(inputs[0], 'Sigmoid', a => `(vec4(1.0) / (vec4(1.0) + exp(-${a})))`), inputs);
 
-// export const sin = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Sin', 'sin'), inputs);
+export const sin = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sin', 'sin'));
 
-// export const sqrt = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Sqrt', 'sqrt'), inputs);
+export const sinh = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sinh', 'sinh'));
 
-// export const tan = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Tan', 'tan'), inputs);
+export const sqrt = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sqrt', 'sqrt'));
 
-// export const tanh = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Tanh', 'tanh'), inputs);
+export const tan = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tan', 'tan'));
+
+export const tanh = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tanh', 'tanh'));

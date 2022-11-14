@@ -166,7 +166,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
-    printf("  KernelRegistry::TryFindKernel() calling on node: [%s][%s][%s], provider type=%s\n", node.Domain().c_str(), node.OpType().c_str(), node.Name().c_str(), expected_provider.c_str());
+    //printf("  KernelRegistry::TryFindKernel() calling on node: [%s][%s][%s], provider type=%s\n", node.Domain().c_str(), node.OpType().c_str(), node.Name().c_str(), expected_provider.c_str());
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   if (out) *out = nullptr;
 
@@ -176,7 +176,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
     std::string error_str;
     if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_str_resolver, error_str)) {
       if (out) *out = &i->second;
-    printf("  KernelRegistry::TryFindKernel() OK\n");
+    //printf("  KernelRegistry::TryFindKernel() OK\n");
       return Status::OK();
     }
     verify_kernel_def_error_strs.push_back(error_str);
@@ -193,11 +193,11 @@ Status KernelRegistry::TryFindKernel(const Node& node,
     oss << ")";
 
     VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
-    printf("  KernelRegistry::TryFindKernel() failed: %s\n",oss.str().c_str());
+    //printf("  KernelRegistry::TryFindKernel() failed: %s\n",oss.str().c_str());
     return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
 
-    printf("  KernelRegistry::TryFindKernel() failed: Kernel not found\n");
+    //printf("  KernelRegistry::TryFindKernel() failed: Kernel not found\n");
   return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
 
