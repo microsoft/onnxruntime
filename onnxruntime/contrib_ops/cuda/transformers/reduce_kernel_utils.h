@@ -49,7 +49,8 @@ __device__ __forceinline__ bool operator<(const KeyValue<T>& lh, const KeyValue<
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   return (float)lh.value < (float)rh.value || ((float)lh.value == (float)rh.value && rh.key != -1 && (lh.key == -1 || lh.key > rh.key));
 #else
-  return lh.value < rh.value || (lh.value == rh.value && rh.key != -1 && (lh.key == -1 || lh.key > rh.key));
+  // return lh.value < rh.value || (lh.value == rh.value && rh.key != -1 && (lh.key == -1 || lh.key > rh.key));
+  return lh.value < rh.value;
 #endif
 }
 
@@ -69,25 +70,17 @@ struct TopK {
     while (cur_pos < elem_size) {
       int32_t left_child_pos = 2 * cur_pos + 1;
       int32_t right_child_pos = 2 * cur_pos + 2;
-      bool larger_than_left = left_child_pos < elem_size && elements[left_child_pos] < elements[cur_pos];
-      bool larger_than_right = right_child_pos < elem_size && elements[right_child_pos] < elements[cur_pos];
-      if (larger_than_left && larger_than_right) {
-        if (elements[right_child_pos] < elements[left_child_pos]) {
-          Swap(elements[cur_pos], elements[right_child_pos]);
-          cur_pos = right_child_pos;
-        } else {
-          Swap(elements[cur_pos], elements[left_child_pos]);
-          cur_pos = left_child_pos;
-        }
-      } else if (larger_than_left) {
-        Swap(elements[cur_pos], elements[left_child_pos]);
-        cur_pos = left_child_pos;
-      } else if (larger_than_right) {
-        Swap(elements[cur_pos], elements[right_child_pos]);
-        cur_pos = right_child_pos;
-      } else {
-        break;
+      int32_t child_id = elem_size;
+      if (left_child_pos < elem_size && elements[left_child_pos] < elements[cur_pos]) {
+        child_id = left_child_pos;
       }
+      if (right_child_pos < elem_size && elements[right_child_pos] < elements[cur_pos] && elements[right_child_pos] < elements[left_child_pos]) {
+        child_id = right_child_pos;
+      }
+      if (child_id < elem_size) {
+        Swap(elements[cur_pos], elements[child_id]);
+      }
+      cur_pos = child_id;
     }
   }
 

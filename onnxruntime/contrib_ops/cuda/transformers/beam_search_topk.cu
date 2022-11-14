@@ -101,7 +101,6 @@ __global__ void BeamSearchOnlineTopKStage2Kernel(
     buf_value[idx] = input_values[idx];
     buf_indices[idx] = input_indices[idx];
   }
-  __syncthreads();
 
   if (thread_id < parts_per_beam) {
     T* b_v = buf_value + thread_id * K;
