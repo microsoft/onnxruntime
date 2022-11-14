@@ -267,8 +267,9 @@ jobs:
         condition: succeededOrFailed()
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
-    - script:
-      python -m pip install -q --upgrade protobuf
+    - script: python -m pip install -q --upgrade protobuf
+      displayName: Upgrade Protobuf
+
     - task: PythonScript@0
       displayName: 'Generate documentation'
       inputs:
