@@ -2,6 +2,21 @@
 // Licensed under the MIT License.
 #pragma once
 
+struct DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* ATensor;
+    const DML_TENSOR_DESC* AScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* AZeroPointTensor;
+    const DML_TENSOR_DESC* BTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BZeroPointTensor;
+    const DML_TENSOR_DESC* OutputScaleTensor;                   // This is an input tensor
+    _Maybenull_ const DML_TENSOR_DESC* OutputZeroPointTensor;   // This is an input tensor
+    const DML_TENSOR_DESC* OutputTensor;
+};
+
+const int DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1 = 0x8000000e;
+
 namespace ApiTraits
 {
 template <typename T>
@@ -1009,6 +1024,12 @@ template <>
 struct OperatorDescTraits<DML_DIAGONAL_MATRIX1_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_DIAGONAL_MATRIX1;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = (DML_OPERATOR_TYPE) DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1;
 };
 
 template <>
@@ -2139,6 +2160,11 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_GELU>
     using DescType = DML_ACTIVATION_GELU_OPERATOR_DESC;
 };
 
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1>
+{
+    using DescType = DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC;
+};
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
 // 
@@ -2480,6 +2506,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SHRINK_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_GELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_GELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
 
     default:
         ORT_THROW_HR(E_INVALIDARG);
@@ -2633,6 +2661,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_RESAMPLE2: return "DML_OPERATOR_RESAMPLE2";
     case DML_OPERATOR_RESAMPLE_GRAD1: return "DML_OPERATOR_RESAMPLE_GRAD1";
     case DML_OPERATOR_DIAGONAL_MATRIX1: return "DML_OPERATOR_DIAGONAL_MATRIX1";
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1";
     default:
         assert(false);
         return "<unknown>";

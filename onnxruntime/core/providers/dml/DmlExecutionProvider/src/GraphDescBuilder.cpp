@@ -117,15 +117,11 @@ namespace Dml::GraphDescBuilder
             {
                 ComPtr<IMLOperatorTensor> tensor = nullptr;
 
-                // Check whether this specific node requested support for constant CPU inputs
-                if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
+                auto inputDefs = node.InputDefs();
+                if (inputIndex < inputDefs.size())
                 {
-                    auto inputDefs = node.InputDefs();
-                    if (inputIndex < inputDefs.size())
-                    {
-                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
-                        tensor = constantCpuGraphInputGetter(arg->Name());
-                    }
+                    const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                    tensor = constantCpuGraphInputGetter(arg->Name());
                 }
 
                 return tensor;
