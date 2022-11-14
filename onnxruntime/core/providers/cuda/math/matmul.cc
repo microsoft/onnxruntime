@@ -160,7 +160,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
           auto duration = duration_cast<microseconds>(stop - start);
 
-          std::cout << (duration.count() / benchmark_runs) << std::endl;
+          std::cout << duration.count() << std::endl;
     }
 
     return Status::OK();
