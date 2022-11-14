@@ -10,7 +10,7 @@
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 #include "core/providers/rocm/tunable/gemm.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 using onnxruntime::rocm::tunable::blas::BlasOp;
 using onnxruntime::rocm::tunable::blas::BlasOpToString;

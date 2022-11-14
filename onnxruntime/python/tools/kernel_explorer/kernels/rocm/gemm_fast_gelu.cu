@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/gemm_fast_gelu.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu.h"
 
 #include <hip/hip_fp16.h>
 #include <pybind11/pybind11.h>
