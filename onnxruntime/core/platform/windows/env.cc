@@ -41,6 +41,17 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 namespace onnxruntime {
 
 namespace {
+
+struct Core {
+  uint64_t group_id = 0;
+  uint64_t processor_bitmask = 0;
+};
+
+struct Group {
+  int32_t num_processors = 0;
+  uint64_t processor_bitmask = 0;
+};
+
 class WindowsThread : public EnvThread {
  private:
   struct Param {
@@ -133,7 +144,7 @@ class WindowsEnv : public Env {
  public:
 
   explicit WindowsEnv() {
-    GetSystemInfo(group_vec_, core_vec_);
+    GetSystemInfo();
   }
 
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
@@ -147,22 +158,18 @@ class WindowsEnv : public Env {
   }
 
   int GetNumCpuCores() const override {
-    if (core_vec_.empty()) {
-      return static_cast<int>(std::thread::hardware_concurrency());
+    if (cores_.empty()) {
+      return static_cast<int>(std::thread::hardware_concurrency()) / 2;
     } else {
-      return static_cast<int>(core_vec_.size());
+      return static_cast<int>(cores_.size());
     }
   }
 
   size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinities) const override {
     ORT_ENFORCE(sizeof(KAFFINITY) <= sizeof(uint64_t), "KAFFINITY is bigger than uint64_t, cannot save it to an uint64_t vector");
-    for (const auto& core : core_vec_) {
-      if (core.GroupCount != 1) {
-        LOGS_DEFAULT(ERROR) << "core assigned to " << core.GroupCount << " groups, skip the core";
-        continue;
-      }
-      affinities.push_back(static_cast<uint64_t>(core.GroupMask[0].Group));
-      affinities.push_back(static_cast<uint64_t>(core.GroupMask[0].Mask));
+    for (const auto& core : cores_) {
+      affinities.push_back(core.group_id);
+      affinities.push_back(core.processor_bitmask);
     }
     if (affinities.empty()) {
       return std::thread::hardware_concurrency() / 2;
@@ -185,8 +192,8 @@ class WindowsEnv : public Env {
     int processor_count = 0;
     uint64_t group_id = 0;
     uint64_t processor_mask = 0;
-    for (const auto& group_info : group_vec_) {
-      for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
+    for (const auto& group_info : groups_) {
+      for (int32_t i = 0; i < group_info.num_processors; ++i, ++processor_id) {
         if (processor_id >= processor_from && processor_id <= processor_to) {
           processor_mask |= BitOne << i;
           processor_count += 1;
@@ -229,8 +236,8 @@ class WindowsEnv : public Env {
     int processor_count = 0;
     uint64_t group_id = 0;
     uint64_t processor_mask = 0;
-    for (const auto& group_info : group_vec_) {
-      for (int i = 0; i < group_info.ActiveProcessorCount; ++i, ++processor_id) {
+    for (const auto& group_info : groups_) {
+      for (int32_t i = 0; i < group_info.num_processors; ++i, ++processor_id) {
         if (processor_ids.count(processor_id)) {
           processor_mask |= BitOne << i;
           processor_count += 1;
@@ -693,43 +700,51 @@ class WindowsEnv : public Env {
     return std::string();
   }
 
-  static void GetSystemInfo(std::vector<PROCESSOR_GROUP_INFO>& group_vec, std::vector<PROCESSOR_RELATIONSHIP>& core_vec) {
-    DWORD returnLength = 0;
-    GetLogicalProcessorInformationEx(RelationAll, nullptr, &returnLength);
-    auto last_error = GetLastError();
-    if (last_error != ERROR_INSUFFICIENT_BUFFER) {
-      return;
-    }
+private:
 
-    std::unique_ptr<char[]> allocation = std::make_unique<char[]>(returnLength);
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
+  void GetSystemInfo() {
+   if (sizeof(KAFFINITY) > sizeof(uint64_t)) {  // exit if KAFFINITY is bigger than uint64_t, this is unlikely though
+     return;
+   }
+   DWORD returnLength = 0;
+   GetLogicalProcessorInformationEx(RelationAll, nullptr, &returnLength);
+   auto last_error = GetLastError();
+   if (last_error != ERROR_INSUFFICIENT_BUFFER) {
+     return;
+   }
 
-    if (!GetLogicalProcessorInformationEx(RelationAll, processorInfos, &returnLength)) {
-      return;
-    }
+   std::unique_ptr<char[]> allocation = std::make_unique<char[]>(returnLength);
+   SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
 
-    const BYTE* iter = reinterpret_cast<const BYTE*>(processorInfos);
-    const BYTE* end = iter + returnLength;
-    while (iter < end) {
-      auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
-      auto size = processor_info->Size;
-      if (processor_info->Relationship == RelationGroup) {
-        for (int i = 0; i < static_cast<int>(processor_info->Group.ActiveGroupCount); ++i) {
-          group_vec.push_back(processor_info->Group.GroupInfo[i]);
-        }
-      } else if (processor_info->Relationship == RelationProcessorCore) {
-        core_vec.push_back(processor_info->Processor);
-      }
-      iter += size;
-    }
+   if (!GetLogicalProcessorInformationEx(RelationAll, processorInfos, &returnLength)) {
+     return;
+   }
+
+   const BYTE* iter = reinterpret_cast<const BYTE*>(processorInfos);
+   const BYTE* end = iter + returnLength;
+   while (iter < end) {
+     auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
+     auto size = processor_info->Size;
+     if (processor_info->Relationship == RelationGroup) {
+       for (int i = 0; i < static_cast<int>(processor_info->Group.ActiveGroupCount); ++i) {
+         Group group{static_cast<int32_t>(processor_info->Group.GroupInfo[i].ActiveProcessorCount),
+                     static_cast<uint64_t>(processor_info->Group.GroupInfo[i].ActiveProcessorMask)};
+         groups_.push_back(std::move(group));
+       }
+     } else if (processor_info->Relationship == RelationProcessorCore &&
+                processor_info->Processor.GroupCount == 1) {
+       Core core{static_cast<uint64_t>(processor_info->Processor.GroupMask[0].Group),
+                 static_cast<uint64_t>(processor_info->Processor.GroupMask[0].Mask)};
+       cores_.push_back(std::move(core));
+     }
+     iter += size;
+   }
   }
-
- private:
 
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
-  std::vector<PROCESSOR_GROUP_INFO> group_vec_;
-  std::vector<PROCESSOR_RELATIONSHIP> core_vec_;
+  std::vector<Core> cores_;
+  std::vector<Group> groups_;
   static constexpr uint64_t BitOne = 1;
 };
 }  // namespace

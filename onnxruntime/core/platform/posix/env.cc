@@ -191,7 +191,7 @@ class PosixEnv : public Env {
     // TODO if you need the number of physical cores you'll need to parse
     // /proc/cpuinfo and grep for "cpu cores".
     // However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
-    return std::thread::hardware_concurrency();
+    return std::thread::hardware_concurrency() / 2;
   }
 
   size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinities) const override {
