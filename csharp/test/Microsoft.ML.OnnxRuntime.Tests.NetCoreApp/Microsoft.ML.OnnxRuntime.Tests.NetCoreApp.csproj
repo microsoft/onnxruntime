@@ -18,7 +18,8 @@
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
 
-    <!-- Training build property.-->
+    <!-- Training build property.
+    Should be set to true when training is enabled in onnxruntime native binary -->
     <TrainingEnabledNativeBuild Condition="'$(TrainingEnabledNativeBuild)' == ''">false</TrainingEnabledNativeBuild>
   </PropertyGroup>
 
