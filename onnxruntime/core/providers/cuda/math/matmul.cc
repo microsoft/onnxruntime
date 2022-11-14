@@ -133,7 +133,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (Node().Name() == "/lm_head/MatMul") {
       std::cout << "Reached here" << std::endl;
       should_use_proxy_data = true;
-      cudaMemcpyAsync(data, right_X->DataRaw(), 768 * 50257 * 2, Stream());
+      cudaMemcpyAsync(data, right_X->DataRaw(), 768 * 50257 * 2, cudaMemcpyDeviceToDevice,Stream());
       cudaDeviceSynchronize();
     }
 
