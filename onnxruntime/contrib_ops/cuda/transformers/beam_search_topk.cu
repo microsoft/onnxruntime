@@ -28,6 +28,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::cuda;
+
 // kernel to compute the top k on last axis for tensor with shape: [batch, beam_size, parts_of_vocab, vacab_part_size]
 // Its grid is [batch * beam_size, parts_of_vocab]
 template <typename T, int max_k, int thread_block_size>
@@ -38,13 +40,7 @@ __global__ void BeamSearchOnlineTopKStage1Kernel(
     int32_t vocab_part_size,
     T* output_values,
     int32_t* output_token) {
-  TopK<T, max_k> top_k_thread;
-
-  // initialize top_k
-  for (int32_t i = 0; i < max_k; ++i) {
-    top_k_thread.key[i] = -1;
-    top_k_thread.value[i] = NumericLimits<T>::Min();
-  }
+  TopK<KeyValue<T>, max_k> top_k_thread;
 
   int batch_beam = blockIdx.x;
   int voc_part_id = blockIdx.y;
@@ -54,23 +50,24 @@ __global__ void BeamSearchOnlineTopKStage1Kernel(
   // voc_part_size
   for (int i = threadIdx.x + token_id_base; i < vocab_part_size + token_id_base; i += blockDim.x) {
     if (i < vocab_size) {
-      top_k_thread.insert(input_block[i], i);
+      top_k_thread.insert(KeyValue<T>(input_block[i], i));
     }
   }
 
   // reduce in thread block
-  typedef cub::BlockReduce<TopK<T, max_k>, thread_block_size> BlockReduce;
+  typedef cub::BlockReduce<TopK<KeyValue<T>, max_k>, thread_block_size> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
 
-  TopK<T, max_k> top_k_block = BlockReduce(temp_storage).Reduce(top_k_thread, reduce_topk_op<T, max_k>);
+  TopK<KeyValue<T>, max_k> top_k_block = BlockReduce(temp_storage).Reduce(top_k_thread, reduce_topk_op<KeyValue<T>, max_k>);
   __syncthreads();
 
   output_values += batch_beam * gridDim.y * k + voc_part_id * k;
   output_token += batch_beam * gridDim.y * k + voc_part_id * k;
   if (threadIdx.x == 0) {
+    top_k_block.Sort();
     for (int i = 0; i < k; i++) {
-      output_values[i] = top_k_block.value[i];
-      output_token[i] = top_k_block.key[i];
+      output_values[i] = top_k_block.elements[i].value;
+      output_token[i] = top_k_block.elements[i].key;
     }
   }
 }
@@ -91,17 +88,13 @@ __global__ void BeamSearchOnlineTopKStage2Kernel(
   T* buf_value = reinterpret_cast<T*>(buf_s_);
   int32_t* buf_indices = reinterpret_cast<int32_t*>(buf_s_ + max_k * parts_per_beam * sizeof(int32_t));
 
-  typedef cub::BlockReduce<TopK<T, max_k>, thread_block_size> BlockReduce;
+  typedef cub::BlockReduce<TopK<KeyValue<T>, max_k>, thread_block_size> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
 
   input_values += vector_id * K * parts_per_beam;
   input_indices += vector_id * K * parts_per_beam;
 
-  TopK<T, max_k> partial;
-  for (int i = 0; i < max_k; ++i) {
-    partial.key[i] = -1;
-    partial.value[i] = NumericLimits<T>::Min();
-  }
+  TopK<KeyValue<T>, max_k> partial;
 
   // load and unpack into registers through smem
   for (int idx = thread_id; idx < K * parts_per_beam; idx += thread_block_size) {
@@ -114,21 +107,20 @@ __global__ void BeamSearchOnlineTopKStage2Kernel(
     T* b_v = buf_value + thread_id * K;
     int32_t* b_i = buf_indices + thread_id * K;
     for (int i = 0; i < K; i++) {
-      partial.insert(b_v[i], b_i[i]);
+      partial.insert(KeyValue<T>(b_v[i], b_i[i]));
     }
   }
 
-  TopK<T, max_k> total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op<T, max_k>);
+  TopK<KeyValue<T>, max_k> total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op<KeyValue<T>, max_k>);
 
   if (thread_id == 0) {
     output_values += vector_id * K;
     output_indices += vector_id * K;
 
+    total.Sort();
     for (int i = 0; i < K; ++i) {
-      if (i < K) {
-        output_values[i] = total.value[i];
-        output_indices[i] = total.key[i];
-      }
+      output_values[i] = total.elements[i].value;
+      output_indices[i] = total.elements[i].key;
     }
   }
 }

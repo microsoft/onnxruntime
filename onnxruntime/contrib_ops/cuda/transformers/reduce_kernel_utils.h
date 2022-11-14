@@ -30,48 +30,87 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T, int MAX_K>
+template <typename T>
+struct KeyValue {
+  __device__ KeyValue() {
+    key = -1;
+    value = NumericLimits<T>::Min();
+  }
+
+  __device__ KeyValue(T value, int32_t key) : value(value), key(key) {
+  }
+
+  int32_t key;
+  T value;
+};
+
+template <typename T>
+__device__ __forceinline__ bool operator<(const KeyValue<T>& lh, const KeyValue<T>& rh) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+  return (float)lh.value < (float)rh.value || ((float)lh.value == (float)rh.value && rh.key != -1 && (lh.key == -1 || lh.key > rh.key));
+#else
+  return lh.value < rh.value || (lh.value == rh.value && rh.key != -1 && (lh.key == -1 || lh.key > rh.key));
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ bool Swap(T& lh, T& rh) {
+  T tmp = rh;
+  rh = lh;
+  lh = tmp;
+}
+
+template <typename T, int max_k>
 struct TopK {
-  int32_t key[MAX_K];
-  T value[MAX_K];
+  T elements[max_k];
 
-  __device__ __forceinline__ void insert(T elem, int elem_id) {
-    T v = value[MAX_K - 1];
-    if (v < elem ||
-        (key[MAX_K - 1] == -1) || ((elem == value[MAX_K - 1]) && (elem_id < key[MAX_K - 1])))
-    // if (elem > u[MAX_K-1] || ((elem == u[MAX_K-1]) && (elem_id < p[MAX_K-1])))
-    {
-      value[MAX_K - 1] = elem;
-      key[MAX_K - 1] = elem_id;
-    }
-
-    for (int k = MAX_K - 2; k >= 0; --k) {
-      if ((value[k + 1] > value[k]) || (key[k] == -1) || ((value[k + 1] == value[k]) && (key[k + 1] < key[k])))
-      // if ((u[k+1] > u[k]) || ((u[k+1] == u[k])&&(p[k+1] < p[k])))
-      {
-        T u2 = value[k];
-        int p2 = key[k];
-        value[k] = value[k + 1];
-        key[k] = key[k + 1];
-        value[k + 1] = u2;
-        key[k + 1] = p2;
+  __device__ __forceinline__ void ShiftDown(int elem_size) {
+    int cur_pos = 0;
+    while (cur_pos < elem_size) {
+      int32_t left_child_pos = 2 * cur_pos + 1;
+      int32_t right_child_pos = 2 * cur_pos + 2;
+      bool larger_than_left = left_child_pos < elem_size && elements[left_child_pos] < elements[cur_pos];
+      bool larger_than_right = right_child_pos < elem_size && elements[right_child_pos] < elements[cur_pos];
+      if (larger_than_left && larger_than_right) {
+        if (elements[right_child_pos] < elements[left_child_pos]) {
+          Swap(elements[cur_pos], elements[right_child_pos]);
+          cur_pos = right_child_pos;
+        } else {
+          Swap(elements[cur_pos], elements[left_child_pos]);
+          cur_pos = left_child_pos;
+        }
+      } else if (larger_than_left) {
+        Swap(elements[cur_pos], elements[left_child_pos]);
+        cur_pos = left_child_pos;
+      } else if (larger_than_right) {
+        Swap(elements[cur_pos], elements[right_child_pos]);
+        cur_pos = right_child_pos;
+      } else {
+        break;
       }
     }
   }
 
-  __device__ __forceinline__ void init() {
-    for (int i = 0; i < MAX_K; i++) {
-      key[i] = -1;
-      value[i] = NumericLimits<T>::Min();
+  __device__ __forceinline__ void insert(T elem) {
+    if (elements[0] < elem) {
+      elements[0] = elem;
+      ShiftDown(max_k);
+    }
+  }
+
+  __device__ __forceinline__ void Sort() {
+    for (int i = max_k - 1; i > 0; i--) {
+      Swap(elements[0], elements[i]);
+      ShiftDown(i);
     }
   }
 };
 
-template <typename T, int MAX_K>
-__device__ __forceinline__ TopK<T, MAX_K> reduce_topk_op(const TopK<T, MAX_K>& a, const TopK<T, MAX_K>& b) {
-  TopK<T, MAX_K> res = a;
-  for (int i = 0; i < MAX_K; ++i)
-    res.insert(b.value[i], b.key[i]);
+template <typename T, int max_k>
+__device__ __forceinline__ TopK<T, max_k> reduce_topk_op(const TopK<T, max_k>& a, const TopK<T, max_k>& b) {
+  TopK<T, max_k> res = a;
+  for (int i = 0; i < max_k; ++i)
+    res.insert(b.elements[i]);
   return res;
 }
 

@@ -272,8 +272,9 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
       old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
 
+using namespace onnxruntime::cuda;
 
-template<typename T, int MAX_K, int THREADBLOCK_SIZE, typename I>
+template <typename T, int MAX_K, int THREADBLOCK_SIZE, typename I>
 __launch_bounds__(THREADBLOCK_SIZE) __global__
     void BatchTopKKernel(const T* topk_scores,
                          const I* topk_indices,
@@ -282,31 +283,27 @@ __launch_bounds__(THREADBLOCK_SIZE) __global__
                          T* next_scores,
                          int batch_size,
                          int num_beams) {
-    int thread_id = threadIdx.x;
-    int block_id = blockIdx.x;
-    const T MIN_T_VAL = NumericLimits<T>::Min();
-    TopK<T, MAX_K> partial;
-    if (thread_id == 0) {
-        for (int i = 0; i < MAX_K; ++i) {
-            partial.key[i] = -1;
-            partial.value[i] = MIN_T_VAL;
-        }
-
-        int index_block = 2 * block_id * num_beams * num_beams;
-        for (int i = 0; i < 2 * num_beams * num_beams; i++) {
-            partial.insert((T)topk_scores[index_block + i], index_block + i);
-        }
-
-        int index_next = block_id * 2 * num_beams;
-        for (int i = 0; i < 2 * num_beams; i++) {
-            next_tokens[index_next + i] = topk_indices[partial.key[i]];
-            next_indices[index_next + i] = (partial.key[i] - index_block) / (2 * num_beams);
-            next_scores[index_next + i] = partial.value[i];
-        }
+  int thread_id = threadIdx.x;
+  int block_id = blockIdx.x;
+  const T MIN_T_VAL = NumericLimits<T>::Min();
+  TopK<KeyValue<T>, MAX_K> partial;
+  if (thread_id == 0) {
+    int index_block = 2 * block_id * num_beams * num_beams;
+    for (int i = 0; i < 2 * num_beams * num_beams; i++) {
+      partial.insert(KeyValue<T>(topk_scores[index_block + i], index_block + i));
     }
+
+    partial.Sort();
+    int index_next = block_id * 2 * num_beams;
+    for (int i = 0; i < 2 * num_beams; i++) {
+      next_tokens[index_next + i] = topk_indices[partial.elements[i].key];
+      next_indices[index_next + i] = (partial.elements[i].key - index_block) / (2 * num_beams);
+      next_scores[index_next + i] = partial.elements[i].value;
+    }
+  }
 }
 
-template<typename T, typename I>
+template <typename T, typename I>
 void LanuchBatchTopKKernel(const T* topk_scores,
                            const I* topk_indices,
                            int32_t* next_indices,
@@ -319,40 +316,40 @@ void LanuchBatchTopKKernel(const T* topk_scores,
 }
 
 template void LanuchBatchTopKKernel(const float* topk_scores,
-                           const int32_t* topk_indices,
-                           int32_t* next_indices,
-                           int32_t* next_tokens,
-                           float* next_scores,
-                           int batch_size,
-                           int num_beams,
-                           cudaStream_t stream);
+                                    const int32_t* topk_indices,
+                                    int32_t* next_indices,
+                                    int32_t* next_tokens,
+                                    float* next_scores,
+                                    int batch_size,
+                                    int num_beams,
+                                    cudaStream_t stream);
 
 template void LanuchBatchTopKKernel(const float* topk_scores,
-                           const int64_t* topk_indices,
-                           int32_t* next_indices,
-                           int32_t* next_tokens,
-                           float* next_scores,
-                           int batch_size,
-                           int num_beams,
-                           cudaStream_t stream);
+                                    const int64_t* topk_indices,
+                                    int32_t* next_indices,
+                                    int32_t* next_tokens,
+                                    float* next_scores,
+                                    int batch_size,
+                                    int num_beams,
+                                    cudaStream_t stream);
 
 template void LanuchBatchTopKKernel(const half* topk_scores,
-                           const int32_t* topk_indices,
-                           int32_t* next_indices,
-                           int32_t* next_tokens,
-                           half* next_scores,
-                           int batch_size,
-                           int num_beams,
-                           cudaStream_t stream);
+                                    const int32_t* topk_indices,
+                                    int32_t* next_indices,
+                                    int32_t* next_tokens,
+                                    half* next_scores,
+                                    int batch_size,
+                                    int num_beams,
+                                    cudaStream_t stream);
 
 template void LanuchBatchTopKKernel(const half* topk_scores,
-                           const int64_t* topk_indices,
-                           int32_t* next_indices,
-                           int32_t* next_tokens,
-                           half* next_scores,
-                           int batch_size,
-                           int num_beams,
-                           cudaStream_t stream);
+                                    const int64_t* topk_indices,
+                                    int32_t* next_indices,
+                                    int32_t* next_tokens,
+                                    half* next_scores,
+                                    int batch_size,
+                                    int num_beams,
+                                    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
