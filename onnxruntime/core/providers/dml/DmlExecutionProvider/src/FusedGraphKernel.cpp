@@ -72,6 +72,9 @@ namespace Dml
                 m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
 
+            // For temporary prototyping, allow weight upload to complete before issuing initialization work which reads those weights
+            m_provider->FlushAndSync();
+
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
