@@ -31,6 +31,7 @@ Status SliceImpl(cudaStream_t stream,
                  void* output_data,
                  const size_t N);
 
+#ifdef ENABLE_TRAINING
 Status SliceImplGrad(cudaStream_t stream,
                      const size_t element_size,
                      const int32_t dimension_count,
@@ -41,5 +42,7 @@ Status SliceImplGrad(cudaStream_t stream,
                      const void* input_data,
                      void* output_data,
                      const size_t N);
+#endif  // ENABLE_TRAINING
+
 }  // namespace cuda
 }  // namespace onnxruntime
