@@ -102,7 +102,11 @@ for submodule_line in submodule_lines:
     }
     registrations.append(registration)
 
-cgmanifest = {"Version": 1, "Registrations": registrations}
+cgmanifest = {
+    "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+    "Version": 1,
+    "Registrations": registrations,
+}
 
 with open(os.path.join(SCRIPT_DIR, "generated", "cgmanifest.json"), mode="w") as generated_cgmanifest_file:
     print(json.dumps(cgmanifest, indent=2), file=generated_cgmanifest_file)

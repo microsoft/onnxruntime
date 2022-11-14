@@ -42,7 +42,7 @@ struct DequantizeVec<float2> {
   static __device__ inline QuantizedVecT Quantize(const float2 fpvals, const float inv_scale) {
     float dqvalx = fmaxf(fminf(127.0f, fpvals.x * inv_scale), -128.0f);
     float dqvaly = fmaxf(fminf(127.0f, fpvals.y * inv_scale), -128.0f);
-    return char2{static_cast<char>(__float2int_rn(dqvalx)), static_cast<char>(__float2int_rn(dqvaly))};
+    return char2{static_cast<signed char>(__float2int_rn(dqvalx)), static_cast<signed char>(__float2int_rn(dqvaly))};
   }
 
   static __device__ inline float2 Dequantize(const QuantizedVecT qvals, const float scale) {
@@ -76,7 +76,7 @@ struct DequantizeVec<__half2> {
     s2xy.s2.x = __half2short_rn(xy.x);
     s2xy.s2.y = __half2short_rn(xy.y);
     s2xy.u1 = __vmaxs2(__vmins2(s2xy.u1, 0x007F007F), 0xFF80FF80);
-    return char2{(char)s2xy.s2.x, (char)s2xy.s2.y};
+    return char2{(signed char)s2xy.s2.x, (signed char)s2xy.s2.y};
   }
 
   static __device__ inline __half2 Dequantize(const QuantizedVecT qvals, const __half scale) {

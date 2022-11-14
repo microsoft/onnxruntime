@@ -868,6 +868,7 @@ Status LongformerQkvToContext(
   // The order of qkv space:
   //  Q, K, V, Global_K, Global_V, Global_Q (format 0)
   //  Q, K, V, Global_Q, Global_K, Global_V (format 1)
+  // Assume Q, K and V has same hidden size
   if (format == 1 || max_num_global == 0 || nullptr == global_input) {
     if (bias == nullptr) {
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
@@ -876,7 +877,7 @@ Status LongformerQkvToContext(
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                              sequence_length, num_heads, head_size,
                              input, bias, qkv,
-                             use_half4);
+                             use_half4, head_size);
     }
 
     if (max_num_global > 0 && nullptr != global_input) {
@@ -887,20 +888,20 @@ Status LongformerQkvToContext(
         LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                                sequence_length, num_heads, head_size,
                                global_input, global_bias, qkv + 3 * elements,
-                               use_half4);
+                               use_half4, head_size);
       }
     }
   } else {
     LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
                            input, bias, qkv,
-                           use_half4);
+                           use_half4, head_size);
 
     compact_global_q = (disable_compact_memory == false);
     LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size,
                            compact_global_q ? max_num_global : sequence_length, num_heads, head_size,
                            global_input + 2 * elements, global_bias, qkv + 5 * elements,
-                           use_half4);
+                           use_half4, head_size);
   }
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 

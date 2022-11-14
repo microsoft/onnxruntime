@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
@@ -311,6 +311,10 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
 
 }  // namespace utils
+
+// This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
+// So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.
+void InitProviderOrtApi();
 
 }  // namespace onnxruntime
 

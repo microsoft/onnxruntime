@@ -223,12 +223,13 @@ else()  # minimal and/or reduced ops build
     "${TEST_SRC_DIR}/platform/*.cc"
     )
 
-  if (onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     list(APPEND onnxruntime_test_framework_src_patterns
       "${TEST_SRC_DIR}/framework/ort_model_only_test.cc"
     )
+  endif()
 
-  else() # reduced ops build
+  if (NOT onnxruntime_MINIMAL_BUILD)
     file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/ir/*.cc"
       "${TEST_SRC_DIR}/ir/*.h"
@@ -585,12 +586,6 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
-if(onnxruntime_USE_ROCM)
-  find_library(HIP_LIB amdhip64 REQUIRED)
-  list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
-endif()
-
-
 if(WIN32)
   if (onnxruntime_USE_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
@@ -753,7 +748,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 if (onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_test_all PRIVATE -D__HIP_PLATFORM_HCC__=1)
+  target_compile_options(onnxruntime_test_all PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
@@ -819,6 +814,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if (onnxruntime_USE_DNNL)
+    if(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+      message(FATAL_ERROR "--dnnl_opencl_root required")
+    elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+      message(FATAL_ERROR "--dnnl_gpu_runtime required")
+    elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+      #file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
+      #set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
+      #set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
+      target_compile_definitions(onnxruntime_test_all PUBLIC -DDNNL_GPU_RUNTIME=OCL)
+    endif()
     list(APPEND onnx_test_libs dnnl)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
@@ -1096,6 +1101,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
     target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
+    target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
     set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
     #################################################################
@@ -1252,6 +1258,7 @@ else()
   onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 endif()
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")

@@ -1,52 +1,71 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if(CMAKE_CXX_COMPILER MATCHES ".*hipcc$")
-  message(FATAL_ERROR "don't use hipcc!")
-endif()
+include(CheckLanguage)
 
 if(NOT onnxruntime_ENABLE_PYTHON)
   message(FATAL_ERROR "python is required but is not enabled")
 endif()
 
-if(NOT HIP_FOUND)
-  message(FATAL_ERROR "hip is required but is not found")
+set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
+
+if (onnxruntime_USE_CUDA)
+  check_language(CUDA)
+  set(LANGUAGE CUDA)
+  set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert)
+elseif(onnxruntime_USE_ROCM)
+  check_language(HIP)
+  set(LANGUAGE HIP)
+  include(composable_kernel)
+  set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 endif()
 
-include(composable_kernel)
+file(GLOB kernel_explorer_srcs CONFIGURE_DEPENDS
+  "${KERNEL_EXPLORER_ROOT}/*.cc"
+  "${KERNEL_EXPLORER_ROOT}/*.h"
+)
 
-set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
-set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
+file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.cc"
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.h"
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.cu"
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.cuh"
+)
 
-file(GLOB kernel_explorer_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/*.cc")
-file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/kernels/*.cc")
-
-onnxruntime_add_shared_library_module(kernel_explorer
-  ${kernel_explorer_srcs}
-  ${kernel_explorer_kernel_srcs})
+onnxruntime_add_shared_library_module(kernel_explorer ${kernel_explorer_srcs} ${kernel_explorer_kernel_srcs})
 set_target_properties(kernel_explorer PROPERTIES PREFIX "_")
 target_include_directories(kernel_explorer PUBLIC
   $<TARGET_PROPERTY:onnxruntime_pybind11_state,INCLUDE_DIRECTORIES>
   ${KERNEL_EXPLORER_ROOT})
-target_link_libraries(kernel_explorer
-  PRIVATE
-    $<TARGET_PROPERTY:onnxruntime_pybind11_state,LINK_LIBRARIES>
+target_link_libraries(kernel_explorer PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,LINK_LIBRARIES>)
+target_compile_definitions(kernel_explorer PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
+target_compile_options(kernel_explorer PRIVATE -Wno-sign-compare)
+
+if (onnxruntime_USE_CUDA)
+  file(GLOB kernel_explorer_cuda_kernel_srcs CONFIGURE_DEPENDS
+    "${KERNEL_EXPLORER_ROOT}/kernels/cuda/*.cc"
+    "${KERNEL_EXPLORER_ROOT}/kernels/cuda/*.h"
+    "${KERNEL_EXPLORER_ROOT}/kernels/cuda/*.cu"
+    "${KERNEL_EXPLORER_ROOT}/kernels/cuda/*.cuh"
+  )
+  target_sources(kernel_explorer PRIVATE ${kernel_explorer_cuda_kernel_srcs})
+elseif (onnxruntime_USE_ROCM)
+  file(GLOB kernel_explorer_rocm_kernel_srcs CONFIGURE_DEPENDS
+    "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cc"
+    "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.h"
+    "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cu"
+    "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cuh"
+  )
+  auto_set_source_files_hip_language(${kernel_explorer_kernel_srcs} ${kernel_explorer_rocm_kernel_srcs})
+  target_sources(kernel_explorer PRIVATE ${kernel_explorer_rocm_kernel_srcs})
+  target_compile_definitions(kernel_explorer PRIVATE __HIP_PLATFORM_AMD__=1 __HIP_PLATFORM_HCC__=1)
+  target_link_libraries(kernel_explorer PRIVATE
     onnxruntime_composable_kernel_includes
     # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
     # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
     # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
-    device_gemm_instance
-    ${HIP_LIB})
-target_compile_definitions(kernel_explorer
-  PUBLIC ROCM_USE_FLOAT16
-  PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
-
-# handle kernel_explorer sources as hip language
-target_compile_options(kernel_explorer PRIVATE "-xhip")
-# TODO: use predefined AMDGPU_TARGETS
-target_compile_options(kernel_explorer PRIVATE "--offload-arch=gfx908" "--offload-arch=gfx90a")
-# https://github.com/ROCm-Developer-Tools/HIP/blob/4514f350849b1090954295f8f87a5f8d78bd781b/hip-lang-config.cmake.in
-target_link_libraries(kernel_explorer PRIVATE ${CLANGRT_BUILTINS})
+    device_gemm_instance)
+endif()
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
 

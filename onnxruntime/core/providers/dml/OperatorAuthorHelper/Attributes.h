@@ -32,6 +32,7 @@ namespace AttrName
     static constexpr const char* Dilations = "dilations";
     static constexpr const char* Direction = "direction";
     static constexpr const char* Dtype = "dtype";
+    static constexpr const char* End = "end";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
     static constexpr const char* Equation = "equation";
@@ -81,6 +82,7 @@ namespace AttrName
     static constexpr const char* Spatial = "spatial";
     static constexpr const char* SpatialScale = "spatial_scale";
     static constexpr const char* Split = "split";
+    static constexpr const char* Start = "start";
     static constexpr const char* Starts = "starts";
     static constexpr const char* Steepness = "steepness";
     static constexpr const char* StorageOrder = "storage_order";
@@ -96,6 +98,9 @@ namespace AttrName
     static constexpr const char* Upper = "upper";
     static constexpr const char* Value = "value";
     static constexpr const char* WidthScale = "width_scale";
+    static constexpr const char* QkvHiddenSizes = "qkv_hidden_sizes";
+    static constexpr const char* Unidirectional = "unidirectional";
+    static constexpr const char* NumHeads = "num_heads";
 
     static constexpr const char* FusedActivation = "fused_activation";
     static constexpr const char* FusedActivationDomain = "fused_activation_domain";
@@ -129,8 +134,5 @@ namespace AttrValue
     static constexpr const char* NearestNeighbor = "NN";
     static constexpr const char* NotSet = "NOTSET";
     static constexpr const char* Reflect = "reflect";
-    static constexpr const char* SameLower = "SAME_LOWER";
-    static constexpr const char* SameUpper = "SAME_UPPER";
-    static constexpr const char* Valid = "VALID";
 
 } // namespace AttrValue

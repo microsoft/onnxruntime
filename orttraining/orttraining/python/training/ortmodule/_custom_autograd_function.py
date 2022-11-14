@@ -86,6 +86,9 @@ def enable_custom_autograd_support(to_enable=True):
 
 
 from onnxruntime.capi._pybind_state import is_torch_interop_default_on
+from onnxruntime.training import ortmodule
 
 # Enable the custom autograd by default when PythonOp backend support is enabled during build.
-enable_custom_autograd_support(is_torch_interop_default_on())
+enable_custom_autograd_support(
+    not ortmodule._defined_from_envvar("ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT", 0) and is_torch_interop_default_on()
+)

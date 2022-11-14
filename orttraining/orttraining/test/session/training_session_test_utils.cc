@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/test/session/training_session_test_utils.h"
+#include "core/common/span_utils.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "test/util/include/default_providers.h"
 
@@ -115,8 +116,7 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
       // compare "Update_Count" or "Step"
       ASSERT_EQ(actual_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
-      std::array<int64_t, 1> dims = {1};
-      ASSERT_EQ(expected_tensor.Shape().GetDims(), gsl::make_span(dims));
+      ASSERT_TRUE(SpanEq(expected_tensor.Shape().GetDims(), AsSpan<int64_t>({1})));
       auto size = expected_tensor.Shape().Size();
       const std::vector<int64_t> expected(expected_tensor.template Data<int64_t>(), expected_tensor.template Data<int64_t>() + size);
       const std::vector<int64_t> actual(actual_tensor.template Data<int64_t>(), actual_tensor.template Data<int64_t>() + size);

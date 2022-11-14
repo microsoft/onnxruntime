@@ -401,4 +401,7 @@ ORT_API_STATUS_IMPL(GetCANNProviderOptionsAsString, _In_ const OrtCANNProviderOp
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions*);
 
+ORT_API(void, MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
+
+ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
 }  // namespace OrtApis

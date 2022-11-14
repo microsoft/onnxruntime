@@ -6,7 +6,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 
@@ -21,6 +21,7 @@ Status GptSubgraph::CreateInitialFeeds(
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
     OrtValue& expanded_input_ids,
+    const OrtValue* attn_mask_value,
     std::vector<OrtValue>& feeds,
     const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
@@ -59,6 +60,7 @@ Status GptSubgraph::CreateInitialFeeds(
   OrtValue expanded_position_ids;
   OrtValue expanded_attention_mask;
   ORT_RETURN_IF_ERROR(create_gpt_inputs_func(&input_ids,
+                                             attn_mask_value,
                                              num_beams,
                                              pad_token_id,
                                              sequence_lengths,

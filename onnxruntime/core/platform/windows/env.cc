@@ -18,14 +18,19 @@ limitations under the License.
 
 #include <Windows.h>
 
+#include <iostream>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <process.h>
 #include <fcntl.h>
 #include <io.h>
 
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
+#include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
@@ -68,31 +73,53 @@ class WindowsThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    const ThreadOptions& thread_options;
+    std::optional<LogicalProcessors> affinity;
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1,
-          const ThreadOptions& thread_options1) : name_prefix(name_prefix1), index(index1), start_address(start_address1), param(param1), thread_options(thread_options1) {}
+          Eigen::ThreadPoolInterface* param1)
+        : name_prefix(name_prefix1),
+          index(index1),
+          start_address(start_address1),
+          param(param1) {}
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
                 const ThreadOptions& thread_options) {
+    ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
-    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
+
+    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
+    if (narrow<size_t>(index) < thread_options.affinity.size()) {
+      local_param->affinity = thread_options.affinity[index];
+    }
+
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.release());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
+      local_param.release();
     } else {
-      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                                            local_param.release(), 0,
-                                                            &threadID)));
+      _set_errno(0);
+      _set_doserrno(0);
+      auto th_handle = _beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                      local_param.get(), 0,
+                                      &threadID);
+      if (th_handle == 0) {
+        auto err = errno;
+        auto dos_error = _doserrno;
+        char message_buf[256];
+        strerror_s(message_buf, sizeof(message_buf), err);
+        ORT_THROW("WindowThread:_beginthreadex failed with message: ", message_buf, " doserrno: ", dos_error);
+      }
+      local_param.release();
+      hThread.reset(reinterpret_cast<HANDLE>(th_handle));
+      // Do not throw beyond this point so we do not lose thread handle and then not being able to join it.
     }
   }
 
@@ -112,10 +139,7 @@ class WindowsThread : public EnvThread {
 #pragma warning(push)
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
-    // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -137,9 +161,27 @@ class WindowsThread : public EnvThread {
     }
     unsigned ret = 0;
     ORT_TRY {
+      // TODO: should I try to use SetThreadSelectedCpuSets?
+      if (p->affinity.has_value() && !p->affinity->empty()) {
+        DWORD_PTR mask = 0;
+        for (auto id : *p->affinity) {
+          mask |= DWORD_PTR{1} << id;
+        }
+        auto rc = SetThreadAffinityMask(GetCurrentThread(), mask);
+        if (!rc) {
+          const auto error_code = GetLastError();
+          LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
+                              << ", index: " << p->index
+                              << ", mask: " << *p->affinity
+                              << ", error code: " << error_code
+                              << ", error msg: " << std::system_category().message(error_code)
+                              << ". Specify the number of threads explicitly so the affinity is not set.";
+        }
+      }
+
       ret = p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(...) {
       p->param->Cancel();
       ret = 1;
     }
@@ -148,11 +190,11 @@ class WindowsThread : public EnvThread {
 #pragma warning(pop)
 
   static void __stdcall CustomThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(...) {
       p->param->Cancel();
     }
   }
@@ -178,53 +220,100 @@ class WindowsEnv : public Env {
     Sleep(static_cast<DWORD>(micros) / 1000);
   }
 
-  int GetNumCpuCores() const override {
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
+  struct LogicalProcessorInformation {
+    std::unique_ptr<char[]> buffer_;
+    gsl::span<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION> logical_processors;
+  };
+
+  std::optional<LogicalProcessorInformation> FetchLogicalProcessorInfo() const {
+    // We will fail the first time around. The docs say, the size of the structure
+    // is different on different versions and releases.
+    DWORD returnLength = 0;
+    if (GetLogicalProcessorInformation(NULL, &returnLength) == FALSE) {
+      if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+        auto last_error = GetLastError();
+        LOGS_DEFAULT(ERROR) << "GetLogicalProcessorInformation failed to obtain buffer length. error code: "
+                            << last_error
+                            << " error msg: " << std::system_category().message(last_error);
+        return {};
+      }
+    }
+
+    auto allocation = std::make_unique<char[]>(returnLength);
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(allocation.get());
     if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-      // try GetSystemInfo
-      SYSTEM_INFO sysInfo;
-      GetSystemInfo(&sysInfo);
-      if (sysInfo.dwNumberOfProcessors <= 0) {
-        ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
-      }
-      // This is the number of logical processors in the current group
-      return sysInfo.dwNumberOfProcessors;
+      auto last_error = GetLastError();
+      LOGS_DEFAULT(ERROR) << "GetLogicalProcessorInformation failed to retrieve SYSTEM_LOGICAL_PROCESSOR_INFORMATION. error code: "
+                          << last_error
+                          << " error msg: " << std::system_category().message(last_error);
+      return {};
     }
-    int processorCoreCount = 0;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
-        ++processorCoreCount;
-      }
-    }
-    if (!processorCoreCount)
-      ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
-    return processorCoreCount;
+
+    const size_t count = narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+    std::optional<LogicalProcessorInformation> result;
+    result = {std::move(allocation), gsl::make_span(buffer, count)};
+    return result;
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    auto generate_vector_of_n = [](int n) {
-      std::vector<size_t> ret(n);
-      std::iota(ret.begin(), ret.end(), 0);
-      return ret;
-    };
-    // Indeed 64 should be enough. However, it's harmless to have a little more.
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
-    if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-      return generate_vector_of_n(std::thread::hardware_concurrency());
+  static int DefaultNumCores() {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+  }
+
+  int GetNumPhysicalCpuCores() const override {
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
+      return DefaultNumCores();
     }
-    std::vector<size_t> ret;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
-        ret.push_back(buffer[i].ProcessorMask);
+
+    int phys_cores = 0;
+    for (const auto& processor_info : logical_processor_info->logical_processors) {
+      if (processor_info.Relationship == RelationProcessorCore) {
+        phys_cores++;
       }
     }
-    if (ret.empty()){
-      return generate_vector_of_n(std::thread::hardware_concurrency());
+
+    phys_cores = std::max(1, phys_cores);
+
+    return phys_cores;
+  }
+
+  std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
+    std::vector<LogicalProcessors> ret;
+
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
+      ret.resize(DefaultNumCores());
+      return ret;
     }
+
+    // Convert mask to a vector of ints
+    auto mask_to_vector = [](uint64_t mask) {
+      LogicalProcessors aff;
+      int bit = 0;
+      while (mask != 0) {
+        if ((mask & 0x1) != 0) {
+          aff.push_back(bit);
+        }
+        mask >>= 0x1;
+        ++bit;
+      }
+      return aff;
+    };
+
+    for (const auto& processor_info : logical_processor_info->logical_processors) {
+      if (processor_info.Relationship == RelationProcessorCore) {
+        // A single core can host multiple logical processors
+        // so the mask returned can have more than one bit set.
+        // We allow threads to be ran on any logical CPU within a given
+        // physical core.
+        ret.push_back(mask_to_vector(processor_info.ProcessorMask));
+      }
+    }
+
+    if (ret.empty()) {
+      ret.resize(DefaultNumCores());
+    }
+
     return ret;
   }
 
@@ -363,9 +452,9 @@ class WindowsEnv : public Env {
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "open file ", ToUTF8String(Basename(file_path)),
-          " fail, errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "open file ", ToUTF8String(Basename(file_path)),
+                             " fail, errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
 #if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
@@ -391,9 +480,9 @@ class WindowsEnv : public Env {
     if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "open file mapping ", ToUTF8String(Basename(file_path)),
-          " fail, errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "open file mapping ", ToUTF8String(Basename(file_path)),
+                             " fail, errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
     SYSTEM_INFO sysinfo;
@@ -407,11 +496,11 @@ class WindowsEnv : public Env {
     if (mapped_offset % allocation_granularity != 0) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "mapped offset must be a multiple of the allocation granularity",
-          " , mapped_offset = ", mapped_offset,
-          " , allocation_granularity = ", allocation_granularity,
-          " , errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "mapped offset must be a multiple of the allocation granularity",
+                             " , mapped_offset = ", mapped_offset,
+                             " , allocation_granularity = ", allocation_granularity,
+                             " , errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
     void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
@@ -650,7 +739,7 @@ class WindowsEnv : public Env {
       static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-              FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
@@ -682,7 +771,7 @@ class WindowsEnv : public Env {
       static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-              FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
@@ -742,6 +831,8 @@ class WindowsEnv : public Env {
   }
 
  private:
+  WindowsEnv() = default;
+
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
 };

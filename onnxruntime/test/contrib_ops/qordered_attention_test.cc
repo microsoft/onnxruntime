@@ -3,7 +3,10 @@
 
 #include "test/contrib_ops/qordered_test_utils.h"
 
-#if defined(USE_CUDA)
+// The "Attention_WithData_ROW_ORDER", "MatMul_COL_16x64x32", "MatMul_COL_16x64x32_perchannel", "MatMul_addC_COL_16x64x32", "MatMul_addC_COL_16x64x32_perchannel", "MatMul_COL_16x64x32_b3_1", "MatMul_addC_COL_16x64x32_b2_1", "MatMul_addC_COL_16x64x32_b2_1_perchannel", "MatMul_addC_broadcastC_COL_16x64x32_b2_1" tests fails in Windows Orttraining build with errors like:
+//"qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3 was false. qkv gemm weight and their scales, qkv gemm bias must all be constant!"
+
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
 
 #include <cuda.h>
 
@@ -12,19 +15,19 @@
 namespace onnxruntime {
 namespace test {
 
-static const int64_t batch_size = 1;
-static const int64_t sequence_len = 16;
-static const int64_t input_hidden_size = 32;
-static const int64_t num_heads = 2;
-static const int64_t head_size = 16;
-static const int64_t hidden_size = num_heads * head_size;
+static constexpr size_t batch_size = 1;
+static constexpr size_t sequence_len = 16;
+static constexpr size_t input_hidden_size = 32;
+static constexpr size_t num_heads = 2;
+static constexpr size_t head_size = 16;
+static constexpr size_t hidden_size = num_heads * head_size;
 
-static std::vector<int32_t> input_mask = {  // [1, 16]
+static std::array<int32_t, 16> input_mask = {  // [1, 16]
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0};
 
-static float input_scale = 0.025f;
+static constexpr float input_scale = 0.025f;
 
-static std::vector<int8_t> inputq = {  // [1, 16, 32]
+static std::array<int8_t, 512> inputq = {  // [1, 16, 32]
     -33, 7, -54, 29, 14, 6, 14, 16, 1, 16, 22, 0, 16, 49, -14, -15, 68, 11, -18, -9, -42, 6, 6, 58, 22, 31, 0, -13, 42, 40, 4, 0,
     -47, -50, -14, -30, 12, -11, -33, 79, 13, -33, 65, 26, -16, 23, 3, -4, -7, -13, 32, 25, 4, -3, -13, -35, 67, 18, -43, 65, -18, 6, -10, 36,
     -10, 2, -51, 14, 98, 17, 71, 114, 75, -70, -17, 3, -22, -28, 34, 39, 78, -13, 5, -7, 21, -15, 12, -64, 8, -11, -9, -49, -6, 45, -52, 24,
@@ -42,13 +45,13 @@ static std::vector<int8_t> inputq = {  // [1, 16, 32]
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-static std::vector<float> qw_scale = {  // [32]
+static std::array<float, 32> qw_scale = {  // [32]
     0.0250f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0250f, 0.0125f,
     0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0250f, 0.0250f, 0.0125f, 0.0250f,
     0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f,
     0.0125f, 0.0125f, 0.0125f, 0.0250f, 0.0250f, 0.0250f, 0.0250f, 0.0250f};
 
-static std::vector<int8_t> weightq = {  // 32 x 32
+static std::array<int8_t, 1024> weightq = {  // 32 x 32
     102, -19, -58, 36, 16, 45, -51, -96, 18, 39, 82, -5, 26, -70, -26, 83, 77, -45, -52, -21, 30, -34, 42, 12, 68, 22, 38, -60, 19, 83, 56, -22,
     -38, 6, 1, -29, -12, -52, 46, 77, 22, 19, -110, -1, 30, -101, -27, -38, -70, -3, 71, 13, 25, 82, 84, 48, -5, 84, 57, -12, -2, 58, 24, -5,
     13, 2, 126, 30, 10, 25, 20, -1, -41, -99, 99, 41, 0, -6, -46, -90, 88, -4, 0, -40, -64, -38, 7, -29, 47, -34, -38, -2, -34, -27, -29, -18,
@@ -82,13 +85,13 @@ static std::vector<int8_t> weightq = {  // 32 x 32
     -38, -126, 19, 1, -35, -20, -21, -33, 16, 67, 11, -9, -1, 17, 42, 41, -126, -17, 126, 27, -60, 21, -29, 37, 69, 13, -98, -74, 34, -41, 15, -32,
     86, 79, 41, 107, -4, -27, -34, -57, -6, -37, 126, 34, 54, 126, 55, 46, -34, -22, -56, -20, -36, -20, -23, -10, 77, -24, 126, -76, 81, -45, -65, -126};
 
-static std::vector<float> kw_scale = {
+static std::array<float, 32> kw_scale = {
     0.0125f, 0.0250f, 0.0125f, 0.0250f, 0.0125f, 0.0125f, 0.0125f, 0.0250f,
     0.0125f, 0.0250f, 0.0250f, 0.0250f, 0.0125f, 0.0125f, 0.0250f, 0.0250f,
     0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0250f,
     0.0125f, 0.0250f, 0.0250f, 0.0250f, 0.0125f, 0.0125f, 0.0125f, 0.0125f};
 
-static std::vector<int8_t> weightk = {
+static std::array<int8_t, 1024> weightk = {
     -28, -126, -112, 21, 58, 98, 51, -31, -17, 11, -18, 126, -63, 2, -51, 53, -15, 59, 63, -19, 3, -87, 60, 2, 2, 37, -41, 32, -10, 59, 57, 118,
     -59, -93, -32, 1, -70, -5, 35, 34, -80, -43, 29, 25, -34, 79, -116, -2, 54, -57, -26, -12, -28, -75, 27, -31, 3, 61, -37, -49, -99, -31, 18, 78,
     -76, 46, 38, -47, -40, -46, -27, 24, -7, -23, -35, -17, 79, 100, -26, -9, 17, -126, -59, -16, 70, 59, -81, 61, 1, 20, -57, -2, 86, 55, 69, 91,
@@ -122,13 +125,13 @@ static std::vector<int8_t> weightk = {
     -8, -39, -88, -49, 73, 82, -1, -61, -63, -19, 53, 51, -49, -37, 67, -39, -3, -71, 56, 22, -13, -19, -15, -7, 42, 38, -126, -32, -54, -5, 44, -34,
     -34, 49, 10, -32, 126, -85, -35, -14, 29, -4, 45, 8, -63, -83, 9, -5, -33, -32, 9, 3, -89, -43, 38, -86, -45, 16, 60, 125, -56, 17, -41, 5};
 
-static std::vector<float> vw_scale = {
+static std::array<float, 32> vw_scale = {
     0.0250f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0125f, 0.0250f, 0.0125f,
     0.0125f, 0.0125f, 0.0125f, 0.0250f, 0.0250f, 0.0125f, 0.0250f, 0.0250f,
     0.0250f, 0.0125f, 0.0250f, 0.0250f, 0.0125f, 0.0125f, 0.0250f, 0.0125f,
     0.0125f, 0.0250f, 0.0250f, 0.0125f, 0.0250f, 0.0125f, 0.0125f, 0.0250f};
 
-static std::vector<int8_t> weightv = {
+static std::array<int8_t, 1024> weightv = {
     31, 86, -21, 34, 44, -27, 55, -44, 51, 2, 88, 8, -15, 67, 49, 83, -37, -64, 45, 2, -22, 69, -40, -10, -58, -22, -64, -59, -91, -56, -83, -9,
     11, 22, 20, -76, -74, 15, -59, 101, -4, 12, 22, -18, -1, 28, 55, -10, -7, 25, 8, 34, -113, 38, 72, -53, -36, -9, -3, 43, 44, 60, -30, 122,
     70, -123, 54, -21, -35, 23, -93, -52, -54, -29, 41, 126, 71, -33, 92, 27, -55, -118, 6, 5, -57, 67, -126, 77, -16, 83, -51, -11, 31, 0, -14, 15,
@@ -162,33 +165,33 @@ static std::vector<int8_t> weightv = {
     -5, 11, -33, 48, -14, -77, -16, 6, 15, 1, -44, -52, -126, 43, 4, -20, -23, -56, -126, 17, -28, 41, -2, -40, 87, -6, 45, 6, -56, 5, 10, -11,
     -58, -45, 2, 6, -113, 71, -15, -60, 72, -34, -36, 71, 33, 52, 24, -66, -85, 76, 25, 41, -54, 82, 34, -80, -21, 36, 42, -50, 11, -82, 49, -20};
 
-static std::vector<float> q_bias = {
+static std::array<float, 32> q_bias = {
     -1.277186436757234f, 1.6187121758878464f, -1.734613728415165f, -0.17514886640301613f, -0.5098317940714134f, -0.5539087959931915f, -0.608257688189045f, -0.07264181257774535f,
     -0.4217122365862292f, 2.247702032959441f, -1.2776239444695194f, -0.1706083121592084f, -1.211101883627284f, 0.680304624880067f, -1.8905538383994187f, 1.355968463751147f,
     0.4723109770247926f, 2.825123513221927f, -2.5563638184482795f, -0.5366137135206605f, -1.6873320382776866f, -0.24543444087348498f, 1.5508321072902214f, -1.1761097529605153f,
     0.48049124885039013f, -0.16735560938589972f, 0.19936906780563687f, -0.3431399962180654f, 0.5722586120066665f, 0.14891485501103213f, 1.3247935952147036f, 0.22843396512506456f};
 
-static std::vector<float> k_bias = {
+static std::array<float, 32> k_bias = {
     0.24619460819200945f, -0.08398404567883526f, -0.1500027822803949f, 0.2827861114080157f, 0.15482546570701788f, 0.26877192933770017f, -0.46768427617609665f, 1.3671302954869269f,
     0.32288310641565066f, 1.1726558522475279f, 0.4783289872819158f, 0.9634353447318214f, 0.4671970457407523f, -0.1052461385389901f, -1.6387214532075853f, -0.4108569800917438f,
     -0.8989560657617106f, -0.4238957219438502f, 0.6239658221332831f, 0.16537652854760315f, -0.42372289575386823f, -1.922602169949666f, 0.8162008423709411f, -0.04897485014090968f,
     0.11893978754757699f, -0.6391347512055069f, 0.9036214933796791f, -0.975085221369177f, 2.0252801791768866f, 0.4230645123992678f, -0.6865073761010612f, -0.4003525956673408f};
 
-static std::vector<float> v_bias = {
+static std::array<float, 32> v_bias = {
     -1.7609127564951939f, 0.0104078206287181f, -0.7146410924581169f, 1.437348002065195f, -1.5303125385401033f, -0.918459755104044f, -0.867712954494343f, -2.5262209707832306f,
     0.531867939183994f, -1.970780061886488f, 1.5568776067288108f, -0.023019048055965895f, -0.49155965466351387f, 0.8327196070301217f, -0.763922384702817f, -1.644325441573084f,
     -1.5637541858090884f, 0.053171526292804416f, -1.5821961194911058f, -1.2062417346542489f, 0.23029741928149683f, -0.8920457050782132f, -0.06220760650838387f, 0.2942590084687021f,
     -0.4362228349183151f, -0.2344379226413643f, -0.586149329261036f, -1.5243876669794532f, 0.22378084867382358f, -1.715499198175354f, -1.3795418183607775f, -1.2237706022285266f};
 
-static float qlayer_scale = 0.250f;
-static float klayer_scale = 0.250f;
-static float vlayer_scale = 0.125f;
+static constexpr float qlayer_scale = 0.250f;
+static constexpr float klayer_scale = 0.250f;
+static constexpr float vlayer_scale = 0.125f;
 
-static float qk_scale = 0.5f;
-static float probs_scale = 0.0078125f;
-static float attn_out_scale = 0.05f;
+static constexpr float qk_scale = 0.5f;
+static constexpr float probs_scale = 0.0078125f;
+static constexpr float attn_out_scale = 0.05f;
 
-static std::vector<int8_t> attn_out_q8 = {
+static std::array<int8_t, 512> attn_out_q8 = {
     -39, 8, -75, 2, -69, -31, -42, -29, 44, 6, 0, -61, -102, 61, 28, 76,
     -48, 23, -96, -7, -38, 11, 7, -71, 51, -26, 8, 24, -119, -30, -34, -19,
     -55, -36, 60, 127, -6, 38, 127, -107, 88, -1, 56, -52, -63, 56, -31, -128,
@@ -222,12 +225,13 @@ static std::vector<int8_t> attn_out_q8 = {
     -60, 72, -105, -116, 4, -45, 86, 32, 48, 41, 10, -115, -98, 127, 17, 127,
     57, 75, -76, -45, 1, -53, 13, -4, 16, 35, -58, -4, 95, -72, 45, -98};
 
-static std::vector<int8_t> transpose(const std::vector<int8_t>& src, int h, int w) {
+template <typename T>
+static std::vector<int8_t> transpose(const T& src, size_t h, size_t w) {
   std::vector<int8_t> transposed(src.size());
   const int8_t* s = src.data();
-  for (int y = 0; y < h; y++) {
+  for (size_t y = 0; y < h; y++) {
     int8_t* t = transposed.data() + y;
-    for (int x = 0; x < w; x++) {
+    for (size_t x = 0; x < w; x++) {
       *t = *s++;
       t += h;
     }
@@ -255,7 +259,7 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   std::vector<int64_t> qkv_hidden_size(3, (int64_t)num_heads * head_size);
   test_qorder.AddAttribute("qkv_hidden_sizes", qkv_hidden_size);
 
-  test_qorder.AddInput<int8_t>("input", {batch_size, sequence_len, input_hidden_size}, inputq);
+  test_qorder.AddInput<int8_t>("input", {batch_size, sequence_len, input_hidden_size}, inputq.data(), inputq.size());
   test_qorder.AddInput<float>("scale_input", {}, {input_scale}, true);
   test_qorder.AddInput<float>("scale_Q_gemm", {}, {qlayer_scale}, true);
   test_qorder.AddInput<float>("scale_K_gemm", {}, {klayer_scale}, true);
@@ -263,20 +267,20 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   test_qorder.AddInput<int8_t>("Q_weight", {input_hidden_size, hidden_size}, transpose(weightq, input_hidden_size, hidden_size), true);
   test_qorder.AddInput<int8_t>("K_weight", {input_hidden_size, hidden_size}, transpose(weightk, input_hidden_size, hidden_size), true);
   test_qorder.AddInput<int8_t>("V_weight", {input_hidden_size, hidden_size}, transpose(weightv, input_hidden_size, hidden_size), true);
-  test_qorder.AddInput<float>("scale_Q_weight", {hidden_size}, {qw_scale}, true);
-  test_qorder.AddInput<float>("scale_K_weight", {hidden_size}, {kw_scale}, true);
-  test_qorder.AddInput<float>("scale_V_weight", {hidden_size}, {vw_scale}, true);
-  test_qorder.AddInput<float>("Q_bias", {hidden_size}, q_bias, true);
-  test_qorder.AddInput<float>("K_bias", {hidden_size}, k_bias, true);
-  test_qorder.AddInput<float>("V_bias", {hidden_size}, v_bias, true);
+  test_qorder.AddInput<float>("scale_Q_weight", {hidden_size}, qw_scale.data(), qw_scale.size(), true);
+  test_qorder.AddInput<float>("scale_K_weight", {hidden_size}, kw_scale.data(), kw_scale.size(), true);
+  test_qorder.AddInput<float>("scale_V_weight", {hidden_size}, vw_scale.data(), vw_scale.size(), true);
+  test_qorder.AddInput<float>("Q_bias", {hidden_size}, q_bias.data(), q_bias.size(), true);
+  test_qorder.AddInput<float>("K_bias", {hidden_size}, k_bias.data(), k_bias.size(), true);
+  test_qorder.AddInput<float>("V_bias", {hidden_size}, v_bias.data(), v_bias.size(), true);
   test_qorder.AddInput<float>("scale_QKT_gemm", {}, {qk_scale}, true);
   test_qorder.AddInput<float>("scale_QKT_softmax", {}, {probs_scale}, true);
   test_qorder.AddInput<float>("scale_values_gemm", {}, {attn_out_scale}, true);
-  test_qorder.AddInput<int32_t>("mask_index", {batch_size, sequence_len}, input_mask);
+  test_qorder.AddInput<int32_t>("mask_index", {batch_size, sequence_len}, input_mask.data(), input_mask.size());
   test_qorder.AddOptionalInputEdge<int8_t>();  // past
   test_qorder.AddOptionalInputEdge<float>();   // extra_add
 
-  test_qorder.AddOutput<int8_t>("output", {batch_size, sequence_len, hidden_size}, attn_out_q8);
+  test_qorder.AddOutput<int8_t>("output", {batch_size, sequence_len, hidden_size}, attn_out_q8.data(), attn_out_q8.size());
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());

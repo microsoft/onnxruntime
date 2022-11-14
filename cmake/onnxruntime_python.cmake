@@ -117,7 +117,7 @@ if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
 endif()
 if(onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
+  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_USE_NCCL)
@@ -157,19 +157,21 @@ if (onnxruntime_ENABLE_EAGER_MODE OR onnxruntime_ENABLE_LAZY_TENSOR)
     "${REPO_ROOT}/cmake/external/protobuf/src"
     ${TORCH_INCLUDE_DIRS})
 
-  if (onnxruntime_ENABLE_EAGER_MODE)
-    # For eager mode, torch build has a mkl dependency from torch's cmake config,
-    # Linking to torch libraries to avoid this unnecessary mkl dependency.
-    target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
-    find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
-    find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
-    find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
-    target_link_libraries(onnxruntime_pybind11_state PRIVATE ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY})
-  endif()
-
+  # For eager mode, torch build has a mkl dependency from torch's cmake config,
+  # Linking to torch libraries to avoid this unnecessary mkl dependency.
+  target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
+  find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
   # Explicitly link torch_python to workaround https://github.com/pytorch/pytorch/issues/38122#issuecomment-694203281
   find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${TORCH_PYTHON_LIBRARY})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE  ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY} ${TORCH_PYTHON_LIBRARY})
+  if (onnxruntime_USE_CUDA)
+    find_library(LIBTORCH_CUDA_LIBRARY torch_cuda PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    find_library(LIBC10_CUDA_LIBRARY c10_cuda PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE ${LIBTORCH_CUDA_LIBRARY} ${LIBC10_CUDA_LIBRARY})
+  endif()
+
   if (onnxruntime_ENABLE_EAGER_MODE)
     target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager)
   endif()
@@ -365,6 +367,9 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
+  )
+  file(GLOB onnxruntime_python_torchdynamo_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/torchdynamo/*.py"
   )
   file(GLOB onnxruntime_python_ortmodule_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/*.py"
@@ -668,6 +673,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental/gradient_graph
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/torchdynamo
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config
@@ -696,6 +702,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_torchdynamo_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/torchdynamo/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/

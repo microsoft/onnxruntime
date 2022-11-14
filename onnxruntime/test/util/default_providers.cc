@@ -164,13 +164,15 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op) {
 #ifdef USE_ROCM
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.tunable_op_enabled = test_tunable_op ? 1 : 0;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
+  ORT_UNUSED_PARAMETER(test_tunable_op);
   return nullptr;
 }
 
@@ -208,6 +210,14 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};
   if (auto factory = CannProviderFactoryCreator::Create(&provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
+#ifdef USE_DML
+  if (auto factory = DMLProviderFactoryCreator::Create(0))
     return factory->CreateProvider();
 #endif
   return nullptr;

@@ -11,7 +11,7 @@
 #include "core/providers/cpu/controlflow/scan_utils.h"
 #include "orttraining/training_ops/cpu/loss/cross_entropy.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

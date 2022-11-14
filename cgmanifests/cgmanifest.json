@@ -1,4 +1,5 @@
 {
+   "$schema": "https://json.schemastore.org/component-detection-manifest.json",
    "Registrations": [
       {
          "component": {
@@ -27,8 +28,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "58123b93bd7f12d17ac0c46379a0f2c0255d9213",
-               "repositoryUrl": "https://github.com/martinmoene/gsl-lite.git"
+               "commitHash": "a3534567187d2edc428efd3f13466ff75fe5805c",
+               "repositoryUrl": "https://github.com/microsoft/gsl.git"
             }
          }
       },
@@ -36,7 +37,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "3425ed846308a456f98404c79f6df1693bed6377",
+               "commitHash": "2379917985919ed3918dc12cad47f469f245be7a",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
             "comments": "needed for TVM EP"
@@ -428,10 +429,10 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "aaa5eab410c2e3fe41ebf7a2316be9c51572dbd2",
+               "commitHash": "c974557598645360fbabac71352b083117e3cc17",
                "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
             },
-            "comments": "CMake 3.18.2. For building our CI build docker image"
+            "comments": "CMake 3.24.3. For building our CI build docker image"
          }
       },
       {

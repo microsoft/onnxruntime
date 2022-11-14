@@ -15,7 +15,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -94,7 +94,7 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
   int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
   // reduce_size could be negative if input-shape has a dynamic axis
   if (reduce_size > 0) {
-    BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
+    BuildLookupTableIfFixed(info, fixed_lookup_table_, onnxruntime::narrow<size_t>(reduce_size), is_signed_);
   }
 }
 
@@ -109,7 +109,7 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_) : X_shape[axis_];
+  const size_t D = opset_ < OPSET13 ? onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis_))) : onnxruntime::narrow<size_t>(X_shape[onnxruntime::narrow<size_t>(axis_)]);
   EXP_OUT_DTYPE tmp_lookup_table[256];
   gsl::span<const EXP_OUT_DTYPE> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 
@@ -271,8 +271,8 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
   const QLinearSoftmax::EXP_OUT_DTYPE Y_scale = std::floor(1.0F / (*(Y_scale_tensor->Data<float>())));
   const auto& X_shape = input.Shape();
-  const size_t N = X_shape.SizeToDimension(axis);
-  const size_t D = X_shape.SizeFromDimension(axis);
+  const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   common::Status status;
   if (is_signed_) {
     using T = int8_t;

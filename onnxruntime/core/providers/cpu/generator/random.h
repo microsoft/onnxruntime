@@ -4,7 +4,7 @@
 #pragma once
 
 #include <random>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"

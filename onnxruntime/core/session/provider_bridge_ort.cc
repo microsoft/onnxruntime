@@ -317,6 +317,9 @@ struct ProviderHostImpl : ProviderHost {
   const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() override { return CPUIDInfo::GetCPUIDInfo(); }
   bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) override { return p->HasAVX2(); }
   bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) override { return p->HasAVX512f(); }
+  bool CPUIDInfo__HasAVX512_BF16(const CPUIDInfo* p) override { return p->HasAVX512_BF16(); }
+  bool CPUIDInfo__HasAMX_BF16(const CPUIDInfo* p) override { return p->HasAMX_BF16(); }
+  bool CPUIDInfo__HasAVX512Skylake(const CPUIDInfo* p) override { return p->HasAVX512Skylake(); }
 
   // logging::Logger (wrapped)
   bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) override { return p->OutputIsEnabled(severity, data_type); }
@@ -992,7 +995,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) override { return p->PythonOpGradBase::Init(info); }
-  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) {
+  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) override {
     return p->PythonOpGradBase::RunBackward(context, returned_ortvalues);
   }
   void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) override { p->PythonOpGradBase::SetOutputs(context, returned_args); }

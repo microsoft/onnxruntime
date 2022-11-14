@@ -6,7 +6,6 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/gsl_suppress.h"
 #include "core/session/ort_apis.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
@@ -245,6 +244,21 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
+      // models from model zoo
+      {"BERT-Squad-int8", "failed in training", {"opset12"}},
+      {"DenseNet-121-12-int8", "failed in training", {"opset12"}},
+      {"EfficientNet-Lite4-int8", "failed in training", {"opset11"}},
+      {"EfficientNet-Lite4-qdq", "failed in training", {"opset11"}},
+      {"Faster R-CNN R-50-FPN-int8", "failed in training", {"opset12"}},
+      {"Inception-1-int8", "failed in training", {"opset12"}},
+      {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
+      {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
+      {"ResNet50-qdq", "failed in training", {"opset12"}},
+      {"ResNet50_int8", "failed in training", {"opset12"}},
+      {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
+      {"SSD-int8", "failed in training", {"opset12"}},
+      {"VGG 16-int8", "failed in training", {"opset12"}},
+      {"YOLOv3-12-int8", "failed in training", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
@@ -594,7 +608,7 @@ TEST_P(ModelTest, Run) {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto opset_version = model_info->GetNominalOpsetVersion();
-    if (iter != broken_tests.end() && 
+    if (iter != broken_tests.end() &&
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
          iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
       SkipTest("It's in broken_tests");
@@ -788,7 +802,7 @@ TEST_P(ModelTest, Run) {
           const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
           if (v == nullptr)
             continue;
-          ret = VerifyValueInfo(*v, Ort::Unowned<Ort::Value>{actual_output_value});
+          ret = VerifyValueInfo(*v, actual_output_value);
           compare_result = ret.first;
           ASSERT_EQ(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
 
@@ -842,6 +856,9 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_ARMNN
   provider_names.push_back(ORT_TSTR("armnn"));
+#endif
+#ifdef USE_DML
+  provider_names.push_back(ORT_TSTR("dml"));
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
@@ -931,7 +948,16 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded")};
+      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded"),
+      // models from model zoo
+      ORT_TSTR("Tiny YOLOv3"),
+      ORT_TSTR("BERT-Squad"),
+      ORT_TSTR("YOLOv3"),
+      ORT_TSTR("Candy"),
+      ORT_TSTR("SSD"),
+      ORT_TSTR("ResNet101_DUC_HDC-12"),
+      ORT_TSTR("YOLOv3-12")
+      };
   static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                   ORT_TSTR("mlperf_ssd_mobilenet_300"),
                                                   ORT_TSTR("mask_rcnn"),
@@ -1044,7 +1070,12 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("mask_rcnn"),
                                                     ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512")};
+                                                    ORT_TSTR("zfnet512"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC-12"),
+                                                    ORT_TSTR("FCN ResNet-101"),
+                                                    ORT_TSTR("SSD")
+    };
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
@@ -1131,9 +1162,12 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
   std::replace(name.begin(), name.end(), '/', '_');
   std::replace(name.begin(), name.end(), '\\', '_');
 
+  // in case there's whitespace in directory name
+  std::replace(name.begin(), name.end(), ' ', '_');
+
   // Note: test name only accepts '_' and alphanumeric
   // remove '.', '-', ':'
-  char chars[] = ".-:";
+  char chars[] = ".-:()";
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }

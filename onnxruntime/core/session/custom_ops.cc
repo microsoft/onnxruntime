@@ -139,7 +139,7 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
-common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains,
+common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                     std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
@@ -247,6 +247,11 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
           .SinceVersion(1);
+
+      auto input_count = op->GetInputTypeCount(op);
+      for (size_t i = 0; i < input_count; i++) {
+        def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
+      }
 
       for (auto& id : type_constraint_ids[op]) {
         def_builder.TypeConstraint(id, DataTypeImpl::AllTensorTypes());

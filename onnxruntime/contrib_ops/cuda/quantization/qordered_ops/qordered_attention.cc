@@ -156,7 +156,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
 
 #endif
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
+QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true, true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   input_hidden_size_ = 0;
   int cuda_runtime_version = 0;
@@ -208,8 +208,14 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
-                                  mask_index, nullptr, nullptr, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), &merged_weights_shape, merged_bias_shape,
+                                  mask_index,
+                                  nullptr,  // past
+                                  nullptr,  // extra_add_qk
+                                  nullptr,  // key
+                                  nullptr,  // value
+                                  nullptr,  // parameters
+                                  device_prop.maxThreadsPerBlock));
 
   const Tensor* tensor_scale_attn_scores = context->Input<Tensor>(InputIds::Scale_QK_Gemm);
   const float* scale_attn_scores_data = tensor_scale_attn_scores->Data<float>();
@@ -244,7 +250,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int64_t size_of_attention_scores = ((int64_t)batch_size) * num_heads_ * sequence_length * sequence_length;
 
   // transposed qkv_layer,  union(stacked, attention probs + attention scores)
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>((int64_t)m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
 
   int8_t* stacked_qkv_layers = gemm_buffer_quantized.get() + ((int64_t)m * n);
   int8_t* tranposed_qkv_layers = gemm_buffer_quantized.get();
