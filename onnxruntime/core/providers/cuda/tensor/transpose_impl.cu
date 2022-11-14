@@ -23,8 +23,9 @@ __global__ void Transpose3DKernel(const int64_t m, const int64_t n, const int64_
   if (x < n) {
 #pragma unroll
     for (unsigned int i = 0; i < TileSize; i += (TileSize / kNumElementsPerThread)) {
-      if (y + i < m) {
-        tile[threadIdx.y + i][threadIdx.x] = input_data[blockIdx.z * batch_stride + (y + i) * n + x];
+      int y_idx = y + i;
+      if (y_idx < m) {
+        tile[threadIdx.y + i][threadIdx.x] = input_data[blockIdx.z * batch_stride + y_idx * n + x];
       }
     }
   }
@@ -36,8 +37,9 @@ __global__ void Transpose3DKernel(const int64_t m, const int64_t n, const int64_
   if (x < m) {
 #pragma unroll
     for (unsigned int i = 0; i < TileSize; i += (TileSize / kNumElementsPerThread)) {
-      if (y + i < n) {
-        output_data[blockIdx.z * batch_stride + (y + i) * m + x] = tile[threadIdx.x][threadIdx.y + i];
+      int y_idx = y + i;
+      if (y_idx < n) {
+        output_data[blockIdx.z * batch_stride + y_idx * m + x] = tile[threadIdx.x][threadIdx.y + i];
       }
     }
   }
