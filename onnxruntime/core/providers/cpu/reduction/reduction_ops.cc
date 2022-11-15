@@ -619,12 +619,12 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   fast_shape.push_back(input_shape[0]);
   if (reduce[0])
     fast_axes.push_back(0);
-  for (size_t i = 1; i < input_shape_size; ++i) {
-    if (reduce[i] == reduce[i - 1]) {
-      fast_shape[fast_shape.size() - 1] *= input_shape[i];
+  for (int64_t i = 1; i < input_shape_size; ++i) {
+    if (reduce[onnxruntime::narrow<size_t>(i)] == reduce[onnxruntime::narrow<size_t>(i - 1)]) {
+      fast_shape[onnxruntime::narrow<size_t>(fast_shape.size()- 1)] *= input_shape[onnxruntime::narrow<size_t>(i)];
     } else {
-      if (reduce[i]) {
-        fast_axes.push_back(fast_shape.size());
+      if (reduce[onnxruntime::narrow<size_t>(i)]) {
+        fast_axes.push_back(onnxruntime::narrow<int64_t>(fast_shape.size()));
       }
       fast_shape.push_back(input_shape[i]);
     }
