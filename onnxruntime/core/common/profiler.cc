@@ -25,7 +25,7 @@ profiling::Profiler::~Profiler() {}
   auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
   for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->Start(ts);
-  } 
+  }
   return start_time;
 }
 
@@ -49,7 +49,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   custom_logger_ = custom_logger;
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->StartProfiling();
+    ep_profiler->StartProfiling(profiling_start_time_);
   }
 }
 
@@ -62,7 +62,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   profile_stream_file_ = ToUTF8String(file_name);
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->StartProfiling();
+    ep_profiler->StartProfiling(profiling_start_time_);
   }
 }
 
@@ -87,7 +87,7 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
     //TODO: sync_gpu if needed.
     std::lock_guard<OrtMutex> lock(mutex_);
     if (events_.size() < max_num_events_) {
-      events_.emplace_back(event);
+      events_.emplace_back(std::move(event));
     } else {
       if (session_logger_ && !max_events_reached) {
         LOGS(*session_logger_, ERROR)
