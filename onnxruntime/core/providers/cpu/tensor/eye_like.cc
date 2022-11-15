@@ -46,7 +46,7 @@ struct ComputeDispatchTarget {
       return;
     }
 
-    output_mat.diagonal(onnxruntime::narrow<size_t>(k)).array() = static_cast<T>(1);
+    output_mat.diagonal(onnxruntime::narrow<ptrdiff_t>(k)).array() = static_cast<T>(1);
   }
 };
 }  // namespace
