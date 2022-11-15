@@ -266,7 +266,7 @@ Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
     // parallel copy the data across
     auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
                                                         *p.output_tensor,
-                                                        onnxruntime::narrow<size_t>(initial_output_offset,)
+                                                        onnxruntime::narrow<size_t>(initial_output_offset),
                                                         output_strides_for_copy,
                                                         prep.tensor->Shape(),
                                                         *prep.tensor,

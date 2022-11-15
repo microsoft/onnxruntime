@@ -175,7 +175,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     if (per_thread_tasks > 20) {
       concurrency::ThreadPool::TryParallelFor(
         context->GetOperatorThreadPool(),
-        onnxruntime::narrow<std::ptrdiff_t>(distribute_count,)
+        onnxruntime::narrow<std::ptrdiff_t>(distribute_count),
         static_cast<double>(copy_byte),
         std::move(copy_fn));
     } else {
