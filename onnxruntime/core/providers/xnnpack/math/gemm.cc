@@ -68,7 +68,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
       break;
     }
     
-    if (input_defs.size() == 3 && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
+    if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
       break;
     }
 
@@ -88,8 +88,9 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
   const auto& input_defs = node.InputDefs();
   const auto* shapeA = input_defs[0]->Shape();
   const auto* shapeB = input_defs[1]->Shape();
+  const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
 
-  numberOfInputs_ = input_defs.size();
+  C_matrix_exists_ = C_arg && C_arg->Exists();
 
   // A - MxK 
   if (trans_A_ == CblasNoTrans) {
@@ -118,7 +119,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
   if (input_idx == 1) {
     B_ = &tensor;
-    if (numberOfInputs_ == 3) {
+    if (C_matrix_exists_) {
         return Status::OK();
     }
   }
@@ -131,35 +132,35 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
   float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
 
-  const float* biasData = nullptr;
+  const float* bias_Data = nullptr;
 
-  if (numberOfInputs_ == 3) {
-    biasData = tensor.Data<float>();
+  if (C_matrix_exists_) {
+    bias_Data = tensor.Data<float>();
   }
 
-    xnn_status status = xnn_status::xnn_status_uninitialized;
-    struct xnn_operator* p = nullptr;
-    status = xnn_create_fully_connected_nc_f32(
-        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
-        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
-        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
-        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
-        B_->Data<float>(),             // const float* kernel,
-        biasData,                                                  // const float* bias,
-        output_min,
-        output_max,
-        flags,
-    #ifdef XNN_CACHE_ENABLE
-        &xnn_caches_,
-    #else
-        0,
-    #endif
-        &p);
+  xnn_status status = xnn_status::xnn_status_uninitialized;
+  struct xnn_operator* p = nullptr;
+  status = xnn_create_fully_connected_nc_f32(
+      trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
+      trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
+      trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
+      trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
+      B_->Data<float>(),             // const float* kernel,
+      bias_Data,                                                  // const float* bias,
+      output_min,
+      output_max,
+      flags,
+  #ifdef XNN_CACHE_ENABLE
+      &xnn_caches_,
+  #else
+      0,
+  #endif
+      &p);
 
-    if (status != xnn_status_success) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
-    }
-    op0_.reset(p);
+  if (status != xnn_status_success) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
+  }
+  op0_.reset(p);
   
   return Status::OK();
 }

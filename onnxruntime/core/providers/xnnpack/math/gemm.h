@@ -32,7 +32,8 @@ class Gemm : protected GemmBase, public XnnpackKernel {
   int64_t M_=-1;
   int64_t K_=-1;
   int64_t N_=-1;
-  int64_t numberOfInputs_=-1;
+  
+  bool C_matrix_exists_;
 
   std::optional<std::pair<float, float>> clip_min_max_;
 
