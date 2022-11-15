@@ -172,7 +172,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     // Use slicing
-    if (should_use_proxy_data) {
+    if (do_slicing_ && should_use_proxy_data) {
       if (measure_matmul_perf_) {
         cudaDeviceSynchronize();
       }

@@ -154,7 +154,7 @@ void SliceOut(cudaStream_t stream,
               const int vocab_size,
               int batch_size,
               int sequence_length) {
-  constexpr int tpb = 256;
+  constexpr int tpb = 1024;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
 

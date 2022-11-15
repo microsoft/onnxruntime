@@ -50,6 +50,7 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_b_;
   bool should_use_proxy_data_ = ParseEnvironmentVariableWithDefault<bool>("ORT_PROXY_DATA", false);
   bool measure_matmul_perf_ = ParseEnvironmentVariableWithDefault<bool>("ORT_MEASURE_PERF", false);
+  bool do_slicing_ = ParseEnvironmentVariableWithDefault<bool>("ORT_SLICE", true);
   mutable bool copied_weights_ = false;
 };
 }  // namespace cuda
