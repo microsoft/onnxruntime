@@ -242,6 +242,7 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
+    info.tunable_op.enabled = params->tunable_op_enabled;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
