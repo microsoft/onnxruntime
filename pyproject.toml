@@ -16,6 +16,12 @@ extend_skip_glob = [
 [tool.pydocstyle]
 convention = "google"
 
+[tool.pylint.BASIC]
+good-names = [
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n",
+    "p", "q", "r", "s", "t", "u", "v", "w", "ex", "Run", "_", "x", "y", "z"
+]
+
 [tool.pylint.messages_control]
 disable = [
     "format",
@@ -23,6 +29,8 @@ disable = [
     "import-error",
     "no-name-in-module",
     "no-member",
+    "too-many-arguments",
+    "too-many-locals",
     "too-few-public-methods",
     "missing-docstring",
     "fixme",

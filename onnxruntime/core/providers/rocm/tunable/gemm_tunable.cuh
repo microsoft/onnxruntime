@@ -8,7 +8,7 @@
 #include "core/providers/rocm/tunable/gemm_ck.cuh"
 #include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace rocm {

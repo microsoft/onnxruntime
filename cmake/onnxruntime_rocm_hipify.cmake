@@ -155,6 +155,7 @@ set(provider_excluded_files
   "gpu_data_transfer.cc"
   "gpu_data_transfer.h"
   "integer_gemm.cc"
+  "tunable/*"
 )
 
 set(training_ops_excluded_files

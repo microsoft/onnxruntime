@@ -11,7 +11,7 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
-
+using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {
 
@@ -60,7 +60,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
               p_output[i] = value * (static_cast<T>(C) * value * value + static_cast<T>(B));
             }
 
-            MlasComputeTanh(p_output, p_output,gsl::narrow_cast<size_t>(count));
+            MlasComputeTanh(p_output, p_output,narrow<size_t>(count));
 
             for (int64_t i = 0; i < count; i++) {
               p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
@@ -106,7 +106,7 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
       temp[i] = value * 0.5f;
     }
 
-    MlasComputeTanh(output, output,gsl::narrow_cast<size_t>(count));
+    MlasComputeTanh(output, output,narrow<size_t>(count));
 
     for (int64_t i = 0; i < count; i++) {
       output[i] = temp[i] * (output[i] + 1.0f);
@@ -118,7 +118,7 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
       temp[i] = value * 0.5f;
     }
 
-    MlasComputeErf(output, output,gsl::narrow_cast<size_t>(count));
+    MlasComputeErf(output, output,narrow<size_t>(count));
 
     for (int64_t i = 0; i < count; i++) {
       output[i] = temp[i] * (output[i] + 1.0f);
