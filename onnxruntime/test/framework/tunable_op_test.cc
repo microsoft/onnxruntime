@@ -15,12 +15,6 @@
 #pragma comment(lib, "WinMM.lib")
 #endif
 
-#ifdef ORT_NO_RTTI
-#define GTEST_SKIP_IF_NO_RTTI() GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
-#else
-#define GTEST_SKIP_IF_NO_RTTI()
-#endif
-
 using namespace std::chrono_literals;
 
 namespace onnxruntime {
@@ -274,8 +268,9 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
 };
 
 TEST(TunableOp, SelectFast) {
-  GTEST_SKIP_IF_NO_RTTI();
-
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
   constexpr const int a = 7500000;
   constexpr const int b = 42;
   int c{};
@@ -289,6 +284,7 @@ TEST(TunableOp, SelectFast) {
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "FastFull");
+#endif
 }
 
 class TunableVecAddSelectSupported : public TunableOp<VecAddParamsRecordLastRun> {
@@ -300,8 +296,9 @@ class TunableVecAddSelectSupported : public TunableOp<VecAddParamsRecordLastRun>
 };
 
 TEST(TunableOp, SelectSupported) {
-  GTEST_SKIP_IF_NO_RTTI();
-
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
   constexpr const int a = 7500000;
   constexpr const int b = 42;
   int c{};
@@ -315,6 +312,7 @@ TEST(TunableOp, SelectSupported) {
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "SlowFull");
+#endif
 }
 
 class TunableVecAddSelectFastestIfSupported : public TunableOp<VecAddParamsRecordLastRun> {
@@ -329,8 +327,9 @@ class TunableVecAddSelectFastestIfSupported : public TunableOp<VecAddParamsRecor
 };
 
 TEST(TunableOp, SelectFastestIfSupported) {
-  GTEST_SKIP_IF_NO_RTTI();
-
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
   constexpr const int a[] = {0, 1, 2, 3};
   constexpr const int b[] = {42, 42, 42, 42};
   int c[4] = {};
@@ -349,11 +348,13 @@ TEST(TunableOp, SelectFastestIfSupported) {
   status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "FastestNarrow");
+#endif
 }
 
 TEST(TunableOp, DisabledWithManualSelection) {
-  GTEST_SKIP_IF_NO_RTTI();
-
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
   constexpr const int a = 7500000;
   constexpr const int b = 42;
   int c{};
@@ -369,6 +370,7 @@ TEST(TunableOp, DisabledWithManualSelection) {
   ASSERT_EQ(status.Category(), common::StatusCategory::NONE);
   ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr("FastestNarrow only supports VecAdd 4 elements"));
+#endif
 }
 
 class TunableVecAddNotHandleInplaceUpdate : public TunableOp<VecAddParams> {
@@ -378,6 +380,7 @@ class TunableVecAddNotHandleInplaceUpdate : public TunableOp<VecAddParams> {
   }
 };
 
+#ifndef ORT_NO_RTTI
 class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
  public:
   TunableVecAddHandleInplaceUpdate() {
@@ -404,10 +407,12 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 
   bool is_proxy_params_used{false};
 };
+#endif
 
 TEST(TunableOp, HandleInplaceUpdate) {
-  GTEST_SKIP_IF_NO_RTTI();
-
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
   constexpr const int a = 7500000;
   constexpr const int b = 42;
   int c{};
@@ -459,6 +464,7 @@ TEST(TunableOp, HandleInplaceUpdate) {
     ASSERT_EQ(c, 7504242);
     ASSERT_EQ(op.is_proxy_params_used, true);
   }
+#endif
 }
 
 }  // namespace tuning
