@@ -166,81 +166,126 @@ export class Tensor implements TensorInterface {
     this.size = size;
   }
   // #endregion
-  static bufferToTensor(buffer: Uint8ClampedArray, imgH: number, imgW: number, format:string = "RGBA", norm:boolean = false): Tensor {
-    var offset = imgH*imgW*3;
-    const float32Data = new Float32Array(offset);
-    var step: number;
-    var R_ptr: number;
-    var G_ptr: number;
-    var B_ptr: number;
+  static bufferToTensor(
+      buffer: Uint8ClampedArray, height: number, width: number, format: string = 'rgba',
+      norm: boolean = false): Tensor {
+    var offset = height * width;
+    const float32Data = new Float32Array(offset * 3);
+    var step: number = 4;
+    var R_ptr: number = 0;
+    var G_ptr: number = 1;
+    var B_ptr: number = 2;
     var normValue: number = 255.;
 
-    if(format=="RGBA"){
+    if (format == 'RGBA') {
       step = 4;
       R_ptr = 0;
       G_ptr = 1;
       B_ptr = 2;
-    }else{
-      step = 4;
+    } else if (format == 'RGB') {
+      step = 3;
       R_ptr = 0;
       G_ptr = 1;
       B_ptr = 2;
+    } else if (format == 'RBG') {
+      step = 3;
+      R_ptr = 0;
+      B_ptr = 1;
+      G_ptr = 2;
     }
 
-    if(norm){
-      var maxValue:number = -300;
-      for (let i=0; i < imgH*imgW*step; i++) {
-        if(buffer[i]>maxValue) maxValue = buffer[i];
+    if (norm) {
+      var maxValue: number = -300;
+      for (let i = 0; i < offset * step; i++) {
+        if (buffer[i] > maxValue) maxValue = buffer[i];
       }
       normValue = maxValue;
     }
 
-    for (let i=0, RIndex = 0, GIndex = imgH*imgW, BIndex = imgH*imgW*2; i < imgH*imgW; i++,R_ptr+=step,B_ptr+=step,G_ptr+=step) {
+    for (let i = 0, RIndex = 0, GIndex = offset, BIndex = offset * 2; i < offset;
+         i++, R_ptr += step, B_ptr += step, G_ptr += step) {
       float32Data[RIndex++] = buffer[R_ptr] / normValue;
       float32Data[GIndex++] = buffer[G_ptr] / normValue;
       float32Data[BIndex++] = buffer[B_ptr] / normValue;
     }
 
     // Float32Array -> ort.Tensor
-    const inputTensor = new Tensor("float32", float32Data, [1, 3, imgH, imgW]);
+    const inputTensor = new Tensor('float32', float32Data, [1, 3, height, width]);
     return inputTensor;
   }
 
   // #region factory
   static fromImage(image: ImageData): Tensor;
   static fromImage(image: HTMLImageElement): Tensor;
-  static fromImage(image: ImageData|HTMLImageElement): Tensor {
-
-    const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' &&
-    image instanceof HTMLImageElement;
-    const isImageDataEle = typeof (ImageData) !== 'undefined' &&
-    image instanceof ImageData;
+  static fromImage(image: ImageBitmap, format?: string): Tensor;
+  static fromImage(image: ImageData|HTMLImageElement|ImageBitmap, format?: 'rgb'|'rbg'|'rgba'): Tensor {
+    const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
+    const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
+    const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
 
     var data: Uint8ClampedArray;
-    var imgH: number;
-    var imgW: number;
+    var image_height: number = image.height;
+    var image_width: number = image.width;
 
-    if(isHTMLImageEle){
-      let Pixels2DContext: CanvasRenderingContext2D | null;
+    if (isHTMLImageEle) {
+      let Pixels2DContext: CanvasRenderingContext2D|null;
 
       Pixels2DContext = document.createElement('canvas').getContext('2d');
 
-      if(Pixels2DContext != null){
+      if (Pixels2DContext != null) {
+        Pixels2DContext.drawImage(image as HTMLImageElement, 0, 0, image_width, image_height);
         data = Pixels2DContext.getImageData(0, 0, image.width, image.height).data;
-      }else{
+      } else {
         throw new Error('Can not access image data');
       }
-      imgH = image.height;
-      imgW = image.width;
-    }else if (isImageDataEle){
+    } else if (isImageDataEle) {
       data = (image as ImageData).data;
-      imgH = image.height;
-      imgW = image.width;
-    }else{
+    } else if (isImageBitmap) {
+      if (format == null) {
+        throw new Error('Please provide image format with Imagebitmap');
+      }
+      let Pixels2DContext: CanvasRenderingContext2D|null;
+
+      Pixels2DContext = document.createElement('canvas').getContext('2d');
+
+      if (Pixels2DContext != null) {
+        Pixels2DContext.drawImage(image as ImageBitmap, 0, 0, image_width, image_height);
+        data = Pixels2DContext.getImageData(0, 0, image.width, image.height).data;
+        return Tensor.bufferToTensor(data, image_width, image_width, format);
+      } else {
+        throw new Error('Can not access image data');
+      }
+    } else {
       throw new Error('Input data provided is not supported - aborted tensor creation');
     }
 
-    return Tensor.bufferToTensor(data, imgH, imgW);
+    return Tensor.bufferToTensor(data, image_width, image_width);
+  }
+
+  static toImage(tensor: Tensor): ImageData;
+  static toImage(tensor: Tensor): ImageData {
+    let Pixels2DContext: CanvasRenderingContext2D|null;
+
+    Pixels2DContext = document.createElement('canvas').getContext('2d');
+    if (Pixels2DContext != null) {
+      var image_height = tensor.dims[3];
+      var image_width = tensor.dims[2];
+      var image = Pixels2DContext.createImageData(image_width, image_height);
+      var R_ptr = 0;
+      var G_ptr = image_width * image_height;
+      var B_ptr = image_width * image_height * 2;
+
+      for (let i = 0; i < image_height * image_width * 3; i += 4) {
+        image.data[i + 0] = (tensor.data[R_ptr++] as number) * 255.;  // R value
+        image.data[i + 1] = (tensor.data[G_ptr++] as number) * 255.;  // G value
+        image.data[i + 2] = (tensor.data[B_ptr++] as number) * 255.;  // B value
+        image.data[i + 3] = 255;                                      // A value
+      }
+    } else {
+      throw new Error('Can not access image data');
+    }
+
+    return image;
   }
 
   // #region fields

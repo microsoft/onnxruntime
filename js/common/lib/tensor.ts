@@ -248,13 +248,28 @@ export interface TensorFactory {
 
   /**
    * Create a new tensor object from image object
+   * @param image - Image object holding the image data
+   * @param format - specifies the pixel format
+   */
+  fromImage(image: ImageBitmap, format?: string): Tensor;
+
+  /**
+   * Create a new tensor object from image object
    * @param buffer - Extracted image buffer data - assuming RGBA format
    * @param imgH - image height
    * @param imgW - image width
    * @param format - String - image buffer format
-   * @param norm - Boolean value for if to normalizing the buffer values between 1:-1 - default behavior is normalizing it by 255.
+   * @param norm - Boolean value for if to normalizing the buffer values between 1:-1 - default behavior is normalizing
+   *     it by 255.
    */
-   bufferToTensor(buffer: Uint8ClampedArray, imgH: number, imgW: number, format:string, norm:boolean): Tensor;
+  bufferToTensor(buffer: Uint8ClampedArray, imgH: number, imgW: number, format: string, norm: boolean): Tensor;
+
+  /**
+   * Create a new tensor object from image object
+   * @param tensor - Input tensor for image generation
+   * @param idElement - HTML element ID
+   */
+  toImage(tensor: Tensor): HTMLImageElement;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
