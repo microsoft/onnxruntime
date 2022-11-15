@@ -128,5 +128,39 @@ Status ScatterNDImpl(
   return Status::OK();
 }
 
+template <unsigned TPB>
+__global__ void SliceOutKernel(half* output,
+                               const half* input,
+                               const int padded_vocab_size,
+                               const int vocab_size,
+                               int batch_size,
+                               int sequence_length,
+                               int flush_all_to_zero) {
+  const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
+
+  const int input_offset = sequence_position * padded_vocab_size;
+  
+  const int output_offset = sequence_position * vocab_size;
+
+  for (int it = threadIdx.x; it < vocab_size; it += TPB) {
+    output[output_offset + it] = input[input_offset + it];
+  }
+}
+
+void SliceOut(cudaStream_t stream,
+              void* output,
+              const void* input,
+              const int padded_vocab_size,
+              const int vocab_size,
+              int batch_size,
+              int sequence_length) {
+  constexpr int tpb = 256;
+  const dim3 grid(sequence_length, batch_size, 1);
+  const dim3 block(tpb, 1, 1);
+
+  SliceOutKernel<tpb>
+      <<<grid, block, 0, stream>>>(reinterpret_cast<half*>(output), reinterpret_cast<half*>(input), padded_vocab_size, vocab_size, batch_size, sequence_length);
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

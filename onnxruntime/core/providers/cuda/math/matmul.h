@@ -22,20 +22,27 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
     if (should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
       std::cout << "Using proxy" << std::endl;
-      cudaMalloc(&data, 768 * 50264 * 2);
+      cudaMalloc(&proxy_weights_, 768 * 50264 * 2);
+      cudaMalloc(&proxy_results_, 4 * 5 * 50264 * 2);
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
   ~MatMul() {
-    if (data != nullptr) {
-      cudaFree(data);
+    if (proxy_weights_ != nullptr) {
+      cudaFree(proxy_weights_);
     }
+
+    if (proxy_results_ != nullptr) {
+      cudaFree(proxy_results_);
+    }
+
   }
 
  private:
-  void* data = nullptr;
+  void* proxy_weights_ = nullptr;
+  void* proxy_results_ = nullptr;
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;

@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/tensor/scatter_nd_impl.h"
 #include <chrono>
 
 using namespace std::chrono;
@@ -149,13 +150,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        should_use_proxy_data ? reinterpret_cast<const CudaT*>(data)
+        should_use_proxy_data ? reinterpret_cast<const CudaT*>(proxy_weights_)
                               : reinterpret_cast<const CudaT*>(right_X->Data<T>()),
         should_use_proxy_data ? static_cast<int>(50264) : ldb,
         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
         &zero,
-        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+        should_use_proxy_data ? reinterpret_cast<const CudaT*>(proxy_results_)
+                              : reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         static_cast<int>(50264),
         device_prop));
 
@@ -166,7 +168,34 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       auto duration = duration_cast<microseconds>(stop - start);
 
-      std::cout << duration.count() << std::endl;
+      std::cout << "MatMul duration: " << duration.count() << std::endl;
+    }
+
+    // Use slicing
+    if (should_use_proxy_data) {
+      if (measure_matmul_perf_) {
+        cudaDeviceSynchronize();
+      }
+
+      auto start_2 = high_resolution_clock::now();
+
+      SliceOut(Stream(),
+               Y->MutableDataRaw(),
+               proxy_results_,
+               50264,
+               50257,
+               static_cast<int>(Y->Shape()[0]),
+               static_cast<int>(Y->Shape()[1]));
+
+      if (measure_matmul_perf_) {
+        cudaDeviceSynchronize();
+
+        auto stop_2 = high_resolution_clock::now();
+
+        auto duration_2 = duration_cast<microseconds>(stop_2 - start_2);
+
+        std::cout << "Slicing duration: " << duration_2.count() << std::endl;
+      }
     }
 
     return Status::OK();
