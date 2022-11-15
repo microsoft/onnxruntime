@@ -13,6 +13,7 @@
 #include <functional>
 
 #ifdef _WIN32
+#include "test/platform/windows/env.h"
 #include <Windows.h>
 #endif
 
@@ -482,19 +483,58 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
 #endif
 }
 
+test::CpuInfo MockCpuInfo(int32_t num_group, int32_t core_per_group, int32_t logical_processor_per_core) {
+  ORT_ENFORCE(num_group > 0 && core_per_group > 0 && logical_processor_per_core > 0);
+  test::CpuInfo cpu_info;
+  for (int32_t group = 0; group < num_group; group++) {
+    test::CpuCores cpu_cores;
+    int32_t logical_processor_start = 0;
+    for (int32_t core = 0; core < core_per_group; core++) {
+      test::CpuCore cpu_core;
+      int32_t logical_processor_end = logical_processor_start + logical_processor_per_core;
+      for (int32_t processor = logical_processor_start; processor < logical_processor_end; processor++) {
+        cpu_core.push_back(processor);
+      }
+      cpu_cores.push_back(std::move(cpu_core));
+      logical_processor_start = logical_processor_end;
+    }
+    cpu_info.push_back(std::move(cpu_cores));
+  }
+  return cpu_info;
+}
+
 #ifdef _WIN32
-TEST(ThreadPoolTest, TestNuma_2_Group_64_core_128_Processor) {
-  auto& env = Env::Default();
-  auto system_info_snap = env.GetSystemInfo();
-  int32_t logical_processors_per_core = 2;
-  int32_t cores_per_group = 32;
-  int32_t num_cores = 64;
-  env.SetSystemInfo({logical_processors_per_core, cores_per_group, num_cores});
+void TestWindowsNuma(int32_t num_group, int32_t core_per_group, int32_t logical_processor_per_core) {
+  ORT_ENFORCE(num_group > 0 &&
+              core_per_group > 0 &&
+              logical_processor_per_core > 0 &&
+              (logical_processor_per_core & (logical_processor_per_core - 1)) == 0);
+
+  test::WindowsEnvTester env;
+  env.SetCpuInfo(MockCpuInfo(num_group, core_per_group, logical_processor_per_core));
+
   std::vector<uint64_t> default_affinities;
-  int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
+  int default_threadpool_size = static_cast<int>(env.GetDefaultThreadpoolSetting(default_affinities));
+
   ASSERT_TRUE(default_threadpool_size == 64);
-  // recover system info
-  env.SetSystemInfo(system_info_snap);
+  ASSERT_TRUE(default_affinities.size() == 128);
+
+  constexpr uint64_t BitThree = 3;
+  int32_t num_bit = static_cast<int32_t>(log2(logical_processor_per_core)) + 1;
+  
+  for (int32_t group = 0; group < num_group; ++group) {
+    for (int32_t core = 0; core < core_per_group; ++core) {
+      int32_t thread_id = group * core_per_group + core;
+      int32_t affinity_index = thread_id * 2;
+
+      ASSERT_TRUE(default_affinities[affinity_index] == static_cast<uint64_t>(group));
+      ASSERT_TRUE(default_affinities[affinity_index + 1] == BitThree << (core * num_bit));
+    }
+  }
+}
+
+TEST(ThreadPoolTest, TestNuma_2_Group_64_core_128_Processor) {
+  TestWindowsNuma(2, 32, 2);
 }
 #endif
 
