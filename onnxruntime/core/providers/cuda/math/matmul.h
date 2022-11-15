@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -19,7 +20,7 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
-    if (Node().Name() == "/lm_head/MatMul") {
+    if (should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
       cudaMalloc(&data, 768 * 50264 * 2);
     }
   }
@@ -39,6 +40,8 @@ class MatMul final : public CudaKernel {
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
+  bool should_use_proxy_data_ = ParseEnvironmentVariableWithDefault<bool>("ORT_PROXY_DATA", false);
+  bool measure_matmul_perf_ = ParseEnvironmentVariableWithDefault<bool>("ORT_MEASURE_PERF", false);
 };
 }  // namespace cuda
 }  // namespace onnxruntime
