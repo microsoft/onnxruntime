@@ -187,7 +187,7 @@
        a training build with build flags 'enable_training' and
        'enable_training_on_device' set.
   -->
-  <PropertyGroup Condition="'$(OnDeviceTraining)' == 'true'">
+  <PropertyGroup Condition="'$(OnDeviceTraining)'=='true'">
     <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
   </PropertyGroup>
 
