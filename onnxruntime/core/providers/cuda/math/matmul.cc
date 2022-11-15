@@ -109,13 +109,17 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     transb = false;
   }
 
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, false));
+  bool should_use_padded_data = should_use_padded_weights_ && Node().Name() == "/lm_head/MatMul";
+
+  TensorShape fake_right;
+  if (should_use_padded_data) {
+    fake_right = right_X->Shape();
+    fake_right[1] = 50264; 
+  }
+      MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), should_use_padded_data ? fake_right : right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, false));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-  //if (Node().Name() == "/lm_head/MatMul") {
-  //  std::cout << Y->Shape();
-  //}
 
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
@@ -132,8 +136,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    bool should_use_padded_data = should_use_padded_weights_ && Node().Name() == "/lm_head/MatMul";
-
     if (!copied_weights_ && should_use_padded_data) {
       cudaMemcpyAsync(padded_weights_, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
       copied_weights_ = true;
@@ -154,13 +156,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.K()),
         &alpha,
         should_use_padded_data ? reinterpret_cast<const CudaT*>(padded_weights_)
-                              : reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+                               : reinterpret_cast<const CudaT*>(right_X->Data<T>()),
         should_use_padded_data ? static_cast<int>(50264) : ldb,
         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
         &zero,
-        should_use_padded_data ? reinterpret_cast<CudaT*>(padded_results_)
-                              : reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+        should_use_padded_data ? reinterpret_cast<CudaT*>(Y->MutableData<T>())
+                               : reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         should_use_padded_data ? static_cast<int>(50264) : ldc,
         device_prop));
 
@@ -175,6 +177,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     // Use slicing to slice out padded data
+    /*
     if (should_use_padded_data) {
       if (measure_matmul_perf_) {
         cudaDeviceSynchronize();
@@ -200,6 +203,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         std::cout << "Slicing duration: " << duration_2.count() << std::endl;
       }
     }
+    */
 
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),

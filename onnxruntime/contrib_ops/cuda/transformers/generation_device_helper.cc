@@ -234,8 +234,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
+  auto padded_vocab_size = logits_shape[2];
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
+
 
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
 
@@ -246,16 +248,16 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
   if (input_length > 1 || logits_batch_size == batch_size) {
-    const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
+    const CudaT* current_logits = logits_data + (input_length - 1) * padded_vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
       if (logits_batch_size == batch_beam_size) {
-        current_logits += input_length * vocab_size;
+        current_logits += input_length * padded_vocab_size;
       } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
-        current_logits += input_length * vocab_size;
+        current_logits += input_length * padded_vocab_size;
       }
     }
   }
@@ -273,6 +275,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // The output will be float for consideration of precision and easy integration with remaining parts.
   float* Y_data = next_token_scores.data();
   bool is_single_token = (input_length == 1 && logits_batch_size == batch_beam_size);
+
   const CudaT* X_data = is_single_token ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(

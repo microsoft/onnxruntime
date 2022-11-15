@@ -825,9 +825,11 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
   }
 
   if (!compatible) {
+    /*
     LOGS(session_state_.Logger(), WARNING)
         << "Expected shape from model of " << utils::GetTensorShapeFromTensorShapeProto(*expected_shape)
         << " does not match actual shape of " << output_shape << " for output " << output_def->Name();
+    */
   }
 }
 
