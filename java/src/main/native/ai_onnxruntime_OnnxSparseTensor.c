@@ -35,7 +35,8 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesBuffer
     case ORT_SPARSE_BLOCK_SPARSE:
         indicesFormat = ORT_SPARSE_BLOCK_SPARSE_INDICES;
         break;
-    case ORT_SPARSE_UNDEFINED: {
+    case ORT_SPARSE_UNDEFINED:
+    default: {
         throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Sparse format is ORT_SPARSE_UNDEFINED, cannot get indices");
         return NULL;
     }
@@ -99,7 +100,8 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesBu
         break;
     case ORT_SPARSE_COO:
     case ORT_SPARSE_BLOCK_SPARSE:
-    case ORT_SPARSE_UNDEFINED: {
+    case ORT_SPARSE_UNDEFINED:
+    default: {
         throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED),
                           "Sparse format is ORT_SPARSE_COO, ORT_SPARSE_BLOCK_SPARSE, or ORT_SPARSE_UNDEFINED, inner indices are not defined.");
         return NULL;
@@ -273,7 +275,8 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
     case ORT_SPARSE_BLOCK_SPARSE:
         indicesFormat = ORT_SPARSE_BLOCK_SPARSE_INDICES;
         break;
-    case ORT_SPARSE_UNDEFINED: {
+    case ORT_SPARSE_UNDEFINED:
+    default: {
         throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED),
                           "Sparse format is ORT_SPARSE_UNDEFINED, indices are not defined.");
         return NULL;
