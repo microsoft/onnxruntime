@@ -115,8 +115,8 @@ Status VecAddFunc(const VecAddParams* params) {
 namespace wrapper {
 
 TEST(TunableOp, OpWrapsFunction) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -150,8 +150,8 @@ TEST(TunableOp, OpWrapsLambda) {
 }
 
 TEST(TunableOp, OpWrapsMoveOnlyLambda) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -175,8 +175,8 @@ class VecAddConstFunctor {
 };
 
 TEST(TunableOp, OpWrapsConstFunctor) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -196,8 +196,8 @@ class VecAddMutableFunctor {
 };
 
 TEST(TunableOp, OpWrapsMutableFunctor) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -220,8 +220,8 @@ class VecAddMoveOnlyFunctor {
 };
 
 TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -276,8 +276,8 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
 TEST(TunableOp, SelectFast) {
   GTEST_SKIP_IF_NO_RTTI();
 
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
   std::string last_run;
@@ -302,8 +302,8 @@ class TunableVecAddSelectSupported : public TunableOp<VecAddParamsRecordLastRun>
 TEST(TunableOp, SelectSupported) {
   GTEST_SKIP_IF_NO_RTTI();
 
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
   std::string last_run;
@@ -331,8 +331,8 @@ class TunableVecAddSelectFastestIfSupported : public TunableOp<VecAddParamsRecor
 TEST(TunableOp, SelectFastestIfSupported) {
   GTEST_SKIP_IF_NO_RTTI();
 
-  const int a[] = {0, 1, 2, 3};
-  const int b[] = {42, 42, 42, 42};
+  constexpr const int a[] = {0, 1, 2, 3};
+  constexpr const int b[] = {42, 42, 42, 42};
   int c[4] = {};
   VecAddParamsRecordLastRun params(a, b, c, 1, 0);
   std::string last_run;
@@ -354,8 +354,8 @@ TEST(TunableOp, SelectFastestIfSupported) {
 TEST(TunableOp, DisabledWithManualSelection) {
   GTEST_SKIP_IF_NO_RTTI();
 
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
   std::string last_run;
@@ -408,8 +408,8 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 TEST(TunableOp, HandleInplaceUpdate) {
   GTEST_SKIP_IF_NO_RTTI();
 
-  const int a = 7500000;
-  const int b = 42;
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
   int c{};
   VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
 
