@@ -113,7 +113,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, false));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-
+  //if (Node().Name() == "/lm_head/MatMul") {
+  //  std::cout << Y->Shape();
+  //}
+  
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
@@ -158,7 +161,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         &zero,
         should_use_proxy_data ? reinterpret_cast<CudaT*>(proxy_results_)
                               : reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        static_cast<int>(50264),
+        should_use_proxy_data ? static_cast<int>(50264) : ldc,
         device_prop));
 
     if (Node().Name() == "/lm_head/MatMul" && measure_matmul_perf_) {

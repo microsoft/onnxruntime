@@ -23,7 +23,7 @@ class MatMul final : public CudaKernel {
     if (should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
       std::cout << "Using proxy" << std::endl;
       cudaMalloc(&proxy_weights_, 768 * 50264 * 2);
-      cudaMalloc(&proxy_results_, 4 * 5 * 50264 * 2);
+      cudaMalloc(&proxy_results_, 16 * 5 * 50264 * 2);
     }
   }
 
