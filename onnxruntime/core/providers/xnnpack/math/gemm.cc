@@ -29,12 +29,10 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     const auto beta = node.GetAttributes().find("beta");
     if ((*beta).second.f() != 1.0) break;
 
+
     const NodeArg* A_arg = input_defs[0];
     const NodeArg* B_arg = input_defs[1];
-    const NodeArg* C_arg = input_defs.size() <= 2 ? nullptr : input_defs[2];
-
-    // Right now assuming C matrix exists
-    if (!C_arg) break;
+    const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
 
     // we only support float currently
     const auto* A_type = A_arg->TypeAsProto();
@@ -49,7 +47,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
       break;
     }
 
-    if (C_arg->Exists() && !graph.IsConstantInitializer(C_arg->Name(), true)) {
+    if (input_defs.size() == 3 && !graph.IsConstantInitializer(C_arg->Name(), true)) {
       break;
     }
 
@@ -70,7 +68,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
       break;
     }
     
-    if (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value()){
+    if (input_defs.size() == 3 && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
       break;
     }
 
@@ -90,6 +88,8 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
   const auto& input_defs = node.InputDefs();
   const auto* shapeA = input_defs[0]->Shape();
   const auto* shapeB = input_defs[1]->Shape();
+
+  numberOfInputs_ = input_defs.size();
 
   // A - MxK 
   if (trans_A_ == CblasNoTrans) {
@@ -117,10 +117,10 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   }
 
   if (input_idx == 1) {
-    B_ = Tensor(tensor.DataType(), TensorShape(tensor.Shape()), alloc);
-    SingleAxisTranspose(std::vector<size_t>{0, 1}, tensor, B_, /*from*/ 1, /*to*/ 1);
-
-    return Status::OK();
+    B_ = &tensor;
+    if (numberOfInputs_ == 3) {
+        return Status::OK();
+    }
   }
 
   is_packed = true;
@@ -131,32 +131,36 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
   float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
 
-  if (input_idx == 2) {
+  const float* biasData = nullptr;
+
+  if (numberOfInputs_ == 3) {
+    biasData = tensor.Data<float>();
+  }
+
     xnn_status status = xnn_status::xnn_status_uninitialized;
     struct xnn_operator* p = nullptr;
     status = xnn_create_fully_connected_nc_f32(
-        trans_B_ == CblasNoTrans ? B_.Shape()[0] : B_.Shape()[1],  // size_t input_channels,
-        trans_B_ == CblasNoTrans ? B_.Shape()[1] : B_.Shape()[0],  // size_t output_channels,
-        trans_B_ == CblasNoTrans ? B_.Shape()[0] : B_.Shape()[1],  // size_t input_stride,
-        trans_B_ == CblasNoTrans ? B_.Shape()[1] : B_.Shape()[0],  // size_t output_stride,
-        B_.Data<float>(),             // const float* kernel,
-        tensor.Data<float>(),         // const float* bias,
+        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
+        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
+        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
+        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
+        B_->Data<float>(),             // const float* kernel,
+        biasData,                                                  // const float* bias,
         output_min,
         output_max,
         flags,
-#ifdef XNN_CACHE_ENABLE
+    #ifdef XNN_CACHE_ENABLE
         &xnn_caches_,
-#else
+    #else
         0,
-#endif
+    #endif
         &p);
 
     if (status != xnn_status_success) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
     }
     op0_.reset(p);
-  }
-
+  
   return Status::OK();
 }
 
