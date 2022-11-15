@@ -138,7 +138,7 @@ __global__ void SliceOutKernel(half* output,
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
 
   const int input_offset = sequence_position * padded_vocab_size;
-  
+
   const int output_offset = sequence_position * vocab_size;
 
   for (int it = threadIdx.x; it < vocab_size; it += TPB) {
@@ -152,8 +152,8 @@ void SliceOut(cudaStream_t stream,
               const int padded_vocab_size,
               const int vocab_size,
               int batch_size,
-              int sequence_length) {
-  constexpr int tpb = 1024;
+              int sequence_length,
+              int tpb) {
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
 

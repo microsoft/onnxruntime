@@ -116,7 +116,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   //if (Node().Name() == "/lm_head/MatMul") {
   //  std::cout << Y->Shape();
   //}
-  
+
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
@@ -182,13 +182,25 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       auto start_2 = high_resolution_clock::now();
 
-      SliceOut(Stream(),
-               Y->MutableDataRaw(),
-               proxy_results_,
-               50264,
-               50257,
-               static_cast<int>(Y->Shape()[0]),
-               static_cast<int>(Y->Shape()[1]));
+      if (use_high_tpb_) {
+        SliceOut(Stream(),
+                 Y->MutableDataRaw(),
+                 proxy_results_,
+                 50264,
+                 50257,
+                 static_cast<int>(Y->Shape()[0]),
+                 static_cast<int>(Y->Shape()[1]),
+                 4096);
+
+      } else {
+        SliceOut(Stream(),
+                 Y->MutableDataRaw(),
+                 proxy_results_,
+                 50264,
+                 50257,
+                 static_cast<int>(Y->Shape()[0]),
+                 static_cast<int>(Y->Shape()[1]));
+      }
 
       if (measure_matmul_perf_) {
         cudaDeviceSynchronize();

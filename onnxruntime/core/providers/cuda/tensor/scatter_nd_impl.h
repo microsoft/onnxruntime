@@ -24,8 +24,9 @@ void SliceOut(cudaStream_t stream,
               const void* input,  // input tensor
               const int padded_vocab_size,
               const int vocab_size,
-              int batch_size,        // batch size
-              int sequence_length);  // sequence length
+              int batch_size,  // batch size
+              int sequence_length,
+              int tpb = 2048);
 
 }  // namespace cuda
 }  // namespace onnxruntime
