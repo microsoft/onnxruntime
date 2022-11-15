@@ -132,7 +132,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     bool should_use_proxy_data = should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul";
 
     if (!copied_weights_ && should_use_proxy_data) {
-      cudaMemcpyAsync(data, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
+      cudaMemcpyAsync(proxy_weights_, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
       copied_weights_ = true;
     }
 
