@@ -156,7 +156,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
         &zero,
-        should_use_proxy_data ? reinterpret_cast<const CudaT*>(proxy_results_)
+        should_use_proxy_data ? reinterpret_cast<CudaT*>(proxy_results_)
                               : reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         static_cast<int>(50264),
         device_prop));
