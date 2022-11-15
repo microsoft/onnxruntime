@@ -159,7 +159,7 @@ void SliceOut(cudaStream_t stream,
   const dim3 block(tpb, 1, 1);
 
   SliceOutKernel<tpb>
-      <<<grid, block, 0, stream>>>(reinterpret_cast<half*>(output), reinterpret_cast<half*>(input), padded_vocab_size, vocab_size, batch_size, sequence_length);
+      <<<grid, block, 0, stream>>>(reinterpret_cast<half*>(output), reinterpret_cast<const half*>(input), padded_vocab_size, vocab_size, batch_size, sequence_length);
 }
 
 }  // namespace cuda
