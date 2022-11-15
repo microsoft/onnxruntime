@@ -135,7 +135,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       copied_weights_ = true;
     }
 
-    if (measure_matmul_perf_) {
+    if (Node().Name() == "/lm_head/MatMul" && measure_matmul_perf_) {
       cudaDeviceSynchronize();
     }
 
@@ -159,7 +159,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(50264),
         device_prop));
 
-    if (measure_matmul_perf_) {
+    if (Node().Name() == "/lm_head/MatMul" && measure_matmul_perf_) {
       cudaDeviceSynchronize();
 
       auto stop = high_resolution_clock::now();

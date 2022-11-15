@@ -21,6 +21,7 @@ class MatMul final : public CudaKernel {
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
     if (should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
+      std::cout << "Using proxy" << std::endl;
       cudaMalloc(&data, 768 * 50264 * 2);
     }
   }
