@@ -110,7 +110,7 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_uint8() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, ByteBuffer.wrap(new byte[] {0, 2, byte(255)}),
+    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, ByteBuffer.wrap(new byte[] {0, 2, (byte)255}),
                                                       new long[] {3}, OnnxJavaType.UINT8);
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
