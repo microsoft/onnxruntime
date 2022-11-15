@@ -3,15 +3,28 @@
 
 #pragma once
 
+#if USE_CUDA
+#include <cuda_runtime_api.h>
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/tunable/util.h"
+#elif USE_ROCM
 #include <hip/hip_runtime.h>
-
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/tunable/util.h"
+#endif
+
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
-using onnxruntime::rocm::CeilDiv;
+#if USE_CUDA
+using onnxruntime::cuda::aligned_vector;
+using onnxruntime::cuda::CeilDiv;
+using StreamT = cudaStream_t;
+#elif USE_ROCM
 using onnxruntime::rocm::aligned_vector;
+using onnxruntime::rocm::CeilDiv;
+using StreamT = hipStream_t;
+#endif
 
 namespace onnxruntime {
 
@@ -19,7 +32,7 @@ template <typename T, int VecSize>
 __global__ void VectorAddKernel(const T* __restrict__ x,
                                 const T* __restrict__ y,
                                 T* __restrict__ z, int n) {
-  int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
   using LoadT = aligned_vector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
@@ -50,15 +63,14 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-Status LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
-  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>),
-                     dim3(CeilDiv(n, ThreadsPerBlock*VecSize)),
-                     dim3(ThreadsPerBlock),
-                     0, stream,
-                     x, y, z, n);
-  auto status = hipGetLastError();
-  ORT_RETURN_IF(status != hipSuccess, hipGetErrorName(status));
-  return Status::OK();
+Status LaunchVectorAdd(StreamT stream, const T* x, const T* y, T* z, int n) {
+  VectorAddKernel<T, VecSize>
+      <<<dim3(CeilDiv(n, ThreadsPerBlock * VecSize)), dim3(ThreadsPerBlock), 0, stream>>>(x, y, z, n);
+#if USE_CUDA
+  return CUDA_CALL(cudaGetLastError());
+#elif USE_ROCM
+  return HIP_CALL(hipGetLastError());
+#endif
 }
 
 }  // namespace onnxruntime

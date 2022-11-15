@@ -4,14 +4,23 @@
 // This file serve as a simple example for adding a tunable op to onnxruntime.
 #include "python/tools/kernel_explorer/kernels/vector_add.h"
 
+#if USE_CUDA
+#include <cuda_runtime_api.h>
+#include <cuda_fp16.h>
+#elif USE_ROCM
 #include <hip/hip_fp16.h>
+#endif
 #include <pybind11/pybind11.h>
 
 #include <string>
 
-#include "core/providers/rocm/tunable/tunable.h"
+#if USE_CUDA
+#include "core/providers/cuda/tunable/cuda_tunable.h"
+#elif USE_ROCM
+#include "core/providers/rocm/tunable/rocm_tunable.h"
+#endif
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
-#include "python/tools/kernel_explorer/kernels/vector_add_kernel.h"
+#include "python/tools/kernel_explorer/kernels/vector_add_kernel.cuh"
 
 namespace py = pybind11;
 
@@ -24,7 +33,13 @@ namespace onnxruntime {
 
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
-struct VectorAddParams : rocm::tunable::OpParams {
+struct VectorAddParams :
+#if USE_CUDA
+    cuda::tunable::OpParams
+#elif USE_ROCM
+    rocm::tunable::OpParams
+#endif
+{
   std::string Signature() const override { return std::to_string(n); }
 
   T* x;
@@ -54,7 +69,13 @@ Status VectorAddOp(const VectorAddParams<T>* params) {
 // A Tunable VectorAddOp is a collection of non-tunable VectorAddOps implementations that have variable performance
 // characteristics. Those implementations may be put into a C++ container for tuner to select.
 template <typename T>
-class VectorAddTunableOp : public rocm::tunable::TunableOp<VectorAddParams<T>> {
+class VectorAddTunableOp :
+#if USE_CUDA
+    public cuda::tunable::TunableOp<VectorAddParams<T>>
+#elif USE_ROCM
+    public rocm::tunable::TunableOp<VectorAddParams<T>>
+#endif
+{
  public:
   VectorAddTunableOp() {
     ADD_OP(64);
@@ -65,12 +86,6 @@ class VectorAddTunableOp : public rocm::tunable::TunableOp<VectorAddParams<T>> {
     ADD_OP(384);
     ADD_OP(448);
     ADD_OP(512);
-  }
-
- private:
-  // This Op is always tunable, you generally don't need to implement it.
-  virtual bool Condition(const VectorAddParams<T>* /*params*/) {
-    return true;
   }
 };
 

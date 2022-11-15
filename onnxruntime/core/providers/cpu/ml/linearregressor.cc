@@ -61,7 +61,7 @@ static Status ComputeImpl(const Tensor& input, int64_t num_batches, int64_t num_
   }
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE) {
-    ml::batched_update_scores_inplace(gsl::make_span(output_data, num_batches * num_targets),
+    ml::batched_update_scores_inplace(gsl::make_span(output_data, SafeInt<size_t>(num_batches) * num_targets),
                                       num_batches, num_targets, post_transform, -1, false, threadpool);
   }
 

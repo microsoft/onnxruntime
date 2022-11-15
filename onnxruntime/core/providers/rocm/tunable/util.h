@@ -4,23 +4,25 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include <cstdlib>
-#include <iostream>
+
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
-class Timer {
+class Timer : public ::onnxruntime::tunable::Timer<hipStream_t> {
  public:
+  using TimerBase = ::onnxruntime::tunable::Timer<hipStream_t>;
+
   explicit Timer(hipStream_t stream);
-  void Start();
-  void End();
-  float Duration();
+
+  void Start() override;
+  void End() override;
+  float Duration() override;
   ~Timer();
 
  private:
-  hipStream_t stream_;
   hipEvent_t start_;
   hipEvent_t end_;
 };

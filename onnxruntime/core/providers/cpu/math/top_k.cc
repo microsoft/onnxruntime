@@ -25,6 +25,7 @@
 #include <queue>
 #include <algorithm>
 #include <cmath>
+#include <core/common/safeint.h>
 
 namespace onnxruntime {
 
@@ -123,7 +124,7 @@ template <class Comparator>
 static void SelectTopK(const Comparator& comparer,
                        int64_t row_offset, int64_t num_blocks, int64_t block_slice, int64_t inter_block_offset,
                        const unsigned k, bool sort_top_k, std::vector<int64_t>& data_holder) {
-  for (int64_t l = 0; l < num_blocks; ++l) {
+  for (size_t l = 0; l < onnxruntime::narrow<size_t>(num_blocks); ++l) {
     data_holder[l] = (row_offset + (l * block_slice + inter_block_offset));
   }
 
@@ -156,8 +157,8 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
 
   auto* values_data = values->MutableData<typename Comparator::DataType>();
   auto* indices_data = indices->MutableData<int64_t>();
-  auto values_map = EigenMatrixMapRowMajor<typename Comparator::DataType>(values_data, rows, reduced_cols);
-  auto indices_map = EigenMatrixMapRowMajor<int64_t>(indices_data, rows, reduced_cols);
+  auto values_map = EigenMatrixMapRowMajor<typename Comparator::DataType>(values_data, onnxruntime::narrow<size_t>(rows), onnxruntime::narrow<size_t>(reduced_cols));
+  auto indices_map = EigenMatrixMapRowMajor<int64_t>(indices_data, onnxruntime::narrow<size_t>(rows), onnxruntime::narrow<size_t>(reduced_cols));
 
   // This is basically the number of elements within each of the "k" rows
   const int64_t num_blocks = input_shape[axis_parsed];
@@ -185,7 +186,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
     find_top_k =
         [num_threads, rows, block_slice, num_blocks, input_data, cols,
          &values_map, &indices_map](std::ptrdiff_t batch) {
-          auto work = concurrency::ThreadPool::PartitionWork(batch, num_threads, rows);
+          auto work = concurrency::ThreadPool::PartitionWork(batch, onnxruntime::narrow<size_t>(num_threads), onnxruntime::narrow<size_t>(rows));
           Comparator comparer(input_data);
 
           for (auto i = work.start; i < work.end; ++i) {
@@ -205,10 +206,10 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
                 }
               }
 
-              values_map(i, j) = best;
+              values_map(i, onnxruntime::narrow<size_t>(j)) = best;
               // convert overall index to result index
               // avoid '/' if possible for perf reasons
-              indices_map(i, j) = block_slice == 1 ? (top_idx - row_offset - j)
+              indices_map(i, onnxruntime::narrow<size_t>(j)) = block_slice == 1 ? (top_idx - row_offset - j)
                                                    : (top_idx - row_offset - j) / block_slice;
             }
           }
@@ -217,7 +218,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
     find_top_k =
         [num_threads, rows, block_slice, num_blocks, k, sorted,
          input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
-          auto work = concurrency::ThreadPool::PartitionWork(batch, num_threads, rows);
+          auto work = concurrency::ThreadPool::PartitionWork(batch, onnxruntime::narrow<size_t>(num_threads), onnxruntime::narrow<size_t>(rows));
           Comparator comparer(input_data);
 
           // the heap is stored in indices_data. each iteration overwrites the old data when it adds the
@@ -235,7 +236,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
               // add first k items starting from the bottom up
               for (; l < k; ++l) {
                 indices[k - l - 1] = cur_idx;
-                HeapifyIthPosition(indices, k - l - 1, k, comparer);
+                HeapifyIthPosition(indices, k - SafeInt<size_t>(l) - 1, k, comparer);
 
                 cur_idx += block_slice;
               }
@@ -260,23 +261,23 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
                 for (l = 0; l < k; ++l) {
                   auto idx = indices[0];
                   auto col_index = (k - l - 1) * block_slice + j;
-                  values_map(i, col_index) = input_data[idx];
+                  values_map(i, onnxruntime::narrow<size_t>(col_index)) = input_data[idx];
                   // convert overall index to result index. avoid '/' if possible for perf reasons
-                  indices_map(i, col_index) = block_slice == 1 ? (idx - row_offset - j)
+                  indices_map(i, onnxruntime::narrow<size_t>(col_index)) = block_slice == 1 ? (idx - row_offset - j)
                                                                : (idx - row_offset - j) / block_slice;
 
                   // put the last value at the top of the heap to replace the removed one, and push it into
                   // place in a heap one smaller.
-                  indices[0] = indices[k - l - 1];
-                  HeapifyIthPosition(indices, 0, k - l - 1, comparer);
+                  indices[0] = indices[k - SafeInt<size_t>(l) - 1];
+                  HeapifyIthPosition(indices, 0, k - SafeInt<size_t>(l) - 1, comparer);
                 }
               } else {
                 for (l = 0; l < k; ++l) {
                   int64_t idx = indices[l];
                   auto col_index = l * block_slice + j;
-                  values_map(i, col_index) = input_data[idx];
+                  values_map(i, onnxruntime::narrow<size_t>(col_index)) = input_data[idx];
                   // convert overall index to result index. avoid '/' if possible for perf reasons
-                  indices_map(i, col_index) = block_slice == 1 ? (idx - row_offset - j)
+                  indices_map(i, onnxruntime::narrow<size_t>(col_index)) = block_slice == 1 ? (idx - row_offset - j)
                                                                : (idx - row_offset - j) / block_slice;
                 }
               }
@@ -288,12 +289,12 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
         [num_threads, rows, block_slice, num_blocks, k, sorted,
          input_data, cols,
          &values_map, &indices_map](std::ptrdiff_t batch) {
-          auto work = concurrency::ThreadPool::PartitionWork(batch, num_threads, rows);
+          auto work = concurrency::ThreadPool::PartitionWork(batch, onnxruntime::narrow<size_t>(num_threads), onnxruntime::narrow<size_t>(rows));
           Comparator comparer(input_data);
 
           // we re-use a single data_holder for performance. avoids allocating memory on each iteration.
           // the call to SelectTopK overwrites any existing data so we don't need to clear on each iteration.
-          std::vector<int64_t> data_holder(num_blocks);
+          std::vector<int64_t> data_holder(onnxruntime::narrow<size_t>(num_blocks));
 
           for (auto i = work.start; i < work.end; ++i) {
             auto row_offset = i * cols;
@@ -302,11 +303,11 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
 
               // Insert the top 'k' (largest or smallest) elements into the final output buffers
               for (int64_t l = 0; l < k; ++l) {
-                int64_t idx = data_holder[l];
+                int64_t idx = data_holder[onnxruntime::narrow<size_t>(l)];
                 auto col_index = l * block_slice + j;
-                values_map(i, col_index) = input_data[idx];
+                values_map(i, onnxruntime::narrow<size_t>(col_index)) = input_data[idx];
                 // convert overall index to result index. avoid the cost of the '/' is possible
-                indices_map(i, col_index) = block_slice == 1 ? (idx - row_offset - j)
+                indices_map(i, onnxruntime::narrow<size_t>(col_index)) = block_slice == 1 ? (idx - row_offset - j)
                                                              : (idx - row_offset - j) / block_slice;
               }
             }
@@ -321,7 +322,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
     // on each iteration, so the lambda does multiple rows. e.g. the data_holder and indices_data vectors.
     // the alternative would be to use TryBatchParallelFor with the lambda doing one row.
     // Use TrySimpleParallelFor so openmp is supported correctly
-    concurrency::ThreadPool::TrySimpleParallelFor(threadpool, num_threads, find_top_k);
+    concurrency::ThreadPool::TrySimpleParallelFor(threadpool, onnxruntime::narrow<ptrdiff_t>(num_threads), find_top_k);
   }
 }
 
@@ -333,16 +334,16 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
   // Will return axis_ as is if positive or fixes it in case it is negative
   const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
   // Check to ensure k is within the bounds of what is available in that specific axis
-  if (input_shape[axis_parsed] < k) {
+  if (input_shape[onnxruntime::narrow<size_t>(axis_parsed)] < k) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
-                           "] should not be greater than specified axis dim value [", input_shape[axis_parsed], "]");
+                           "] should not be greater than specified axis dim value [", input_shape[onnxruntime::narrow<size_t>(axis_parsed)], "]");
   }
 
   // Resize output tensors to be the same shape as the input except
   // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
   // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of the outputs will be shape [3, 2, 5]
   TensorShape output_shape = input_shape;
-  output_shape[axis_parsed] = k;
+  output_shape[onnxruntime::narrow<size_t>(axis_parsed)] = k;
   auto* values = p_op_kernel_context->Output(0, output_shape);
   auto* indices = p_op_kernel_context->Output(1, output_shape);
 
@@ -382,16 +383,16 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
   const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
 
   // Check to ensure k is within the bounds of what is available in that specific axis
-  if (input_shape[axis_parsed] < k) {
+  if (input_shape[onnxruntime::narrow<size_t>(axis_parsed)] < k) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
-                           "] should not be greater than specified axis dim value [", input_shape[axis_parsed], "]");
+                           "] should not be greater than specified axis dim value [", input_shape[onnxruntime::narrow<size_t>(axis_parsed)], "]");
   }
 
   // Resize output tensors to be the same shape as the input except
   // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
   // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of the outputs will be shape [3, 2, 5]
   TensorShape output_shape = input_shape;
-  output_shape[axis_parsed] = k;
+  output_shape[onnxruntime::narrow<size_t>(axis_parsed)] = k;
 
   output_values = Tensor(input->DataType(), output_shape, allocator);
   output_indices = Tensor(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);

@@ -50,4 +50,3 @@ std::string demangle(const std::string& name) {
 
 }  // namespace profiling
 }  // namespace onnxruntime
-
