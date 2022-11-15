@@ -59,7 +59,7 @@ static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& inpu
   for (size_t axis = rank - 1; axis-- > 0;) {
     auto dim = indices_shape[axis];
     if (axis != skip_axis)
-      base_offset += (inner_dim % SafeInt<size_t>(dim)) * input_shape_pitches[axis];
+      base_offset += SafeInt<size_t>(inner_dim % dim) * input_shape_pitches[axis];
     inner_dim /= SafeInt<size_t>(dim);
   }
 
