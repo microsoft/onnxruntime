@@ -23,4 +23,17 @@ class GatherToSplitFusion : public GraphTransformer {
   bool IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis) const;
 };
 
+/**
+@Class GatherToGliceFusion
+
+Fuse Range->Gather to Slice node.
+*/
+class GatherToSliceFusion : public GraphTransformer {
+ public:
+  GatherToSliceFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("GatherToSliceFusion", compatible_execution_providers) {}
+
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+};
+
 }  // namespace onnxruntime

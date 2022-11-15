@@ -16,6 +16,16 @@ if build_dir is None:
 if not os.path.exists(build_dir):
     raise ValueError(f"KERNEL_EXPLORER_BUILD_DIR ({build_dir}) points to nonexistent path")
 
+# onnxruntime_pybind11_state and kernel_explorer
+sys.path.insert(0, build_dir)
+
+# pylint: disable=wrong-import-position
+import onnxruntime_pybind11_state  # noqa
+
+# We need to call some functions to properly initialize so pointers in the library
+available_providers = onnxruntime_pybind11_state.get_available_providers()
+
+
 build_dir = os.path.realpath(build_dir)
 search_paths = [build_dir]
 
@@ -24,8 +34,11 @@ search_paths = [build_dir]
 library_files_to_load = [
     "onnxruntime_pybind11_state.so",
     "libonnxruntime_providers_shared.so",
-    "libonnxruntime_providers_rocm.so",
 ]
+if "CUDAExecutionProvider" in available_providers:
+    library_files_to_load.append("libonnxruntime_providers_cuda.so")
+if "ROCMExecutionProvider" in available_providers:
+    library_files_to_load.append("libonnxruntime_providers_rocm.so")
 
 library_to_load = []
 
@@ -38,15 +51,6 @@ for lib in library_files_to_load:
 
         raise EnvironmentError(f"cannot found {lib}")
 
-
-# onnxruntime_pybind11_state and kernel_explorer
-sys.path.insert(0, build_dir)
-
-# pylint: disable=wrong-import-position
-import onnxruntime_pybind11_state  # noqa
-
-# We need to call some functions to properly initialize so pointers in the library
-onnxruntime_pybind11_state.get_available_providers()
 
 # use RTLD_GLOBAL to bring all symbols to global name space
 libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in library_to_load]

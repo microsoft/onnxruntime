@@ -17,25 +17,34 @@ namespace onnxruntime {
 namespace tvm {
 
 inline DLDataType GetDataType(ONNXTensorElementDataType type) {
-  if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-    return {kDLFloat, 64, 1};
-  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    return {kDLFloat, 16, 1};
-  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    return {kDLFloat, 32, 1};
-  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-    return {kDLInt, 64, 1};
-  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
-    return {kDLInt, 32, 1};
-  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL) {
-    return {kDLUInt, 1, 1};
-  } else {
-    ORT_NOT_IMPLEMENTED("Unsupported data type");
+  switch (type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return {kDLUInt, 8, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return {kDLInt, 8, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      return {kDLUInt, 16, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      return {kDLInt, 16, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      return {kDLUInt, 32, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return {kDLInt, 32, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      return {kDLUInt, 64, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return {kDLInt, 64, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return {kDLFloat, 16, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return {kDLFloat, 32, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return {kDLFloat, 64, 1};
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      return {kDLUInt, 1, 1};
+    default:
+      ORT_NOT_IMPLEMENTED("Unsupported data type");
   }
-}
-
-inline DLDataType GetDataTypeFromProto() {
-  return {kDLFloat, 32, 1};
 }
 
 inline DLDevice GetDLDevice(OrtMemoryInfoDeviceType device_type) {
