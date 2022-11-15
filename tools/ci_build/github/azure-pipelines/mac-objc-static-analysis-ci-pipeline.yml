@@ -2,7 +2,7 @@ jobs:
 - job: ObjCStaticAnalysis
 
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-11'
 
   timeoutInMinutes: 30
 

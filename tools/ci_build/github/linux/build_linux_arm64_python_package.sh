@@ -7,11 +7,13 @@ CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-st
 
 BUILD_DEVICE="CPU"
 BUILD_CONFIG="Release"
+PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
 while getopts "d:" parameter_Option
 do case "${parameter_Option}"
 in
-#GPU or CPU. 
+#GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
+p) PYTHON_EXES=(${OPTARG});;
 esac
 done
 
@@ -45,11 +47,10 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
 fi
 export CFLAGS
 export CXXFLAGS
-PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   rm -rf /build/$BUILD_CONFIG
   ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
-                  
+
   cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
 done

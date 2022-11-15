@@ -109,7 +109,6 @@ if (onnxruntime_USE_MIMALLOC)
 endif()
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(external/abseil-cpp.cmake)
   target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
   if (MSVC)
     set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
@@ -119,18 +118,15 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
   endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
+onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 ${GSL_TARGET})
 
-if(NOT WIN32)
-  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-endif()
+target_link_libraries(onnxruntime_common safeint_interface ${GSL_TARGET})
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -222,9 +218,8 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
-
     if (CPUINFO_SUPPORTED)
-      target_link_libraries(onnxruntime_common cpuinfo)
+      onnxruntime_add_include_to_target(onnxruntime_common cpuinfo)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
     endif()
   endif()

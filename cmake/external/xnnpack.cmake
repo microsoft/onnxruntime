@@ -1,25 +1,40 @@
-set(XNNPACK_DIR external/XNNPACK)
-set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
+
 set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")
 set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
 set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
 set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
 set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
-set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
+set(PTHREADPOOL_BUILD_TESTS OFF CACHE INTERNAL "")
+set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+
+
+
 
 # BF16 instructions cause ICE in Android NDK compiler
 if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
   set(XNNPACK_ENABLE_ARM_BF16 OFF)
 ENDIF()
 
-if(onnxruntime_BUILD_WEBASSEMBLY OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
-endif()
+# fp16 depends on psimd
+FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
+FetchContent_MakeAvailable(psimd)
+set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
+FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
+FetchContent_MakeAvailable(fp16)
 
-add_subdirectory(external/FP16)
-add_subdirectory(external/pthreadpool)
-add_subdirectory(external/XNNPACK)
+# pthreadpool depends on fxdiv
+FetchContent_Declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv})
+FetchContent_MakeAvailable(fxdiv)
+set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
+
+FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
+FetchContent_MakeAvailable(pthreadpool)
+FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack}  URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
+PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch)
+
+FetchContent_MakeAvailable(googlexnnpack)
+set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
+set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
 
 set_target_properties(fp16 PROPERTIES FOLDER "External/Xnnpack")
 set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")

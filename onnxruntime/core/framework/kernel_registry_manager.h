@@ -79,11 +79,17 @@ class KernelRegistryManager {
                       const IExecutionProvider& execution_provider,
                       SessionState& session_state,
                       const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
-
+#ifdef _WIN32
+#pragma warning(push)
+// disable some warnings from protobuf to pass Windows build
+#pragma warning(disable : 4189)
+#endif
   const IKernelTypeStrResolver& GetKernelTypeStrResolver() const {
     return std::visit([](auto&& r) -> const IKernelTypeStrResolver& { return r; }, kernel_type_str_resolver_variant_);
   }
-
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
   void SetKernelTypeStrResolver(KernelTypeStrResolver&& kernel_type_str_resolver) {
     kernel_type_str_resolver_variant_ = std::move(kernel_type_str_resolver);
   }

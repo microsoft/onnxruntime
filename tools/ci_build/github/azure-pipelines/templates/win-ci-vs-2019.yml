@@ -65,12 +65,25 @@ jobs:
   pool: ${{ parameters.MachinePool }}
   timeoutInMinutes:  300
   steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.7'
       addToPath: true
       architecture: ${{ parameters.buildArch }}
 
+  - template: download-deps.yml
+
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
+    inputs:
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir $(Build.BinariesDirectory)/deps
+      workingDirectory: $(Build.BinariesDirectory)
+      
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
@@ -108,12 +121,12 @@ jobs:
 
   - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
       - powershell: |
+         #TODO: protobuf's python package is not fully backwards compatible. The one we get from pypi.org may be incompatible with the C++ package that vcpkg provides
          $Env:USE_MSVC_STATIC_RUNTIME=1
          $Env:ONNX_ML=1
          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
-         python setup.py bdist_wheel
-         python -m pip uninstall -y onnx -qq
-         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+         python -m pip --disable-pip-version-check uninstall -y onnx -qq
+         python -m pip --disable-pip-version-check install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\manylinux\requirements.txt
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
 

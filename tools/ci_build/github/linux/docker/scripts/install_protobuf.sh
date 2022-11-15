@@ -1,42 +1,38 @@
 #!/bin/bash
 set -e
-#Download a file from internet
-function GetFile {
-  local uri=$1
-  local path=$2
-  local force=${3:-false}
-  local download_retries=${4:-5}
-  local retry_wait_time_seconds=${5:-30}
+# Depending on how the compiler has been configured when it was built, sometimes "gcc -dumpversion" shows the full version.
+GCC_VERSION=$(gcc -dumpversion | cut -d . -f 1)
+#-fstack-clash-protection prevents attacks based on an overlapping heap and stack.
+if [ "$GCC_VERSION" -ge 8 ]; then
+    CFLAGS="$CFLAGS -fstack-clash-protection"
+    CXXFLAGS="$CXXFLAGS -fstack-clash-protection"
+fi
 
-  if [[ -f $path ]]; then
-    if [[ $force = false ]]; then
-      echo "File '$path' already exists. Skipping download"
-      return 0
-    else
-      rm -rf $path
-    fi
-  fi
+ARCH=$(uname -m)
 
-  if [[ -f $uri ]]; then
-    echo "'$uri' is a file path, copying file to '$path'"
-    cp $uri $path
-    return $?
-  fi
+if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
+    CFLAGS="$CFLAGS -fcf-protection"
+    CXXFLAGS="$CXXFLAGS -fcf-protection"
+fi
+export CFLAGS
+export CXXFLAGS
 
-  echo "Downloading $uri"
-  # Use aria2c if available, otherwise use curl
-  if command -v aria2c > /dev/null; then
-    aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
-  else
-    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail    
-  fi
-
-  return $?
-}
-
-GetFile https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz /tmp/src/v3.18.1.tar.gz
-tar -xf /tmp/src/v3.18.1.tar.gz -C /tmp/src
-cd /tmp/src/protobuf-3.18.1
+echo "Installing protobuf ..."
+protobuf_url=$(grep '^protobuf' /tmp/scripts/deps.txt | cut -d ';' -f 2 | sed 's/\.zip$/\.tar.gz/')
+curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o protobuf_src.tar.gz $protobuf_url
+mkdir protobuf
+cd protobuf
+tar -zxf ../protobuf_src.tar.gz --strip=1
 cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
+make -j$(getconf _NPROCESSORS_ONLN)
+make install
+cd ..
+echo "Installing Microsoft GSL ..."
+# The deps.txt doesn't have GSL
+curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o gsl_src.tar.gz https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.tar.gz
+mkdir gsl
+cd gsl
+tar -xf ../gsl_src.tar.gz --strip=1
+cmake . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 make -j$(getconf _NPROCESSORS_ONLN)
 make install

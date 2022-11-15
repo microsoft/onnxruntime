@@ -832,7 +832,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        ORT_ENFORCE(graph_build.Resolve().IsOK());
+        ORT_THROW_IF_ERROR(graph_build.Resolve());
 
         // Add parent graph output to the subgraph
         int i = 0;
@@ -847,7 +847,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto& graph_build_outputs = graph_build.GetOutputs();
         subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
         graph_build.SetOutputs(graph_build_outputs);
-        ORT_ENFORCE(graph_build.Resolve().IsOK());
+        ORT_THROW_IF_ERROR(graph_build.Resolve());
 
         // Check if input tensors have shapes
         if (iterations > 1) {
