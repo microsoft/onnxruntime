@@ -3,35 +3,44 @@
 namespace onnxruntime {
 namespace profiling {
 
+static inline const char* GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
+  switch (kind) {
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
+      return "MemcpyHostToDevice";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOH:
+      return "MemcpyDeviceToHost";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOA:
+      return "MemcpyHostToDeviceArray";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOH:
+      return "MemcpyDeviceArrayToHost";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOA:
+      return "MemcpyDeviceArrayToDeviceArray";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOD:
+      return "MemcpyDeviceArrayToDevice";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOA:
+      return "MemcpyDeviceToDeviceArray";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOD:
+      return "MemcpyDeviceToDevice";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOH:
+      return "MemcpyHostToHost";
+    default:
+      break;
+  }
+  return "<unknown>";
+}
+
 CUPTIManager& CUPTIManager::GetInstance() {
   static CUPTIManager instance;
   return instance;
 }
 
 CUPTIManager::~CUPTIManager() {
-    StopLogging();
-    Clear();
-}
-
-uint64_t CUPTIManager::RegisterClient() {
-  std::lock_guard<std::mutex> lock(cupti_manager_mutex_);
-  auto res = next_client_id_++;
-  per_client_events_by_ext_correlation_.insert({res, {}});
-  ++num_active_clients_;
-  return res;
-}
-
-void CUPTIManager::DeregisterClient(uint64_t client_handle) {
-    std::lock_guard<std::mutex> lock(cupti_manager_mutex_);
-    per_client_events_by_ext_correlation_.erase(client_handle);
-    --num_active_clients_;
-    if (num_active_clients_ == 0) {
-        StopLogging();
-    }
+  StopLogging();
+  Clear();
 }
 
 void CUPTIManager::StartLogging() {
-    std::lock_guard<std::mutex> lock(cupti_manager_mutex_);
+    std::lock_guard<std::mutex> lock(manager_instance_mutex_);
     if (logging_enabled_)  {
         return;
     }
@@ -58,71 +67,87 @@ void CUPTIManager::StopLogging() {
   logging_enabled_ = false;
 }
 
-void CUPTIManager::Clear() {
-    unprocessed_activity_buffers_.clear();
-    unique_correlation_id_to_client_offset_.clear();
-    per_client_events_by_ext_correlation_.clear();
-    cupti_correlation_to_unique_correlation_.clear();
+bool CUPTIManager::PushUniqueCorrelation(uint64_t unique_cid) {
+  return cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, unique_cid) == CUPTI_SUCCESS;
 }
 
-bool CUPTIManager::PushCorrelation(uint64_t client_handle,
-                                  uint64_t external_correlation_id,
-                                  TimePoint origin) {
-    std::lock_guard<std::mutex> lock(cupti_manager_mutex_);
-    if (!logging_enabled_) {
-        return false;
+void CUPTIManager::PopUniqueCorrelation(uint64_t& popped_unique_cid) {
+    if (cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &popped_unique_cid) != CUPTI_SUCCESS) {
+        popped_unique_cid = 0;
     }
-    if (per_client_events_by_ext_correlation_.find(client_handle) ==
-        per_client_events_by_ext_correlation_.end()) {
-        return false;
-    }
-
-    // external_correlation_id is simply the timestamp of this event,
-    // relative to profiling_start_time. i.e., it was computed as:
-    // external_correlation_id =
-    //      std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count()
-    //
-    // Because of the relative nature of the external_correlation_id, the same
-    // external_correlation_id can be reused across different clients, which then makes it
-    // impossible to recover the client from the external_correlation_id, which in turn
-    // makes it impossible to map events (which are tagged with external_correlation_id) to clients.
-    //
-    // To address these difficulties, we construct a new correlation_id (let's call it unique_cid)
-    // as follows:
-    // unique_cid =
-    //    external_correlation_id +
-    //    std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count()
-    // now, unique_cid is monotonically increasing with time, so it can be used to reliably map events to clients.
-    //
-    // Of course, clients expect lists of events to be returned (on a call to Consume()), that are
-    // still keyed on the external_correlation_id that they've specified here, so we need to remember the
-    // offset to be subtracted
-
-    uint64_t offset =
-      std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
-    auto unique_cid = external_correlation_id + offset;
-
-    cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, unique_cid);
-
-    unique_correlation_id_to_client_offset_[unique_cid] = std::make_pair(client_handle, offset);
-    return true;
 }
 
-void CUPTIManager::PopCorrelation(uint64_t& popped_correlation_id) {
-    popped_correlation_id = 0;
-    std::lock_guard<std::mutex> lock(cupti_manager_mutex_);
-    if (!logging_enabled_) {
-        return;
-    }
+void CUPTIManager::FlushActivities() {
+  cuptiActivityFlushAll(1);
+}
 
-    uint64_t unique_cid;
-    cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &unique_cid);
-    // lookup the offset and subtract it before returning popped_external_correlation_id to the client
-    auto client_it = unique_correlation_id_to_client_offset_.find(unique_cid);
-    if (client_it == unique_correlation_id_to_client_offset_.end()) {
-        return;
-    }
-    popped_correlation_id = unique_cid - client_it->second.second;
+void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>& buffers,
+                                          const TimePoint& start_time) {
+    auto start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
+    for (auto const& buffer : buffers) {
+        auto size = buffer.GetSize();
+        if (size == 0) {
+            continue;
+        }
+        CUpti_Activity* record = nullptr;
+        CUptiResult status;
+        do {
+            EventRecord event;
+            status = cuptiActivityGetNextRecord(buffer.GetData(), size, &record);
+            if (status == CUPTI_SUCCESS) {
+                if (CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL == record->kind ||
+                    CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
+                    CUpti_ActivityKernel8* kernel = (CUpti_ActivityKernel8*)record;
+                    std::unordered_map<std::string, std::string> args {
+                        {"stream", std::to_string(kernel->streamId)},
+                        {"grid_x", std::to_string(kernel->gridX)},
+                        {"grid_y", std::to_string(kernel->gridY)},
+                        {"grid_z", std::to_string(kernel->gridZ)},
+                        {"block_x", std::to_string(kernel->blockX)},
+                        {"block_y", std::to_string(kernel->blockY)},
+                        {"block_z", std::to_string(kernel->blockZ)},
+                    };
+
+                    std::string name{kernel->name};
+
+                    new (&event) EventRecord {
+                        /* cat = */ EventCategory::KERNEL_EVENT,
+                        /* pid = */ -1,
+                        /* tid = */ -1,
+                        /* name = */ std::move(name),
+                        /* ts = */ (int64_t)(kernel->start - start_time_ns) / 1000,
+                        /* dur = */ (int64_t)(kernel->end - kernel->start) / 1000,
+                        /* args = */ std::move(args)
+                    };
+                    MapEventToClient(record->correlationId, std::move(Event));
+                } else if (CUPTI_ACTIVITY_KIND_MEMCPY == record->kind) {
+                    CUpti_ActivityMemcpy3* mmcpy = (CUpti_ActivityMemcpy3*)record;
+                    std::string name{GetMemcpyKindString((CUpti_ActivityMemcpyKind)mmcpy->copyKind)};
+                    std::unordered_map<std::string, std::string> args {
+                        {"stream", std::to_string(mmcpy->streamId)},
+                        {"grid_x", "-1"},
+                        {"grid_y", "-1"},
+                        {"grid_z", "-1"},
+                        {"block_x", "-1"},
+                        {"block_y", "-1"},
+                        {"block_z", "-1"},
+                    };
+                    new (&event) EventRecord {
+                        /* cat = */ EventCategory::KERNEL_EVENT,
+                        /* pid = */ -1,
+                        /* tid = */ -1,
+                        /* name = */ std::move(name),
+                        /* ts = */ (int64_t)(kernel->start - start_time_ns) / 1000,
+                        /* dur = */ (int64_t)(kernel->end - kernel->start) / 1000,
+                        /* args = */ std::move(args)};
+                        MapEventToClient(record->correlationId, std::move(Event));
+                } else if (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION == record->kind) {
+                    auto correlation = reinterpret_cast<const CUpti_ActivityExternalCorrelation*>(record);
+                    NotifyOnCorrelation(correlation->correlationId, correlation->externalId);
+                }
+            }
+        } (status == CUPTI_SUCCESS); /* do */
+    } /* for */
 }
 
 void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
@@ -136,12 +161,8 @@ void CUPTIAPI CUPTIManager::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
     auto instance = GetInstance();
     std::lock_guard<std::mutex> lock(instance.unprocessed_activity_buffers_lock_);
     instance.unprocessed_activity_buffers_.emplace_back(
-        CUPTIActivityBuffer::CreateFromPreallocatedBuffer(reinterpret_cast<char*>(buffer), valid_size);
+        CUPTIActivityBuffer::CreateFromPreallocatedBuffer(reinterpret_cast<char*>(buffer), valid_size)
     );
-}
-
-void CUPTIManager::Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events) {
-
 }
 
 } // namespace profiling
