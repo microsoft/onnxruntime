@@ -145,8 +145,11 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
   SamplingState<T> sampling_state;
   if (std::is_same<ParametersT, SamplingParameters>::value) {
     sampling_state.Init(this->temp_space_allocator_,
+                        this->cpu_allocator_,
                         static_cast<int>(parameters->BatchBeamSize()),
                         static_cast<int>(parameters->vocab_size),
+                        static_cast<int>(parameters->max_length - parameters->sequence_length),
+                        parameters->seed,
                         this->IsCuda());
   }
 

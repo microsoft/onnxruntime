@@ -3,7 +3,6 @@
 
 #include <utility>
 #include <memory>
-#include <random>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/math/topk_impl.h"
@@ -569,8 +568,7 @@ Status GreedySearchProcessLogits(
     gsl::span<int>& d_offset = sampling_state->d_offset;
 
     BufferUniquePtr& storage_buffer = sampling_state->storage_buffer;
-    std::cout << "step" << step << std::endl;
-    size_t temp_storage_bytes = 0;
+    size_t& temp_storage_bytes = sampling_state->temp_storage_bytes;
     if (step == 1) {
       temp_storage_bytes = cuda::GetTempStorageSize<CudaT>(reinterpret_cast<CudaT*>(next_token_scores.data()),
                                                            d_index_in.data(),
@@ -578,10 +576,6 @@ Status GreedySearchProcessLogits(
                                                            parameters->batch_size * parameters->vocab_size,
                                                            parameters->batch_size,
                                                            cuda_stream);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("temp_storage_bytes", temp_storage_bytes, true);
-#endif
 
       cuda::LaunchSetupParamsKernel(d_index_in.data(),
                                     d_offset.data(),
@@ -593,13 +587,18 @@ Status GreedySearchProcessLogits(
   dumper->Print("d_offset_buffer", d_offset.data(), batch_size + 1, 1);
 #endif
 
-      void* temp_storage = allocator->Alloc(temp_storage_bytes);
+      void* temp_storage = allocator->Alloc(sampling_state->temp_storage_bytes);
       BufferUniquePtr temp_storage_buffer(temp_storage, BufferDeleter(allocator));
       storage_buffer = std::move(temp_storage_buffer);
     }
 
-    gsl::span<T> d_sorted_score = sampling_state->d_sorted_score;
-    gsl::span<int> d_index_out = sampling_state->d_index_out;
+    gsl::span<T>& d_sorted_score = sampling_state->d_sorted_score;
+    gsl::span<int>& d_index_out = sampling_state->d_index_out;
+
+#ifdef DEBUG_GENERATION
+    dumper->Print("temp_storage_bytes", temp_storage_bytes, true);
+#endif
+
     cuda::LaunchSortPairsDescending<CudaT>(storage_buffer.get(),
                                            temp_storage_bytes,
                                            reinterpret_cast<CudaT*>(next_token_scores.data()),
@@ -617,7 +616,7 @@ Status GreedySearchProcessLogits(
   dumper->Print("d_index_buffer_out", d_index_out.data(), batch_size, vocab_size);
 #endif
 
-    gsl::span<float> d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
+    gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
     dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                    d_sorted_softmaxed_score.data(),
                                                                    reinterpret_cast<CudaT*>(d_sorted_score.data()),
@@ -644,7 +643,7 @@ Status GreedySearchProcessLogits(
 
     // bugbug: actually we can only do softmax at the very beginning and sort the softmaxed scores.
     // Not sure if the order change will affect the result.
-    gsl::span<float> d_softmaxed_score = sampling_state->d_softmaxed_score;
+    gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
     dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                    d_softmaxed_score.data(),
                                                                    reinterpret_cast<CudaT*>(next_token_scores.data()),
@@ -657,21 +656,10 @@ Status GreedySearchProcessLogits(
 #endif
 
     // multinomial sampling
-    std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(parameters->seed + step)};
-    std::uniform_real_distribution<float> distribution(0.0, 1.0);
-    std::vector<float> sampled(parameters->batch_size);
-    distribution(generator); // the first one is subnormal numbers
-    // need to optimize the random generation. current version is for debug.
-    for (int i = 0; i < parameters->batch_size; ++i) {
-      sampled[i] = distribution(generator);
-#ifdef DEBUG_GENERATION
-  std::cout << "sampled value on cpu: " << sampled[i] << std::endl;
-#endif
-    }
-
-    gsl::span<float> d_sampled = sampling_state->d_sampled;
+    gsl::span<float>& d_sampled = sampling_state->d_sampled;
+    gsl::span<float>& h_sampled_all = sampling_state->h_sampled_all;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_sampled.data(),
-                                         sampled.data(),
+                                         h_sampled_all.data() + (step - 1) * parameters->batch_size,
                                          sizeof(float) * parameters->batch_size,
                                          cudaMemcpyHostToDevice,
                                          cuda_stream));
@@ -680,7 +668,7 @@ Status GreedySearchProcessLogits(
   dumper->Print("d_sampled", d_sampled.data(), batch_size, 1);
 #endif
 
-    gsl::span<int64_t> d_indices = sampling_state->d_indices;
+    gsl::span<int64_t>& d_indices = sampling_state->d_indices;
     cuda::TorchMultinomialKernelLauncher(d_softmaxed_score.data(),
                                          d_sampled.data(),
                                          d_indices.data(),

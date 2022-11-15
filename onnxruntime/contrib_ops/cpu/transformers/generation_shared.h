@@ -75,10 +75,12 @@ struct ISamplingCudaState {
   gsl::span<float> d_sorted_softmaxed_score;
   gsl::span<float> d_softmaxed_score;
   gsl::span<float> d_sampled;
+  gsl::span<float> h_sampled_all;
   gsl::span<int64_t> d_indices;
   gsl::span<int> d_presence_mask;
 
   BufferUniquePtr storage_buffer;
+  size_t temp_storage_bytes;
 };
 
 class ISequences {
@@ -127,7 +129,7 @@ struct IGenerationParameters {
   float temperature = 1.0f;
   float top_p = 0.0f;
   float filter_value;
-  int seed = 0;
+  int seed = 1234;
 
   // Parameters from inputs
   int min_length;

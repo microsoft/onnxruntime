@@ -127,7 +127,7 @@ __global__ void LogitsProcessKernel(
 
     // VocabMaskLogitsProcessor
     if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
-      next_token_scores[index] = cub::FpLimits<T>::Lowest();
+      next_token_scores[index] = (T)cub::FpLimits<float>::Lowest();
       return;
     }
 
@@ -140,7 +140,7 @@ __global__ void LogitsProcessKernel(
 
     // MinLengthLogitsProcessor
     if (word_id == demote_token_id) {
-      next_token_scores[index] = cub::FpLimits<T>::Lowest();
+      next_token_scores[index] = (T)cub::FpLimits<float>::Lowest();
     }
 
     // PresencePenaltyLogitsProcessor

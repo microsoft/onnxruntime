@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <random>
 #include <vector>
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
@@ -14,8 +15,11 @@ namespace transformers {
 template <typename T>
 struct SamplingState : public ISamplingCudaState<T> {
   void Init(AllocatorPtr allocator,
+            AllocatorPtr cpu_allocator,
             int batch_size,
             int vocab_size,
+            int max_iter,
+            int seed,
             bool is_cuda) {
     if (!is_cuda) {
       return;
@@ -28,9 +32,19 @@ struct SamplingState : public ISamplingCudaState<T> {
     this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
     this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
     this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size));
+    this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size * max_iter));
     this->d_indices = AllocateBuffer<int64_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size));
-    // TODO: do not allocate this buffer there's no presence_mask
+    // TODO: do not allocate this buffer if there's no presence_mask
     this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count));
+
+    this->temp_storage_bytes = 0;
+
+    std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+    std::uniform_real_distribution<float> distribution(0.0, 1.0);
+    distribution(generator);
+    for (size_t i = 0; i < this->h_sampled_all.size(); ++i) {
+      this->h_sampled_all[i] = distribution(generator);
+    }
   }
 
  private:
@@ -41,6 +55,7 @@ struct SamplingState : public ISamplingCudaState<T> {
   BufferUniquePtr d_sorted_softmaxed_score_buffer_;
   BufferUniquePtr d_softmaxed_score_buffer_;
   BufferUniquePtr d_sampled_buffer_;
+  BufferUniquePtr h_sampled_all_buffer_;
   BufferUniquePtr d_indices_buffer_;
   BufferUniquePtr d_presence_mask_buffer_;
 };
