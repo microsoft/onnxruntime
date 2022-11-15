@@ -212,6 +212,114 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+NcclAllToAll::NcclAllToAll(const OpKernelInfo& info) : NcclKernel(info) {
+}
+
+Status NcclAllToAll::ComputeInternal(OpKernelContext* context) const {
+  const ncclComm_t comm = nccl_->Comm(group_type_);
+  const int32_t group_size = nccl_->Size(group_type_);
+
+  ORT_ENFORCE(context->InputCount() > 0);
+  auto onnx_type = context->Input<Tensor>(0)->DataType();
+  const size_t element_size = onnx_type->Size();
+  ncclDataType_t element_type = GetNcclDataType(onnx_type);
+
+  // Count total number of elements to AllToAll.
+  int64_t total_element_count = 0;
+  for (int32_t i = 0; i < context->InputCount(); i++) {
+    const Tensor* input_tensor = context->Input<Tensor>(i);
+    total_element_count += input_tensor->Shape().Size();
+  }
+
+  ORT_ENFORCE(total_element_count > group_size);
+  ORT_ENFORCE((total_element_count % group_size) == 0);
+
+  // AllToAll requires every rank to receive the same amount of data, and slows down
+  // significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
+  // so pad to multiple of 32 and world size.
+  // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
+  const int64_t element_count_per_rank = total_element_count / group_size;
+  const int64_t padded_element_count_per_rank = (element_count_per_rank + 31) & ~31;
+  const int64_t padded_total_element_count = padded_element_count_per_rank * group_size;
+  const int64_t buffer_size_in_bytes = padded_total_element_count * element_size;
+  const int64_t rank_stride = padded_element_count_per_rank * element_size;
+  auto fusion_buffer = GetScratchBuffer<void>(buffer_size_in_bytes);
+  int8_t* fusion_data = (int8_t*)fusion_buffer.get();
+
+  // Copy inputs to fusion buffer.
+  int8_t* output_data = fusion_data;
+  int64_t output_count = element_count_per_rank;
+  for (int i = 0, r = 0; i < context->InputCount(); i++) {
+    const Tensor* input_tensor = context->Input<Tensor>(i);
+    const int8_t* input_data = (int8_t*)input_tensor->DataRaw();
+    int64_t input_count = input_tensor->Shape().Size();
+
+    while (input_count > 0) {
+      const int64_t count = std::min(input_count, output_count);
+      const int64_t stride = count * element_size;
+
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, stride, cudaMemcpyDeviceToDevice, Stream()));
+
+      input_data += stride;
+      output_data += stride;
+      input_count -= count;
+      output_count -= count;
+
+      if (output_count == 0) {
+        // Move to next rank!
+        output_data = fusion_data + (++r * rank_stride);
+        output_count = element_count_per_rank;
+      }
+    }
+  }
+
+  // AllToAll.
+  int8_t* data = fusion_data;
+#ifdef ORT_USE_NCCL
+  NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  for (int32_t r = 0; r < group_size; r++) {
+    NCCL_RETURN_IF_ERROR(ncclSend(data, padded_element_count_per_rank, element_type, r, comm, Stream()));
+    NCCL_RETURN_IF_ERROR(ncclRecv(data, padded_element_count_per_rank, element_type, r, comm, Stream()));
+    data += rank_stride;
+  }
+  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+#endif
+
+  // Copy this rank's AllToAll results to outputs.
+  int8_t* input_data = fusion_data;
+  int64_t input_count = element_count_per_rank;
+  for (int32_t i = 0, r = 0; i < context->InputCount(); i++) {
+    const Tensor* input_tensor = context->Input<Tensor>(i);
+    const TensorShape& input_shape = input_tensor->Shape();
+    Tensor* output_tensor = context->Output(i, input_shape);
+    int64_t output_count = input_shape.Size();
+    int8_t* output_data = (int8_t*)output_tensor->MutableDataRaw();
+
+    // TODO: temporary hack until View is improved (it doesn't work with Alias)
+    output_tensor->SetByteOffset(input_tensor->ByteOffset());
+
+    while (output_count > 0) {
+      const int64_t count = std::min(input_count, output_count);
+      const int64_t stride = count * element_size;
+
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, stride, cudaMemcpyDeviceToDevice, Stream()));
+
+      input_data += stride;
+      output_data += stride;
+      input_count -= count;
+      output_count -= count;
+
+      if (input_count == 0) {
+        // Move to next rank!
+        input_data = fusion_data + (++r * rank_stride);
+        input_count = element_count_per_rank;
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kMSDomain,
@@ -244,6 +352,17 @@ ONNX_OPERATOR_KERNEL_EX(
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
+
+ONNX_OPERATOR_KERNEL_EX(
+    NcclAllToAll,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    NcclAllToAll);
 
 }  // namespace cuda
 }  // namespace onnxruntime

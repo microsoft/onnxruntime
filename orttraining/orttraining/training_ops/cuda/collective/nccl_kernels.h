@@ -29,5 +29,12 @@ class NcclReduceScatter final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+class NcclAllToAll final : public NcclKernel {
+ public:
+  explicit NcclAllToAll(const OpKernelInfo& info);
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -45,6 +45,7 @@ constexpr const char* const k_lamb_optimizer_op_name = "LambOptimizer";
 constexpr const char* const k_all_reduce_op_name = "NcclAllReduce";
 constexpr const char* const k_all_gather_op_name = "NcclAllGather";
 constexpr const char* const k_reduce_scatter_op_name = "NcclReduceScatter";
+constexpr const char* const k_all_to_all_op_name = "NcclAllToAll";
 constexpr const char* const k_is_all_finite_op_name = "IsAllFinite";
 constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
@@ -289,6 +290,7 @@ static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph&
   ASSERT_EQ(GetOpCount(op_counts, k_all_reduce_op_name), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_reduce_scatter_op_name), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_all_gather_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_all_to_all_op_name), 0);
 }
 
 TEST_F(OptimizerGraphBuilderTest, Default_NoGradientAccumulation_NoMixedPrecision) {
@@ -508,6 +510,7 @@ static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& gr
   ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
   ASSERT_GT(GetOpCount(op_counts, k_reduce_scatter_op_name), 0);
   ASSERT_GT(GetOpCount(op_counts, k_all_gather_op_name), 0);
+  ASSERT_GT(GetOpCount(op_counts, k_all_to_all_op_name), 0);
 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
