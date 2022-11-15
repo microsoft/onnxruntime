@@ -20,39 +20,36 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
-    if (should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
-      std::cout << "Using proxy" << std::endl;
-      cudaMalloc(&proxy_weights_, 768 * 50264 * 2);
-      cudaMalloc(&proxy_results_, 16 * 5 * 50264 * 2);
+    if (should_use_padded_weights_ && Node().Name() == "/lm_head/MatMul") {
+      std::cout << "Using padded" << std::endl;
+      cudaMalloc(&padded_weights_, 768 * 50264 * 2);
+      cudaMalloc(&padded_results_, 16 * 5 * 50264 * 2);
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
   ~MatMul() {
-    if (proxy_weights_ != nullptr) {
-      cudaFree(proxy_weights_);
+    if (padded_weights_ != nullptr) {
+      cudaFree(padded_weights_);
     }
 
-    if (proxy_results_ != nullptr) {
-      cudaFree(proxy_results_);
+    if (padded_results_ != nullptr) {
+      cudaFree(padded_results_);
     }
 
   }
 
  private:
-  void* proxy_weights_ = nullptr;
-  void* proxy_results_ = nullptr;
+  void* padded_weights_ = nullptr;
+  void* padded_results_ = nullptr;
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
-  bool should_use_proxy_data_ = ParseEnvironmentVariableWithDefault<bool>("ORT_PROXY_DATA", false);
+  bool should_use_padded_weights_ = ParseEnvironmentVariableWithDefault<bool>("ORT_PADDED_WEIGHTS", false);
   bool measure_matmul_perf_ = ParseEnvironmentVariableWithDefault<bool>("ORT_MEASURE_PERF", false);
-  bool do_slicing_ = ParseEnvironmentVariableWithDefault<bool>("ORT_SLICE", true);
-  bool use_high_tpb_ = ParseEnvironmentVariableWithDefault<bool>("ORT_USE_HIGH", false);
-
   mutable bool copied_weights_ = false;
 };
 }  // namespace cuda

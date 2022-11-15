@@ -20,13 +20,12 @@ Status ScatterNDImpl(
     const size_t num_updates_elements);
 
 void SliceOut(cudaStream_t stream,
-              void* output,       // output tensor
-              const void* input,  // input tensor
+              void* output,
+              const void* input,
               const int padded_vocab_size,
               const int vocab_size,
-              int batch_size,  // batch size
-              int sequence_length,
-              int tpb = 2048);
+              int batch_size,
+              int sequence_length);
 
 }  // namespace cuda
 }  // namespace onnxruntime

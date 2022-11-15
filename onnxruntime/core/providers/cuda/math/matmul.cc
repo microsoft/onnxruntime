@@ -132,10 +132,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    bool should_use_proxy_data = should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul";
+    bool should_use_padded_data = should_use_padded_weights_ && Node().Name() == "/lm_head/MatMul";
 
-    if (!copied_weights_ && should_use_proxy_data) {
-      cudaMemcpyAsync(proxy_weights_, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
+    if (!copied_weights_ && should_use_padded_data) {
+      cudaMemcpyAsync(padded_weights_, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
       copied_weights_ = true;
     }
 
@@ -149,19 +149,19 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         Base::CublasHandle(),
         transB,
         transA,
-        should_use_proxy_data ? static_cast<int>(50264) : static_cast<int>(helper.N()),
+        should_use_padded_data ? static_cast<int>(50264) : static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        should_use_proxy_data ? reinterpret_cast<const CudaT*>(proxy_weights_)
+        should_use_padded_data ? reinterpret_cast<const CudaT*>(padded_weights_)
                               : reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-        should_use_proxy_data ? static_cast<int>(50264) : ldb,
+        should_use_padded_data ? static_cast<int>(50264) : ldb,
         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
         &zero,
-        should_use_proxy_data ? reinterpret_cast<CudaT*>(proxy_results_)
+        should_use_padded_data ? reinterpret_cast<CudaT*>(padded_results_)
                               : reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        should_use_proxy_data ? static_cast<int>(50264) : ldc,
+        should_use_padded_data ? static_cast<int>(50264) : ldc,
         device_prop));
 
     if (Node().Name() == "/lm_head/MatMul" && measure_matmul_perf_) {
@@ -174,33 +174,21 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       std::cout << "MatMul duration: " << duration.count() << std::endl;
     }
 
-    // Use slicing
-    if (do_slicing_ && should_use_proxy_data) {
+    // Use slicing to slice out padded data
+    if (should_use_padded_data) {
       if (measure_matmul_perf_) {
         cudaDeviceSynchronize();
       }
 
       auto start_2 = high_resolution_clock::now();
 
-      if (use_high_tpb_) {
-        SliceOut(Stream(),
-                 Y->MutableDataRaw(),
-                 proxy_results_,
-                 50264,
-                 50257,
-                 static_cast<int>(Y->Shape()[0]),
-                 static_cast<int>(Y->Shape()[1]),
-                 4096);
-
-      } else {
-        SliceOut(Stream(),
-                 Y->MutableDataRaw(),
-                 proxy_results_,
-                 50264,
-                 50257,
-                 static_cast<int>(Y->Shape()[0]),
-                 static_cast<int>(Y->Shape()[1]));
-      }
+      SliceOut(Stream(),
+               Y->MutableDataRaw(),
+               padded_results_,
+               50264,
+               50257,
+               static_cast<int>(Y->Shape()[0]),
+               static_cast<int>(Y->Shape()[1]));
 
       if (measure_matmul_perf_) {
         cudaDeviceSynchronize();
