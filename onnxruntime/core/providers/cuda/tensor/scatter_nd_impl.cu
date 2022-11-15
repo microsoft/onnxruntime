@@ -134,8 +134,7 @@ __global__ void SliceOutKernel(half* output,
                                const int padded_vocab_size,
                                const int vocab_size,
                                int batch_size,
-                               int sequence_length,
-                               int flush_all_to_zero) {
+                               int sequence_length) {
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
 
   const int input_offset = sequence_position * padded_vocab_size;
