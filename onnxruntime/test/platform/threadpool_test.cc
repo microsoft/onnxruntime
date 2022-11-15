@@ -481,4 +481,21 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
   }
 #endif
 }
+
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestNuma_2_Group_64_core_128_Processor) {
+  auto& env = Env::Default();
+  auto system_info_snap = env.GetSystemInfo();
+  int32_t logical_processors_per_core = 2;
+  int32_t cores_per_group = 32;
+  int32_t num_cores = 64;
+  env.SetSystemInfo({logical_processors_per_core, cores_per_group, num_cores});
+  std::vector<uint64_t> default_affinities;
+  int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
+  ASSERT_TRUE(default_threadpool_size == 64);
+  // recover system info
+  env.SetSystemInfo(system_info_snap);
+}
+#endif
+
 }  // namespace onnxruntime

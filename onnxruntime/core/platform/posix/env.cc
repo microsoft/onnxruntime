@@ -206,6 +206,16 @@ class PosixEnv : public Env {
     return 0;
   }
 
+  std::vector<int32_t> GetSystemInfo() override {
+    ORT_THROW("PosixEnv::SetSystemInfo not implemented, do not set affinity!");
+    return {};
+  }
+
+  bool SetSystemInfo(const std::vector<int32_t>&) override {
+    ORT_THROW("PosixEnv::SetSystemInfo not implemented, do not set affinity!");
+    return false;
+  }
+
   void SleepForMicroseconds(int64_t micros) const override {
     while (micros > 0) {
       timespec sleep_time;

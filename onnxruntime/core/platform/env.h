@@ -251,6 +251,10 @@ class Env {
   // Returns empty string if there is no such environment variable available
   virtual std::string GetEnvironmentVar(const std::string& var_name) const = 0;
 
+  // \brief provide an interface to set system info to simulate numa architectures
+  virtual std::vector<int32_t> GetSystemInfo() = 0;
+  virtual bool SetSystemInfo(const std::vector<int32_t>& parameters) = 0;
+
  protected:
   Env();
 

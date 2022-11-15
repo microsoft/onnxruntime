@@ -22,6 +22,7 @@ limitations under the License.
 #include <fstream>
 #include <string>
 #include <thread>
+#include <numeric>
 #include <process.h>
 #include <fcntl.h>
 #include <io.h>
@@ -142,9 +143,8 @@ class WindowsThread : public EnvThread {
 
 class WindowsEnv : public Env {
  public:
-
   explicit WindowsEnv() {
-    GetSystemInfo();
+    GetWinSystemInfo();
   }
 
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
@@ -700,9 +700,78 @@ class WindowsEnv : public Env {
     return std::string();
   }
 
+  std::vector<int32_t> GetSystemInfo() override {
+    if (cores_.empty() || groups_.empty()) {
+      return {};
+    }
+    int32_t total_logical_processors = 0;
+    std::for_each(groups_.begin(), groups_.end(), [&](Group& group) {
+      total_logical_processors += group.num_processors;
+    });
+    int32_t logical_processors_per_core = total_logical_processors / static_cast<int32_t>(cores_.size());
+    int32_t cores_per_group = static_cast<int32_t>(cores_.size() / groups_.size());
+    int32_t num_cores = static_cast<int32_t>(cores_.size());
+    return {logical_processors_per_core, cores_per_group, num_cores};
+  }
+
+  // Provide an interface for windows env to simulate and test numa cases.
+  // On success, cores and groups information will be updated accordingly.
+  bool SetSystemInfo(const std::vector<int32_t>& parameters) override {
+    if (parameters.size() != 3) {
+      return false;
+    }
+
+    int32_t logical_processors_per_core = parameters[0];
+    int32_t cores_per_group = parameters[1];
+    int32_t num_cores = parameters[2];
+
+    if (logical_processors_per_core <= 0 ||
+        cores_per_group <= 0 ||
+        num_cores <= 0 ||
+        cores_per_group > num_cores ||
+        num_cores % cores_per_group) {
+      return false;
+    }
+
+    auto num_groups = num_cores / cores_per_group;
+    auto total_logical_processers = logical_processors_per_core * num_cores;
+
+    if (total_logical_processers % num_groups) {
+      return false;
+    }
+
+    auto total_logical_processors_per_group = total_logical_processers / num_groups;
+
+    if (total_logical_processors_per_group <= 0 || total_logical_processors_per_group > 64) {
+      return false;
+    }
+
+    if ((logical_processors_per_core & (logical_processors_per_core - 1)) != 0) {
+      return false;
+    }
+
+    int32_t num_bits_per_core = static_cast<int32_t>(log2(logical_processors_per_core));
+    cores_.clear();
+    groups_.clear();
+
+    for (int32_t i = 0; i < num_groups; ++i) {
+      uint64_t group_mask = 0;
+      uint64_t core_mask = (BitOne << logical_processors_per_core) - 1;
+      for (int32_t j = 0; j < cores_per_group; ++j) {
+        Core core{static_cast<uint64_t>(i), core_mask};
+        cores_.push_back(std::move(core));
+        group_mask |= core_mask;
+        core_mask <<= num_bits_per_core;
+      }
+      Group group{total_logical_processors_per_group, group_mask};
+      groups_.push_back(std::move(group));
+    }
+    return true;
+  }
+
 private:
 
-  void GetSystemInfo() {
+  void GetWinSystemInfo() {
    if (sizeof(KAFFINITY) > sizeof(uint64_t)) {  // exit if KAFFINITY is bigger than uint64_t, this is unlikely though
      return;
    }
