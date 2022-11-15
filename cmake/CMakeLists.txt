@@ -799,7 +799,7 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   endif()
 endif()
 
-include(onnxruntime_external_deps.cmake)
+include(external/onnxruntime_external_deps.cmake)
 
 set(ORT_WARNING_FLAGS)
 if (WIN32)

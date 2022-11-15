@@ -24,7 +24,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 # ABSL should be included before protobuf because protobuf may use absl
 if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(external/abseil-cpp.cmake)
+  include(abseil-cpp)
 endif()
 
 # Flatbuffers
@@ -63,7 +63,7 @@ if (onnxruntime_DISABLE_RTTI)
   set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
 endif()
 
-include(protobuf_function.cmake)
+include(protobuf_function)
 #protobuf end
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
@@ -305,7 +305,7 @@ endif()
 
 
 include(eigen)
-include(wil.cmake)
+include(wil)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
     FetchContent_MakeAvailable(onnx)
@@ -368,15 +368,6 @@ if(onnxruntime_ENABLE_TRAINING)
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
   )
   FetchContent_MakeAvailable(cxxopts)
-endif()
-
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
-    absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
-    absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ABSEIL_LIBS})
-else()
-  add_compile_definitions(DISABLE_ABSEIL)
 endif()
 
 message("Finished fetching external dependencies")
