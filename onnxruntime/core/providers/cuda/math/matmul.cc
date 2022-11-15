@@ -128,7 +128,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    if (should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
+    bool should_use_proxy_data = should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul";
+
+    if (should_use_proxy_data) {
       cudaMemcpyAsync(data, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
 
       if (measure_matmul_perf_) {
@@ -142,13 +144,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         Base::CublasHandle(),
         transB,
         transA,
-        should_use_proxy_data_ ? static_cast<int>(50264) : static_cast<int>(helper.N()),
+        should_use_proxy_data ? static_cast<int>(50264) : static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        should_use_proxy_data_ ? reinterpret_cast<const CudaT*>(data)
+        should_use_proxy_data ? reinterpret_cast<const CudaT*>(data)
                               : reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-        should_use_proxy_data_ ? static_cast<int>(50264) : ldb,
+        should_use_proxy_data ? static_cast<int>(50264) : ldb,
         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
         &zero,
@@ -156,7 +158,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(50264),
         device_prop));
 
-    if (measure_matmul_perf_ && should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul") {
+    if (measure_matmul_perf_ && should_use_proxy_data) {
       cudaDeviceSynchronize();
 
       auto stop = high_resolution_clock::now();
