@@ -164,6 +164,19 @@ def call_python_forward_function(
 
             # Extract results as DLPack tensors plus autograd context. Also skips all None values.
             unwrapped_values = wrap_all_outputs(result, is_training_mode)
+            ctx = unwrapped_values[0]
+            if is_training_mode and ctx and ctx.saved_tensors:
+                new_wrapped_args_set = set(new_wrapped_args)
+                for tensor in ctx.saved_tensors:
+                    if tensor is not None and tensor in new_wrapped_args_set:
+                        raise RuntimeError(
+                            "PythonOp is saving input for backward, \
+                            it's risky since ONNX Runtime backend is not aware of this, \
+                            the tensor buffer may be \"released\" by ORT, then potentially \
+                            modified by other operators before backward function executes. \
+                            Try to mitigate this risk by changing 'ctx.save_for_backward(input)' \
+                            to 'ctx.save_for_backward(input.detach().clone())'."
+                        )
 
         return tuple(unwrapped_values)
     except Exception as e:

@@ -53,7 +53,7 @@ def test_gelu():
     class GeLUFunction1(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, bias):
-            ctx.save_for_backward(input, bias)
+            ctx.save_for_backward(input.detach().clone(), bias.detach().clone())
             return bias_gelu(bias, input)
 
         @staticmethod
@@ -105,7 +105,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
     class GeLUFunction2(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, bias):
-            ctx.save_for_backward(input, bias)
+            ctx.save_for_backward(input.detach().clone(), bias.detach().clone())
             return bias_gelu(bias, input)
 
         @staticmethod
@@ -163,7 +163,7 @@ def test_GeLU_multiple_forward_runs():
     class GeLUFunction3(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, bias):
-            ctx.save_for_backward(input, bias)
+            ctx.save_for_backward(input.detach().clone(), bias.detach().clone())
             return bias_gelu(bias, input)
 
         @staticmethod
@@ -243,7 +243,7 @@ def test_ScalarAndTuple():
     class ScalarAndTupleFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, alpha, beta, gamma):
-            ctx.save_for_backward(input)
+            ctx.save_for_backward(input.detach().clone())
             ctx.alpha = alpha
             ctx.beta = beta
             ctx.gamma = gamma
@@ -290,7 +290,7 @@ def test_ScalarAndTupleReordered():
     class ScalarAndTupleReorderedFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, alpha, beta, input, gamma):
-            ctx.save_for_backward(input)
+            ctx.save_for_backward(input.detach().clone())
             ctx.alpha = alpha
             ctx.beta = beta
             ctx.gamma = gamma
@@ -345,7 +345,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
             # so for the weights that are used twice BUT SHOULD only used once,
             # the gradients are almost 2x than PyTorch's grad, this is the reason we
             # ignore the gradient compare here.
-            ctx.save_for_backward(inplace_update_input, bias)
+            ctx.save_for_backward(inplace_update_input.detach().clone(), bias.detach().clone())
             return inplace_update_input.add_(3 * bias)
 
         @staticmethod
@@ -390,7 +390,7 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     class InplaceUpdateInputNotAsOutputNotRequireGradFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, bias, inplace_update_input):
-            ctx.save_for_backward(inplace_update_input, bias)
+            ctx.save_for_backward(inplace_update_input.detach().clone(), bias.detach().clone())
             inplace_update_input.add_(3 * bias)
             return inplace_update_input * 5
 
@@ -437,7 +437,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, bias, inplace_update_input):
-            ctx.save_for_backward(inplace_update_input, bias)
+            ctx.save_for_backward(inplace_update_input.detach().clone(), bias.detach().clone())
             ctx.mark_dirty(inplace_update_input)
             # Be noted: if we make the input dirty, we must also put the input in outputs, otherwise, we will get such an error:
             # "RuntimeError: Some elements marked as dirty during the forward method were not returned as output.
@@ -486,7 +486,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     class InplaceUpdateInputAsOutputRequireGradFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, bias, inplace_update_input):
-            ctx.save_for_backward(inplace_update_input, bias)
+            ctx.save_for_backward(inplace_update_input.detach().clone(), bias.detach().clone())
             # Be noted: if we make the input dirty, we must also put the input in outputs, otherwise, we will get such an error:
             # "RuntimeError: Some elements marked as dirty during the forward method were not returned as output. The inputs that are modified inplace must all be outputs of the Function.""
             return inplace_update_input.add_(3 * bias)
@@ -541,7 +541,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
         # ignore the gradient compare here.
         @staticmethod
         def forward(ctx, bias, inplace_update_input):
-            ctx.save_for_backward(inplace_update_input, bias)
+            ctx.save_for_backward(inplace_update_input.detach().clone(), bias.detach().clone())
             inplace_update_input.add_(3 * bias)
             return inplace_update_input * 5
 
@@ -591,7 +591,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, bias, inplace_update_input):
-            ctx.save_for_backward(inplace_update_input, bias)
+            ctx.save_for_backward(inplace_update_input.detach().clone(), bias.detach().clone())
             ctx.mark_dirty(inplace_update_input)
             # Be noted: if we make the input dirty, we must also put the input in outputs,
             # otherwise, we will get such an error:
@@ -638,7 +638,7 @@ def test_EvalTest():
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x):
-            ctx.save_for_backward(x)
+            ctx.save_for_backward(x.detach().clone())
             return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
 
         @staticmethod
@@ -684,7 +684,7 @@ def test_TwoOutputFunction():
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x, y):
-            ctx.save_for_backward(x, y)
+            ctx.save_for_backward(x.detach().clone(), y.detach().clone())
             w = x + y
             z = x * y
             return w, z
@@ -752,7 +752,7 @@ def test_InnerModuleCall():
     class OuterFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, x, dim, device, use_ort):
-            ctx.save_for_backward(x)
+            ctx.save_for_backward(x.detach().clone())
             ctx.device = device
             ctx.inner = InnerModel(dim, device).to(device)
             if use_ort:
@@ -819,7 +819,7 @@ def test_Share_Input():
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x, y):
-            ctx.save_for_backward(x, y)
+            ctx.save_for_backward(x.detach().clone(), y.detach().clone())
             w = x + y
             z = x * y
             return w, z
@@ -870,7 +870,7 @@ def test_MultipleStream_InForwardFunction():
         @staticmethod
         def forward(ctx, input):
             default_stream = torch.cuda.current_stream()
-            ctx.save_for_backward(input)
+            ctx.save_for_backward(input.detach().clone())
             stream = torch.cuda.Stream()
             torch.cuda._sleep(1000 * 1000)
             input = input * 0.2
@@ -922,7 +922,7 @@ def test_NonDefaultStream_InForwardFunction1():
             # on different stream
             with torch.cuda.stream(stream):
                 stream.wait_stream(default_stream)
-                ctx.save_for_backward(input)
+                ctx.save_for_backward(input.detach().clone())
                 input = input * 0.4
 
             default_stream.wait_stream(stream)
@@ -965,7 +965,7 @@ def test_NonDefaultStream_InForwardFunction2():
     class MultipleStreamFunction3(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
-            ctx.save_for_backward(input)
+            ctx.save_for_backward(input.detach().clone())
             torch.cuda._sleep(1000 * 1000)
             input = input * 0.4
             return input
@@ -1017,7 +1017,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
             # on different stream
             with torch.cuda.stream(stream):
                 stream.wait_stream(default_stream)
-                ctx.save_for_backward(input)
+                ctx.save_for_backward(input.detach().clone())
                 input.mul_(0.4)
 
             ctx.mark_dirty(input)
@@ -1171,7 +1171,7 @@ def test_skipped_autograd_function():
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x):
-            ctx.save_for_backward(x)
+            ctx.save_for_backward(x.detach().clone())
             return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
 
         @staticmethod
@@ -1239,7 +1239,7 @@ def test_pythonop_training_mode():
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x):
-            ctx.save_for_backward(x)
+            ctx.save_for_backward(x.detach().clone())
             return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
 
         @staticmethod
@@ -1272,3 +1272,94 @@ def test_pythonop_training_mode():
     ortmodule = ORTModule(TestModel(output_size)).eval()
     _ = ortmodule(torch.randn(output_size, dtype=torch.float))
     check_pythonop_training_mode(ortmodule, is_eval_mode=True)
+
+
+def test_python_op_save_input_for_backward():
+    class GeLUFunctionTakeActivationInput(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input):
+            ctx.save_for_backward(input)
+            x = input
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            (input,) = ctx.saved_tensors
+            x = input
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            g = ff * grad_output
+            return g
+
+    class GeLUFunctionTakeActivationInputCopy(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input):
+            ctx.save_for_backward(input.detach().clone())
+            x = input
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            (input,) = ctx.saved_tensors
+            x = input
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            g = ff * grad_output
+            return g
+
+    class TestLayer(torch.nn.Module):
+        def __init__(self, output_size, input_copy=False):
+            super().__init__()
+            if input_copy:
+                self.relu = GeLUFunctionTakeActivationInputCopy.apply
+            else:
+                self.relu = GeLUFunctionTakeActivationInput.apply
+            self._output_size = output_size
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+            self.w = Parameter(
+                torch.empty(output_size, output_size, device=torch.cuda.current_device(), dtype=torch.float)
+            )
+            with torch.no_grad():
+                self.bias.uniform_()
+                self.w.uniform_()
+
+        def forward(self, model_input):
+            activation0 = torch.add(model_input, 0.4)
+            activation1 = activation0.view(self._output_size, -1)
+            activation2 = torch.add(self.relu(activation1), self.bias)
+            activation3 = torch.mul(activation2, 0.3)
+            activation3 = torch.matmul(self.w, activation3)
+            activation4 = torch.div(activation3, 1000)
+            return activation4
+
+    class TestModule(torch.nn.Module):
+        def __init__(self, output_size, input_copy=False) -> None:
+            super().__init__()
+            self.layers = torch.nn.ModuleList([TestLayer(output_size, input_copy) for i in range(10)])
+
+        def forward(self, x):
+            # ModuleList can act as an iterable, or be indexed using ints
+            for layer in self.layers:
+                x = x.view(-1)
+                x = torch.nn.functional.relu(layer(x))
+            return x
+
+    output_size = 1024
+    m = ORTModule(TestModule(output_size).to("cuda"))
+    can_run = True
+    try:
+        m(torch.randn(output_size, output_size, dtype=torch.float, device="cuda").requires_grad_())
+    except RuntimeError as e:
+        assert "Error in forward pass execution" in str(e)
+        can_run = False
+
+    assert not can_run
+
+    def model_builder():
+        return TestModule(output_size, True)
+
+    def input_generator():
+        return torch.randn(output_size, output_size, dtype=torch.float).requires_grad_()
+
+    label_input = torch.ones([output_size])
+    run_training_test_and_compare(model_builder, input_generator, label_input)
