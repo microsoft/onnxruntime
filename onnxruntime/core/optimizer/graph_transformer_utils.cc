@@ -27,6 +27,7 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -213,6 +214,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
       const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
       transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
+      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>());
     } break;
 
     case TransformerLevel::Level2: {

@@ -201,8 +201,8 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                                              std::vector<NodeDef>& output) const {
   std::unordered_set<size_t> reduce_axes_set(reduce_axes.begin(), reduce_axes.end());
   std::vector<Dimension> reduced_shape, input_grad_shape, target_shape;
-  ORT_ENFORCE(GetShape(input_grad, input_grad_shape).IsOK());
-  ORT_ENFORCE(GetShape(target, target_shape).IsOK());
+  ORT_ENFORCE(GetShape(input_grad, input_grad_shape).IsOK(), "Fail to get shape for arg : ", input_grad.name);
+  ORT_ENFORCE(GetShape(target, target_shape).IsOK(), "Fail to get shape for arg : ", input_grad.name);
 
   bool keep_dims = (input_grad_shape.size() == target_shape.size());
 

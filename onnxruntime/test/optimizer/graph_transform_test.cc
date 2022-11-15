@@ -5242,6 +5242,103 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
     }
   }
 }
+
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherRobertaE2E) {
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather_roberta_e2e.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ReshapeFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(*model, "/home/pengwa/dev/onnxruntime/robeta_opt.onnx"));
+  //   // check the expected node orders.
+  //   {
+  //     GraphViewer graph_viewer(graph);
+  //     const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  //     Node* gathernd_node = nullptr;
+  //     for (auto node_index : node_topology_list) {
+  //       Node* p_node = graph.GetNode(node_index);
+  //       ASSERT_FALSE(p_node == nullptr);
+  //       if (p_node->OpType().compare("Gather") == 0) {
+  //         gathernd_node = p_node;
+  //         const Node* layer_norm_node = graph.GetProducerNode(gathernd_node->MutableInputDefs()[0]->Name());
+  //         EXPECT_EQ(layer_norm_node->OpType(), "LayerNormalization");
+  //         EXPECT_EQ(layer_norm_node->Name(), "layer_norm_1");
+  //         const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
+  //         EXPECT_EQ(consumers[0]->OpType(), "MatMul");
+  //         EXPECT_EQ(consumers[0]->Name(), "matmul_1");
+  //         break;
+  //       }
+  //     }
+
+  //     ASSERT_FALSE(gathernd_node == nullptr);
+  //   }
+
+  //   // check result diff after the re-order
+  //   auto new_model_uri = "computation_reduction_transformer_after.onnx";
+  //   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  //   float scale = 1.f;
+  //   float mean = 0.f;
+  //   float seed = 123.f;
+  //   std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
+  //   std::normal_distribution<float> distribution_float{mean, scale};
+
+  //   int batch_size = 8;
+  //   int sequence = 128;
+  //   int hidden_size = 128;
+  //   int dynamic_predict_count = 20;
+  //   const std::vector<int64_t> dims_input = {batch_size, sequence, hidden_size};
+  //   std::vector<float> input_values(TensorShape(dims_input).Size());
+  //   std::for_each(input_values.begin(), input_values.end(),
+  //                 [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
+
+  //   const std::vector<int64_t> dims_unsqueezed_masked_lm_positions = {batch_size, dynamic_predict_count, 1};
+  //   std::vector<int64_t> values_unsqueezed_masked_lm_positions(TensorShape(dims_unsqueezed_masked_lm_positions).Size());
+
+  //   std::random_device rd;                                   // obtain a random number from hardware
+  //   std::mt19937 eng(rd());                                  // seed the generator
+  //   std::uniform_int_distribution<> distr(0, sequence - 1);  // define the range
+  //   std::for_each(values_unsqueezed_masked_lm_positions.begin(), values_unsqueezed_masked_lm_positions.end(),
+  //                 [&distr, &eng](int64_t& value) { value = distr(eng); });
+
+  //   static const std::string all_provider_types[] = {
+  //       onnxruntime::kCpuExecutionProvider,
+  // #ifdef USE_CUDA
+  //       onnxruntime::kCudaExecutionProvider,
+  // #elif USE_ROCM
+  //       onnxruntime::kRocmExecutionProvider,
+  // #endif
+  //   };
+
+  //   for (auto& provider_type : all_provider_types) {
+  //     std::vector<OrtValue> expected_ort_values;
+  //     RunGatherNDE2EGraph(expected_ort_values, model_uri, std::string("RawGraphRun"), provider_type,
+  //                         dims_input, input_values, dims_unsqueezed_masked_lm_positions,
+  //                         values_unsqueezed_masked_lm_positions);
+
+  //     std::vector<OrtValue> actual_ort_values;
+  //     RunGatherNDE2EGraph(actual_ort_values, ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type,
+  //                         dims_input, input_values, dims_unsqueezed_masked_lm_positions,
+  //                         values_unsqueezed_masked_lm_positions);
+
+  //     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+  //     constexpr double per_sample_tolerance = 1e-4;
+  //     constexpr double relative_per_sample_tolerance = 1e-4;
+  //     for (size_t i = 0; i < expected_ort_values.size(); i++) {
+  //       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+  //                                  per_sample_tolerance, relative_per_sample_tolerance, false);
+  //       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+  //     }
+  //   }
+}
 #endif
 
 #ifndef DISABLE_CONTRIB_OPS
