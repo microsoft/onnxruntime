@@ -130,12 +130,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (helper.OutputOffsets().size() == 1) {
     bool should_use_proxy_data = should_use_proxy_data_ && Node().Name() == "/lm_head/MatMul";
 
-    if (should_use_proxy_data) {
+    if (!copied_weights_ && should_use_proxy_data) {
       cudaMemcpyAsync(data, right_X->DataRaw(), right_X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
+      copied_weights_ = true;
+    }
 
-      if (measure_matmul_perf_) {
-        cudaDeviceSynchronize();      
-      }
+    if (measure_matmul_perf_) {
+      cudaDeviceSynchronize();
     }
 
     auto start = high_resolution_clock::now();
@@ -158,7 +159,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(50264),
         device_prop));
 
-    if (measure_matmul_perf_ && should_use_proxy_data) {
+    if (measure_matmul_perf_) {
       cudaDeviceSynchronize();
 
       auto stop = high_resolution_clock::now();
