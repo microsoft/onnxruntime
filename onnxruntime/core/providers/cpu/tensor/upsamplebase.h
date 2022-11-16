@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <core/common/safeint.h>
+#include <core/common/narrow.h>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif

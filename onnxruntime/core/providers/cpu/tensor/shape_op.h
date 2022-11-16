@@ -5,6 +5,7 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #endif
 

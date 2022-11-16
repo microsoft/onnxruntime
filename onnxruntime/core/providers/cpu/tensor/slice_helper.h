@@ -6,6 +6,7 @@
 #pragma once
 #include "core/providers/cpu/tensor/slice_compute_metadata.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/framework/ort_stl_allocator.h"
 
 namespace onnxruntime {

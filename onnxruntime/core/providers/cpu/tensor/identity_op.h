@@ -8,6 +8,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
