@@ -411,76 +411,72 @@ TEST(ThreadPoolTest, TestStackSize) {
 }
 #endif
 
-TEST(ThreadPoolTest, TestAffinityString) {
-  std::vector<uint64_t> default_affinities;
-  int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
-  ASSERT_TRUE(default_threadpool_size > 0);
 #ifdef _WIN32
-  int num_non_default_affinities;
+void TestAffinityString(const Env& env, int32_t num_group, int32_t num_logical_processor) {
+  std::vector<uint64_t> default_affinities;
+  int default_threadpool_size = static_cast<int>(env.GetDefaultThreadpoolSetting(default_affinities));
+  ASSERT_TRUE(default_threadpool_size > 0);
+  int num_non_default_num_threads;
   std::vector<uint64_t> non_default_affinities;
-  int num_logical_processors = default_threadpool_size << 1;
-  for (int num_threads = 2; num_threads <= num_logical_processors; num_threads += 1) {
-    if (num_logical_processors % num_threads) {
+  for (int32_t num_threads = num_group; num_threads <= num_logical_processor; num_threads += 1) {
+    if (num_logical_processor % num_threads) {
       continue;
     }
-    int num_logical_processors_per_thread = num_logical_processors / num_threads;
+    int32_t num_logical_processors_per_thread = num_logical_processor / num_threads;
     std::stringstream affinity_stream_comma;
     std::stringstream affinity_stream_hyphen;
-    for (int processor_id_start = 1; processor_id_start <= num_logical_processors; processor_id_start += num_logical_processors_per_thread) {
-      int processor_id_end = processor_id_start + num_logical_processors_per_thread - 1;
+    for (int32_t processor_id_start = 1; processor_id_start <= num_logical_processor; processor_id_start += num_logical_processors_per_thread) {
+      int32_t processor_id_end = processor_id_start + num_logical_processors_per_thread - 1;
       if (processor_id_start > 1) {
         affinity_stream_comma << ";";
         affinity_stream_hyphen << ";";
       }
-      for (int i = processor_id_start; i <= processor_id_end; ++i) {
+      for (int32_t i = processor_id_start; i <= processor_id_end; ++i) {
         affinity_stream_comma << (i == processor_id_start ? "" : ",") << i;
       }
       affinity_stream_hyphen << processor_id_start << "-" << processor_id_end;
     }
     non_default_affinities.clear();
-    num_non_default_affinities = static_cast<int>(Env::Default().ReadThreadAffinityConfig(affinity_stream_comma.str(), non_default_affinities));
-    ASSERT_TRUE(num_non_default_affinities == num_threads);
+    num_non_default_num_threads = static_cast<int>(env.ReadThreadAffinityConfig(affinity_stream_comma.str(), non_default_affinities));
+    ASSERT_TRUE(num_non_default_num_threads == num_threads);
     non_default_affinities.clear();
-    num_non_default_affinities = static_cast<int>(Env::Default().ReadThreadAffinityConfig(affinity_stream_hyphen.str(), non_default_affinities));
-    ASSERT_TRUE(num_non_default_affinities == num_threads);
+    num_non_default_num_threads = static_cast<int>(env.ReadThreadAffinityConfig(affinity_stream_hyphen.str(), non_default_affinities));
+    ASSERT_TRUE(num_non_default_num_threads == num_threads);
   }
-#endif
 }
 
-TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
+void TestAffinityStringMisshaped(const Env& env) {
   std::vector<uint64_t> default_affinities;
-  int default_threadpool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(default_affinities));
+  int default_threadpool_size = static_cast<int>(env.GetDefaultThreadpoolSetting(default_affinities));
   ASSERT_TRUE(default_threadpool_size > 0);
-#ifdef _WIN32
   // test only one machines has more than 8 logical processors
   if (default_threadpool_size >= 4) {
     std::vector<uint64_t> affinities;
-    // cases - test processor id that's out of boundary 
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("0", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(std::to_string(default_threadpool_size*2+1), affinities));
+    // cases - test processor id that's out of boundary
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("0", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("1000000", affinities));
     // cases - test empty strings
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(",", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(",1", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(";", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig(";1", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig(",", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig(",1", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig(";", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig(";1", affinities));
     // cases - test invalid chars
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("2,a,1", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("*4,3,)", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("3,5,1;^.2", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("2,a,1", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("*4,3,)", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("3,5,1;^.2", affinities));
     // cases - test comma wrongly coupled with hyphen
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1,-5", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("2,3,-", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("3,5-1;6,8", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("-,-", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-2;3-4,", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("1,-5", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("2,3,-", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("3,5-1;6,8", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("-,-", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("1-2;3-4,", affinities));
     // cases - test hyphen of invalid intervals
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("6-2", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("-2", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-2;4-3", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1--2;3-4", affinities));
-    ASSERT_TRUE(0 == Env::Default().ReadThreadAffinityConfig("1-3-4", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("6-2", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("-2", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("1-2;4-3", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("1--2;3-4", affinities));
+    ASSERT_TRUE(0 == env.ReadThreadAffinityConfig("1-3-4", affinities));
   }
-#endif
 }
 
 test::CpuInfo MockCpuInfo(int32_t num_group, int32_t core_per_group, int32_t logical_processor_per_core) {
@@ -503,7 +499,6 @@ test::CpuInfo MockCpuInfo(int32_t num_group, int32_t core_per_group, int32_t log
   return cpu_info;
 }
 
-#ifdef _WIN32
 void TestWindowsNuma(int32_t num_group, int32_t core_per_group, int32_t logical_processor_per_core) {
   ORT_ENFORCE(num_group > 0 &&
               core_per_group > 0 &&
@@ -516,11 +511,13 @@ void TestWindowsNuma(int32_t num_group, int32_t core_per_group, int32_t logical_
   std::vector<uint64_t> default_affinities;
   int default_threadpool_size = static_cast<int>(env.GetDefaultThreadpoolSetting(default_affinities));
 
-  ASSERT_TRUE(default_threadpool_size == 64);
-  ASSERT_TRUE(default_affinities.size() == 128);
+  int32_t total_core = core_per_group * num_group;
+  int32_t total_processors = total_core * logical_processor_per_core;
+  ASSERT_TRUE(default_threadpool_size == total_core);
+  ASSERT_TRUE(default_affinities.size() == default_threadpool_size * 2);
 
-  constexpr uint64_t BitThree = 3;
-  int32_t num_bit = static_cast<int32_t>(log2(logical_processor_per_core)) + 1;
+  uint64_t bits = (1ULL << logical_processor_per_core) - 1;
+  int32_t num_bit = logical_processor_per_core;
   
   for (int32_t group = 0; group < num_group; ++group) {
     for (int32_t core = 0; core < core_per_group; ++core) {
@@ -528,14 +525,51 @@ void TestWindowsNuma(int32_t num_group, int32_t core_per_group, int32_t logical_
       int32_t affinity_index = thread_id * 2;
 
       ASSERT_TRUE(default_affinities[affinity_index] == static_cast<uint64_t>(group));
-      ASSERT_TRUE(default_affinities[affinity_index + 1] == BitThree << (core * num_bit));
+      ASSERT_TRUE(default_affinities[affinity_index + 1] == bits << (core * num_bit));
     }
   }
+
+  // test non-default settings
+  TestAffinityString(env, num_group, total_processors);
+  TestAffinityStringMisshaped(env);
 }
 
-TEST(ThreadPoolTest, TestNuma_2_Group_64_core_128_Processor) {
+TEST(NumaTest, 1_Group_16_core_64_Processor) {
+  TestWindowsNuma(1, 16, 4);
+}
+
+TEST(NumaTest, 1_Group_32_core_32_Processor) {
+  TestWindowsNuma(1, 32, 1);
+}
+
+TEST(NumaTest, 1_Group_32_core_64_Processor) {
+  TestWindowsNuma(1, 32, 2);
+}
+
+TEST(NumaTest, 1_Group_64_core_64_Processor) {
+  TestWindowsNuma(1, 64, 1);
+}
+
+TEST(NumaTest, 2_Group_32_core_128_Processor) {
+  TestWindowsNuma(2, 16, 4);
+}
+
+TEST(NumaTest, 2_Group_64_core_128_Processor) {
   TestWindowsNuma(2, 32, 2);
 }
+
+TEST(NumaTest, 2_Group_128_core_128_Processor) {
+  TestWindowsNuma(2, 64, 1);
+}
+
+TEST(NumaTest, 4_Group_128_core_256_Processor) {
+  TestWindowsNuma(4, 32, 2);
+}
+
+TEST(NumaTest, 4_Group_256_core_256_Processor) {
+  TestWindowsNuma(4, 64, 1);
+}
+
 #endif
 
 }  // namespace onnxruntime

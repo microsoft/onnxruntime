@@ -88,14 +88,14 @@ class WindowsThread : public EnvThread {
       thread_affinity.Group = static_cast<WORD>(affinities[offset]);
       thread_affinity.Mask = static_cast<KAFFINITY>(affinities[offset + 1]);
       if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
-        LOGS_DEFAULT(WARNING) << "Set group affinity for thread " << p->index << ", "
-                              << " group: " << thread_affinity.Group << ", "
-                              << " mask: " << thread_affinity.Mask;
+        LOGS_DEFAULT(INFO) << "Set group affinity for thread " << p->index << ", "
+                           << " group: " << thread_affinity.Group << ", "
+                           << " mask: " << thread_affinity.Mask;
       } else {
-        LOGS_DEFAULT(WARNING) << "Failed to set group affinity for thread " << p->index << ", "
-                              << " group: " << thread_affinity.Group << ", "
-                              << " mask: " << thread_affinity.Mask << ","
-                              << " error code: " << GetLastError();
+        LOGS_DEFAULT(INFO) << "Failed to set group affinity for thread " << p->index << ", "
+                           << " group: " << thread_affinity.Group << ", "
+                           << " mask: " << thread_affinity.Mask << ","
+                           << " error code: " << GetLastError();
       }
     }
 
