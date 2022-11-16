@@ -61,7 +61,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  const bool broadcast_position_ids = position_ids->Shape()[0] == 1;
+  const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
 
   return LaunchEmbedLayerNormKernel(
           Stream(),
