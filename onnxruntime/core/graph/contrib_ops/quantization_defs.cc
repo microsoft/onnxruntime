@@ -1247,13 +1247,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 /*
 static void convTransposeShapeInference(InferenceContext& ctx,
                                         std::array<int, 3>& input_remap) {
-  class InputReMappingInferContext : public InferenceContext {
+  // Sometimes, the onnx shapeInfer function does supply the QlinearVersion of
+  // relavant Op. But there is not too much difference except input_idx.
+  // For example, ConvTranspose has 3 inputs (input,weight,bias),
+  // while QlinearConvTranspose has 7 inputs (input,scale_input,Zp,weight,
+  // scale_weight,Zp,output_scale,Zp,bias).
+  //That's why we need to remap the input index.
+  class InputIdxReMappingInferContext : public InferenceContext {
    private:
     InferenceContext& ctx_pa_;
     std::array<int, 3>& input_map_;
 
    public:
-    InputReMappingInferContext(InferenceContext& ctx, std::array<int, 3>& input_map) : ctx_pa_(ctx),
+    InputIdxReMappingInferContext(InferenceContext& ctx, std::array<int, 3>& input_map) : ctx_pa_(ctx),
                                                                                        input_map_(input_map) {}
     const onnx::TypeProto* getInputType(size_t index) const override {
       return ctx_pa_.getInputType(input_map_[index]);
@@ -1285,8 +1291,8 @@ static void convTransposeShapeInference(InferenceContext& ctx,
     }
   };
 
-  InputReMappingInferContext ctx_new(ctx, input_remap);
-  ONNX_NAMESPACE::convTransposeShapeInference(ctx_new);
+  InputReMappingInferContext remapped_ctx(ctx, input_remap);
+  ONNX_NAMESPACE::convTransposeShapeInference(remapped_ctx);
 }
 */
 
