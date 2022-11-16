@@ -68,14 +68,14 @@ void usage() {
       OrtGetApiBase()->GetVersionString());
 }
 
-static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool enable_qnn_quant, bool set_infinite_threshold = false) {
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool set_infinite_threshold = false) {
   TestTolerances::Map absolute_overrides;
   TestTolerances::Map relative_overrides;
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
     // Ignore diff for QNN non-CPU runtime backend
-    const double absolute = set_infinite_threshold ? std::numeric_limits<double>::max() : (enable_qnn_quant ? 1 : 1e-3);
+    const double absolute = set_infinite_threshold ? std::numeric_limits<double>::max() : 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
     const double relative = set_infinite_threshold ? std::numeric_limits<double>::max() : (enable_cuda ? 0.017 : (enable_openvino ? 0.009 : 1e-3));
@@ -137,7 +137,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_qnn = false;
-  bool enable_qnn_quant = false;
   bool enable_nnapi = false;
   bool enable_coreml = false;
   bool enable_snpe = false;
@@ -432,7 +431,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           std::set<std::string> qnn_supported_runtime = {"CPU", "GPU", "DSP", "HTP"};
           if (qnn_supported_runtime.find(value) != qnn_supported_runtime.end()) {
             qnn_options[key] = value;
-            enable_qnn_quant = value.compare("DSP") == 0 || value.compare("HTP") == 0;
           } else {
             ORT_THROW("Wrong configuration value for the key 'runtime'. Select from CPU, GPU, DSP, HTP.");
           }
@@ -690,7 +688,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino, enable_qnn_quant, set_infinite_threshold),
+              LoadTestTolerances(enable_cuda, enable_openvino, set_infinite_threshold),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
