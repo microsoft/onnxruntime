@@ -120,7 +120,7 @@ class QuickGelu : public OpKernel {
             p_output[i] = p_input[i] * alpha_;
           }
 
-          MlasComputeLogistic(p_output, p_output, count);
+          MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
 
           for (int64_t i = 0; i < count; i++) {
             p_output[i] = p_input[i] * p_output[i];

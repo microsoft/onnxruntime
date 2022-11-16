@@ -626,7 +626,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
       if (reduce[onnxruntime::narrow<size_t>(i)]) {
         fast_axes.push_back(onnxruntime::narrow<int64_t>(fast_shape.size()));
       }
-      fast_shape.push_back(input_shape[i]);
+      fast_shape.push_back(input_shape[onnxruntime::narrow<size_t>(i)]);
     }
   }
   if (fast_shape.size() == 1) {

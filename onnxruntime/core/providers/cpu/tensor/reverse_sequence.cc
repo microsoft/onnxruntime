@@ -146,9 +146,9 @@ static Status ReverseSequenceImpl(const Tensor& X,
     }
 
     for (int64_t j = 0; j < seq_len; j++) {
-      gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
+      gsl::span<const T> src = inputs.subspan(onnxruntime::narrow<size_t>(input_offset(max_seq_len, batch_size, input_size, i, j)), onnxruntime::narrow<size_t>(input_size));
       gsl::span<T> dest = inputs_reverse.subspan(
-          reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
+          onnxruntime::narrow<size_t>(reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len)), onnxruntime::narrow<size_t>(input_size));
 
       // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
       gsl::copy(src, dest);
@@ -156,8 +156,8 @@ static Status ReverseSequenceImpl(const Tensor& X,
 
     for (int64_t j = seq_len; j < max_seq_len; j++) {
       const auto offset = input_offset(max_seq_len, batch_size, input_size, i, j);
-      gsl::span<const T> src = inputs.subspan(offset, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(offset, input_size);
+      gsl::span<const T> src = inputs.subspan(onnxruntime::narrow<size_t>(offset), onnxruntime::narrow<size_t>(input_size));
+      gsl::span<T> dest = inputs_reverse.subspan(onnxruntime::narrow<size_t>(offset), onnxruntime::narrow<size_t>(input_size));
 
       // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
       gsl::copy(src, dest);
