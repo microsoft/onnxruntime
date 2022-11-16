@@ -729,7 +729,7 @@ See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionPro
 
 The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
 
-The pre-built ONNX Runtime Mobile package for iOS includes the CoreML EP.
+The pre-built ONNX Runtime Mobile package for iOS, `onnxruntime-objc` and `onnxruntime-objc` in [CocoaPods](https://cocoapods.org/), includes the CoreML EP.
 
 
 If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
