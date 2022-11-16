@@ -12,7 +12,7 @@
 
 namespace ONNX_NAMESPACE {
 void RNNShapeInference(InferenceContext& ctx);
-
+void convTransposeShapeInference(InferenceContext& ctx);
 void convPoolShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape,
                             int input1Idx, int input2Idx);
 void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
@@ -1241,152 +1241,54 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 void convTransposeShapeInference(InferenceContext& ctx,
-                                 bool require_kernel_shape,
                                  int input1Idx,
                                  int input2Idx) {
-  // we need the first input shape for this inference.
-  if (!hasInputShape(ctx, input1Idx)) {
-    return;
-  }
-  // if kernel shape is an input (and not attribute)
-  // we need the shape of the second input.
-  if (!require_kernel_shape && !hasInputShape(ctx, input2Idx)) {
-    return;
-  }
+  class QDeConvInferContext : public InferenceContext {
+   private:
+    InferenceContext& ctx_pa_;
+    int mapped_index1_;
+    int mapped_index2_;
 
-  int64_t group = getAttribute(ctx, "group", 1);
-
-  auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
-  }
-
-  // first dim is the batch axis and the next is the number of channels.
-  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
-
-  std::vector<int64_t> dilations;
-  if (getRepeatedAttribute(ctx, "dilations", dilations)) {
-    if (dilations.size() != n_input_dims) {
-      return;
+   public:
+    QDeConvInferContext(InferenceContext& ctx, int input1Idx, int input2Idx) : ctx_pa_(ctx),
+                                                                               mapped_index1_(input1Idx),
+                                                                               mapped_index2_(input2Idx) {}
+    const onnx::TypeProto* getInputType(size_t index) const override {
+      index = (index == 1) ? mapped_index2_ : mapped_index1_;
+      return ctx_pa_.getInputType(index);
     }
-  } else {
-    dilations.assign(n_input_dims, 1);
-  }
-
-  std::vector<int64_t> strides;
-  if (getRepeatedAttribute(ctx, "strides", strides)) {
-    if (strides.size() != n_input_dims) {
-      return;
+    virtual const AttributeProto* getAttribute(const std::string& name) const override {
+      return ctx_pa_.getAttribute(name);
     }
-  } else {
-    strides.assign(n_input_dims, 1);
-  }
-
-  std::vector<int64_t> kernel_shape;
-  if (getRepeatedAttribute(ctx, "kernel_shape", kernel_shape)) {
-    if (kernel_shape.size() != n_input_dims) {
-      return;
+    virtual size_t getNumInputs() const override {
+      return ctx_pa_.getNumInputs();
     }
-  } else {
-    auto second_input_shape = ctx.getInputType(input2Idx)->tensor_type().shape();
-    for (int i = 2; i < second_input_shape.dim_size(); ++i) {
-      if (!second_input_shape.dim(i).has_dim_value()) {
-        return;
-      }
-      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+    virtual const onnx::TensorProto* getInputData(size_t index) const override {
+      index = (index == 1) ? mapped_index2_ : mapped_index1_;
+      return ctx_pa_.getInputData(index);
     }
-  }
-
-  std::vector<int64_t> effective_kernel_shape = kernel_shape;
-  for (int i = 0; i < static_cast<int>(kernel_shape.size()); i++) {
-    // accounting for dilation, how big is the kernel in this dimension
-    effective_kernel_shape[i] = (effective_kernel_shape[i] - 1) * dilations[i] + 1;
-  }
-
-  std::vector<int64_t> pads;
-  if (getRepeatedAttribute(ctx, "pads", pads)) {
-    if (pads.size() != n_input_dims * 2) {
-      fail_shape_inference("Attribute pads has incorrect size");
+    virtual size_t getNumOutputs() const override {
+      return ctx_pa_.getNumOutputs();
     }
-    const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
-    if (nullptr != auto_pad_attr && auto_pad_attr->s() != "NOTSET") {
-      fail_shape_inference("The pads attribute cannot be used simultaneously with auto_pad attribute");
+    virtual onnx::TypeProto* getOutputType(size_t index) override {
+      index = (index == 1) ? mapped_index2_ : mapped_index1_;
+      return ctx_pa_.getOutputType(index);
     }
-  } else {
-    pads.assign(n_input_dims * 2, 0);
-    const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
-    if ((nullptr != auto_pad_attr) && (auto_pad_attr->s() != "VALID")) {
-      int input_dims_size = static_cast<int>(n_input_dims);
-      for (int i = 0; i < input_dims_size; ++i) {
-        int64_t total_pad = effective_kernel_shape[i] - strides[i];
-        if (total_pad < 0)
-          total_pad = 0;
-        int64_t half_pad_small = total_pad >> 1;
-        int64_t half_pad_big = total_pad - half_pad_small;
-        if (auto_pad_attr->s() == "SAME_UPPER") {
-          pads[i] = half_pad_small;
-          pads[i + input_dims_size] = half_pad_big;
-        } else if (auto_pad_attr->s() == "SAME_LOWER") {
-          pads[i] = half_pad_big;
-          pads[i + input_dims_size] = half_pad_small;
-        }
-      }
+    virtual onnx::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
+      return ctx_pa_.getGraphAttributeInferencer(attribute_name);
     }
-  }
-
-  std::vector<int64_t> output_shape;
-  bool output_shape_presented = true;
-  if (getRepeatedAttribute(ctx, "output_shape", output_shape)) {
-    if (output_shape.size() != n_input_dims) {
-      return;
+    virtual const onnx::SparseTensorProto* getInputSparseData(size_t index) const override {
+      index = (index == 1) ? mapped_index2_ : mapped_index1_;
+      return ctx_pa_.getInputSparseData(index);
     }
-  } else {
-    output_shape_presented = false;
-  }
-
-  std::vector<int64_t> output_padding;
-  if (getRepeatedAttribute(ctx, "output_padding", output_padding)) {
-    if (output_padding.size() != n_input_dims) {  // Added only to one side.
-      return;
+    // Gets the shape inputs computed by partial data propagation.
+    virtual const onnx::TensorShapeProto* getSymbolicInput(size_t index) const override {
+      index = (index == 1) ? mapped_index2_ : mapped_index1_;
+      return ctx_pa_.getSymbolicInput(index);
     }
-  } else {
-    output_padding.assign(n_input_dims, 0);
-  }
-
-  auto final_output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-
-  *final_output_shape->add_dim() = input_shape.dim(0);
-  *final_output_shape->add_dim() =
-      ctx.getInputType(input2Idx)->tensor_type().shape().dim(1) * group;  // channels should be the second dim of second input
-                                                                          // multiply group.
-
-  int size_of_output;
-  if (output_shape_presented) {
-    size_of_output = static_cast<int>(output_shape.size());
-    for (int i = 0; i < size_of_output; ++i) {
-      if (input_shape.dim(i + 2).has_dim_value()) {
-        if (output_shape[i] < input_shape.dim(i + 2).dim_value()) {
-          // TODO: throw exception?
-          return;  // output shape value cannot be smaller than the input shape
-                   // value
-        }
-      }
-      final_output_shape->add_dim()->set_dim_value(output_shape[i]);
-    }
-    return;
-  } else {
-    size_of_output = input_shape.dim_size() - 2;
-    for (int i = 0; i < size_of_output; ++i) {
-      if (input_shape.dim(i + 2).has_dim_value()) {
-        int64_t output_shape_dim = strides[i] * (input_shape.dim(i + 2).dim_value() - 1) + output_padding[i] +
-                                   effective_kernel_shape[i] - pads[i] - pads[i + n_input_dims];
-        final_output_shape->add_dim()->set_dim_value(output_shape_dim);
-      } else {
-        final_output_shape->add_dim();
-      }
-    }
-    return;
-  }
+  };
+  QDeConvInferContext ctx_new(ctx, input1Idx, input2Idx);
+  return ONNX_NAMESPACE::convTransposeShapeInference(ctx_new);
 }
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1540,7 +1442,7 @@ output_shape can also be explicitly specified in which case pads values are auto
 
           propagateElemTypeFromInputToOutput(ctx, 7, 0);
 
-          convTransposeShapeInference(ctx, false, 0, 3);
+          convTransposeShapeInference(ctx, 0, 3);
         }));
 
 }  // namespace contrib
