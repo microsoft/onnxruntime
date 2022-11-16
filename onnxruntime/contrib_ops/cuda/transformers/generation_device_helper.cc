@@ -547,7 +547,7 @@ Status GreedySearchProcessLogits(
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
-      (parameters->min_length > 0 && current_sequence_length < parameters->min_length) ? parameters->eos_token_id : -1,
+      (parameters->min_length > 0 && current_sequence_length < parameters->sequence_length + parameters->min_length) ? parameters->eos_token_id : -1,
       reinterpret_cast<int32_t*>(sequences_buffer.get()),
       parameters->max_length,
       current_sequence_length,
@@ -561,7 +561,6 @@ Status GreedySearchProcessLogits(
 
   // TODO(wy): support output_scores in greedy search
   ORT_UNUSED_PARAMETER(output_scores);
-
 
   if (do_sampling) {
     gsl::span<int>& d_index_in = sampling_state->d_index_in;
