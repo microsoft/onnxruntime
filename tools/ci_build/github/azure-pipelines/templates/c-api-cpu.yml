@@ -71,8 +71,7 @@ jobs:
     - template: set-version-number-variables-step.yml
 
     - script: |
-        set -ex
-        python3 -m pip install pybind11==2.10.1
+        set -e
         pushd .
         cd $(Build.SourcesDirectory)/cmake/external/protobuf
         cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
