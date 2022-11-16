@@ -32,10 +32,6 @@ template <typename T>
 Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
-  // gemmfastgelu only support alpha == 1 and beta == 0
-  const HipT alpha = ToHipType<T>::FromFloat(1.0f);
-  const HipT beta = ToHipType<T>::FromFloat(0.0f);
-
   const auto* X = ctx->Input<Tensor>(0);
   const auto* W = ctx->Input<Tensor>(1);
   const auto* bias = ctx->Input<Tensor>(2);
@@ -54,6 +50,10 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
+  // gemmfastgelu only support alpha == 1 and beta == 0
+  const HipT alpha = ToHipType<T>::FromFloat(1.0f);
+  const HipT beta = ToHipType<T>::FromFloat(0.0f);
+
   return LaunchGemmFastGeluKernel<HipT>(
       IsTunableOpEnabled(),
       Stream(), RocblasHandle(),
@@ -63,8 +63,8 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
       reinterpret_cast<const HipT*>(X->Data<T>()), static_cast<int64_t>(helper.Lda(transa)),
       reinterpret_cast<const HipT*>(W->Data<T>()), static_cast<int64_t>(helper.Ldb(transb)),
       (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
-      reinterpret_cast<HipT*>(Y->MutableData<T>()), static_cast<int64_t>(helper.Ldc()),
-      beta);
+      beta,
+      reinterpret_cast<HipT*>(Y->MutableData<T>()), static_cast<int64_t>(helper.Ldc()));
 }
 
 }  // namespace rocm

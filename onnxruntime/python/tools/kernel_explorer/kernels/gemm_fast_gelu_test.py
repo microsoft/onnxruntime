@@ -79,14 +79,8 @@ def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, t
         print(
             f"{func:<50} : dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {bound}"
         )
-        try:
-            np.testing.assert_allclose(my_c, ref_c, rtol=max(bound, 1e-2))
-        except Exception as err:
-            header = "*" * 30 + func + "*" * 30
-            print(header)
-            print(err)
-            print("*" * len(header))
-            raise Exception(str(err))
+
+        np.testing.assert_allclose(my_c, ref_c, rtol=max(bound, 1e-2))
 
 
 dtypes = ["float16", "float32"]
@@ -159,6 +153,7 @@ def profile_gemmfastgelu_func(func, dtype: str, m: int, n: int, k: int, transa: 
 
         time_ms = my_op.Profile()
         time_us = time_ms * 1000
+        # only counts gemm tflops because fastgelu is low order term (7 * n).
         tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
         print(
             f"{func:<50} {dtype} {transab_to_suffix((transa, transb))}",

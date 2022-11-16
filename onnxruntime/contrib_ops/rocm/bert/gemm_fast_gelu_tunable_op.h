@@ -51,7 +51,7 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
            params->n, params->m, params->k,
            params->alpha, params->b, params->ldb, params->a, params->lda,
            params->beta, params->c, params->ldc) != Status::OK()) {
-    return Status(common::ONNXRUNTIME, common::FAIL);
+    return Status(common::ONNXRUNTIME, common::FAIL, "GemmFastGelu call column_major::Gemm failed");
   }
 
   int64_t fast_gelu_input_length = params->m * params->n;

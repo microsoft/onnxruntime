@@ -123,14 +123,18 @@ class GemmFastGeluTunableOp : public IKernelExplorer {
   contrib::rocm::GemmFastGeluTunableOp<T> op_{};
 };
 
-#define REGISTER_OP(name, type)                                                 \
-  py::class_<name<type>>(m, #name "_" #type)                                    \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,          \
-                    DeviceArray&, int64_t, DeviceArray&, int64_t, DeviceArray&, \
-                    double, DeviceArray&, int64_t>())                           \
-      .def("SetRepeats", &name<type>::SetRepeats)                               \
-      .def("Run", &name<type>::Run)                                             \
-      .def("Profile", &name<type>::Profile)                                     \
+#define REGISTER_OP(name, type)                                \
+  py::class_<name<type>>(m, #name "_" #type)                   \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
+                    double,                                    \
+                    DeviceArray&, int64_t,                     \
+                    DeviceArray&, int64_t,                     \
+                    DeviceArray&,                              \
+                    double,                                    \
+                    DeviceArray&, int64_t>())                  \
+      .def("SetRepeats", &name<type>::SetRepeats)              \
+      .def("Run", &name<type>::Run)                            \
+      .def("Profile", &name<type>::Profile)                    \
       .def("IsSupported", &name<type>::IsSupported);
 
 void InitGemmFastGelu(py::module m) {
