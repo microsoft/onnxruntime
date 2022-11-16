@@ -5,7 +5,7 @@ ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=
 ARG PREPEND_PATH=
 
-# rocm/dev-centos-7:5.3.2 is what we want to use as base image, but ROCm team hasn't provided it yet.
+# Same as rocm/dev-centos-7:5.3.2
 # We build ROCm5.3.2 dev centos docker image manually(stage base_image, line11~line102).
 # It's same as https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-centos-7
 FROM $BASEIMAGE AS base_image
