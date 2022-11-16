@@ -22,6 +22,12 @@ if (NOT WIN32)
 endif()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
+FetchContent_Declare(
+      mimalloc
+      URL ${DEP_URL_mimalloc}
+      URL_HASH SHA1=${DEP_SHA1_mimalloc}
+)
+
 # ABSL should be included before protobuf because protobuf may use absl
 if(NOT onnxruntime_DISABLE_ABSEIL)
   include(abseil-cpp)
@@ -305,6 +311,10 @@ if (onnxruntime_USE_XNNPACK)
                          "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
   include(xnnpack)
+endif()
+
+if (onnxruntime_USE_MIMALLOC)
+  include(external/mimalloc.cmake)
 endif()
 
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,

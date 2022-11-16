@@ -124,20 +124,6 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DEST
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 
-# check if we need to link against librt on Linux
-include(CheckLibraryExists)
-include(CheckFunctionExists)
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
-  check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
-
-  if (NOT HAVE_CLOCK_GETTIME)
-    set(CMAKE_EXTRA_INCLUDE_FILES time.h)
-    check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
-    set(CMAKE_EXTRA_INCLUDE_FILES)
-  else()
-    target_link_libraries(onnxruntime_common rt)
-  endif()
-endif()
 
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(onnxruntime_common PRIVATE "BUILD_INBOX=1")
@@ -150,7 +136,7 @@ if (onnxruntime_LINK_LIBATOMIC)
 endif()
 
 if(APPLE)
-  target_link_libraries(onnxruntime_common "-framework Foundation")
+  target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
 

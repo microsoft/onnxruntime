@@ -1755,6 +1755,22 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
 endif()
 
+# check if we need to link against librt on Linux
+include(CheckLibraryExists)
+include(CheckFunctionExists)
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+  check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
+
+  if (NOT HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES time.h)
+    check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES)
+  else()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES rt)
+  endif()
+endif()
+
+
 #Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
 #The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
 set(ONNXRUNTIME_TARGETS onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session)
