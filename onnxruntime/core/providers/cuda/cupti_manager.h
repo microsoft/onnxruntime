@@ -1,6 +1,5 @@
 #pragma once
 
-
 #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
 #include <atomic>
@@ -9,9 +8,9 @@
 
 #include <cupti.h>
 
-#include "core/platform/ort_mutex.h"
-#include "core/common/profiler_common.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/profiler_common.h"
+
 
 namespace onnxruntime {
 namespace profiling {

@@ -3,7 +3,7 @@
 namespace onnxruntime {
 namespace profiling {
 
-static inline const char* GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
+static inline std::string GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
   switch (kind) {
     case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
       return "MemcpyHostToDevice";
@@ -68,11 +68,13 @@ void CUPTIManager::StopLogging() {
 }
 
 bool CUPTIManager::PushUniqueCorrelation(uint64_t unique_cid) {
-  return cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, unique_cid) == CUPTI_SUCCESS;
+  auto res = cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, unique_cid);
+  return res == CUPTI_SUCCESS;
 }
 
 void CUPTIManager::PopUniqueCorrelation(uint64_t& popped_unique_cid) {
-    if (cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &popped_unique_cid) != CUPTI_SUCCESS) {
+  auto res = cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &popped_unique_cid);
+    if (res != CUPTI_SUCCESS) {
         popped_unique_cid = 0;
     }
 }
@@ -139,8 +141,9 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>
                         /* name = */ std::move(name),
                         /* ts = */ (int64_t)(mmcpy->start - start_time_ns) / 1000,
                         /* dur = */ (int64_t)(mmcpy->end - mmcpy->start) / 1000,
-                        /* args = */ std::move(args)};
-                        MapEventToClient(mmcpy->correlationId, std::move(event));
+                        /* args = */ std::move(args)
+                    };
+                    MapEventToClient(mmcpy->correlationId, std::move(event));
                 } else if (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION == record->kind) {
                     auto correlation = reinterpret_cast<const CUpti_ActivityExternalCorrelation*>(record);
                     NotifyOnCorrelation(correlation->correlationId, correlation->externalId);

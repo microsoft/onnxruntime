@@ -371,6 +371,53 @@ class EpProfiler {
   virtual void Stop(uint64_t){};                                        // called after op stop, accept an id as argument to identify the op
 };
 
+// Base class for a GPU profiler
+class GPUProfilerBase : public EpProfiler {
+protected:
+  GPUProfilerBase() = default;
+
+  void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
+    Events merged_events;
+
+    auto event_iter = std::make_move_iterator(events.begin());
+    auto event_end = std::make_move_iterator(events.end());
+    for (auto& map_iter : events_to_merge) {
+      auto ts = static_cast<long long>(map_iter.first);
+      while (event_iter != event_end && event_iter->ts < ts) {
+        merged_events.emplace_back(*event_iter);
+        ++event_iter;
+      }
+
+      // find the last event with the same timestamp.
+      while (event_iter != event_end && event_iter->ts == ts && (event_iter + 1)->ts == ts) {
+        ++event_iter;
+      }
+
+      if (event_iter != event_end && event_iter->ts == ts) {
+        uint64_t increment = 1;
+        for (auto& evt : map_iter.second) {
+          evt.args["op_name"] = event_iter->args["op_name"];
+
+          // roctracer doesn't use Jan 1 1970 as an epoch for its timestamps.
+          // So, we adjust the timestamp here to something sensible.
+          evt.ts = event_iter->ts + increment;
+          ++increment;
+        }
+        merged_events.emplace_back(*event_iter);
+        ++event_iter;
+      }
+
+      merged_events.insert(merged_events.end(),
+                          std::make_move_iterator(map_iter.second.begin()),
+                          std::make_move_iterator(map_iter.second.end()));
+    }
+
+    // move any remaining events
+    merged_events.insert(merged_events.end(), event_iter, event_end);
+    std::swap(events, merged_events);
+  }
+};
+
 // Demangle C++ symbols
 std::string demangle(const char* name);
 std::string demangle(const std::string& name);

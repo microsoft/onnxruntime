@@ -12,11 +12,10 @@ namespace profiling {
 
 using Events = std::vector<onnxruntime::profiling::EventRecord>;
 
-class RocmProfiler final : public EpProfiler {
+class RocmProfiler final : public GPUProfilerBase {
  public:
   RocmProfiler();
-  RocmProfiler(const RocmProfiler&) = delete;
-  RocmProfiler& operator=(const RocmProfiler&) = delete;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RocmProfiler);
   ~RocmProfiler();
   bool StartProfiling(TimePoint profiling_start_time) override;
   void EndProfiling(TimePoint start_time, Events& events) override;
