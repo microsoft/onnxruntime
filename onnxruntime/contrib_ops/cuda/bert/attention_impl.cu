@@ -88,13 +88,99 @@ size_t GetAttentionWorkspaceSize(
 }
 
 template <typename T>
+__global__ void AddBiasTransAppendKvToPresent(
+    const T* qkv, const T* biases, T* present,
+    const int head_size, const int past_sequence_length, const int max_sequence_length) {
+  // Input:  BxSxMxNxH  (Format 1)
+  // Output: (2, B, N, [P..P+S) of MaxS, H),
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  const int n = threadIdx.y;
+  const int s = blockIdx.x;
+  const int b = blockIdx.y;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int B = gridDim.y;
+
+  constexpr int M = 3; // Matrix count in qkv
+  const int m = blockIdx.z + 1;  // k = 1, v = 2
+
+  const int NH = N * head_size;
+  const int NHS = NH * S;
+
+  qkv += (n * head_size + (s * M + m) * NH + b * M * NHS);
+  if (biases) {
+    biases += (m * NH + n * head_size);
+  }
+
+  const int MsH = max_sequence_length * head_size;
+  const int NMsH = N * MsH;
+  const int BNMsH = B * NMsH;
+  present += ((past_sequence_length + s) * head_size + n * MsH + b * NMsH + (m-1) * BNMsH);
+
+  for (int h = threadIdx.x; h < head_size; h += blockDim.x) {
+    T bias = (biases ? biases[h] : (T)0.0f);
+    present[h] = qkv[h] + bias;
+  }
+}
+
+// qkv buffer is merged tensor of shape (B,S,3,N,H), k v is the second/third of the 3.
+// bias is of shape (3, NxH) or nullptr
+// append to present of (2, B, N, (P..T) of M, H),
+template <typename T>
+Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
+                                           const int max_sequence_length,
+                                           const int past_sequence_length,
+                                           const int sequence_length,
+                                           const int batch_size,
+                                           const int head_size,
+                                           const int num_heads,
+                                           const int max_threads_per_block,
+                                           const T* biases,
+                                           const T* qkv_buffer,
+                                           T* present) {
+  const dim3 grid(sequence_length, batch_size, 2);  // 2 for k and v
+  int threads = 1 << static_cast<int>(std::ceil(std::log2(head_size)));
+  threads = std::min(threads, max_threads_per_block);
+  const dim3 block(threads, num_heads, 1);
+
+  AddBiasTransAppendKvToPresent<T><<<grid, block, 0, stream>>>(
+      qkv_buffer, biases, present, head_size, past_sequence_length, max_sequence_length);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
+                                                    const int max_sequence_length,
+                                                    const int total_sequence_length,
+                                                    const int sequence_length,
+                                                    const int batch_size,
+                                                    const int head_size,
+                                                    const int num_heads,
+                                                    const int max_threads_per_block,
+                                                    const float* bias,
+                                                    const float* qkv_buffer,
+                                                    float* present);
+template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
+                                                    const int max_sequence_length,
+                                                    const int total_sequence_length,
+                                                    const int sequence_length,
+                                                    const int batch_size,
+                                                    const int head_size,
+                                                    const int num_heads,
+                                                    const int max_threads_per_block,
+                                                    const half* bias,
+                                                    const half* qkv_buffer,
+                                                    half* present);
+
+template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
-    void* fused_runner) {
+    void* fused_runner,
+    int kv_cache_past_present) {
   constexpr size_t element_size = sizeof(T);
   const int max_threads_per_block = prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -126,30 +212,32 @@ Status QkvToContext(
     if (data.bias == nullptr) {
       // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
       ORT_ENFORCE(qk_head_size == v_head_size);
+      ORT_ENFORCE(kv_cache_past_present == 0);
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.gemm_buffer, qkv));
     } else {
+      int qkv_mask = (kv_cache_past_present ? 1 : 7);
       const int format = (use_fused_kernel ? 2 : 1);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.gemm_buffer, data.bias, qkv,
-                             true, v_head_size);
+                             true, v_head_size, qkv_mask);
       CUDA_RETURN_IF_ERROR(cudaGetLastError());
     }
   } else {  // gemm_buffer == nullptr
     ORT_ENFORCE(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
-  if (use_fused_kernel) {
+    if (use_fused_kernel) {
       ORT_ENFORCE(sequence_length == kv_sequence_length && qk_head_size == v_head_size);
 
       // Q(BxSxNxH), K (BxSxNxH), V(BxSxNxH) => BxSxNx(H + H + H)
       LaunchAddBiasTransposeTrt(
-        stream, max_threads_per_block,
-        batch_size, sequence_length,
-        num_heads, qk_head_size,
-        data.bias, data.query, data.key, data.value, qkv);
+          stream, max_threads_per_block,
+          batch_size, sequence_length,
+          num_heads, qk_head_size,
+          data.bias, data.query, data.key, data.value, qkv);
     } else {
       // Query(BxSxNxH) => Q (BxNxSxH)
       constexpr int format = 0;
@@ -201,19 +289,40 @@ Status QkvToContext(
 
   cublasSetStream(cublas, stream);
 
-  // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
-  // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
-  // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
-  // When there is past state, the head size for Q/K/V shall be same: H == H_v.
-  const int present_size_per_batch_k = total_sequence_length * qk_head_size;
-  const int present_size_per_batch_v = total_sequence_length * v_head_size;
+  int present_size_per_batch_k = 0;
+  int present_size_per_batch_v = 0;
+  if (!kv_cache_past_present) {
+    // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
+    // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
+    // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
+    // When there is past state, the head size for Q/K/V shall be same: H == H_v.
+    present_size_per_batch_k = total_sequence_length * qk_head_size;
+    present_size_per_batch_v = total_sequence_length * v_head_size;
 
-  if (nullptr != data.present) {
-    ORT_RETURN_IF_ERROR(
-        LaunchConcatPastToPresent(stream, total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,
-                                  max_threads_per_block, data.past, k, data.present));
+    if (nullptr != data.present) {
+      ORT_RETURN_IF_ERROR(
+          LaunchConcatPastToPresent(stream, total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,
+                                    max_threads_per_block, data.past, k, data.present));
 
-    // Update pointers to present_k and present_v.
+      // Update pointers to present_k and present_v.
+      k = data.present;
+      v = data.present + batches * present_size_per_batch_k;
+    }
+
+  } else {
+    ORT_ENFORCE(qk_head_size == v_head_size);
+    if (data.present != data.past) {
+      // For easy testing. Production should better avoid this path.
+      int64_t kv_size = 2LL * (int64_t)batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
+      cudaMemcpyAsync(data.present, data.past, kv_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+    }
+    // append last k v to present
+    ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
+        stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
+        batch_size, qk_head_size, num_heads, max_threads_per_block,
+        data.bias, data.gemm_buffer, data.present));
+
+    present_size_per_batch_k = present_size_per_batch_v = parameters.max_sequence_length * qk_head_size;
     k = data.present;
     v = data.present + batches * present_size_per_batch_k;
   }
@@ -531,7 +640,8 @@ template Status QkvToContext<float>(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
-    void* fused_runner);
+    void* fused_runner,
+    int kv_cache_past_present);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& prop,
@@ -539,7 +649,8 @@ template Status QkvToContext<half>(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
-    void* fused_runner);
+    void* fused_runner,
+    int kv_cache_past_present);
 
 }  // namespace cuda
 }  // namespace contrib

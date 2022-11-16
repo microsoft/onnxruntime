@@ -65,7 +65,8 @@ class GreedySearchGpt : public GreedySearchBase<T> {
       int current_length,
       OrtValue& position_ids,
       bool increase_position,
-      gsl::span<const int32_t> next_tokens);
+      gsl::span<const int32_t> next_tokens,
+      int past_sequence_length);
 
   GptSubgraph& gpt_subgraph_;
 
@@ -94,7 +95,8 @@ Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengt
                                           feeds,
                                           this->create_inputs_func_,
                                           this->add_to_feeds_func_,
-                                          buffer);
+                                          buffer,
+                                          this->parameters_->max_length);
 }
 
 template <typename T>
@@ -104,7 +106,8 @@ Status GreedySearchGpt<T>::UpdateFeeds(
     int current_length,
     OrtValue& position_ids,
     bool increase_position,
-    gsl::span<const int32_t> next_tokens) {
+    gsl::span<const int32_t> next_tokens,
+    int past_sequence_length) {
   gsl::span<const int32_t> place_holder;
   return update_feeds_func_(this->temp_space_allocator_,
                             this->cuda_stream_,
@@ -117,7 +120,10 @@ Status GreedySearchGpt<T>::UpdateFeeds(
                             place_holder,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
-                            gpt_subgraph_.GetFirstPresentOutputIndex());
+                            gpt_subgraph_.GetFirstPresentOutputIndex(),
+                            gpt_subgraph_.is_kv_cache_past_present_,
+                            past_sequence_length
+                            );
 }
 
 template <typename T>
@@ -145,6 +151,20 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
+
+  if (gpt_subgraph_.is_kv_cache_past_present_) { // Reuse past and present
+    fetches.reserve(gpt_subgraph_.GetFirstPresentOutputIndex() + gpt_subgraph_.num_layers);
+    fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
+    for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
+      int feed_idx = gpt_subgraph_.GetFirstPastInputIndex() + layer;
+      OrtValue& past_tensor_value = feeds[feed_idx];
+      Tensor* past_tensor = past_tensor_value.GetMutable<Tensor>();
+      OrtValue present_tensor_value;
+      Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
+                           past_tensor->Location(), present_tensor_value);
+      fetches.push_back(present_tensor_value);
+    }
+  }
 
   init_greedy_state_func_(&greedy_state,
                           greedy_state.sequence_lengths,
@@ -180,6 +200,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
     dumper->Print("input_ids", feeds[0]);
     dumper->Print("position_ids", feeds[1]);
     dumper->Print("attention_mask", feeds[2]);
+    dumper->Print("past", feeds[3]);
 #endif
 
     status = utils::ExecuteSubgraph(this->decoder_session_state_,
@@ -190,16 +211,17 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
                                     ExecutionMode::ORT_SEQUENTIAL,
                                     this->context_.GetTerminateFlag(),
                                     this->context_.Logger());
-
     ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = fetches[0];
     gsl::span<int32_t> next_tokens;
+
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 next_tokens,
                                                 greedy_state,
                                                 iteration_counter,
                                                 parameters->eos_token_id));
+
     // When all batches are finished, stop earlier to avoid wasting computation.
     gsl::span<bool>& eos_meet = greedy_state.eos_meet;
     size_t batch_id = 0;
@@ -219,11 +241,20 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
       bool increase_position = (iteration_counter > 1);
+
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids, increase_position,
-                                      ReinterpretAsSpan<const int32_t>(next_tokens)));
+                                      ReinterpretAsSpan<const int32_t>(next_tokens),
+                                      current_length - 1));
     }
-    fetches.clear();
+    if (gpt_subgraph_.is_kv_cache_past_present_) {
+      // clear fetched values before presents[]
+      for (int idx = 0; idx < gpt_subgraph_.GetFirstPresentOutputIndex(); idx++) {
+        fetches[idx] = OrtValue();
+      }
+    } else {
+      fetches.clear();
+    }
   }
 
   // Copy the sequences to output

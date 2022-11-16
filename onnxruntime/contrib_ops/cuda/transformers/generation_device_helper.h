@@ -90,7 +90,9 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx);
+    int gpt_subgraph_first_present_output_idx,
+    bool is_kv_cache_past_present,
+    int past_sequence_len);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
