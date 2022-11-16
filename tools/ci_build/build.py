@@ -2807,7 +2807,14 @@ def main():
             )
 
     if args.test and args.build_nuget:
-        run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl, args.enable_training_on_device)
+        run_csharp_tests(
+            source_dir,
+            build_dir,
+            args.use_cuda,
+            args.use_openvino,
+            args.use_tensorrt,
+            args.use_dnnl,
+            args.enable_training_on_device)
 
     if args.gen_doc:
         # special case CI where we create the build config separately to building

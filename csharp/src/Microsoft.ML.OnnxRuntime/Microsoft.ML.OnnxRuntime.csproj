@@ -77,7 +77,7 @@
     on their device is not built for training, an exception will be thrown with the following message -
     "Training is disabled in the current build. Please build onnxruntime from source with the build flags
     enable_training and enable_training_on_device. "-->
-    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">true</OnDeviceTraining>
+   <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">true</OnDeviceTraining>
 
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->
@@ -127,6 +127,14 @@
                             $(TargetFramework.StartsWith('xamarinios'))">true</IsIOSTarget>
     <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR
                             $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacTarget>
+  </PropertyGroup>
+
+  <!-- Enable training APIs for the build. The native package must be
+       a training build with build flags 'enable_training' and
+       'enable_training_on_device' set.
+  -->
+  <PropertyGroup Condition="'$(OnDeviceTraining)'=='true'">
+    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
   </PropertyGroup>
 
   <!--
@@ -181,14 +189,6 @@
 
   <PropertyGroup Condition="'$(IsXamarinTarget)'=='true'">
     <OrtConstants>$(OrtConstants);__XAMARIN__</OrtConstants>
-  </PropertyGroup>
-
-  <!-- Enable training APIs for the build. The native package must be
-       a training build with build flags 'enable_training' and
-       'enable_training_on_device' set.
-  -->
-  <PropertyGroup Condition="'$(OnDeviceTraining)'=='true'">
-    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
   </PropertyGroup>
 
   <PropertyGroup>

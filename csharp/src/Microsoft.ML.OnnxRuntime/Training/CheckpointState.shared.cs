@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-//#if __ENABLE_TRAINING_ON_DEVICE__
+#if __ENABLE_TRAINING_ON_DEVICE__
     /// <summary>
     ///  Holds the Checkpoint State as generated/consumed by on-device training APIs
     /// </summary>
@@ -67,5 +67,5 @@ namespace Microsoft.ML.OnnxRuntime
 
 #endregion
     }
-//#endif
+#endif
 }

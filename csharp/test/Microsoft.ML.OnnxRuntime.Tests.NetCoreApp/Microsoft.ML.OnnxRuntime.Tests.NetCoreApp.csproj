@@ -24,11 +24,11 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TrainingEnabledNativeBuild)'=='true'">
-    <DefineConstants>$(DefineConstants);__TRAINING_ENABLED__</DefineConstants>
+    <ExtraDefineConstants>$(ExtraDefineConstants);__TRAINING_ENABLED__</ExtraDefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>
-    <DefineConstants>__NET_CORE_APP__;$(DefineConstants)</DefineConstants>
+    <DefineConstants>__NET_CORE_APP__;$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
