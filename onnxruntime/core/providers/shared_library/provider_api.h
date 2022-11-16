@@ -261,10 +261,14 @@ std::string GetEnvironmentVar(const std::string& var_name);
 
 namespace profiling {
 
+  class GPUTracerManager;
+  class ProfilerActivityBuffer;
+  class GPUProfilerBase;
+
   std::string demangle(const char* name);
   std::string demangle(const std::string& name);
 
-};
+} /* namespace profiling */
 
 namespace logging {
 

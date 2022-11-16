@@ -5,7 +5,6 @@
 #include <chrono>
 #include <time.h>
 
-#include "core/common/profiler_common.h"
 #include "core/providers/rocm/rocm_profiler.h"
 #include "core/providers/rocm/roctracer_manager.h"
 

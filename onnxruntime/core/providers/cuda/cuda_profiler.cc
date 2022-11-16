@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
-#include "cuda_profiler.h"
 #include <map>
 #include <string>
 #include <iostream>
 
-#include "core/common/profiler_common.h"
 #include "cupti_manager.h"
+#include "cuda_profiler.h"
+
 
 namespace onnxruntime {
 

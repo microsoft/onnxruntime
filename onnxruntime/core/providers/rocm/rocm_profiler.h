@@ -3,7 +3,7 @@
 #include <vector>
 #include <map>
 
-#include "core/common/profiler_common.h"
+#include "core/common/gpu_profiler_common.h"
 
 #if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
 

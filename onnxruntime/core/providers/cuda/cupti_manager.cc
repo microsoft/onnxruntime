@@ -34,37 +34,28 @@ CUPTIManager& CUPTIManager::GetInstance() {
   return instance;
 }
 
-CUPTIManager::~CUPTIManager() {
-  StopLogging();
-  Clear();
-}
+CUPTIManager::~CUPTIManager() {}
 
-void CUPTIManager::StartLogging() {
-    std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-    if (logging_enabled_)  {
-        return;
-    }
+bool CUPTIManager::OnStartLogging() {
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
-      logging_enabled_ = true;
+      return true;
     } else {
-      StopLogging();
-      logging_enabled_ = false;
+      OnStopLogging();
+      return false;
     }
 }
 
-void CUPTIManager::StopLogging() {
-  std::lock_guard<std::mutex> lock(manager_instance_mutex_);
+void CUPTIManager::OnStopLogging() {
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME);
-  logging_enabled_ = false;
 }
 
 bool CUPTIManager::PushUniqueCorrelation(uint64_t unique_cid) {
@@ -146,7 +137,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>
                     MapEventToClient(mmcpy->correlationId, std::move(event));
                 } else if (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION == record->kind) {
                     auto correlation = reinterpret_cast<const CUpti_ActivityExternalCorrelation*>(record);
-                    NotifyOnCorrelation(correlation->correlationId, correlation->externalId);
+                    NotifyNewCorrelation(correlation->correlationId, correlation->externalId);
                 }
             }
         } while (status == CUPTI_SUCCESS);

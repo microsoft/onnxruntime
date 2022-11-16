@@ -12,7 +12,7 @@
 #include <roctracer/roctracer_ext.h>
 #include <roctracer/roctracer_roctx.h>
 
-#include "core/common/profiler_common.h"
+#include "core/common/gpu_profiler_common.h"
 #include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
@@ -31,15 +31,14 @@ class RoctracerManager : public GPUTracerManager {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoctracerManager);
   ~RoctracerManager();
   static RoctracerManager& GetInstance();
-  void StartLogging() override;
 
  protected:
   bool PushUniqueCorrelation(uint64_t unique_cid) override;
   void PopUniqueCorrelation(uint64_t& popped_unique_cid) override;
-  void StopLogging() override;
+  void OnStopLogging() override;
+  void OnStartLogging() override;
   void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
                               const TimePoint& start_time) override;
-  void Clear() override;
   void FlushActivities() override;
 
  private:

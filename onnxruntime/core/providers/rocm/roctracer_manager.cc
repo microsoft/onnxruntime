@@ -32,12 +32,7 @@ RoctracerManager::~RoctracerManager() {
   StopLogging();
 }
 
-void RoctracerManager::StartLogging() {
-  std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-  if (logging_enabled_) {
-    return;
-  }
-
+void RoctracerManager::OnStartLogging() {
   // The following line shows up in all the samples, I do not know
   // what the point is, but without it, the roctracer APIs don't work.
   roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
@@ -66,25 +61,13 @@ void RoctracerManager::StartLogging() {
   logging_enabled_ = true;
 }
 
-// Requires: manager_instance_mutex_ must be held
 void RoctracerManager::StopLogging() {
-  if (!logging_enabled_) {
-    return;
-  }
-
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
   roctracer_stop();
   roctracer_flush_activity();
   roctracer_close_pool();
-
-  logging_enabled_ = false;
-  Clear();
-}
-
-RoctracerManager::Clear() {
-  GPUTracerManager::Clear();
   api_call_args_.clear();
 }
 
@@ -259,7 +242,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
     for (; current_record < data_end; roctracer_next_record(current_record, &current_record)) {
       EventRecord event;
       if (current_record->domain == ACTIVITY_DOMAIN_EXT_API) {
-        NotifyOnCorrelation(current_record->correlation_id, current_record->external_id)
+        NotifyNewCorrelation(current_record->correlation_id, current_record->external_id)
         continue;
       } else if (current_record->domain == ACTIVITY_DOMAIN_HIP_OPS) {
         if (current_record->op == 1 && current_record->kind == HipOpMarker) {

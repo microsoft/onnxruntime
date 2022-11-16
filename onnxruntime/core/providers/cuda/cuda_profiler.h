@@ -5,10 +5,9 @@
 #include <mutex>
 #include <vector>
 
-#include "core/common/profiler_common.h"
+#include "core/common/gpu_profiler_common.h"
 
 namespace onnxruntime {
-
 namespace profiling {
 
 using Events = std::vector<onnxruntime::profiling::EventRecord>;
