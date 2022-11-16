@@ -69,7 +69,7 @@ Status LaunchGemmFastGeluKernel(bool tuning,
                                               bool transa, bool transb,                         \
                                               int64_t m, int64_t n, int64_t k, const T alpha,   \
                                               const T* a, int64_t lda, const T* b, int64_t ldb, \
-                                              const T* bias, T* c, int64_t ldc, const T beta);
+                                              const T* bias, const T beta, T* c, int64_t ldc);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(half)

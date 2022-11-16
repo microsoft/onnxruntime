@@ -27,9 +27,9 @@ Status LaunchGemmFastGeluKernel(bool tuning,
                                 const T* b,
                                 int64_t ldb,
                                 const T* bias,
+                                const T beta,
                                 T* c,
-                                int64_t ldc,
-                                const T beta);
+                                int64_t ldc);
 
 }  // namespace rocm
 }  // namespace contrib
