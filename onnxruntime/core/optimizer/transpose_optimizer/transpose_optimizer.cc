@@ -2040,7 +2040,7 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
       "Conv", "QLinearConv", "BatchNormalization",
       "AveragePool", "GlobalAveragePool", "MaxPool",
       "GlobalMaxPool", "LRN", "GridSample",
-      "DepthToSpace", "SpaceToDepth", "ConvTranspose"};
+      "DepthToSpace", "SpaceToDepth", "ConvTranspose", "MaxUnpool"};
 
   return layout_sensitive_ops;
 }
