@@ -65,8 +65,10 @@ int main(int argc, char** argv) {
     st_ptr.reset(g_ort->SetGlobalIntraOpNumThreads(tp_options, 3));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
+#ifdef _WIN32
     st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, "1;2"));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+#endif
 
     st_ptr.reset(g_ort->SetGlobalInterOpNumThreads(tp_options, std::thread::hardware_concurrency()));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
