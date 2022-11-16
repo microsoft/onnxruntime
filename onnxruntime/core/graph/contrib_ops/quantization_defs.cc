@@ -29,6 +29,10 @@ using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
+/*
+ * expectedScalar could be -1, 0, 1
+ * -1 means we allow both scalar and non-scalar
+ */
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
                                        ::google::protobuf::int32 expectedType, int expectedScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
@@ -1254,29 +1258,29 @@ static void convTransposeShapeInference(InferenceContext& ctx,
     const onnx::TypeProto* getInputType(size_t index) const override {
       return ctx_pa_.getInputType(input_map_[index]);
     }
-    virtual const AttributeProto* getAttribute(const std::string& name) const override {
+    const AttributeProto* getAttribute(const std::string& name) const override {
       return ctx_pa_.getAttribute(name);
     }
-    virtual size_t getNumInputs() const override {
+    size_t getNumInputs() const override {
       return ctx_pa_.getNumInputs();
     }
-    virtual const onnx::TensorProto* getInputData(size_t index) const override {
+    const onnx::TensorProto* getInputData(size_t index) const override {
       return ctx_pa_.getInputData(input_map_[index]);
     }
-    virtual size_t getNumOutputs() const override {
+    size_t getNumOutputs() const override {
       return ctx_pa_.getNumOutputs();
     }
-    virtual onnx::TypeProto* getOutputType(size_t index) override {
+    onnx::TypeProto* getOutputType(size_t index) override {
       return ctx_pa_.getOutputType(input_map_[index]);
     }
-    virtual onnx::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
+    onnx::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
       return ctx_pa_.getGraphAttributeInferencer(attribute_name);
     }
-    virtual const onnx::SparseTensorProto* getInputSparseData(size_t index) const override {
+    const onnx::SparseTensorProto* getInputSparseData(size_t index) const override {
       return ctx_pa_.getInputSparseData(input_map_[index]);
     }
     // Gets the shape inputs computed by partial data propagation.
-    virtual const onnx::TensorShapeProto* getSymbolicInput(size_t index) const override {
+    const onnx::TensorShapeProto* getSymbolicInput(size_t index) const override {
       return ctx_pa_.getSymbolicInput(input_map_[index]);
     }
   };
