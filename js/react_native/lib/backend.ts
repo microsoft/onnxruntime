@@ -10,7 +10,7 @@ import {binding, Binding} from './binding';
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 
 const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8ArrayConstructor|Int16ArrayConstructor|
-    Int32ArrayConstructor|BigInt64ArrayConstructor|Float64ArrayConstructor => {
+    Int32ArrayConstructor|BigInt64ArrayConstructor|Float64ArrayConstructor|Uint8ArrayConstructor => {
       switch (type) {
         case 'float32':
           return Float32Array;
@@ -22,6 +22,8 @@ const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8
           return Int32Array;
         case 'bool':
           return Int8Array;
+        case 'uint8':
+          return Uint8Array;
         case 'float64':
           return Float64Array;
         case 'int64':
