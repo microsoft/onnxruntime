@@ -5,7 +5,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-
+#include "core/common/gsl.h"
 #include <cmath>
 
 namespace onnxruntime {
