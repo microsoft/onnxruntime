@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "einsum_typed_compute_processor.h"
-#include "core/common/gsl.h"
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 
 namespace onnxruntime {
