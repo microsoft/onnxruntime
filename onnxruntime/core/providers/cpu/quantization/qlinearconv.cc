@@ -102,7 +102,7 @@ class QLinearConv : public OpKernel {
     const auto* W_scale_data = W_scale->Data<float>();
     output_scales.resize(static_cast<size_t>(W_scale_size));
     for (int64_t i = 0; i < W_scale_size; i++) {
-      output_scales[i] = (X_scale_value * W_scale_data[i] / Y_scale_value);
+      output_scales[onnxruntime::narrow<size_t>(i)] = (X_scale_value * W_scale_data[i] / Y_scale_value);
     }
 
     return output_scales;
@@ -921,7 +921,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           static_cast<size_t>(M));
     };
 
-    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count), conv_worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).
