@@ -804,11 +804,18 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
+if(Patch_FOUND)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+else()
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
+endif()
+
 FetchContent_Declare(
   Protobuf
-  URL ${DEP_URL_protobuf}
-  URL_HASH SHA1=${DEP_SHA1_protobuf}
+  URL https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip
+  URL_HASH SHA1=b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
   SOURCE_SUBDIR  cmake
+  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   FIND_PACKAGE_ARGS NAMES Protobuf
 )
 
@@ -1565,8 +1572,21 @@ else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
 
+if(Patch_FOUND)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+else()
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
+endif()
+
+FetchContent_Declare(
+  onnx
+  URL https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip
+  URL_HASH SHA1=edc8e1338c02f3ab222f3d803a24e17608c13895
+  PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+)
+
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
+  FetchContent_MakeAvailable(onnx)
 else()
   include(onnx_minimal)
 endif()
