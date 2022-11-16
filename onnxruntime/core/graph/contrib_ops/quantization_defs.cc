@@ -30,7 +30,7 @@ using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
-                                       ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
+                                       ::google::protobuf::int32 expectedType, int expectedScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
     if (nullptr == data_type) {
@@ -43,9 +43,9 @@ void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, in
     }
   }
 
-  if (hasInputShape(ctx, index)) {
+  if ((expectedScalar >= 0) && hasInputShape(ctx, index)) {
     ONNX_NAMESPACE::TensorShapeProto shape = ctx.getInputType(index)->tensor_type().shape();
-    if (isScalar) {
+    if (expectedScalar) {
       if (shape.dim_size() != 0) {
         fail_type_inference("Scale and Zero-point must be a scalar");
       }
@@ -1240,22 +1240,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("F", {"tensor(float16)"}, "Be compatible with float version.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
-void convTransposeShapeInference(InferenceContext& ctx,
-                                 int input1Idx,
-                                 int input2Idx) {
-  class QDeConvInferContext : public InferenceContext {
+/*
+static void convTransposeShapeInference(InferenceContext& ctx,
+                                        std::array<int, 3>& input_remap) {
+  class InputReMappingInferContext : public InferenceContext {
    private:
     InferenceContext& ctx_pa_;
-    int mapped_index1_;
-    int mapped_index2_;
+    std::array<int, 3>& input_map_;
 
    public:
-    QDeConvInferContext(InferenceContext& ctx, int input1Idx, int input2Idx) : ctx_pa_(ctx),
-                                                                               mapped_index1_(input1Idx),
-                                                                               mapped_index2_(input2Idx) {}
+    InputReMappingInferContext(InferenceContext& ctx, std::array<int, 3>& input_map) : ctx_pa_(ctx),
+                                                                                       input_map_(input_map) {}
     const onnx::TypeProto* getInputType(size_t index) const override {
-      index = (index == 1) ? mapped_index2_ : mapped_index1_;
-      return ctx_pa_.getInputType(index);
+      return ctx_pa_.getInputType(input_map_[index]);
     }
     virtual const AttributeProto* getAttribute(const std::string& name) const override {
       return ctx_pa_.getAttribute(name);
@@ -1264,32 +1261,30 @@ void convTransposeShapeInference(InferenceContext& ctx,
       return ctx_pa_.getNumInputs();
     }
     virtual const onnx::TensorProto* getInputData(size_t index) const override {
-      index = (index == 1) ? mapped_index2_ : mapped_index1_;
-      return ctx_pa_.getInputData(index);
+      return ctx_pa_.getInputData(input_map_[index]);
     }
     virtual size_t getNumOutputs() const override {
       return ctx_pa_.getNumOutputs();
     }
     virtual onnx::TypeProto* getOutputType(size_t index) override {
-      index = (index == 1) ? mapped_index2_ : mapped_index1_;
-      return ctx_pa_.getOutputType(index);
+      return ctx_pa_.getOutputType(input_map_[index]);
     }
     virtual onnx::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
       return ctx_pa_.getGraphAttributeInferencer(attribute_name);
     }
     virtual const onnx::SparseTensorProto* getInputSparseData(size_t index) const override {
-      index = (index == 1) ? mapped_index2_ : mapped_index1_;
-      return ctx_pa_.getInputSparseData(index);
+      return ctx_pa_.getInputSparseData(input_map_[index]);
     }
     // Gets the shape inputs computed by partial data propagation.
     virtual const onnx::TensorShapeProto* getSymbolicInput(size_t index) const override {
-      index = (index == 1) ? mapped_index2_ : mapped_index1_;
-      return ctx_pa_.getSymbolicInput(index);
+      return ctx_pa_.getSymbolicInput(input_map_[index]);
     }
   };
-  QDeConvInferContext ctx_new(ctx, input1Idx, input2Idx);
-  return ONNX_NAMESPACE::convTransposeShapeInference(ctx_new);
+
+  InputReMappingInferContext ctx_new(ctx, input_remap);
+  ONNX_NAMESPACE::convTransposeShapeInference(ctx_new);
 }
+*/
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QLinearConvTranspose,
@@ -1439,10 +1434,32 @@ output_shape can also be explicitly specified in which case pads values are auto
               w_zero_point_type->tensor_type().elem_type() != w_type->tensor_type().elem_type()) {
             fail_type_inference("weight and zero_point pair is expected to have same type.");
           }
+          // To verify that we have valid input tensor
+          auto a_type = ctx.getInputType(0);
+          auto b_type = ctx.getInputType(3);
+
+          if (nullptr == a_type || nullptr == b_type || a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+              b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+            fail_type_inference("inputs are expected to have tensor type.");
+          }
+
+          // validate scale and zero points
+          // scale and zero points could be scalar or 1-D tensor which depends on quanization per-channel or per-tensor
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, -1);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), -1);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, -1);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), -1);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, -1);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), -1);
 
           propagateElemTypeFromInputToOutput(ctx, 7, 0);
 
-          convTransposeShapeInference(ctx, 0, 3);
+          // TODO: uncomment this after we really need to infer the output shape.
+          // Since we haven't implemented QLinearConvTranspose in CPU EP yet,
+          // we just leverage ConvTranspose's shape inference.
+          // input, weight, bias
+          // std::array<int, 3> input_remap = {0, 3, 8};
+          // convTransposeShapeInference(ctx, input_remap);
         }));
 
 }  // namespace contrib

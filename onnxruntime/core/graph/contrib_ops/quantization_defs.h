@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace contrib {
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
-                                       ::google::protobuf::int32 expectedType, bool isScalar,
+                                       ::google::protobuf::int32 expectedType, int expectedScalar,
                                        int expectedTensorSize = 0);
 
 // Names follow the convention of BFP_<# sign bits>_<# mantissa bits>_<# exponent bits>_<size of bounding box>
