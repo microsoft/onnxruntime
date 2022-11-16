@@ -5479,3 +5479,47 @@ def test_eval_onnx_models():
     # BatchNormInternal is for training, while BatchNormalization is for inference.
     assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
     assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
+
+
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.13.1"), reason="PyTorch 1.13.1+ or master is required")
+def test_aten_fallback_must_fallback_due_exception():
+    from torch.testing._internal import common_utils
+    from torch.onnx._globals import GLOBALS
+    from torch.onnx import symbolic_helper
+
+    def bad_clamp(g, self, min, max):
+        return symbolic_helper._onnx_unsupported("Bad boy!")
+
+    class MyClip(torch.nn.Module):
+        def forward(self, x):
+            return torch.clamp(x, min=-0.5, max=0.5)
+
+    data = torch.randn(3, 4)
+    model = ORTModule(MyClip())
+    with common_utils.custom_op("aten::clamp", bad_clamp, GLOBALS.export_onnx_opset_version):
+        _ = model(data)
+
+    training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    _test_helpers.assert_aten_op(training_model, "clamp", "Tensor")
+
+
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.13.1"), reason="PyTorch 1.13.1+ or master is required")
+def test_aten_fallback_must_fallback_missing_op():
+    from onnxruntime.training import ortmodule
+
+    ortmodule.ONNX_OPSET_VERSION = 9  # linalg_qr does not exist for this opset version
+
+    class ModelWithAtenNotONNXOp(torch.nn.Module):
+        def forward(self, x: torch.Tensor, y: torch.Tensor):
+            abcd = x + y
+            defg = torch.linalg.qr(abcd)
+            return defg
+
+    x = torch.rand(3, 4)
+    y = torch.rand(3, 4)
+    model = ModelWithAtenNotONNXOp()
+    model = ORTModule(model)
+    _ = model(x, y)
+
+    onnx_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    _test_helpers.assert_aten_op(onnx_model, "linalg_qr")

@@ -444,3 +444,16 @@ def run_evaluate_test_on_device_and_compare(
         val_list_a = [o.detach().cpu() for o in outputs if o is not None]
         val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
         compare_tensor_list(val_list_a, val_list_b)
+
+
+def assert_aten_op(onnx_model, operator, overload_name=""):
+    all_aten_nodes = [p for p in onnx_model.graph.node if p.op_type == "ATen" and p.domain == "org.pytorch.aten"]
+    assert len(all_aten_nodes) > 0
+
+    for op in all_aten_nodes:
+        attrs = {attr.name: attr.s.decode() for attr in op.attribute}
+        if attrs.get("operator") == operator:
+            break
+
+    assert attrs["operator"] == operator
+    assert attrs.get("overload_name", "") == overload_name

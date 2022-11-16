@@ -400,11 +400,18 @@ class GraphExecutionManager(GraphExecutionInterface):
                     "verbose": self._debug_options.logging.log_level < LogLevel.WARNING,
                     "export_params": False,
                     "keep_initializers_as_inputs": True,
+                    "operator_export_type": torch.onnx.OperatorExportTypes.ONNX_ATEN_FALLBACK,
                 }
-                invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
+                # "operator_export_type" can be overridden by user through self._export_extra_kwargs
+                invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys() - "operator_export_type"
                 assert (
                     len(invalid_args) == 0
                 ), f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+                if "operator_export_type" in self._export_extra_kwargs.keys():
+                    if isinstance(self._export_extra_kwargs["operator_export_type"], torch.onnx.OperatorExportTypes):
+                        del required_export_kwargs["operator_export_type"]
+                    else:
+                        del self._export_extra_kwargs["operator_export_type"]
                 torch.onnx.export(
                     self._flattened_module,
                     sample_inputs_as_tuple,

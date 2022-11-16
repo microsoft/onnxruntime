@@ -580,6 +580,9 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
     pt_model = CrossModule()
     ort_model = ORTModule(copy.deepcopy(pt_model))
     ort_model.train(is_training)
+    ort_model._torch_module._execution_manager(is_training)._export_extra_kwargs = {
+        "operator_export_type": torch.onnx.OperatorExportTypes.ONNX  # disable aten fallback
+    }
     pt_model.train(is_training)
 
     for i in range(3):
