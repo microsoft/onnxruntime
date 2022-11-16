@@ -28,7 +28,7 @@ static void RunTest(const embedlayernorm::OpData& data,
     //   Input 5 - gamma              : (hidden_size)
     //   Input 6 - beta               : (hidden_size)
     //   Input 7 - mask               : (batch_size, sequence_size)
-    //   Input 8 - position ids       : (batch_size, sequence_size)
+    //   Input 8 - position ids       : (batch_size, sequence_size) or (1, sequence_size)
     //   Output 0 - output            : (batch_size, sequence_size, hidden_size)
     //   Output 1 - mask_index        : (batch_size)
     //   Output 2 - embedding_sum     : (batch_size, sequence_size, hidden_size)
