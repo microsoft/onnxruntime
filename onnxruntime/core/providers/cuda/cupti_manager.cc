@@ -58,7 +58,7 @@ void CUPTIManager::StartLogging() {
 }
 
 void CUPTIManager::StopLogging() {
-  std::lock_guard<std::mutex> lock(cupti_manager_mutex_);
+  std::lock_guard<std::mutex> lock(manager_instance_mutex_);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
@@ -93,11 +93,11 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>
         CUptiResult status;
         do {
             EventRecord event;
-            status = cuptiActivityGetNextRecord(buffer.GetData(), size, &record);
+            status = cuptiActivityGetNextRecord(reinterpret_cast<uint8_t*>(const_cast<char*>(buffer.GetData())), size, &record);
             if (status == CUPTI_SUCCESS) {
                 if (CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL == record->kind ||
                     CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
-                    CUpti_ActivityKernel8* kernel = (CUpti_ActivityKernel8*)record;
+                    CUpti_ActivityKernel3* kernel = (CUpti_ActivityKernel3*)record;
                     std::unordered_map<std::string, std::string> args {
                         {"stream", std::to_string(kernel->streamId)},
                         {"grid_x", std::to_string(kernel->gridX)},
@@ -119,9 +119,9 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>
                         /* dur = */ (int64_t)(kernel->end - kernel->start) / 1000,
                         /* args = */ std::move(args)
                     };
-                    MapEventToClient(record->correlationId, std::move(Event));
+                    MapEventToClient(kernel->correlationId, std::move(event));
                 } else if (CUPTI_ACTIVITY_KIND_MEMCPY == record->kind) {
-                    CUpti_ActivityMemcpy3* mmcpy = (CUpti_ActivityMemcpy3*)record;
+                    CUpti_ActivityMemcpy* mmcpy = (CUpti_ActivityMemcpy*)record;
                     std::string name{GetMemcpyKindString((CUpti_ActivityMemcpyKind)mmcpy->copyKind)};
                     std::unordered_map<std::string, std::string> args {
                         {"stream", std::to_string(mmcpy->streamId)},
@@ -137,16 +137,16 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>
                         /* pid = */ -1,
                         /* tid = */ -1,
                         /* name = */ std::move(name),
-                        /* ts = */ (int64_t)(kernel->start - start_time_ns) / 1000,
-                        /* dur = */ (int64_t)(kernel->end - kernel->start) / 1000,
+                        /* ts = */ (int64_t)(mmcpy->start - start_time_ns) / 1000,
+                        /* dur = */ (int64_t)(mmcpy->end - mmcpy->start) / 1000,
                         /* args = */ std::move(args)};
-                        MapEventToClient(record->correlationId, std::move(Event));
+                        MapEventToClient(mmcpy->correlationId, std::move(event));
                 } else if (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION == record->kind) {
                     auto correlation = reinterpret_cast<const CUpti_ActivityExternalCorrelation*>(record);
                     NotifyOnCorrelation(correlation->correlationId, correlation->externalId);
                 }
             }
-        } (status == CUPTI_SUCCESS); /* do */
+        } while (status == CUPTI_SUCCESS);
     } /* for */
 }
 
@@ -158,10 +158,9 @@ void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size
 }
 
 void CUPTIAPI CUPTIManager::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t valid_size) {
-    auto instance = GetInstance();
-    std::lock_guard<std::mutex> lock(instance.unprocessed_activity_buffers_lock_);
-    instance.unprocessed_activity_buffers_.emplace_back(
-        CUPTIActivityBuffer::CreateFromPreallocatedBuffer(reinterpret_cast<char*>(buffer), valid_size)
+    auto& instance = GetInstance();
+    instance.EnqueueActivityBuffer(
+      ProfilerActivityBuffer::CreateFromPreallocatedBuffer(reinterpret_cast<char*>(buffer), valid_size)
     );
 }
 

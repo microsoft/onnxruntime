@@ -69,6 +69,71 @@ class ProfilerActivityBuffer {
   size_t size_;
 };
 
+enum EventCategory {
+  SESSION_EVENT = 0,
+  NODE_EVENT,
+  KERNEL_EVENT,
+  API_EVENT,
+  EVENT_CATEGORY_MAX
+};
+
+// Event descriptions for the above session events.
+static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
+    "Session",
+    "Node",
+    "Kernel",
+    "Api"
+};
+
+// Timing record for all events.
+struct EventRecord {
+  EventRecord() = default;
+  EventRecord(EventCategory category,
+              int process_id,
+              int thread_id,
+              std::string&& event_name,
+              long long time_stamp,
+              long long duration,
+              std::unordered_map<std::string, std::string>&& event_args)
+      : cat(category),
+        pid(process_id),
+        tid(thread_id),
+        name(std::move(event_name)),
+        ts(time_stamp),
+        dur(duration),
+        args(std::move(event_args)) {}
+
+  EventRecord(EventCategory category,
+              int process_id,
+              int thread_id,
+              const std::string& event_name,
+              long long time_stamp,
+              long long duration,
+              const std::unordered_map<std::string, std::string>& event_args)
+      : cat(category),
+        pid(process_id),
+        tid(thread_id),
+        name(event_name),
+        ts(time_stamp),
+        dur(duration),
+        args(event_args) {}
+
+  EventRecord(const EventRecord& other) = default;
+  EventRecord(EventRecord&& other) = default;
+  EventRecord& operator=(const EventRecord& other) = default;
+  EventRecord& operator=(EventRecord&& other) = default;
+
+  EventCategory cat = EventCategory::API_EVENT;
+  int pid = -1;
+  int tid = -1;
+  std::string name{};
+  long long ts = 0;
+  long long dur = 0;
+  std::unordered_map<std::string, std::string> args{};
+};
+
+using Events = std::vector<EventRecord>;
+
 class GPUTracerManager
 {
 public:
@@ -102,7 +167,7 @@ public:
   }
 
   virtual void StartLogging() = 0;
-  virtual void Consume(uint64_t client_handle, const TimePoint& start_time, std::mp<uint64_t, Events>& events) {
+  virtual void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events) {
     events.clear();
     {
       // Flush any pending activity records before starting
@@ -111,7 +176,7 @@ public:
       FlushActivities();
     }
 
-    std::vector<RoctracerActivityBuffer> activity_buffers;
+    std::vector<ProfilerActivityBuffer> activity_buffers;
     {
       std::lock_guard<std::mutex> lock(unprocessed_activity_buffers_mutex_);
       std::swap(unprocessed_activity_buffers_, activity_buffers);
@@ -144,14 +209,33 @@ public:
       return false;
     }
 
-    uint64_t offset;
-    auto unique_cid = GetUniqueCorrelationId(client_handle, external_correlation_id, profiling_start_time, offset);
+    // external_correlation_id is simply the timestamp of this event,
+    // relative to profiling_start_time. i.e., it was computed as:
+    // external_correlation_id =
+    //      std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count()
+    //
+    // Because of the relative nature of the external_correlation_id, the same
+    // external_correlation_id can be reused across different clients, which then makes it
+    // impossible to recover the client from the external_correlation_id, which in turn
+    // makes it impossible to map events (which are tagged with external_correlation_id) to clients.
+    //
+    // To address these difficulties, we construct a new correlation_id (let's call it unique_cid)
+    // as follows:
+    // unique_cid =
+    //    external_correlation_id +
+    //    std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count()
+    // now, unique_cid is monotonically increasing with time, so it can be used to reliably map events to clients.
+    //
+    // Of course, clients expect lists of events to be returned (on a call to Consume()), that are
+    // still keyed on the external_correlation_id that they've specified here, so we need to remember the
+    // offset to be subtracted
+    uint64_t offset = std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
+    auto unique_cid = external_correlation_id + offset;
     unique_correlation_id_to_client_offset_[unique_cid] = std::make_pair(client_handle, offset);
     return PushUniqueCorrelation(unique_cid);
   }
 
-  virtual void PopCorrelation(uint64_t& popped_correlation_id) {
-    popped_correlation_id = 0;
+  virtual void PopCorrelation(uint64_t& popped_external_correlation_id) {
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
     if (!logging_enabled_) {
       return;
@@ -189,7 +273,7 @@ protected:
   }
 
   virtual void StopLogging() = 0;
-  virtual void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
+  virtual void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                                       const TimePoint& start_time) = 0;
 
   virtual bool PushUniqueCorrelation(uint64_t unique_cid) = 0;
@@ -209,36 +293,6 @@ protected:
 
     auto& event_list = per_client_events_by_ext_correlation_[client_handle_offset.first][external_correlation];
     return &event_list;
-  }
-
-  uint64_t GetUniqueCorrelationId(uint64_t client_handle,
-                                  uint64_t external_correlation_id,
-                                  TimePoint profiling_start_time,
-                                  uint64_t& offset) {
-    // external_correlation_id is simply the timestamp of this event,
-    // relative to profiling_start_time. i.e., it was computed as:
-    // external_correlation_id =
-    //      std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count()
-    //
-    // Because of the relative nature of the external_correlation_id, the same
-    // external_correlation_id can be reused across different clients, which then makes it
-    // impossible to recover the client from the external_correlation_id, which in turn
-    // makes it impossible to map events (which are tagged with external_correlation_id) to clients.
-    //
-    // To address these difficulties, we construct a new correlation_id (let's call it unique_cid)
-    // as follows:
-    // unique_cid =
-    //    external_correlation_id +
-    //    std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count()
-    // now, unique_cid is monotonically increasing with time, so it can be used to reliably map events to clients.
-    //
-    // Of course, clients expect lists of events to be returned (on a call to Consume()), that are
-    // still keyed on the external_correlation_id that they've specified here, so we need to remember the
-    // offset to be subtracted
-
-    offset = std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
-    auto unique_cid = external_correlation_id + offset;
-    return unique_cid;
   }
 
   // Not thread-safe: subclasses must ensure mutual-exclusion when calling this method
@@ -305,72 +359,7 @@ protected:
   // Keyed on tracer correlation_id, keeps track of activity records
   // for which we haven't established the external_correlation_id yet.
   InlinedHashMap<uint64_t, std::vector<EventRecord>> events_pending_client_mapping_;
-};
-
-enum EventCategory {
-  SESSION_EVENT = 0,
-  NODE_EVENT,
-  KERNEL_EVENT,
-  API_EVENT,
-  EVENT_CATEGORY_MAX
-};
-
-// Event descriptions for the above session events.
-static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
-    "Session",
-    "Node",
-    "Kernel",
-    "Api"
-};
-
-// Timing record for all events.
-struct EventRecord {
-  EventRecord() = default;
-  EventRecord(EventCategory category,
-              int process_id,
-              int thread_id,
-              std::string&& event_name,
-              long long time_stamp,
-              long long duration,
-              std::unordered_map<std::string, std::string>&& event_args)
-      : cat(category),
-        pid(process_id),
-        tid(thread_id),
-        name(std::move(event_name)),
-        ts(time_stamp),
-        dur(duration),
-        args(std::move(event_args)) {}
-
-  EventRecord(EventCategory category,
-              int process_id,
-              int thread_id,
-              const std::string& event_name,
-              long long time_stamp,
-              long long duration,
-              const std::unordered_map<std::string, std::string>& event_args)
-      : cat(category),
-        pid(process_id),
-        tid(thread_id),
-        name(event_name),
-        ts(time_stamp),
-        dur(duration),
-        args(event_args) {}
-
-  EventRecord(const EventRecord& other) = default;
-  EventRecord(EventRecord&& other) = default;
-  EventRecord& operator=(const EventRecord& other) = default;
-  EventRecord& operator=(EventRecord&& other) = default;
-
-  EventCategory cat = EventCategory::API_EVENT;
-  int pid = -1;
-  int tid = -1;
-  std::string name{};
-  long long ts = 0;
-  long long dur = 0;
-  std::unordered_map<std::string, std::string> args{};
-};
-
-using Events = std::vector<EventRecord>;
+}; /* class GPUTracerManager */
 
 //Execution Provider Profiler
 class EpProfiler {

@@ -30,14 +30,15 @@ protected:
   bool PushUniqueCorrelation(uint64_t unique_cid) override;
   void PopUniqueCorrelation(uint64_t& popped_unique_cid) override;
   void StopLogging() override;
-  void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
+  void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                               const TimePoint& start_time) override;
   void FlushActivities() override;
 
 private:
     static constexpr size_t kActivityBufferSize = 32 * 1024;
     static constexpr size_t kActivityBufferAlignSize = 8;
-    static constexpr void* AlignBuffer(buffer, align) {
+
+    static constexpr uint8_t* AlignBuffer(uint8_t* buffer, int align) {
         return (((uintptr_t)(buffer) & ((align)-1))
                 ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1)))
                 : (buffer));
