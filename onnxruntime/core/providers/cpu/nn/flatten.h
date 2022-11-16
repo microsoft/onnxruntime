@@ -22,6 +22,7 @@ class Flatten final : public OpKernel {
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
     const TensorShape& X_shape = X->Shape();
+
     auto axis = axis_;
 
     // Valid axis range is [-rank, rank] instead of [-rank, rank-1], add additional check to only handle neg axis case.
@@ -30,8 +31,7 @@ class Flatten final : public OpKernel {
     }
 
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis, "The rank of input tensor must be >= axis");
-
-    Tensor* Y = context->Output(0, {X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)});
+    Tensor* Y = context->Output(0, {X_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)), X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis))});
 
     CopyCpuTensor(X, Y);
 
