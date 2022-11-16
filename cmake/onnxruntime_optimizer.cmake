@@ -57,6 +57,8 @@ else()
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/compute_optimizer/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/compute_optimizer/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"

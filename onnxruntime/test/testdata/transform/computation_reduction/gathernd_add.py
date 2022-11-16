@@ -36,11 +36,14 @@ nodes.append(add2)
 gathernd2 = helper.make_node(
     "GatherND",
     ["add_2", "unsqueezed_masked_lm_positions"],
-    ["output2"],
+    ["gathernd_out"],
     name="gathernd_2",
     batch_dims=1,
 )
 nodes.append(gathernd2)
+
+identity = helper.make_node("Identity", ["gathernd_out"], ["output2"], name="identity")
+nodes.append(identity)
 
 graph_def = helper.make_graph(
     nodes,

@@ -18,11 +18,14 @@ nodes.append(gelu1)
 gathernd1 = helper.make_node(
     "GatherND",
     ["gelu_1", "unsqueezed_masked_lm_positions"],
-    ["output"],
+    ["gathernd_out"],
     name="gathernd_1",
     batch_dims=1,
 )
 nodes.append(gathernd1)
+
+identity = helper.make_node("Identity", ["gathernd_out"], ["output"], name="identity")
+nodes.append(identity)
 
 graph_def = helper.make_graph(nodes, "test-model", [X, unsqueezed_masked_lm_positions], [Y])
 
