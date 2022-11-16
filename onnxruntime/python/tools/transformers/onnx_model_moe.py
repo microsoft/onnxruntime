@@ -238,34 +238,34 @@ class FusionMoEBlock(Fusion):
 
         matmul_2_nodes = self.model.match_parent_path(
             mul_0,
-            ["Concat", "MatMul"],
-            [0, 0],
+            ["MatMul"],
+            [0],
         )
         if matmul_2_nodes is None:
             return
-        _, matmul_2 = matmul_2_nodes
+        matmul_2 = matmul_2_nodes[0]
 
         expert_0_nodes = self.model.match_parent_path(
             matmul_2,
-            ["Slice", "Gelu", "Concat", "MatMul", "Gather"],
-            [0, 0, 0, 0, 1],
+            ["Gelu", "MatMul", "Gather"],
+            [0, 0, 1],
         )
         if expert_0_nodes is None:
             return
-        _, _, _, matmul_1, gather_0 = expert_0_nodes
+        _, matmul_1, gather_0 = expert_0_nodes
 
         shape_nodes = self.model.match_parent_path(
             matmul_1,
-            ["Slice", "Unsqueeze"],
-            [0, 0],
+            ["Unsqueeze"],
+            [0],
         )
         if shape_nodes is None:
             return
 
         expert_1_nodes = self.model.match_parent_path(
             matmul_2,
-            ["Gather", "Slice", "ArgMax"],
-            [1, 1, 0],
+            ["Gather", "ArgMax"],
+            [1, 1],
         )
         if expert_1_nodes is None:
             return
@@ -288,8 +288,7 @@ class FusionMoEBlock(Fusion):
             name=self.model.create_node_name("MoEBlock"),
         )
         fused_node.domain = "com.microsoft"
-        fused_node.attribute.extend([helper.make_attribute("num_experts", 128)]) # bugbug: hard coded
-        fused_node.attribute.extend([helper.make_attribute("hidden_size", self.hidden_size)])
+
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
 
