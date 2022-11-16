@@ -101,7 +101,7 @@ option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu o
 option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
-option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF)
+cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
 #Please note, by default Protobuf_USE_STATIC_LIBS is OFF but it's recommended to turn it ON on Windows. You should set it properly when onnxruntime_PREFER_SYSTEM_LIB is ON otherwise you'll hit linkage errors.
@@ -799,6 +799,11 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   endif()
 endif()
 
+get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
+get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
+get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
+set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
+
 include(external/onnxruntime_external_deps.cmake)
 
 set(ORT_WARNING_FLAGS)
@@ -1006,6 +1011,21 @@ endif()
 
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
+	if (onnxruntime_DISABLE_CONTRIB_OPS)
+	  target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
+	endif()
+
+	if (onnxruntime_DISABLE_ML_OPS)
+	  target_compile_definitions(${target_name} PRIVATE DISABLE_ML_OPS)
+	endif()
+
+	if (onnxruntime_DISABLE_SPARSE_TENSORS)
+	  target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
+	endif()
+
+	if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+	  target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
+	endif()
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
@@ -1157,6 +1177,7 @@ function(onnxruntime_add_include_to_target dst_target)
       if(TARGET ${src_target})
         target_include_directories(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_COMPILE_DEFINITIONS>)
+        target_sources(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_SOURCES>)
       endif()
     endforeach()
 endfunction()

@@ -41,7 +41,6 @@ set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")
 set_target_properties(XNNPACK PROPERTIES FOLDER "External/Xnnpack")
 
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
-list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
 
 # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
 if(onnxruntime_BUILD_WEBASSEMBLY)
