@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
 #pragma once
@@ -9,10 +9,6 @@
 #include "core/providers/qnn/builder/qnn_model.h"
 
 namespace onnxruntime {
-// namespace qnn {
-// class QnnBackendManager;
-// class QnnModel;
-// }
 
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
@@ -57,7 +53,6 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                        std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
-                       std::unordered_set<std::string> initializer_input_lookup,
                        const logging::Logger& logger) const;
 
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,

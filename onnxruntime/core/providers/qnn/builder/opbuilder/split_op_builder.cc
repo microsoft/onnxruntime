@@ -51,7 +51,7 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   auto inputs = node_unit.Inputs();
   auto& input_name = inputs[0].node_arg.Name();
 
-  if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
     return Status::OK();
@@ -77,10 +77,14 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   input_names.push_back(input_name);
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-  Qnn_TensorDataFormat_t data_format = 0;
 
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+  QnnTensorWrapper input_tensorwrapper(input_name,
+                                       tensor_type,
+                                       qnn_data_type,
+                                       quantize_param,
+                                       std::move(input_shape),
+                                       std::move(unpacked_tensor));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
 }
@@ -91,9 +95,13 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                                    const logging::Logger& logger,
                                                    bool is_quantized_model,
                                                    bool do_op_validation) const {
-  std::vector<QnnParamWrapper> node_params;
-  int32_t default_axis = 0;
-  ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, node_params, default_axis));
+  std::vector<std::string> param_tensor_names;
+  int32_t axis_value = 0;
+  Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+  ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis_value));
+  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
+  param_tensor_names.push_back(axis_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
   std::vector<uint32_t> split_index;
   if (node_unit.Inputs().size() > 1) {
@@ -127,14 +135,13 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
 
   // Get the length according to axis and split it equally
   if (split_index.size() == 0) {
-    auto axis = node_params[0].GetQnnParam().scalarParam.uint32Value;
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
                       "Cannot get shape");
-    ORT_ENFORCE(input_shape.size() > axis, "axis not valid!");
-    ORT_RETURN_IF_NOT(input_shape.at(axis) > 0, "Shape value not valid!");
+    ORT_ENFORCE(static_cast<int32_t>(input_shape.size()) > axis_value, "axis not valid!");
+    ORT_RETURN_IF_NOT(input_shape.at(axis_value) > 0, "Shape value not valid!");
     auto num_outputs = node_unit.Outputs().size();
-    auto step = SafeInt<uint32_t>(input_shape.at(axis) / num_outputs);
+    auto step = SafeInt<uint32_t>(input_shape.at(axis_value) / num_outputs);
     uint32_t split_it = 0;
     for (size_t i = 0; i < num_outputs; ++i) {
       split_index.push_back(split_it);
@@ -146,9 +153,10 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   std::vector<uint32_t> split_dim{split_size};
   QnnParamWrapper split_param(node_unit.Index(), node_unit.Name(), qnn_def::split_index, std::move(split_dim),
                               std::move(split_index));
-  node_params.push_back(std::move(split_param));
+  param_tensor_names.push_back(split_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(split_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, std::move(node_params),
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, param_tensor_names,
                                      logger, is_quantized_model, do_op_validation));
 
   return Status::OK();

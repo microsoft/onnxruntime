@@ -30,8 +30,7 @@ class QnnModel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModel);
 
   Status ComposeGraph(const GraphViewer& graph_viewer,
-                      const onnxruntime::Node& fused_node,
-                      bool debug = false);
+                      const onnxruntime::Node& fused_node);
 
   Status FinalizeGraphs();
 
@@ -84,8 +83,7 @@ class QnnModel {
     return cpu_allocator_;
   }
 
-  Status GetQnnTensorDataLength(uint32_t* data_dimensions,
-                                uint32_t rank,
+  Status GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
                                 Qnn_DataType_t data_type,
                                 size_t& data_length) const;
 
@@ -107,6 +105,7 @@ class QnnModel {
   std::unordered_map<std::string, size_t> model_input_index_map_;
   std::unordered_map<std::string, size_t> model_input_index_map_without_initializers_;
   std::unordered_map<std::string, size_t> model_output_index_map_;
+  // TODO: remove initializer_inputs_, use QnnModelWrapper
   std::unordered_set<std::string> initializer_inputs_;
   bool is_quantized_model_ = false;
   std::unordered_map<std::string, OnnxTensorInfo> inputs_info_;

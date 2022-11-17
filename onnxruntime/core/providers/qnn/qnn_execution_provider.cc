@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
 #include "qnn_execution_provider.h"
@@ -25,6 +25,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true}, runtime_options_(provider_options_map), is_quantized_model_(true) {
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
+
   if (backend_path_pos != runtime_options_.end()) {
     backend_path_ = backend_path_pos->second;
     LOGS_DEFAULT(INFO) << "Backend path: " << backend_path_;
@@ -66,13 +67,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(backend_path_,
                                                                   profiling_level_,
-                                                                  is_quantized_model_,
                                                                   rpc_control_latency_);
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                            std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
-                                           std::unordered_set<std::string> initializer_input_lookup,
                                            const logging::Logger& logger) const {
   // If we have visited one of the nodes in the node_unit, use the result directly
   const auto it = node_unit_supported_result.find(&node_unit);
@@ -89,7 +88,8 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     };
 
     bool is_qdq_node = IsQdqNode(node_unit);
-    if (is_quantized_model_ && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
+    if (is_quantized_model_ && NodeUnit::Type::SingleNode == node_unit.UnitType() &&
+        node_unit.OpType() != "Transpose") {
       LOGS(logger, VERBOSE) << "Single node!";
       return is_qdq_node;
     }
@@ -136,22 +136,17 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     initializer_input_lookup.emplace(graph_ini.first);
   }
 
-  auto result = qnn_backend_manager_->ResetContext();
-  if (Status::OK() != result) {
-    return supported_nodes;
-  }
-  QNN_INTERFACE_VER_TYPE qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  Qnn_ContextHandle_t context = qnn_backend_manager_->GetQnnContext();
   std::unordered_map<std::string, size_t> model_input_index_map;
   std::unordered_map<std::string, size_t> model_output_index_map;
   std::unordered_map<std::string, qnn::OnnxTensorInfo> inputs_info;
   std::unordered_map<std::string, qnn::OnnxTensorInfo> outputs_info;
-  auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger, qnn_interface,
-                                                                  model_input_index_map,
-                                                                  model_output_index_map,
-                                                                  inputs_info, outputs_info,
-                                                                  initializer_input_lookup, cpu_allocator_);
-  bool rt = qnn_model_wrapper.Initialize(context, graph_viewer.Name().c_str());
+  auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger,
+                                                qnn_backend_manager_->GetQnnInterface(),
+                                                qnn_backend_manager_->GetQnnBackendHandle(),
+                                                model_input_index_map,
+                                                model_output_index_map,
+                                                initializer_input_lookup, cpu_allocator_);
+  bool rt = qnn_model_wrapper.Initialize(qnn_backend_manager_->GetQnnContext(), graph_viewer.Name());
   if (!rt) {
     return supported_nodes;
   }
@@ -161,7 +156,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     const bool supported = IsNodeSupported(qnn_model_wrapper,
                                            *node_unit,
                                            node_unit_supported_result,
-                                           initializer_input_lookup,
                                            logger);
     LOGS(logger, VERBOSE) << "Node supported: [" << supported
                           << "] Operator type: [" << node.OpType()
@@ -247,12 +241,14 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
 
-  ORT_RETURN_IF_ERROR(qnn_backend_manager_->ResetContext());
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get(), cpu_allocator_, is_quantized_model_);
+    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
+                                                                               qnn_backend_manager_.get(),
+                                                                               cpu_allocator_,
+                                                                               is_quantized_model_);
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());

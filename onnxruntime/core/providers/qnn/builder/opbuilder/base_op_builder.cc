@@ -108,7 +108,7 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
     auto& input_name = inputs[input_i].node_arg.Name();
 
-    if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
       LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
       input_names.push_back(input_name);
       continue;
@@ -132,13 +132,11 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
     }
 
-    input_names.push_back(input_name);
-
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-    Qnn_TensorDataFormat_t data_format = 0;
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+    input_names.push_back(input_name);
   }
 
   return Status::OK();
@@ -161,7 +159,7 @@ Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const std::vector<std::string>& input_names,
-                                     std::vector<QnnParamWrapper>&& node_params,
+                                     const std::vector<std::string>& param_tensor_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const {
@@ -170,7 +168,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   // Output part is common for all Ops, only difference is the Op attribute
   const auto& outputs = node_unit.Outputs();
   auto output_size = outputs.size();
-  std::vector<QnnTensorWrapper> qnn_outputs;
+  std::vector<std::string> output_names;
 
   for (size_t output_i = 0; output_i < output_size && output_i < output_count_; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
@@ -192,19 +190,22 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
 
     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    Qnn_TensorDataFormat_t data_format = 0;
-    QnnTensorWrapper qnn_output(output_name, tensor_type, data_format, qnn_data_type, quantize_param,
-                                std::move(output_shape));
-    qnn_outputs.push_back(std::move(qnn_output));
+    QnnTensorWrapper output_tensorwrapper(output_name,
+                                          tensor_type,
+                                          qnn_data_type,
+                                          quantize_param,
+                                          std::move(output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
+    output_names.push_back(output_name);
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddNode(GetNodeName(node_unit),            // Node Name
-                                               qnn_def::package_name,             // Package Name
-                                               GetQnnOpType(node_unit.OpType()),  // Qnn Node Type
-                                               std::move(node_params),            //
-                                               input_names,                       // Input Tensor Names
-                                               std::move(qnn_outputs),            // Output Tensors
-                                               do_op_validation),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+                                                    qnn_def::package_name,
+                                                    GetQnnOpType(node_unit.OpType()),
+                                                    input_names,
+                                                    output_names,
+                                                    param_tensor_names,
+                                                    do_op_validation),
                     "Failed to add node.");
 
   return Status::OK();
@@ -241,7 +242,7 @@ Status BaseOpBuilder::TransposeInitializer(const onnx::TensorProto& initializer,
 
 Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
                                            const NodeUnit& node_unit,
-                                           std::vector<QnnParamWrapper>& node_params,
+                                           Qnn_Scalar_t& axis_qnn_scalar,
                                            int32_t& default_axis_value) const {
   const auto& inputs = node_unit.Inputs();
   std::vector<uint32_t> input_shape;
@@ -257,7 +258,6 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
   default_axis_value = onnx_axis;
 
   bool is_gather_op = (node_unit.OpType() == "Gather");
-  Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   if (is_gather_op) {
     axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
     axis_qnn_scalar.int32Value = onnx_axis;
@@ -265,8 +265,6 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
     axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
     axis_qnn_scalar.uint32Value = static_cast<uint32_t>(onnx_axis);
   }
-  QnnParamWrapper axis_param(qnn_def::axis, axis_qnn_scalar);
-  node_params.push_back(std::move(axis_param));
 
   return Status::OK();
 }

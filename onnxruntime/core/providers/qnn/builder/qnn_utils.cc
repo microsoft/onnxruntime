@@ -10,12 +10,11 @@
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
 #include "qnn_utils.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
 namespace qnn {
 namespace utils {
-std::hash<std::string> g_strToUInt32;
-uint32_t GetTensorIdFromName(const std::string& name) { return static_cast<uint32_t>(g_strToUInt32(name)); }
 
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
   const static std::unordered_map<Qnn_DataType_t, size_t> data_type_to_size = {
@@ -194,6 +193,15 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizationEncoding_t& en
     case QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET:
       out << "QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET";
       break;
+    case QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET:
+      out << "QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET";
+      break;
+    case QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET:
+      out << "QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET";
+      break;
+    case QNN_QUANTIZATION_ENCODING_UNDEFINED:
+      out << "QNN_QUANTIZATION_ENCODING_UNDEFINED";
+      break;
     default:
       out << "Uknown quantization encoding";
   }
@@ -202,6 +210,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizationEncoding_t& en
 
 std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize_params) {
   out << " encodingDefinition=" << quantize_params.encodingDefinition;
+  out << " quantizationEncoding=" << quantize_params.quantizationEncoding;
   if (quantize_params.encodingDefinition == QNN_DEFINITION_IMPL_GENERATED ||
       quantize_params.encodingDefinition == QNN_DEFINITION_DEFINED) {
     out << " encoding=" << quantize_params.quantizationEncoding;
@@ -256,6 +265,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_TensorMemType_t& mem_type)
 template <typename T>
 std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_bufer) {
   T* data = reinterpret_cast<T*>(client_bufer.data);
+  out << " dataSize=" << client_bufer.dataSize;
   uint32_t count = client_bufer.dataSize / sizeof(T);
   count = count > 100 ? 100 : count;  // limit to 100 data
   out << " clientBuf=(";
@@ -267,25 +277,33 @@ std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_buf
 }
 
 std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
-  out << " id=" << tensor.id;
-  out << " type=" << tensor.type;
-  out << " dataFormat=" << tensor.dataFormat;
-  out << " dataType=" << tensor.dataType;
-  out << " rank=" << tensor.rank;
-  out << " maxDimensions=(";
-  for (uint32_t i = 0; i < tensor.rank; i++) {
-    out << tensor.maxDimensions[i] << " ";
+  out << " name=" << GetQnnTensorName(tensor);
+  out << " id=" << GetQnnTensorID(tensor);
+  out << " version=" << tensor.version;
+  out << " type=" << GetQnnTensorType(tensor);
+  out << " dataFormat=" << GetQnnTensorDataFormat(tensor);
+  out << " dataType=" << GetQnnTensorDataType(tensor);
+  out << " rank=" << GetQnnTensorRank(tensor);
+  out << " dimensions=(";
+  for (uint32_t i = 0; i < GetQnnTensorRank(tensor); i++) {
+    out << GetQnnTensorDims(tensor)[i] << " ";
   }
   out << ")";
-  out << " memType=" << tensor.memType;
-  if (tensor.memType == QNN_TENSORMEMTYPE_RAW) {
-    if (tensor.dataType == QNN_DATATYPE_UINT_32) {
-      operator<< <uint32_t>(out, tensor.clientBuf);
+  out << " memType=" << GetQnnTensorMemType(tensor);
+  if (GetQnnTensorMemType(tensor) == QNN_TENSORMEMTYPE_RAW) {
+    if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_FLOAT_32) {
+      operator<< <float>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_32) {
+      operator<< <uint32_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32) {
+      operator<< <int32_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8) {
+      operator<< <uint8_t>(out, GetQnnTensorClientBuf(tensor));
     } else {
-      operator<< <int32_t>(out, tensor.clientBuf);
+      operator<< <int8_t>(out, GetQnnTensorClientBuf(tensor));
     }
   }
-  out << " quantizeParams:" << tensor.quantizeParams;
+  out << " quantizeParams:" << GetQnnTensorQParams(tensor);
   return out;
 }
 
@@ -314,26 +332,26 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param) {
   return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const Qnn_OpConfig_t& op_definition) {
-  out << "Qnn_OpConfig node name: " << op_definition.name
-      << " package_name: " << op_definition.packageName
-      << " QNN_op_type: " << op_definition.typeName
-      << " num_of_params: " << op_definition.numOfParams
-      << " num_of_inputs: " << op_definition.numOfInputs
-      << " num_of_outputs: " << op_definition.numOfOutputs;
+std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wrapper) {
+  out << "Qnn_OpConfig node name: " << op_conf_wrapper.GetOpName()
+      << " package_name: " << op_conf_wrapper.GetPackageName()
+      << " QNN_op_type: " << op_conf_wrapper.GetTypeName()
+      << " num_of_inputs: " << op_conf_wrapper.GetInputsNum()
+      << " num_of_outputs: " << op_conf_wrapper.GetOutputsNum()
+      << " num_of_params: " << op_conf_wrapper.GetParamsNum();
 
   out << std::endl
       << " node_inputs:" << std::endl;
-  for (uint32_t i = 0; i < op_definition.numOfInputs; i++) {
-    out << op_definition.inputTensors[i] << std::endl;
+  for (uint32_t i = 0; i < op_conf_wrapper.GetInputsNum(); i++) {
+    out << op_conf_wrapper.GetInputTensors()[i] << std::endl;
   }
   out << " node_outputs:" << std::endl;
-  for (uint32_t i = 0; i < op_definition.numOfOutputs; i++) {
-    out << op_definition.outputTensors[i] << std::endl;
+  for (uint32_t i = 0; i < op_conf_wrapper.GetOutputsNum(); i++) {
+    out << op_conf_wrapper.GetOutputTensors()[i] << std::endl;
   }
   out << " node_params:" << std::endl;
-  for (uint32_t i = 0; i < op_definition.numOfParams; i++) {
-    out << op_definition.params[i] << std::endl;
+  for (uint32_t i = 0; i < op_conf_wrapper.GetParamsNum(); i++) {
+    out << op_conf_wrapper.GetParams()[i] << std::endl;
   }
   return out;
 }

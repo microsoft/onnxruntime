@@ -44,10 +44,10 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
 
-  auto input_0 = node_unit.Inputs()[0];
+  auto& input_0 = node_unit.Inputs()[0];
   auto& input_name = input_0.node_arg.Name();
 
-  if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
     return Status::OK();
@@ -74,10 +74,9 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   input_names.push_back(input_name);
 
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-  Qnn_TensorDataFormat_t data_format = 0;
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
 }

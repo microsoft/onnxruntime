@@ -11,16 +11,17 @@
 
 namespace onnxruntime {
 namespace qnn {
-namespace utils {
-uint32_t GetTensorIdFromName(const std::string& name);
+class QnnOpConfigWrapper;
 
+namespace utils {
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
 
+// TODO: make these work with Wrappers?
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
 std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor);
-std::ostream& operator<<(std::ostream& out, const Qnn_OpConfig_t& op_definition);
+std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wrapper);
 
 }  // namespace utils
 }  // namespace qnn

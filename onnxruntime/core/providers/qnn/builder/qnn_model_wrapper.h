@@ -24,20 +24,18 @@ class QnnModelWrapper {
   QnnModelWrapper(const GraphViewer& graph_viewer,
                   const logging::Logger& logger,
                   const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                  const Qnn_BackendHandle_t& backend_handle,
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
-                  const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
-                  const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info,
                   const std::unordered_set<std::string>& initializer_lookup,
                   const onnxruntime::AllocatorPtr& cpu_allocator)
       : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
+        backend_handle_(backend_handle),
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
         initializer_lookup_(initializer_lookup),
-        inputs_info_(inputs_info),
-        outputs_info_(outputs_info),
         cpu_allocator_(cpu_allocator) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
@@ -45,43 +43,39 @@ class QnnModelWrapper {
   ~QnnModelWrapper() = default;
 
   bool Initialize(const Qnn_ContextHandle_t& context,
-                  const char* graph_name,
-                  bool debug = false,
+                  const std::string& graph_name,
                   const QnnGraph_Config_t** graph_configs = nullptr);
 
-  size_t GetElementSizeByType(const Qnn_DataType_t& data_type) const;
+  // Add to internal tensor wrapper table
+  bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
 
-  bool AddQnnTensor(const std::string& node_name, const std::string& tensor_name, const Qnn_Tensor_t& qnn_tensor, bool is_param = false);
+  // Add to internal param wrapper table
+  bool AddParamWrapper(QnnParamWrapper&& param_wrapper);
 
-  bool AddTensor(const std::string& node_name, QnnTensorWrapper&& tensor_wrapper);
+  const QnnTensorWrapper& GetQnnTensorWrapper(const std::string& tensor_name);
 
-  bool GetQnnTensor(const std::string& tensor_name, Qnn_Tensor_t& tensor);
-
-  bool AddNode(const std::string& name,
-               const std::string& package_name,
-               const std::string& type,
-               std::vector<QnnParamWrapper>&& params,
-               const std::vector<std::string>& input_names,
-               std::vector<QnnTensorWrapper>&& output_wrappers,
-               bool do_op_validation = false);
-
-  bool AddParams(const std::string& node_name,
-                 const std::vector<QnnParamWrapper>& param_wrappers);
+  bool CreateQnnNode(const std::string& name,
+                     const std::string& package_name,
+                     const std::string& type,
+                     const std::vector<std::string>& input_names,
+                     const std::vector<std::string>& output_names,
+                     const std::vector<std::string>& param_tensor_names,
+                     bool do_op_validation = false);
 
   Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
 
   std::string GetQnnGraphName() const { return graph_name_; }
 
+  // Move input tensor wrappers to GraphInfo, QnnModelWrapper end of live
   std::vector<QnnTensorWrapper>&& GetGraphInputTensorWrappers() {
+    GetGraphInputOutputTensorWrapper(model_input_names_, model_input_tensor_wrappers_);
     return std::move(model_input_tensor_wrappers_);
   }
 
+  // Move output tensor wrappers to GraphInfo, QnnModelWrapper end of live
   std::vector<QnnTensorWrapper>&& GetGraphOutputTensorWrappers() {
+    GetGraphInputOutputTensorWrapper(model_output_names_, model_output_tensor_wrappers_);
     return std::move(model_output_tensor_wrappers_);
-  }
-
-  std::unordered_map<std::string, QnnTensorWrapper> GetModelTensorsMap() {
-    return std::move(model_tensors_map_);
   }
 
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
@@ -102,7 +96,7 @@ class QnnModelWrapper {
                                     float& scale_value,
                                     int32_t& offset_value) const;
 
-  bool QnnContainsTensor(const std::string& tensor_name) const;
+  bool IsQnnTensorWrapperExist(const std::string& tensor_name) const;
 
   bool IsGraphOutput(const std::string& tensor_name) const {
     return output_index_map_.find(tensor_name) != output_index_map_.end();
@@ -162,23 +156,19 @@ class QnnModelWrapper {
                             tensor_data_type, quantize_param, is_for_input, is_for_output);
   }
 
-  const OnnxTensorInfo* TryGetModelInputInfo(const std::string& name) const {
-    auto it = inputs_info_.find(name);
-    if (it == inputs_info_.end()) {
-      return nullptr;
-    }
-    return &(it->second);
-  }
-
-  const OnnxTensorInfo* TryGetModelOutputInfo(const std::string& name) const {
-    auto it = outputs_info_.find(name);
-    if (it == outputs_info_.end()) {
-      return nullptr;
-    }
-    return &(it->second);
-  }
-
  private:
+  bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
+                                   const std::vector<std::string>& names,
+                                   std::vector<Qnn_Tensor_t>& tensor_wrappers,
+                                   bool do_op_validation = false);
+
+  bool IsQnnParamExit(const std::string& param_tensor_name) const;
+
+  bool CreateQnnParamTensors(const std::string& qnn_node_name,
+                             const std::vector<std::string>& param_tensor_names,
+                             std::vector<Qnn_Param_t>& qnn_params,
+                             bool do_op_validation = false);
+
   bool IsQDQNode(const Node& node) const {
     if (node.OpType() == "QuantizeLinear" || node.OpType() == "DequantizeLinear") {
       return true;
@@ -186,46 +176,39 @@ class QnnModelWrapper {
     return false;
   }
 
-  void AddQuantizeNodeInfo(const std::string& input_name, const std::string& output_name) {
-    auto pos = quantize_input_output_.find(input_name);
-    if (pos != quantize_input_output_.end()) {
-      return;
+  bool IsQnnTensorCreated(const std::string& tensor_name) {
+    auto pos = tensor_created_map_.find(tensor_name);
+    if (pos == tensor_created_map_.end()) {
+      return false;
     }
-    quantize_input_output_.emplace(input_name, output_name);
+    return pos->second;
   }
 
-  void AddDequantizeNodeInfo(const std::string& input_name, const std::string& output_name) {
-    auto pos = dequantize_output_input_.find(output_name);
-    if (pos != dequantize_output_input_.end()) {
-      return;
-    }
-    dequantize_output_input_.emplace(output_name, input_name);
-  }
+  void GetGraphInputOutputTensorWrapper(const std::vector<std::string>& names,
+                                        std::vector<QnnTensorWrapper>& wrappers_list);
 
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
+  const Qnn_BackendHandle_t& backend_handle_;
   Qnn_GraphHandle_t graph_ = nullptr;
   std::string graph_name_ = "";
-  bool debug_ = false;  // flag to indicate if requested graph is to be run in debug mode(i.e all
-                        // intermediate tensors will be accessible to client)
 
+  std::vector<std::string> model_input_names_;
+  std::vector<std::string> model_output_names_;
   std::vector<QnnTensorWrapper> model_input_tensor_wrappers_;
   std::vector<QnnTensorWrapper> model_output_tensor_wrappers_;
-  // keeps track of graph tensors to enable creating Qnn nodes from tensor names
+  // All QnnTensorWrapper for the graph
   std::unordered_map<std::string, QnnTensorWrapper> model_tensors_map_;
+  // All QnnParamWrapper for the graph
+  std::unordered_map<std::string, QnnParamWrapper> model_params_map_;
+  // <tensor_name, qnn_tensor_created> -- true means qnn tensor created in qnn graph
+  // it includs normal qnn_tensors and qnn_tensors inside param_tensors
+  std::unordered_map<std::string, bool> tensor_created_map_;
   const std::unordered_map<std::string, size_t>& input_index_map_;
   const std::unordered_map<std::string, size_t>& output_index_map_;
   const std::unordered_set<std::string>& initializer_lookup_;
-  const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info_;
-  const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info_;
-  // <input_name, output_name> for QNN Quantize node
-  std::unordered_map<std::string, std::string> quantize_input_output_;
-  // <output_name, input_name> for QNN Dequantize node
-  std::unordered_map<std::string, std::string> dequantize_output_input_;
   onnxruntime::AllocatorPtr cpu_allocator_;
-  const std::vector<uint32_t> nchw2nhwc_perm_{0, 2, 3, 1};
-  const std::vector<uint32_t> nhwc2nchw_perm_{0, 3, 1, 2};
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
 };  // QnnModelWrapper

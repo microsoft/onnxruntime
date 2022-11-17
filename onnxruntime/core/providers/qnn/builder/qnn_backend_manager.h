@@ -4,16 +4,10 @@
 #pragma once
 #ifdef _WIN32
 #include <windows.h>
-#define LIBTYPE HINSTANCE
-#define OPENLIB(libname) LoadLibrary(libname)
-#define LIBFUNC(lib, fn) GetProcAddress((lib), (fn))
-#define DLERROR() ""
+#include <psapi.h>
+#include <libloaderapi.h>
 #else
 #include <dlfcn.h>
-#define LIBTYPE void*
-#define OPENLIB(libname) dlopen((libname), RTLD_NOW | RTLD_GLOBAL)
-#define LIBFUNC(lib, fn) dlsym((lib), (fn))
-#define DLERROR() dlerror()
 #endif
 
 #include "QnnLog.h"
@@ -28,21 +22,9 @@ class QnnBackendManager {
  public:
   QnnBackendManager(std::string backend_path,
                     ProfilingLevel profiling_level,
-                    bool is_dsp_backend,
                     uint32_t rpc_control_latency)
       : backend_path_(backend_path),
-        logger_(nullptr),
-        qnn_interface_(QNN_INTERFACE_VER_TYPE_INIT),
-        backend_handle_(nullptr),
-        backend_config_(nullptr),
-        context_(nullptr),
-        context_config_(nullptr),
         profiling_level_(profiling_level),
-        backend_initialized_(false),
-        context_created_(false),
-        backend_setup_completed_(false),
-        is_dsp_backend_(is_dsp_backend),
-        profile_backend_handle_(nullptr),
         rpc_control_latency_(rpc_control_latency) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -73,13 +55,13 @@ class QnnBackendManager {
 
   Status SetDspPowerConfig();
 
-  QNN_INTERFACE_VER_TYPE GetQnnInterface() { return qnn_interface_; }
+  const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
-  Qnn_ContextHandle_t GetQnnContext() { return context_; }
+  const Qnn_ContextHandle_t& GetQnnContext() { return context_; }
 
-  void* GetQnnBackendHandle() { return backend_handle_; }
+  const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
-  Qnn_ProfileHandle_t GetQnnProfileHandle() { return profile_backend_handle_; }
+  const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
 
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};
@@ -111,22 +93,23 @@ class QnnBackendManager {
       qnn_log_level = pos->second;
     }
 
-    if (QNN_SUCCESS != qnn_interface_.logInitialize(QnnLogStdoutCallback, qnn_log_level)) {
+    if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogStdoutCallback, qnn_log_level, &log_handle_)) {
       LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
     }
   }
 
   // Terminate logging in the backend
-  void TerminateQnnLog() {
-    LOGS_DEFAULT(VERBOSE) << "Terminate Qnn log.";
+  Status TerminateQnnLog() {
     if (logger_ == nullptr) {
-      return;
+      return Status::OK();
     }
 
-    if (QNN_SUCCESS != qnn_interface_.logTerminate()) {
-      LOGS_DEFAULT(WARNING) << "Unable to terminate logging in the backend.";
+    if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
+      ORT_RETURN_IF(QNN_SUCCESS != qnn_interface_.logFree(log_handle_),
+                    "Unable to terminate logging in the backend.");
     }
-    LOGS_DEFAULT(VERBOSE) << "Terminate Qnn log succeed.";
+
+    return Status::OK();
   }
 
   void ReleaseResources();
@@ -138,21 +121,43 @@ class QnnBackendManager {
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id);
 
  private:
+  void* LoadLib(const char* file_name, int flags, std::string& error_msg);
+
+  Status UnloadLib(void* handle);
+
+  void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
+
+  template <class T>
+  inline T ResolveSymbol(void* lib_handle, const char* sym, const logging::Logger& logger) {
+    std::string error_msg = "";
+    T ptr = (T)LibFunction(lib_handle, sym, error_msg);
+    if (ptr == nullptr) {
+      LOGS(logger, ERROR) << "Unable to access symbol: " << sym << ". error: " << error_msg;
+    }
+    return ptr;
+  }
+
+ private:
   const std::string backend_path_;
-  const logging::Logger* logger_;
-  QNN_INTERFACE_VER_TYPE qnn_interface_;
-  LIBTYPE backend_handle_;
-  QnnBackend_Config_t** backend_config_;
-  Qnn_ContextHandle_t context_;
-  QnnContext_Config_t** context_config_;
+  const logging::Logger* logger_ = nullptr;
+  QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
+  void* backend_lib_handle_ = nullptr;
+  Qnn_BackendHandle_t backend_handle_ = nullptr;
+  QnnBackend_Config_t** backend_config_ = nullptr;
+  Qnn_LogHandle_t log_handle_ = nullptr;
+  Qnn_DeviceHandle_t device_handle_ = nullptr;
+  Qnn_ContextHandle_t context_ = nullptr;
+  QnnContext_Config_t** context_config_ = nullptr;
   ProfilingLevel profiling_level_;
-  bool backend_initialized_;
-  bool context_created_;
-  bool backend_setup_completed_;
-  bool is_dsp_backend_;
-  Qnn_ProfileHandle_t profile_backend_handle_;
+  bool backend_initialized_ = false;
+  bool context_created_ = false;
+  bool backend_setup_completed_ = false;
+  Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_;
+#ifdef _WIN32
+  std::set<HMODULE> mod_handles_;
+#endif
 };
 
 }  // namespace qnn

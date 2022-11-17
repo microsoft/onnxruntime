@@ -85,7 +85,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       // Ignore unspecified/unused optional input
       continue;
     }
-    if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
       LOGS(logger, VERBOSE) << "Tensor already added or the input is not named, skip it: " << input_name;
       input_names.push_back(input_name);
       ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input0_shape), "Cannot get shape");
@@ -150,11 +150,10 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     input_names.push_back(input_name);
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-    Qnn_TensorDataFormat_t data_format = 0;
     Qnn_QuantizeParams_t quantize_params = QNN_QUANTIZE_PARAMS_INIT;
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_params,
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_params,
                                          std::move(input_shape), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
   TensorShapeVector input_dimensions(input0_shape.cbegin(), input0_shape.cend());
   onnxruntime::SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
@@ -176,7 +175,6 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                                    const logging::Logger& logger,
                                                    bool is_quantized_model,
                                                    bool do_op_validation) const {
-  std::vector<QnnParamWrapper> node_params;
   std::vector<uint32_t> ranges_dims{static_cast<uint32_t>(ranges_.size()), 3};
   std::vector<uint32_t> ranges_data;
   for (auto range : ranges_) {
@@ -184,9 +182,21 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
     ranges_data.push_back(static_cast<uint32_t>(range.end));
     ranges_data.push_back(static_cast<uint32_t>(range.stride));
   }
-  QnnParamWrapper ranges_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::ranges, std::move(ranges_dims), std::move(ranges_data), true);
-  node_params.push_back(std::move(ranges_paramwrapper));
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, std::move(node_params), logger, is_quantized_model, do_op_validation));
+  QnnParamWrapper ranges_paramwrapper(node_unit.Index(),
+                                      node_unit.Name(),
+                                      qnn_def::ranges,
+                                      std::move(ranges_dims),
+                                      std::move(ranges_data),
+                                      true);
+  std::string param_tensor_name(ranges_paramwrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(ranges_paramwrapper));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper,
+                      node_unit,
+                      input_names,
+                      {param_tensor_name},
+                      logger,
+                      is_quantized_model,
+                      do_op_validation));
   return Status::OK();
 }
 

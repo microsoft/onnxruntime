@@ -10,13 +10,13 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
 
 bool QnnModelWrapper::Initialize(const Qnn_ContextHandle_t& context,
-                                 const char* graph_name,
-                                 bool debug,
+                                 const std::string& graph_name,
                                  const QnnGraph_Config_t** graph_configs) {
   if (!graph_name_.empty()) {
     // only one graph is allowed per QnnModel
@@ -24,249 +24,193 @@ bool QnnModelWrapper::Initialize(const Qnn_ContextHandle_t& context,
     return false;
   }
   if (context == nullptr) {
-    LOGS(logger_, ERROR) << "Nullptr passed as context.";
+    LOGS(logger_, ERROR) << "Invalid Qnn context.";
     return false;
   }
-  if (graph_name == nullptr) {
-    LOGS(logger_, ERROR) << "Nullptr passed as graphName.";
+  if (graph_name.length() == 0) {
+    LOGS(logger_, ERROR) << "Empty grpah name.";
     return false;
   }
 
-  auto rt = qnn_interface_.graphCreate(context, graph_name, graph_configs, &graph_);
-  if (rt != QNN_GRAPH_NO_ERROR || graph_ == nullptr) {
-    rt = qnn_interface_.graphRetrieve(context, graph_name, &graph_);
-    if (rt != QNN_GRAPH_NO_ERROR || graph_ == nullptr) {
-      LOGS(logger_, ERROR) << "Not able to create graph in given context.";
-      return false;
-    }
-  }
   graph_name_ = graph_name;
-  debug_ = debug;
+  auto rt = qnn_interface_.graphCreate(context, graph_name_.c_str(), graph_configs, &graph_);
+  if (rt != QNN_GRAPH_NO_ERROR || graph_ == nullptr) {
+    rt = qnn_interface_.graphRetrieve(context, graph_name_.c_str(), &graph_);
+    if (rt != QNN_GRAPH_NO_ERROR || graph_ == nullptr) {
+      LOGS(logger_, ERROR) << "Failed to create Qnn graph: " << graph_name;
+      return false;
+    }
+  }
+  LOGS(logger_, VERBOSE) << "Created Qnn graph: " << graph_name;
 
   return true;
 }
 
-static std::vector<QnnTensorWrapper>::const_iterator QnnContainsTensorHelper(const std::string& tensor_name,
-                                                                             const std::vector<QnnTensorWrapper>& tensor_wrappers) {
-  return std::find_if(tensor_wrappers.cbegin(), tensor_wrappers.cend(),
-                      [&tensor_name](const QnnTensorWrapper& tensor_wrapper) -> bool {
-                        return tensor_wrapper.GetName() == tensor_name;
-                      });
+bool QnnModelWrapper::IsQnnTensorWrapperExist(const std::string& name) const {
+  return model_tensors_map_.find(name) != model_tensors_map_.end();
 }
 
-bool QnnModelWrapper::QnnContainsTensor(const std::string& name) const {
-  return model_tensors_map_.find(name) != model_tensors_map_.end() ||
-         QnnContainsTensorHelper(name, model_input_tensor_wrappers_) != model_input_tensor_wrappers_.cend() ||
-         QnnContainsTensorHelper(name, model_output_tensor_wrappers_) != model_output_tensor_wrappers_.cend();
+bool QnnModelWrapper::IsQnnParamExit(const std::string& param_tensor_name) const {
+  return model_params_map_.find(param_tensor_name) != model_params_map_.end();
 }
 
-bool QnnModelWrapper::AddQnnTensor(const std::string& node_name,
-                                   const std::string& tensor_name,
-                                   const Qnn_Tensor_t& qnn_tensor,
-                                   bool is_param) {
-  // Verify tensor being added is not a duplicate
-  if (!is_param && QnnContainsTensor(tensor_name)) {
-    LOGS(logger_, VERBOSE) << "Tensor already exists: " << tensor_name
-                           << ", node name: " << node_name;
-    return true;
-  }
-
-  size_t data_size = utils::GetElementSizeByType(qnn_tensor.dataType);
-
-  if (0 == data_size) {
-    LOGS(logger_, ERROR) << "Invalid QNN data type provided, "
-                         << qnn_tensor.dataType << ", for tensor " << tensor_name
-                         << " on node " << node_name;
-    return false;
-  }
-  {
-    using namespace onnxruntime::qnn::utils;
-    LOGS(logger_, VERBOSE) << "name=" << tensor_name << qnn_tensor;
-  }
-  // sanity check tensor data if AddTensor used for static tensor
-  if (qnn_tensor.type == QNN_TENSOR_TYPE_STATIC) {
-    if (qnn_tensor.memType != QNN_TENSORMEMTYPE_RAW) {
-      LOGS(logger_, ERROR) << "Expected raw memType in provided static tensor "
-                           << tensor_name << "for node " << node_name;
-      return false;
-    }
-    // verify size expressed by the dims matches the raw tensor size
-    uint32_t qnn_tensor_size = std::accumulate(qnn_tensor.currentDimensions,
-                                               qnn_tensor.currentDimensions + qnn_tensor.rank,
-                                               static_cast<uint32_t>(data_size),
-                                               std::multiplies<uint32_t>());
-    if (qnn_tensor_size != qnn_tensor.clientBuf.dataSize) {
-      LOGS(logger_, ERROR) << "Adding STATIC tensor, length mismatch between clientBuf "
-                           << "size and tensor Dims(dim) * rank * sizeof(datatype) for, node_name: " << node_name
-                           << " tensor_name: " << tensor_name
-                           << ". Got tensorSize: " << qnn_tensor_size
-                           << ", tensor.clientBuf.dataSize: " << qnn_tensor.clientBuf.dataSize;
-      return false;
-    }
-  }
-
-  if (debug_ && qnn_tensor.type == QNN_TENSOR_TYPE_NATIVE) {
-    // for debug, make all tensors accessible by client
-    (const_cast<Qnn_Tensor_t&>(qnn_tensor)).type = QNN_TENSOR_TYPE_APP_READ;
-  }
-
-  auto tensor_create_result = qnn_interface_.tensorCreateGraphTensor(graph_, qnn_tensor);
-  if (tensor_create_result != QNN_TENSOR_NO_ERROR) {
-    LOGS(logger_, ERROR) << "Failed to create tensor for node: " << node_name
-                         << " tensor_name: " << tensor_name
-                         << " error code: " << tensor_create_result;
-    return false;
-  }
-
-  return true;
-}
-
-bool QnnModelWrapper::AddTensor(const std::string& node_name,
-                                QnnTensorWrapper&& tensor_wrapper) {
+bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
+  // Keep a copy of tensor name sine it will be moved with the wrapper into model_tensors_map_
   std::string tensor_name = tensor_wrapper.GetName();
-  if (QnnContainsTensor(tensor_name) == true) {
-    return true;
-  }
-  if (AddQnnTensor(node_name, tensor_name, tensor_wrapper.GetQnnTensor()) == false) {
+  if (tensor_name.length() == 0) {
+    LOGS(logger_, ERROR) << "Invalid tensor encountered empty name.";
     return false;
   }
-  const Qnn_TensorType_t& qnn_tensor_type = tensor_wrapper.GetQnnTensor().type;
-  // save network input/outputs tensors to use for setting the Qnn graph's input and output
-  // tensors for populating GraphInfo for caller
+
+  if (IsQnnTensorWrapperExist(tensor_name) == true) {
+    return true;
+  }
+
+  const Qnn_TensorType_t& qnn_tensor_type = tensor_wrapper.GetTensorType();
+  // save created tensors for later lookup to populate graph node construction
+  model_tensors_map_.emplace(tensor_name, std::move(tensor_wrapper));
+
+  // save network input/outputs tensors to use for setting the Qnn graph's
+  // input and output tensors for populating GraphInfo for caller
   if (qnn_tensor_type == QNN_TENSOR_TYPE_APP_WRITE) {
-    model_input_tensor_wrappers_.push_back(std::move(tensor_wrapper));
+    model_input_names_.push_back(tensor_name);
   } else if (qnn_tensor_type == QNN_TENSOR_TYPE_APP_READ) {
-    model_output_tensor_wrappers_.push_back(std::move(tensor_wrapper));
-  } else {
-    // save created tensors for later lookup to populate graph node construction
-    model_tensors_map_.emplace(tensor_name, std::move(tensor_wrapper));
+    model_output_names_.push_back(tensor_name);
   }
 
   return true;
 }
 
-bool QnnModelWrapper::GetQnnTensor(const std::string& tensor_name, Qnn_Tensor_t& tensor) {
+bool QnnModelWrapper::AddParamWrapper(QnnParamWrapper&& param_wrapper) {
+  // Keep a copy of tensor name sine it will be moved with the wrapper into model_params_map_
+  std::string param_tensor_name = param_wrapper.GetParamTensorName();
+  if (param_tensor_name.length() == 0) {
+    LOGS(logger_, ERROR) << "Invalid parameter encountered empty name.";
+    return false;
+  }
+
+  if (IsQnnParamExit(param_tensor_name) == true) {
+    return true;
+  }
+
+  // save created tensors for later lookup to populate graph node construction
+  model_params_map_.emplace(param_tensor_name, std::move(param_wrapper));
+
+  return true;
+}
+
+const QnnTensorWrapper& QnnModelWrapper::GetQnnTensorWrapper(const std::string& tensor_name) {
   auto map_iter = model_tensors_map_.find(tensor_name);
   if (map_iter != model_tensors_map_.end()) {
-    tensor = map_iter->second.GetQnnTensor();
-    return true;
-  } else {
-    auto input_iter = QnnContainsTensorHelper(tensor_name, model_input_tensor_wrappers_);
-    if (input_iter != model_input_tensor_wrappers_.cend()) {
-      tensor = input_iter->GetQnnTensor();
-      return true;
-    } else {
-      auto output_iter = QnnContainsTensorHelper(tensor_name, model_output_tensor_wrappers_);
-      if (output_iter != model_output_tensor_wrappers_.cend()) {
-        tensor = output_iter->GetQnnTensor();
-        return true;
-      }
-    }
+    return (map_iter->second);
   }
-  return false;
+
+  ORT_THROW("Qnn tensor not exist: ", tensor_name);
 }
 
-bool QnnModelWrapper::AddParams(const std::string& node_name,
-                                const std::vector<QnnParamWrapper>& param_wrappers) {
-  bool rt = true;
-  for (const QnnParamWrapper& param_wrapper : param_wrappers) {
-    const Qnn_Param_t& param = param_wrapper.GetQnnParam();
-    switch (param.paramType) {
-      case QNN_PARAMTYPE_TENSOR: {
-        LOGS(logger_, VERBOSE) << "Add parameter tensor: " << param.name;
-        rt = AddQnnTensor(node_name, param.name, param.tensorParam, true);
-        if (!rt) {
-          LOGS(logger_, ERROR) << "AddTensor failed for tensor param: "
-                               << param.name << " on node: " << node_name;
-          return rt;
-        }
-        break;
-      }
-      case QNN_PARAMTYPE_SCALAR: {
-        LOGS(logger_, VERBOSE) << "Add parameter scalar: " << param.name;
-        break;
-      }
-      default: {
-        LOGS(logger_, ERROR) << "Unknown param type passed for param: "
-                             << param.name << " on node: " << node_name;
+bool QnnModelWrapper::CreateQnnInputOutputTensors(const std::string& qnn_node_name,
+                                                  const std::vector<std::string>& tensor_names,
+                                                  std::vector<Qnn_Tensor_t>& qnn_tensors,
+                                                  bool do_op_validation) {
+  for (const auto& tensor_name : tensor_names) {
+    auto it = model_tensors_map_.find(tensor_name);
+    if (it == model_tensors_map_.end()) {
+      LOGS(logger_, ERROR) << "Input name not exist: " << tensor_name;
+      return false;
+    }
+
+    // During graph patitioning, we only need to do op validation, it's not required to create Qnn graph tensor
+    // We only need to creat the Qnn graph tensor during Compile to create Qnn graph
+    if (!do_op_validation) {
+      std::string error_string;
+      auto rt = it->second.CreateQnnGraphTensor(qnn_interface_, graph_, qnn_node_name, tensor_created_map_, error_string);
+      if (!rt) {
+        LOGS(logger_, ERROR) << error_string;
         return false;
       }
+      LOGS(logger_, VERBOSE) << "Tensor: " << tensor_name << " created. " << error_string;
     }
+
+    qnn_tensors.push_back(it->second.GetQnnTensor());
   }
   return true;
 }
 
-bool QnnModelWrapper::AddNode(const std::string& qnn_node_name,
-                              const std::string& package_name,
-                              const std::string& qnn_node_type,
-                              std::vector<QnnParamWrapper>&& params,
-                              const std::vector<std::string>& input_names,
-                              std::vector<QnnTensorWrapper>&& output_wrappers,
-                              bool do_op_validation) {
-  bool rt = AddParams(qnn_node_name, params);
-
-  std::vector<Qnn_Param_t> qnn_params;
-  // params_.insert(std::end(params_), std::make_move_iterator(params.begin()), std::make_move_iterator(params.end()));
-  std::transform(params.begin(), params.end(), std::back_inserter(qnn_params),
-                 [](QnnParamWrapper& param) -> const Qnn_Param_t& { return param.GetQnnParam(); });
-  // populate input tensors for node
-  auto num_of_inputs = static_cast<uint32_t>(input_names.size());
-  std::vector<Qnn_Tensor_t> inputs(num_of_inputs, QNN_TENSOR_INIT);
-  for (size_t j = 0; j < num_of_inputs; j++) {
-    rt = GetQnnTensor(input_names[j], inputs[j]);
-    if (!rt) {
-      LOGS(logger_, ERROR) << "GetQnnTensor failed for tensor: "
-                           << input_names[j] << " on node: " << qnn_node_name;
-      return rt;
+bool QnnModelWrapper::CreateQnnParamTensors(const std::string& qnn_node_name,
+                                            const std::vector<std::string>& param_tensor_names,
+                                            std::vector<Qnn_Param_t>& qnn_params,
+                                            bool do_op_validation) {
+  for (const auto& param_tensor_name : param_tensor_names) {
+    auto it = model_params_map_.find(param_tensor_name);
+    if (it == model_params_map_.end()) {
+      LOGS(logger_, ERROR) << "Parameter name not exist: " << param_tensor_name;
+      return false;
     }
+
+    LOGS(logger_, VERBOSE) << "Add parameter tensor: " << it->second.GetName();
+    if (!do_op_validation) {
+      std::string error_string;
+      auto rt = it->second.CreateQnnGraphParam(qnn_interface_, graph_, qnn_node_name, tensor_created_map_, error_string);
+      if (!rt) {
+        LOGS(logger_, ERROR) << error_string;
+        return false;
+      }
+      LOGS(logger_, VERBOSE) << "Tensor: " << param_tensor_name << " created. " << error_string;
+    }
+
+    qnn_params.push_back(it->second.GetQnnParam());
   }
 
-  // populate output tensors of node
-  auto num_of_outputs = static_cast<uint32_t>(output_wrappers.size());
-  std::vector<Qnn_Tensor_t> outputs(num_of_outputs, QNN_TENSOR_INIT);
-  for (size_t k = 0; k < num_of_outputs; k++) {
-    // create node output tensors first
-    std::string output_name = output_wrappers[k].GetName();
-    LOGS(logger_, VERBOSE) << "Add output: " << output_name;
-    rt = AddTensor(qnn_node_name, std::move(output_wrappers[k]));
-    if (!rt) {
-      LOGS(logger_, ERROR) << "AddTensor failed for tensor: "
-                           << output_name << " on node: " << qnn_node_name;
-      return rt;
-    }
-    rt = GetQnnTensor(output_name, outputs[k]);
-    if (!rt) {
-      LOGS(logger_, ERROR) << "getQnnTensor failed for tensor: "
-                           << output_name << " on node: " << qnn_node_name;
-      return rt;
-    }
+  return true;
+}
+
+bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
+                                    const std::string& package_name,
+                                    const std::string& qnn_node_type,
+                                    const std::vector<std::string>& input_names,
+                                    const std::vector<std::string>& output_names,
+                                    const std::vector<std::string>& param_tensor_names,
+                                    bool do_op_validation) {
+  std::vector<Qnn_Tensor_t> input_tensors;
+  std::vector<Qnn_Tensor_t> output_tensors;
+  std::vector<Qnn_Param_t> params;
+  if (!CreateQnnInputOutputTensors(qnn_node_name, input_names, input_tensors, do_op_validation)) {
+    return false;
+  }
+
+  if (!CreateQnnInputOutputTensors(qnn_node_name, output_names, output_tensors, do_op_validation)) {
+    return false;
+  }
+
+  if (!CreateQnnParamTensors(qnn_node_name, param_tensor_names, params, do_op_validation)) {
+    return false;
   }
 
   QnnOpConfigWrapper op_config_wrapper(qnn_node_name,
                                        package_name,
                                        qnn_node_type,
-                                       std::move(qnn_params),
-                                       std::move(inputs),
-                                       std::move(outputs));
-  const Qnn_OpConfig_t& op_config = op_config_wrapper.GetQnnOpConfig();
+                                       std::move(input_tensors),
+                                       std::move(output_tensors),
+                                       std::move(params));
+
   using namespace onnxruntime::qnn::utils;
-  LOGS(logger_, VERBOSE) << op_config;
+  LOGS(logger_, VERBOSE) << op_config_wrapper;
 
+  bool rt;
+  std::string error_msg;
   if (do_op_validation) {
-    auto validation_status = qnn_interface_.backendValidateOpConfig(op_config);
-    if (QNN_SUCCESS != validation_status) {
-      LOGS(logger_, WARNING) << "Validating node failed for: " << qnn_node_name;
-      return false;
-    } else {
-      return true;
+    rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, qnn_node_name, error_msg);
+    if (!rt) {
+      LOGS(logger_, WARNING) << error_msg;
     }
-  }
-  if (qnn_interface_.graphAddNode(graph_, op_config) != QNN_GRAPH_NO_ERROR) {
-    LOGS(logger_, ERROR) << "Adding node failed for: " << qnn_node_name;
-    return false;
+    return rt;
   }
 
-  return true;
+  rt = op_config_wrapper.CreateQnnGraphOp(qnn_interface_, graph_, qnn_node_name, error_msg);
+  if (!rt) {
+    LOGS(logger_, WARNING) << error_msg;
+  }
+  return rt;
 }
 
 bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape) {
@@ -380,47 +324,60 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const bool is_for_output) {
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
-    Qnn_TensorDataFormat_t data_format = 0;
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;
     QnnTensorWrapper input_tensorwrapper(input_name,
                                          tensor_type,
-                                         data_format,
                                          tensor_data_type,
                                          quantize_param,
                                          std::vector<uint32_t>(input_shape));
-    AddTensor(input_name, std::move(input_tensorwrapper));
+    ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
-  std::vector<std::string> input_names{input_name};
 
   uint32_t perm_size = static_cast<uint32_t>(transpose_perm.size());
   std::vector<uint32_t> perm_dim{perm_size};
   std::vector<uint32_t> transpose_perm_copy = transpose_perm;
   const std::string& node_name = output_name;
   QnnParamWrapper transpose_param(node_index, node_name, qnn_def::perm, std::move(perm_dim), std::move(transpose_perm_copy));
+  std::string param_tensor_name(transpose_param.GetParamTensorName());
+  ORT_RETURN_IF_NOT(AddParamWrapper(std::move(transpose_param)), "Failed to add tensor.");
   Qnn_TensorType_t tensor_type = (false == is_for_output) ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
-  Qnn_TensorDataFormat_t data_format = 0;
   std::vector<uint32_t> output_shape_copy = output_shape;
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
-                                        data_format,
                                         tensor_data_type,
                                         quantize_param,
                                         std::move(output_shape_copy));
+  ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   const static std::string qnn_node_type = "Transpose";
-  std::vector<QnnParamWrapper> params;
-  params.push_back(std::move(transpose_param));
-  std::vector<QnnTensorWrapper> outputs;
-  outputs.push_back(std::move(output_tensorwrapper));
 
-  AddNode(output_name,            // Node Name
-          qnn_def::package_name,  // Package Name
-          qnn_node_type,          // Qnn Node Type
-          std::move(params),      // Node Params
-          input_names,            // Input Tensor Names
-          std::move(outputs)      // Output Tensors
+  CreateQnnNode(output_name,
+                qnn_def::package_name,
+                qnn_node_type,
+                {input_name},
+                {output_name},
+                {param_tensor_name}
   );
 
   return Status::OK();
 }
+
+void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::string>& tensor_name_list,
+                                                       std::vector<QnnTensorWrapper>& wrappers_list) {
+  for (const auto& tensor_name : tensor_name_list) {
+    auto it = model_tensors_map_.find(tensor_name);
+    if (it == model_tensors_map_.end()) {
+      LOGS(logger_, ERROR) << "Model input or output name not exist: " << tensor_name
+                           << ". Could cause execution error.";
+      break;
+    }
+    // It's safe to move QnnTensorWrapper out of model_tensors_map_
+    // since this call happens when QnnModelWrapper end of live
+    wrappers_list.push_back(std::move(it->second));
+    model_tensors_map_.erase(tensor_name);
+  }
+
+  return;
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

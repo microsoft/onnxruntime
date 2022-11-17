@@ -75,7 +75,7 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       // Ignore unspecified/unused optional input
       continue;
     }
-    if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
       LOGS(logger, VERBOSE) << "Tensor already added or the input is not named, skip it: " << input_name;
       input_names.push_back(input_name);
       continue;
@@ -110,13 +110,11 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
     ORT_ENFORCE(input_i == 0, "QNN ReluMinMax operator expects only one input. Min and max are expected to be parameters, ie. initializer inputs in ONNX model");
 
-    input_names.push_back(input_name);
-
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-    Qnn_TensorDataFormat_t data_format = 0;
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+    input_names.push_back(input_name);
   }
 
   return Status::OK();
@@ -128,20 +126,22 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
-  std::vector<QnnParamWrapper> node_params;
+  std::vector<std::string> param_tensor_names;
   Qnn_Scalar_t min_qnn_scalar = QNN_SCALAR_INIT;
   min_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
   min_qnn_scalar.floatValue = min_value_;
-  QnnParamWrapper min_value_param(qnn_def::min_value, min_qnn_scalar);
-  node_params.push_back(std::move(min_value_param));
+  QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), qnn_def::min_value, min_qnn_scalar);
+  param_tensor_names.push_back(min_value_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(min_value_param));
 
   Qnn_Scalar_t max_qnn_scalar = QNN_SCALAR_INIT;
   max_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
   max_qnn_scalar.floatValue = max_value_;
-  QnnParamWrapper max_value_param(qnn_def::max_value, max_qnn_scalar);
-  node_params.push_back(std::move(max_value_param));
+  QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), qnn_def::max_value, max_qnn_scalar);
+  param_tensor_names.push_back(max_value_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, std::move(node_params),
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, param_tensor_names,
                                      logger, is_quantized_model, do_op_validation));
 
   return Status::OK();

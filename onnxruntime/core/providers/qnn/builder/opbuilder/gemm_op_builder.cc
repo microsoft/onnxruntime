@@ -50,11 +50,11 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
 
   // input C shape need to be [M] or [1, M]
   if (node_unit.Inputs().size() == 3) {
-    auto inputB = node_unit.Inputs()[1];
+    auto& inputB = node_unit.Inputs()[1];
     std::vector<uint32_t> inputB_shape;
     QnnModelWrapper::GetOnnxShape(inputB.node_arg, inputB_shape);
 
-    auto inputC = node_unit.Inputs()[2];
+    auto& inputC = node_unit.Inputs()[2];
     std::vector<uint32_t> inputC_shape;
     QnnModelWrapper::GetOnnxShape(inputC.node_arg, inputC_shape);
 
@@ -93,7 +93,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
     const auto& input_name = inputs[input_i].node_arg.Name();
-    if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
       LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
       input_names.push_back(input_name);
       continue;
@@ -116,7 +116,10 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (is_initializer_input) {
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_trans_flag.at(input_i)) {
-        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(input_shape, *input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
+        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(input_shape,
+                                                  *input_tensor,
+                                                  qnn_model_wrapper.GetAllocator(),
+                                                  unpacked_tensor));
       } else {
         ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
       }
@@ -142,12 +145,10 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
 
     input_names.push_back(input_tensor_name);
-    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-    Qnn_TensorDataFormat_t data_format = 0;
-
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_tensor_name);
+    QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
 
   return Status::OK();
@@ -159,7 +160,8 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, {}, logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, {},
+                                     logger, is_quantized_model, do_op_validation));
   return Status::OK();
 }
 

@@ -3,7 +3,6 @@
 
 #pragma once
 #include "QnnInterface.h"
-#include "qnn_utils.h"
 #include <mutex>
 #include <vector>
 #include <string>
@@ -15,71 +14,105 @@
 
 namespace onnxruntime {
 namespace qnn {
+// QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
+// except the following flags for dlopen, others should be done only
+// when we really need them
+// DL_NOW is MUST
+// DL_LOCAL is enabled if not specified
+enum {
+  DL_NOW = 0x0001,
+  DL_LOCAL = 0x0002,
+  DL_GLOBAL = 0x0004,
+};
+
+// specify this address to distingiush from NULL pointer
+#define DL_DEFAULT (void*)(0x4)
 
 enum ProfilingLevel { OFF,
                       BASIC,
                       DETAILED,
                       INVALID };
 
-const size_t kbitsPerByte = CHAR_BIT;
-
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
-  OnnxTensorInfo(size_t index, int32_t data_type, const std::vector<int64_t>&& shape) : index_(index), data_type_(data_type), shape_(std::move(shape)) {}
+  OnnxTensorInfo(size_t index, int32_t data_type, std::vector<int64_t>&& shape) : index_(index), data_type_(data_type), shape_(std::move(shape)) {}
   size_t index_;
   const int32_t data_type_;  // Uses TensorProto::DataType
   const std::vector<int64_t> shape_;
 };
 
-size_t memscpy(void* dst, size_t dstSize, const void* src, size_t copySize);
+size_t memscpy(void* dst, size_t dst_size, const void* src, size_t copy_size);
 
+void SetQnnTensorType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorType_t tensor_type);
+void SetQnnTensorName(Qnn_Tensor_t& qnn_tensor, const char* name);
+void SetQnnTensorDataFormat(Qnn_Tensor_t& qnn_tensor, Qnn_TensorDataFormat_t data_format);
+void SetQnnTensorDataType(Qnn_Tensor_t& qnn_tensor, Qnn_DataType_t data_type);
+void SetQnnTensorDim(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& dimensions);
+void SetQnnTensorMemType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorMemType_t mem_type);
+void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint8_t>& client_buf);
+void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& client_buf);
+void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size);
+void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data);
+void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params);
+bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                            const Qnn_GraphHandle_t& graph,
+                            const std::string& node_name,
+                            const std::string& tensor_name,
+                            Qnn_Tensor_t& qnn_tensor,
+                            std::unordered_map<std::string, bool>& tensors_created_table,
+                            std::string& error_msg);
+
+uint32_t GetQnnTensorID(const Qnn_Tensor_t& qnn_tensor);
+Qnn_TensorType_t GetQnnTensorType(const Qnn_Tensor_t& qnn_tensor);
+const char* GetQnnTensorName(const Qnn_Tensor_t& qnn_tensor);
+Qnn_TensorDataFormat_t GetQnnTensorDataFormat(const Qnn_Tensor_t& qnn_tensor);
+Qnn_DataType_t GetQnnTensorDataType(const Qnn_Tensor_t& qnn_tensor);
+Qnn_TensorMemType_t GetQnnTensorMemType(const Qnn_Tensor_t& qnn_tensor);
+uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
+uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
+const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
+const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
+
+// TODO: split out separate files for Wrappers
 class QnnTensorWrapper {
  public:
   QnnTensorWrapper(const std::string& name,
                    Qnn_TensorType_t tensor_type,
-                   Qnn_TensorDataFormat_t data_format,
                    Qnn_DataType_t data_type,
                    const Qnn_QuantizeParams_t& quantize_params,
                    std::vector<uint32_t>&& shape,
                    std::vector<uint8_t>&& client_buf = {},
                    Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW) : tensor_name_(name),
-                                                                           max_dimensions_(std::move(shape)),
-                                                                           current_dimensions_(max_dimensions_.size(), 0),
+                                                                           dimensions_(std::move(shape)),
                                                                            client_buf_(std::move(client_buf)) {
-    if (tensor_type == QNN_TENSOR_TYPE_STATIC) {
-      current_dimensions_ = max_dimensions_;
+    SetQnnTensorType(qnn_tensor_, tensor_type);
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+    SetQnnTensorDataType(qnn_tensor_, data_type);
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+    SetQnnTensorMemType(qnn_tensor_, mem_type);
+    if (QNN_TENSOR_TYPE_STATIC == tensor_type) {
+      SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
     }
-    qnn_tensor_.id = utils::GetTensorIdFromName(tensor_name_);
-    qnn_tensor_.type = tensor_type;
-    qnn_tensor_.dataFormat = data_format;
-    qnn_tensor_.dataType = data_type;
-    qnn_tensor_.rank = static_cast<uint32_t>(max_dimensions_.size());
-    qnn_tensor_.maxDimensions = max_dimensions_.data();
-    qnn_tensor_.currentDimensions = current_dimensions_.data();
-    qnn_tensor_.memType = mem_type;
-    if (mem_type == QNN_TENSORMEMTYPE_RAW) {
-      auto size = client_buf_.size() * sizeof(uint8_t);
-      qnn_tensor_.clientBuf.data = client_buf_.data();
-      qnn_tensor_.clientBuf.dataSize = static_cast<uint32_t>(size);
-    } else if (mem_type == QNN_TENSORMEMTYPE_MEMHANDLE) {
-      qnn_tensor_.memHandle = nullptr;
-    } else {
-      ORT_THROW("Unexpected mem_type for tensor");
+    
+    if (mem_type != QNN_TENSORMEMTYPE_RAW) {
+      ORT_THROW("mem_type not supported for now.");
     }
-    CopyQuantizationEncoding(qnn_tensor_.quantizeParams, quantize_params);
+
+    SetQnnTensorQParams(qnn_tensor_, quantize_params);
   }
+
+  QnnTensorWrapper() = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnTensorWrapper);
 
   QnnTensorWrapper(QnnTensorWrapper&& other) noexcept {
-    std::swap(qnn_tensor_, other.qnn_tensor_);
     std::swap(tensor_name_, other.tensor_name_);
+    std::swap(dimensions_, other.dimensions_);
     std::swap(client_buf_, other.client_buf_);
-    std::swap(max_dimensions_, other.max_dimensions_);
-    std::swap(current_dimensions_, other.current_dimensions_);
-    qnn_tensor_.maxDimensions = max_dimensions_.data();
-    qnn_tensor_.currentDimensions = current_dimensions_.data();
-    qnn_tensor_.clientBuf.data = client_buf_.data();
+    std::swap(qnn_tensor_, other.qnn_tensor_);
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+    SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
   }
 
   ~QnnTensorWrapper() = default;
@@ -87,7 +120,26 @@ class QnnTensorWrapper {
   const Qnn_Tensor_t& GetQnnTensor() const {
     return qnn_tensor_;
   }
+
+  Qnn_Tensor_t& GetQnnTensor() {
+    return qnn_tensor_;
+  }
+
   const std::string& GetName() const { return tensor_name_; }
+
+  Qnn_TensorType_t GetTensorType() const { return GetQnnTensorType(qnn_tensor_); }
+  Qnn_DataType_t GetTensorDataType() const { return GetQnnTensorDataType(qnn_tensor_); }
+  uint32_t GetTensorRank() const { return static_cast<uint32_t>(dimensions_.size()); }
+  const std::vector<uint32_t>& GetTensorDims() const { return dimensions_; }
+
+  bool CreateQnnGraphTensor(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                            const Qnn_GraphHandle_t& graph,
+                            const std::string& node_name,
+                            std::unordered_map<std::string, bool>& tensors_created_table,
+                            std::string& error_msg) {
+    return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_,
+                                  qnn_tensor_, tensors_created_table, error_msg);
+  }
 
  private:
   void CopyQuantizationEncoding(Qnn_QuantizeParams_t& dst, const Qnn_QuantizeParams_t& src) {
@@ -103,18 +155,22 @@ class QnnTensorWrapper {
   }
 
   std::string tensor_name_;
-  std::vector<uint32_t> max_dimensions_;
-  std::vector<uint32_t> current_dimensions_;
+  std::vector<uint32_t> dimensions_;
   std::vector<uint8_t> client_buf_;
   Qnn_Tensor_t qnn_tensor_ = QNN_TENSOR_INIT;
 };
 
 class QnnParamWrapper {
  public:
-  QnnParamWrapper(const std::string& name,
+  QnnParamWrapper(NodeIndex node_index,
+                  const std::string& node_name, 
+                  const std::string& name,
                   Qnn_Scalar_t scalarParam) : name_(name), shape_({}), param_data_({}) {
     qnn_param_.paramType = QNN_PARAMTYPE_SCALAR;
     qnn_param_.name = name_.c_str();
+    std::stringstream ss;
+    ss << node_name << "_" << node_index << "_" << name;
+    tensor_name_ = ss.str();
     qnn_param_.scalarParam = scalarParam;
   }
 
@@ -128,45 +184,57 @@ class QnnParamWrapper {
     qnn_param_.name = name_.c_str();
     std::stringstream ss;
     ss << node_name << "_" << node_index << "_" << name;
+    tensor_name_ = ss.str();
     qnn_param_.tensorParam = QNN_TENSOR_INIT;
-    qnn_param_.tensorParam.id = utils::GetTensorIdFromName(ss.str());
-    qnn_param_.tensorParam.type = QNN_TENSOR_TYPE_STATIC;
-    qnn_param_.tensorParam.dataType = is_signed ? QNN_DATATYPE_INT_32 : QNN_DATATYPE_UINT_32;
-    qnn_param_.tensorParam.rank = static_cast<uint32_t>(shape_.size());
-    qnn_param_.tensorParam.memType = QNN_TENSORMEMTYPE_RAW;
-    qnn_param_.tensorParam.maxDimensions = shape_.data();
-    qnn_param_.tensorParam.currentDimensions = shape_.data();
-    qnn_param_.tensorParam.clientBuf.data = param_data_.data();
-    // TODO Need to convert the data from unsigned to signed.
-    qnn_param_.tensorParam.clientBuf.dataSize = static_cast<uint32_t>(param_data_.size() * sizeof(uint32_t));
-    qnn_param_.tensorParam.quantizeParams.encodingDefinition = QNN_DEFINITION_UNDEFINED;
+    SetQnnTensorType(qnn_param_.tensorParam, QNN_TENSOR_TYPE_STATIC);
+    SetQnnTensorName(qnn_param_.tensorParam, tensor_name_.c_str());
+    SetQnnTensorDataType(qnn_param_.tensorParam, is_signed ? QNN_DATATYPE_INT_32 : QNN_DATATYPE_UINT_32);
+    SetQnnTensorDim(qnn_param_.tensorParam, shape_);
+    SetQnnTensorMemType(qnn_param_.tensorParam, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorClientBuf(qnn_param_.tensorParam, param_data_);
   }
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnParamWrapper);
   QnnParamWrapper(QnnParamWrapper&& other) noexcept {
     std::swap(name_, other.name_);
+    std::swap(tensor_name_, other.tensor_name_);
     std::swap(shape_, other.shape_);
     std::swap(param_data_, other.param_data_);
     std::swap(qnn_param_, other.qnn_param_);
     qnn_param_.name = name_.c_str();
     if (qnn_param_.paramType == QNN_PARAMTYPE_TENSOR) {
-      qnn_param_.tensorParam.maxDimensions = shape_.data();
-      qnn_param_.tensorParam.currentDimensions = shape_.data();
-      qnn_param_.tensorParam.clientBuf.data = param_data_.data();
+      SetQnnTensorName(qnn_param_.tensorParam, tensor_name_.c_str());
+      SetQnnTensorDim(qnn_param_.tensorParam, shape_);
+      SetQnnTensorClientBuf(qnn_param_.tensorParam, param_data_);
     }
   }
 
   ~QnnParamWrapper() = default;
 
-  const char* GetName() const {
-    return qnn_param_.name;
+  const std::string& GetName() const {
+    return name_;
+  }
+
+  const std::string& GetParamTensorName() const {
+    return tensor_name_;
   }
 
   const Qnn_Param_t& GetQnnParam() const {
     return qnn_param_;
   }
 
+  Qnn_Param_t& GetQnnParam() {
+    return qnn_param_;
+  }
+
+  bool CreateQnnGraphParam(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                           const Qnn_GraphHandle_t& graph,
+                           const std::string& node_name,
+                           std::unordered_map<std::string, bool>& tensors_created_table,
+                           std::string& error_msg);
+
  private:
   std::string name_;
+  std::string tensor_name_;
   std::vector<uint32_t> shape_;
   std::vector<uint32_t> param_data_;
   Qnn_Param_t qnn_param_ = QNN_PARAM_INIT;
@@ -177,23 +245,19 @@ class QnnOpConfigWrapper {
   QnnOpConfigWrapper(const std::string& name,
                      const std::string& package_name,
                      const std::string& type_name,
-                     std::vector<Qnn_Param_t>&& params,
                      std::vector<Qnn_Tensor_t>&& inputs,
-                     std::vector<Qnn_Tensor_t>&& outputs) : name_(name),
+                     std::vector<Qnn_Tensor_t>&& outputs,
+                     std::vector<Qnn_Param_t>&& params) : name_(name),
                                                             package_name_(package_name),
                                                             type_name_(type_name),
-                                                            params_(std::move(params)),
                                                             inputs_(std::move(inputs)),
-                                                            outputs_(std::move(outputs)) {
-    op_config_.name = name_.c_str();
-    op_config_.packageName = package_name_.c_str();
-    op_config_.typeName = type_name_.c_str();
-    op_config_.numOfParams = static_cast<uint32_t>(params_.size());
-    op_config_.numOfInputs = static_cast<uint32_t>(inputs_.size());
-    op_config_.numOfOutputs = static_cast<uint32_t>(outputs_.size());
-    op_config_.params = params_.data();
-    op_config_.inputTensors = inputs_.data();
-    op_config_.outputTensors = outputs_.data();
+                                                            outputs_(std::move(outputs)),
+                                                            params_(std::move(params)) {
+    SetNames(name_.c_str(), package_name_.c_str(), type_name_.c_str());
+    SetNums(static_cast<uint32_t>(inputs_.size()),
+            static_cast<uint32_t>(outputs_.size()),
+            static_cast<uint32_t>(params_.size()));
+    SetData(inputs_.data(), outputs_.data(), params_.data());
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnOpConfigWrapper);
@@ -203,42 +267,68 @@ class QnnOpConfigWrapper {
     std::swap(name_, other.name_);
     std::swap(package_name_, other.package_name_);
     std::swap(type_name_, other.type_name_);
-    std::swap(params_, other.params_);
     std::swap(inputs_, other.inputs_);
     std::swap(outputs_, other.outputs_);
-    op_config_.name = name_.c_str();
-    op_config_.packageName = package_name_.c_str();
-    op_config_.typeName = type_name_.c_str();
-    op_config_.params = params_.data();
-    op_config_.inputTensors = inputs_.data();
-    op_config_.outputTensors = outputs_.data();
+    std::swap(params_, other.params_);
+    SetNames(name_.c_str(), package_name_.c_str(), type_name_.c_str());
+    SetData(inputs_.data(), outputs_.data(), params_.data());
   }
 
   ~QnnOpConfigWrapper() = default;
 
   const Qnn_OpConfig_t& GetQnnOpConfig() { return op_config_; }
 
+  void SetNames(const char* op_name,
+                           const char* package_name,
+                           const char* type_name);
+  void SetNums(uint32_t num_inputs,
+                          uint32_t num_outputs,
+                          uint32_t num_params);
+  void SetData(Qnn_Tensor_t* input_tensors,
+                          Qnn_Tensor_t* output_tensors,
+                          Qnn_Param_t* params);
+
+  const std::string& GetOpName() const { return name_; }
+  const std::string& GetPackageName() const { return package_name_; }
+  const std::string& GetTypeName() const { return type_name_; }
+  uint32_t GetInputsNum() const { return static_cast<uint32_t>(inputs_.size()); }
+  uint32_t GetOutputsNum() const { return static_cast<uint32_t>(outputs_.size()); }
+  uint32_t GetParamsNum() const { return static_cast<uint32_t>(params_.size()); }
+  const Qnn_Tensor_t* GetInputTensors() const { return inputs_.data(); }
+  const Qnn_Tensor_t* GetOutputTensors() const { return outputs_.data(); }
+  const Qnn_Param_t* GetParams() const { return params_.data(); }
+
+  bool QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                            const Qnn_BackendHandle_t& backend_handle,
+                            const std::string qnn_node_name,
+                            std::string& error_msg);
+
+  bool CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                        const Qnn_GraphHandle_t& graph,
+                        const std::string& qnn_node_name,
+                        std::string& error_msg);
+
  private:
   std::string name_;
   std::string package_name_;
   std::string type_name_;
-  std::vector<Qnn_Param_t> params_;
   std::vector<Qnn_Tensor_t> inputs_;
   std::vector<Qnn_Tensor_t> outputs_;
+  std::vector<Qnn_Param_t> params_;
   Qnn_OpConfig_t op_config_ = QNN_OPCONFIG_INIT;
 };
 
 class GraphInfo {
  public:
-  GraphInfo(Qnn_GraphHandle_t graph, const std::string& name,
+  GraphInfo(Qnn_GraphHandle_t graph,
+            const std::string& name,
             std::vector<QnnTensorWrapper>&& input_tensors,
-            std::vector<QnnTensorWrapper>&& output_tensors,
-            std::unordered_map<std::string, QnnTensorWrapper>&& model_tensor_map) : graph_name_(name),
-                                                                                    graph_(graph),
-                                                                                    input_tensors_(std::move(input_tensors)),
-                                                                                    output_tensors_(std::move(output_tensors)),
-                                                                                    model_tensors_map_(std::move(model_tensor_map)) {
+            std::vector<QnnTensorWrapper>&& output_tensors) : graph_name_(name),
+                                                              graph_(graph),
+                                                              input_tensors_(std::move(input_tensors)),
+                                                              output_tensors_(std::move(output_tensors)) {
   }
+
   size_t NumInputTensors() const { return input_tensors_.size(); }
   size_t NumOutputTensors() const { return output_tensors_.size(); }
   const std::string& Name() const { return graph_name_; }
@@ -252,7 +342,6 @@ class GraphInfo {
   Qnn_GraphHandle_t graph_;
   std::vector<QnnTensorWrapper> input_tensors_;
   std::vector<QnnTensorWrapper> output_tensors_;
-  std::unordered_map<std::string, QnnTensorWrapper> model_tensors_map_;
 };
 
 typedef GraphInfo* GraphInfoPtr_t;

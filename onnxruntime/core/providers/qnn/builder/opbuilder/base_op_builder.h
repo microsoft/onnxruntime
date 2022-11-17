@@ -49,7 +49,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                 const NodeUnit& node_unit,
                                 const std::vector<std::string>& input_names,
-                                std::vector<QnnParamWrapper>&& node_params,
+                                const std::vector<std::string>& param_tensor_names,
                                 const logging::Logger& logger,
                                 bool is_quantized_model,
                                 bool do_op_validation) const ORT_MUST_USE_RESULT;
@@ -231,7 +231,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit,
-                              std::vector<QnnParamWrapper>& node_params,
+                              Qnn_Scalar_t& axis_qnn_scalar,
                               int32_t& default_axis_value) const;
   Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const;
 
@@ -239,11 +239,9 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   std::string op_builder_type_;
-  // <onnx_node_type, qnn_node_type>
-
-  std::vector<size_t> nchw2nhwc_perm{0, 2, 3, 1};
-  std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
-  std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
+  const std::vector<size_t> nchw2nhwc_perm{0, 2, 3, 1};
+  const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
+  const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
 };
 
 }  // namespace qnn

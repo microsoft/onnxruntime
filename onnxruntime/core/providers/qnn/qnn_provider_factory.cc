@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
 #include "core/providers/qnn/qnn_provider_factory_creator.h"

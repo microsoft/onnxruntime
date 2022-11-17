@@ -67,7 +67,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT("floor" == nearest_mode, "QNN Resize only support nearest_mode: floor!");
   }
 
-  auto input_0 = node_unit.Inputs()[0];
+  auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4) {
@@ -97,7 +97,7 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   const auto& input_name = inputs[0].node_arg.Name();
 
-  if (qnn_model_wrapper.QnnContainsTensor(input_name)) {
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
     return Status::OK();
@@ -123,11 +123,10 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   input_names.push_back(input_name);
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-  Qnn_TensorDataFormat_t data_format = 0;
 
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, data_format, qnn_data_type, quantize_param,
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensor(input_name, std::move(input_tensorwrapper)), "Failed to add tensor.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
 }
@@ -161,15 +160,18 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   } else if ("half_pixel" == coordinate_mode) {
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
   }
-  QnnParamWrapper qnn_align_corners_param(qnn_def::align_corners, qnn_align_corners);
-  QnnParamWrapper qnn_half_pixel_param(qnn_def::half_pixel_centers, qnn_half_pixel);
+  QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
+                                          qnn_def::align_corners, qnn_align_corners);
+  QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
+                                       qnn_def::half_pixel_centers, qnn_half_pixel);
 
-  std::vector<QnnParamWrapper> node_params;
-  node_params.push_back(std::move(qnn_align_corners_param));
-  node_params.push_back(std::move(qnn_half_pixel_param));
+  std::vector<std::string> param_tensor_names;
+  param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
+  param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
 
   const auto& resize_output = node_unit.Outputs()[0];
-  std::vector<QnnTensorWrapper> qnn_outputs;
 
   const auto& output_name = resize_output.node_arg.Name();
 
@@ -190,18 +192,20 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  Qnn_TensorDataFormat_t data_format = 0;
-  QnnTensorWrapper qnn_output(output_name, tensor_type, data_format, qnn_data_type, quantize_param,
-                              std::move(output_shape));
-  qnn_outputs.push_back(std::move(qnn_output));
+  QnnTensorWrapper output_tensorwrapper(output_name,
+                                        tensor_type,
+                                        qnn_data_type,
+                                        quantize_param,
+                                        std::move(output_shape));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddNode(GetNodeName(node_unit),
-                                               qnn_def::package_name,
-                                               qnn_node_type,
-                                               std::move(node_params),
-                                               input_names,
-                                               std::move(qnn_outputs),
-                                               do_op_validation),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+                                                    qnn_def::package_name,
+                                                    qnn_node_type,
+                                                    input_names,
+                                                    {output_name},
+                                                    param_tensor_names,
+                                                    do_op_validation),
                     "Failed to add node.");
 
   return Status::OK();

@@ -421,7 +421,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         std::string value(token.substr(pos + 1));
 
         if (key == "backend_path") {
-          std::set<std::string> qnn_backend_path;
           if (value.empty()) {
             ORT_THROW("Please provide the QNN backend path.");
           } else {

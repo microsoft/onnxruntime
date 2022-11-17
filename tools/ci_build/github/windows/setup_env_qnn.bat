@@ -1,1 +1,1 @@
-set QNN_SDK_ROOT=C:\data\qnnsdk\qnn-v1.15.0.220706185704_38277_win
+set QNN_SDK_ROOT=C:\data\qnnsdk\qnn-v2.3.0.220928084545_41498_win

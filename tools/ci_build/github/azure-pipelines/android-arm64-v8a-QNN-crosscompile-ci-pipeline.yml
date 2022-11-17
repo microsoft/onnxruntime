@@ -28,7 +28,7 @@ jobs:
     displayName: set Android ENVs
 
   - script: |
-      echo "##vso[task.setvariable variable=QNN_SDK_ROOT]/data/qnnsdk/qnn-v1.15.0.220706112757_38277"
+      echo "##vso[task.setvariable variable=QNN_SDK_ROOT]/data/qnnsdk/qnn-v2.3.0.220928044548_41498"
     displayName: set QNN_SDK_ROOT
 
   - script: |
