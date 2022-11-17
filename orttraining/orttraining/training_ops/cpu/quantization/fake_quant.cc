@@ -58,6 +58,8 @@ Status FakeQuant<T>::Compute(OpKernelContext* ctx) const {
   const auto* scale = ctx->Input<Tensor>(1);
   ORT_ENFORCE(IsScalarOr1ElementVector(scale), "Quantization scale must be a scalar or 1D tensor of size 1.");
   const T* quant_scale = scale->Data<T>();
+  ORT_ENFORCE(*quant_scale != static_cast<T>(0),
+              "Quantization scale cannot be 0. It may result in undefined behavior.");
   const auto* zero_point = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(zero_point), "Quantization zero point must be a scalar or 1D tensor of size 1.");
   const T* quant_zero_point = zero_point->Data<T>();

@@ -3977,8 +3977,7 @@ Return true if all elements are true and false otherwise.
           "FakeQuant takes in a non quantized tensor as input and generates a non quantized tensor as output. "
           "But internally, it will perform Quantization->Dequantization operation that simulates the effects of "
           "quantization within the model. Loss in numerical precision introduced by model quantization is "
-          "corrected by adjusting the model weights to compensate for loss in model accuracy through the FakeQuant "
-          "op.")
+          "corrected by adjusting the model weights through the FakeQuant op.")
       .Input(0, "input_tensor", "Tensor to be fake quantized.", "T")
       .Input(1, "scale", "Quantization scale.", "T")
       .Input(2, "zero_point", "Quantization zero point as non quantized type.", "T")

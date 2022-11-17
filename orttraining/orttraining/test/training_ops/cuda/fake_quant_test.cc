@@ -9,6 +9,8 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+#ifdef USE_CUDA
 void CompareFakeQuantKernels(const std::vector<int64_t>& tensor_dim,
                              double per_sample_tolerance = 2e-4,
                              double relative_per_sample_tolerance = 2e-4) {
@@ -34,6 +36,8 @@ void CompareFakeQuantKernels(const std::vector<int64_t>& tensor_dim,
 
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
+#endif
+
 }  // namespace
 
 TEST(FakeQuantTest, FakeQuantComputation) {
@@ -66,12 +70,14 @@ TEST(FakeQuantTest, FakeQuantComputation) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
+#ifdef USE_CUDA
 TEST(CudaKernelTest, FakeQuant) {
   std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
   for (const auto& test_dim : test_dims) {
     CompareFakeQuantKernels(test_dim, false);
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

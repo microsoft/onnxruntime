@@ -13,8 +13,8 @@ constexpr int NumThreadsPerBlock = GridDim::maxThreadsPerBlock;
 }  // namespace
 
 template <typename T>
-__global__ void FakeQuantPerTensorImpl(const int64_t num_elements, const T* input_data, const float quant_scale,
-                                       const float quant_zero_point, const int64_t quant_min, const int64_t quant_max,
+__global__ void FakeQuantPerTensorImpl(const int64_t num_elements, const T* input_data, const T quant_scale,
+                                       const T quant_zero_point, const int64_t quant_min, const int64_t quant_max,
                                        T* fake_quantized_data, bool* quantization_mask_data) {
   CUDA_LONG idx = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
