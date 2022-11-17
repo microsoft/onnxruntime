@@ -52,7 +52,7 @@ TEST(FakeQuantTest, FakeQuantComputation) {
   test.AddAttribute<int64_t>("quant_min", 0);
   test.AddAttribute<int64_t>("quant_max", 255);
 
-  test.AddInput<float>("input_tensor", {10}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0, 7.0, 8.0, 9.0, 10.0});
+  test.AddInput<float>("input_tensor", {10}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f});
   test.AddInput<float>("scale", {1}, {0.075f});
   test.AddInput<float>("zero_scale", {1}, {128.0f});
   // quantized values = nearby_int(value / scale + zero_point)
@@ -64,7 +64,7 @@ TEST(FakeQuantTest, FakeQuantComputation) {
   //                     = {0.975, 2.025, 3.0, 3.975, 5.025, 6.0, 6.975, 8.025, 9.0, 9.525}
 
   test.AddOutput<float>(
-      "fake_quantized_tensor", {10}, {0.975, 2.025, 3.0, 3.975, 5.025, 6.0, 6.975, 8.025, 9.0, 9.525});
+      "fake_quantized_tensor", {10}, {0.975f, 2.025f, 3.0f, 3.975f, 5.025f, 6.0f, 6.975f, 8.025f, 9.0f, 9.525f});
   test.AddOutput<bool>("quantization_mask", {10}, {true, true, true, true, true, true, true, true, true, false});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
