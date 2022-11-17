@@ -197,7 +197,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kCudaStreamCopyIn)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -208,7 +208,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kCudaStreamCopyOut)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
