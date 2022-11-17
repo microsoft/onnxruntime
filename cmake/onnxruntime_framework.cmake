@@ -104,11 +104,6 @@ ExternalProject_Add(triton
 		INSTALL_COMMAND ""
 		)
 else()
-
-find_package(ZLIB REQUIRED)
-find_package(RapidJson REQUIRED)
-find_package(OpenSSL REQUIRED)
-
 ExternalProject_Add(triton
         GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
 		GIT_TAG buildfree
@@ -129,14 +124,14 @@ set(TRITON_THIRD_PARTY ${BINARY_DIR}/third-party)
 add_dependencies(onnxruntime_framework triton)
 target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
 link_directories(${TRITON_BIN}/lib ${TRITON_THIRD_PARTY}/curl/lib)
-target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static)
 
 if (WIN32)
-target_link_libraries(onnxruntime_framework PRIVATE ws2_32 crypt32 Wldap32)
+target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32)
 else()
-target_link_libraries(triton_ut PRIVATE httpclient_static curl ssl crypto ZLIB::ZLIB)
+find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB ssl crypto)
 endif() #if (WIN32)
-
 endif() #if (onnxruntime_USE_CLOUD)
 
 if(onnxruntime_ENABLE_INSTRUMENT)

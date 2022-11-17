@@ -70,7 +70,7 @@ void TritonInvokder::Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtV
   try {
     //assemble triton inputs
     auto iter = input_names_.begin();
-    for (int i = 0; i < ort_inputs.size(); i++) {
+    for (int i = 0; i < static_cast<int>(ort_inputs.size()); i++) {
       const OrtValue& ort_input = ort_inputs.at(i);
       if (!ort_input.IsTensor()) {
         //todo - support tensor sequence and sparse tensor
