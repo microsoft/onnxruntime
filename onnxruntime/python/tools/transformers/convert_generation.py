@@ -29,10 +29,13 @@ Example 5: convert gpt2 model with greedy search:
 
 import argparse
 import logging
+import math
+import numpy
 import os
 import sys
 import time
 from enum import Enum
+from fusion_utils import NumpyHelper
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -91,8 +94,9 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     input_group.add_argument(
         "-m",
         "--model_name_or_path",
-        required=True,
+        required=False,
         type=str,
+        default="gpt2",
         help="Pytorch model checkpoint path, or pretrained model name in the list: "
         + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
     )
@@ -142,8 +146,9 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
     output_group.add_argument(
         "--output",
-        required=True,
+        required=False,
         type=str,
+        default="C:\\Users\\hasesh\\Desktop\\result.onnx",
         help="Output path for onnx model with beam search.",
     )
 
@@ -152,7 +157,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--precision",
         required=False,
         type=Precision,
-        default=Precision.FLOAT32,
+        default=Precision.FLOAT16,
         choices=[Precision.FLOAT32, Precision.FLOAT16],
         help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
     )
@@ -170,6 +175,15 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "-s", "--run_shape_inference", required=False, action="store_true", help="run shape inference"
     )
     output_group.set_defaults(run_shape_inference=False)
+
+    output_group.add_argument(
+        "-plw", 
+        "--pad_logits_matmul_weight", 
+        required=False, 
+        action="store_true", 
+        help="Pad logits MatMul weight to be a multiple of 8 in the dimension where dim value is the vocab size"
+    )
+    output_group.set_defaults(pad_logits_matmul_weight=True)
 
     output_group.add_argument(
         "-i",
@@ -237,9 +251,9 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
 
-    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=1, help="Min sequence length")
+    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=15, help="Min sequence length")
 
-    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
+    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=15, help="Max sequence length")
 
     beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
 
@@ -280,7 +294,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group.add_argument(
         "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
     )
-    test_group.set_defaults(use_gpu=False)
+    test_group.set_defaults(use_gpu=True)
 
     test_group.add_argument(
         "--disable_parity",
@@ -405,6 +419,65 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
         OnnxModel.save(out, onnx_path, save_as_external_data=use_external_data_format)
     else:
         logger.warning("Failed to run symbolic shape inference on the model.")
+
+
+def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool = True) -> bool:
+    """Pad the logits MatMul weight in the provided decoder model, which will be overwritten.
+
+    Args:
+        onnx_path (str): Path of onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+    decoder_model_proto = onnx.load_model(onnx_path, load_external_data=True)
+
+    logits_output_name = decoder_model_proto.graph.output[0].name
+    
+    decoder_model = OnnxModel(decoder_model_proto)
+
+    output_name_to_node = decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    matmul_node = output_name_to_node[logits_output_name]
+    # Sanity check - the logits need to be produced by a MatMul node
+    if matmul_node.op_type != "MatMul":
+        return False
+    
+    # The logits MatMul weight MUST be an initializer
+    logits_weight = decoder_model.get_initializer(matmul_node.input[1])
+    if logits_weight is None:
+        return False
+
+    # The logits MatMul weight MUST be fp16
+    if (logits_weight.data_type != TensorProto.DataType.FLOAT16):
+        return False
+
+    # The logits MatMul weight MUST be 2-dimensional
+    if (len(logits_weight.dims) != 2):
+        return False
+
+    # Pad and over-write the initializer (if needed)
+    # TODO(hasesh): Can/Will the weights be transposed in any scenario ?
+    actual_vocab_size = logits_weight.dims[1]
+
+    if ((actual_vocab_size % 8) == 0):
+        return False
+    
+    padded_vocab_size = math.ceil(actual_vocab_size / 8) * 8
+    padding = padded_vocab_size - actual_vocab_size
+
+    # TODO(hasesh): Handle cases where the fp16 data is stored in the
+    # non-raw data field 
+    if logits_weight.raw_data:
+        padding_data = np.zeros((logits_weight.dims[0], padding), dtype=np.float16)
+        weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=1)
+        logits_weight.raw_data = weight_with_padding.tobytes()
+        logits_weight.dims[1] = padded_vocab_size
+    else:
+        return False
+
+    # Save the model
+    OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
+    return True
 
 
 def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
@@ -814,7 +887,25 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"Convert model {args.model_name_or_path} to onnx ...")
             t5_to_onnx(args)
 
-    if args.run_shape_inference:
+    
+    # We only want to pad the logits MatMul weight in the decoder for fp16 models.
+    # The inherent assumption is that fp16 models run on GPU for which all
+    # dims need to be a multiple of 8 to use tensor cores.
+    # NOTE: We currently only support padding the MatMul logits weight for GPT2 BeamSearch.
+    # This can be expanded to other models/decoding strategies later
+    logits_matmul_weight_padded = False
+    if args.pad_logits_matmul_weight and args.precision == Precision.FLOAT16 and is_gpt2 and generation_type == GenerationType.BEAMSEARCH:
+        logger.info(f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
+                    "The file will be overwritten.")
+        logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
+        if not logits_matmul_weight_padded:
+            logger.warning("Tried and failed to pad logits MatMul weights. "
+                            "Performance may be sub-optimal for this MatMul")
+
+    # If the user explicitly requests running shape inference or if we padded/mutated
+    # weight(s) in the decoder, we want to run shape inference to capture the new
+    # shapes
+    if logits_matmul_weight_padded or args.run_shape_inference:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
 
@@ -920,6 +1011,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         ]
     )
+
+    if logits_matmul_weight_padded:
+        attr_to_extend.extend([onnx.helper.make_attribute("vocab_size", vocab_size)])
+
     node.attribute.extend(attr_to_extend)
 
     initializers = []

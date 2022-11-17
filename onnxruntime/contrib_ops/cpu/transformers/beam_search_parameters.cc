@@ -24,6 +24,7 @@ void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
   decoder_start_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("decoder_start_token_id", -1));
   no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
+  vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
 }
 
 void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
@@ -68,7 +69,12 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 }
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
-  vocab_size = vocabulary_size;
+  // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
+  // the vocab_size hasn't been specified by the user (as an attribute of BemSearch)
+  if (vocab_size == -1) {
+    vocab_size = vocabulary_size;
+  }
+
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;
