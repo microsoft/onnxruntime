@@ -3,7 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from itertools import product
+
 import numpy as np
+
+
+def transab_to_suffix(transab):
+    return {
+        (True, True): "TT",
+        (True, False): "TN",
+        (False, True): "NT",
+        (False, False): "NN",
+    }[tuple(transab)]
 
 
 def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, transa: bool, transb: bool):
@@ -22,3 +33,36 @@ def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, tran
     bound = bound_5_7
 
     return bound
+
+
+def get_bert_sizes(full=True):
+    bert_base_sizes = [
+        # m, n, k
+        (384, 768, 768),
+        (384, 768, 768 * 3),
+        (384, 768, 768 * 4),
+        (384, 768 * 4, 768),
+        (384, 1024, 1024),
+        (384, 1024, 1024 * 3),
+        (384, 1024, 1024 * 4),
+        (384, 1024 * 4, 1024),
+    ]
+
+    # we then multiply m with the batch size
+    if full:
+        batch_sizes = [1, 64]
+    else:
+        batch_sizes = [1]
+    bert_sizes = []
+    for bsz in batch_sizes:
+        bert_sizes.extend([(m * bsz, n, k) for m, n, k in bert_base_sizes])
+    return bert_sizes
+
+
+def get_basic_size(full=True):
+    if full:
+        return list(product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3))
+
+    # ck has various impls to be tested, use the full basic cases will result too many cases to test.
+    # So we use a reduced combination here.
+    return list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))

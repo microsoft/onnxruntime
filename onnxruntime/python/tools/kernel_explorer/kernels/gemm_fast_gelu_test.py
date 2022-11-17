@@ -10,16 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_bound
-
-
-def transab_to_suffix(transab):
-    return {
-        (True, True): "TT",
-        (True, False): "TN",
-        (False, True): "NT",
-        (False, False): "NN",
-    }[tuple(transab)]
+from utils import get_basic_size, get_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
 def dtype_to_funcs(dtype):
@@ -85,38 +76,10 @@ def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, t
 
 dtypes = ["float16", "float32"]
 all_transabs = list(product([True, False], repeat=2))
-all_basic_sizes = list(product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3))
-
-
-def get_bert_sizes(full=True):
-    bert_base_sizes = [
-        # m, n, k
-        (384, 768, 768),
-        (384, 768, 768 * 3),
-        (384, 768, 768 * 4),
-        (384, 768 * 4, 768),
-        (384, 1024, 1024),
-        (384, 1024, 1024 * 3),
-        (384, 1024, 1024 * 4),
-        (384, 1024 * 4, 1024),
-    ]
-
-    # we then multiply m with the batch size
-    if full:
-        batch_sizes = [1, 64]
-    else:
-        batch_sizes = [1]
-    bert_sizes = []
-    for bsz in batch_sizes:
-        bert_sizes.extend([(m * bsz, n, k) for m, n, k in bert_base_sizes])
-    return bert_sizes
-
-
-reduced_basic_sizes = list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
 
 
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
+@pytest.mark.parametrize("size", get_basic_size(full=False) + get_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
 def test_gemmfastgelu_bert_cases(dtype, size, transab):
     for func in dtype_to_funcs(dtype):
