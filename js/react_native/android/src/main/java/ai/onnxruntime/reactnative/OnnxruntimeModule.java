@@ -94,9 +94,13 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
-  public void loadModelFromBytes(byte[] modelData, ReadableMap options, Promise promise) {
+  public void loadModelFromBytes(ReadableArray modelData, ReadableMap options, Promise promise) {
     try {
-      WritableMap resultMap = loadModel(modelData, options);
+      byte[] modelDataBytes = new byte[modelData.size()];
+      for (int i = 0; i < modelDataBytes.length; i++) {
+        modelDataBytes[i] = (byte)(modelData.getInt(i));
+      }
+      WritableMap resultMap = loadModel(modelDataBytes, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Can't load model from buffer: " + e.getMessage(), e);
