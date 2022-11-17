@@ -50,8 +50,6 @@ ProfilerActivityBuffer ProfilerActivityBuffer::CreateFromPreallocatedBuffer(char
 
 
 // Implementation of GPUTracerManager
-GPUTracerManager::~GPUTracerManager() {}
-
 uint64_t GPUTracerManager::RegisterClient() {
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
     if (logging_enabled_) {

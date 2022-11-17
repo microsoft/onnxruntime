@@ -39,10 +39,10 @@ class GPUTracerManager
 {
 public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GPUTracerManager);
-  virtual ~GPUTracerManager();
+  virtual ~GPUTracerManager() {}
 
-  virtual uint64_t RegisterClient();
-  virtual void DeregisterClient(uint64_t client_handle);
+  uint64_t RegisterClient();
+  void DeregisterClient(uint64_t client_handle);
 
   void StartLogging();
   void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events);

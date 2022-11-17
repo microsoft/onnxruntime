@@ -76,7 +76,7 @@ void CUPTIManager::FlushActivities() {
   cuptiActivityFlushAll(1);
 }
 
-void CUPTIManager::ProcessActivityBuffers(const std::vector<CUPTIActivityBuffer>& buffers,
+void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                                           const TimePoint& start_time) {
     auto start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
     for (auto const& buffer : buffers) {
