@@ -624,7 +624,7 @@ export class ShapeUtil {
    * originalDims = [2,2] and shapeHints = [0,-1] will return [2,2]
    * originalDims = [2,2] and shapeHints = [4] will return [4]
    * originalDims = [2,2] and shapeHints = [5] will throw an exception
-   * https://github.com/onnx/onnx/blob/master/docs/Operators.md#Reshape
+   * https://github.com/onnx/onnx/blob/main/docs/Operators.md#Reshape
    */
 
   static calculateReshapedDims(originalDims: readonly number[], shapeHints: ArrayLike<number>): number[] {

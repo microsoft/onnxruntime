@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -54,7 +55,7 @@ bool IsQDQPairSupported(
   Initializer dq_scale(*dq_scale_tensor_proto, model_path);
 
   return q_zp.data_type() == dq_zp.data_type() &&
-         *q_zp.raw_data() == *dq_zp.raw_data() &&
+         SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan()) &&
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 

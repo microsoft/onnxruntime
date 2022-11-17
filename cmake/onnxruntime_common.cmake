@@ -78,7 +78,7 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
 # Remove new/delete intercept. To deal with memory leaks
 # Use either non-mimalloc build OR use mimalloc built-in features.
 if(WIN32 AND onnxruntime_USE_MIMALLOC)
-    list(REMOVE_ITEM onnxruntime_common_src 
+    list(REMOVE_ITEM onnxruntime_common_src
     "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h")
 endif()
@@ -115,8 +115,7 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
     set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
     target_sources(
         onnxruntime_common
-        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>
-    )
+        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
   endif()
 endif()
 
@@ -127,7 +126,7 @@ target_include_directories(onnxruntime_common
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 ${GSL_TARGET})
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")

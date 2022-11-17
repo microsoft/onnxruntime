@@ -2,10 +2,13 @@
 # Licensed under the MIT License.
 # debug_options.py
 import tempfile
+import warnings
+
 import torch
-from ... import ORTModule
+
 from .... import ortmodule
-from ...debug_options import DebugOptions
+from ... import ORTModule
+from ...debug_options import DebugOptions, LogLevel
 
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
@@ -13,6 +16,40 @@ from ...debug_options import DebugOptions
 _force_exportable_set = set(
     [torch.nn.Linear, torch.nn.Identity, torch.nn.modules.linear.NonDynamicallyQuantizableLinear]
 )
+
+
+class _IteratedORTModule(torch.nn.Module):
+    """
+    It's possible that a module instance is called multiple times in a single forward() call with different inputs.
+    If the number of inputs or the data types are different, the exported graph for a given input set cannot be used
+    for others. The _IteratedORTModule class is used to handle this case. It creates multiple ORTModule instances
+    for a given nn.Module instance and uses one of them for each input set.
+
+    NOTE that we assume that for each step run, the running order of different input sets are same.
+    If it's not this case (e.g., a module is used for checkpointing so that a same input set is used twice),
+    this class cannot handle it. An ideal way is to maintain a map from different input sets (maybe compute a hash)
+    to ORTModule instances.
+    """
+
+    def __init__(self, module, count, log_level, save_onnx, onnx_prefix):
+        super(_IteratedORTModule, self).__init__()
+        assert count > 1
+        self._count = count
+        self._it = count - 1
+        self._ortmodules = []
+        for idx in range(count):
+            self._ortmodules.append(
+                ORTModule(
+                    module,
+                    debug_options=DebugOptions(
+                        log_level=log_level, save_onnx=save_onnx, onnx_prefix=onnx_prefix + "_it" + str(idx)
+                    ),
+                )
+            )
+
+    def forward(self, *inputs, **kwargs):
+        self._it = (self._it + 1) % self._count
+        return self._ortmodules[self._it](*inputs, **kwargs)
 
 
 class HierarchicalORTModule(torch.nn.Module):
@@ -55,7 +92,9 @@ class HierarchicalORTModule(torch.nn.Module):
         self._initialized = False
         super(HierarchicalORTModule, self).__init__()
         self._original_module = module
-        self._debug_options = debug_options if debug_options else DebugOptions()
+        self._log_level = debug_options.logging.log_level if debug_options else LogLevel.ERROR
+        self._save_onnx = debug_options.save_onnx_models.save if debug_options else False
+        self._name_prefix = debug_options.save_onnx_models.name_prefix if debug_options else ""
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -69,17 +108,19 @@ class HierarchicalORTModule(torch.nn.Module):
                 module_arg_pool[module] = [args]
 
         # Recursively hook "record_args" to module and all its sub-modules.
-        # The function "record_args" records the inputs for each nn.Module,
-        # and later we will try exporting those nn.Module's with their recorded
-        # inputs.
+        # The function "record_args" records the inputs for each nn.Module and later we will try exporting
+        # those nn.Module's with their recorded inputs.
+        # NOTE that if a module is not called from forward(), it will fail to be captured by this hook.
         def recursive_hook(module):
+            # We cannot skip module in allowlist because it's possible that a module is called multiple times
+            # so that we still need to know the number of different input sets and use _IteratedORTModule to handle it.
             handle_pool.append(module.register_forward_pre_hook(record_args))
-            for name, sub in module._modules.items():
-                if isinstance(sub, torch.nn.ModuleList):
-                    for name1, sub1 in sub._modules.items():
-                        recursive_hook(sub1)
+            for _, sub_module in module._modules.items():
+                if isinstance(sub_module, torch.nn.ModuleList):
+                    for _, sub_module_item in sub_module._modules.items():
+                        recursive_hook(sub_module_item)
                 else:
-                    recursive_hook(sub)
+                    recursive_hook(sub_module)
 
         exportable_list = {}
 
@@ -87,91 +128,75 @@ class HierarchicalORTModule(torch.nn.Module):
         # "module" can be wrapped as ORTModule. Otherwise, "module" is
         # not exportable to ONNX.
         def check_exportable(module):
-            # forward functions of classes in _force_exportable_set may not be called
-            # thus not in module_arg_pool
+            def try_export(module, args):
+                try:
+                    with tempfile.NamedTemporaryFile(prefix="sub-module") as temp, torch.no_grad():
+                        torch.onnx.export(
+                            module,
+                            args,
+                            temp,
+                            opset_version=ortmodule.ONNX_OPSET_VERSION,
+                            do_constant_folding=False,
+                            export_params=False,
+                            keep_initializers_as_inputs=True,
+                            training=torch.onnx.TrainingMode.TRAINING,
+                        )
+                except Exception as e:
+                    if self._log_level <= LogLevel.WARNING:
+                        warnings.warn(
+                            f"Failed to export module with type {type(module).__name__}. Error message: {str(e)}",
+                            UserWarning,
+                        )
+                    return False
+                return True
+
             if type(module) in _force_exportable_set:
                 exportable_list[module] = True
-                return True
-            sub_dict = module._modules
-            if not sub_dict:
-                # No sub-module exists, so this module is a leaf
-                # module in overall model hierarchy.
-                exportable = True
-                # Check if this leaf module is exportable.
+                return
+
+            # It's possible that the model runs a module by calling some other function instead of forward()
+            # so that the module is not captured by the forward pre-hook. In this case, we will treat it as
+            # not exportable for now.
+            module_exportable = module in module_arg_pool
+            if module_exportable:
                 for args in module_arg_pool[module]:
-                    try:
-                        with tempfile.NamedTemporaryFile(prefix="sub-module") as temp:
-                            torch.onnx.export(
-                                module,
-                                args,
-                                temp,
-                                opset_version=ortmodule.ONNX_OPSET_VERSION,
-                                do_constant_folding=False,
-                                export_params=False,
-                                keep_initializers_as_inputs=True,
-                                training=torch.onnx.TrainingMode.TRAINING,
-                            )
-                    except Exception as e:
-                        exportable = False
+                    if not try_export(module, args):
+                        module_exportable = False
+                        break
+            elif self._log_level <= LogLevel.WARNING:
+                warnings.warn(
+                    f"Module with type {type(module).__name__} is not exportable because it's not in module_arg_pool.",
+                    UserWarning,
+                )
 
-                exportable_list[module] = exportable
-                return exportable
-            else:
-                sub_exportable = True
-                for name, sub_module in sub_dict.items():
-                    if isinstance(sub_module, torch.nn.ModuleList):
-                        for name1, sub_module1 in sub_module._modules.items():
-                            sub_exportable1 = check_exportable(sub_module1)
-                            sub_exportable = sub_exportable and sub_exportable1
-                    else:
-                        sub_exportable1 = check_exportable(sub_module)
-                        sub_exportable = sub_exportable and sub_exportable1
+            exportable_list[module] = module_exportable
+            if module_exportable:
+                return
 
-                if sub_exportable is False:
-                    # At least one existing sub-module is not exportable,
-                    # so is the entire module.
-                    exportable_list[module] = sub_exportable
-                    return sub_exportable
+            sub_module_dict = module._modules
+            if not sub_module_dict:
+                # No sub-module exists, so this module is a leaf
+                return
+
+            for _, sub_module in sub_module_dict.items():
+                if isinstance(sub_module, torch.nn.ModuleList):
+                    for _, sub_module_item in sub_module._modules.items():
+                        check_exportable(sub_module_item)
                 else:
-                    # Now, we know all sub-modules are exportable, so
-                    # we are going to check if the composition of them
-                    # is still exportable at this module level.
-                    module_exportable = True
-                    for args in module_arg_pool[module]:
-                        try:
-                            with tempfile.NamedTemporaryFile(prefix="sub-module") as temp:
-                                torch.onnx.export(
-                                    module,
-                                    args,
-                                    temp,
-                                    opset_version=ortmodule.ONNX_OPSET_VERSION,
-                                    do_constant_folding=False,
-                                    export_params=False,
-                                    keep_initializers_as_inputs=True,
-                                    training=torch.onnx.TrainingMode.TRAINING,
-                                )
-                        except Exception as e:
-                            # If this module is not exportable for one arg
-                            # group, we say this module is not exportable.
-                            module_exportable = False
-                            # Already found a broken case.
-                            # No need to check next case.
-                            break
-
-                    exportable_list[module] = module_exportable
-                    return exportable_list[module]
+                    check_exportable(sub_module)
 
         # Add a hook to record forward's input for all modules.
         recursive_hook(self._original_module)
 
         # Run forward with actual input to record all possible
         # inputs for all invoked modules.
-        _ = self._original_module(*args, **kwargs)
+        with torch.no_grad():
+            _ = self._original_module(*args, **kwargs)
 
         # We already have "supported_modules" so
         # we no longer need those hooks in forward pass.
-        for h in handle_pool:
-            h.remove()
+        for handle in handle_pool:
+            handle.remove()
 
         # Try exporter on all module-input pairs. If a module can be exported with
         # all its recorded inputs, then it's exporable.
@@ -184,27 +209,70 @@ class HierarchicalORTModule(torch.nn.Module):
         # Top-down wrapper to replace nn.Module's with ORTModule.
         # Note that using bottom-up wrapper may lead to much
         # ORTModule instances and each ORTModule owns a much smaller graph.
-        def recursive_wrap(module):
-            sub_dict = module._modules
-            for name, sub in sub_dict.items():
-                if isinstance(sub, torch.nn.ModuleList):
+        def recursive_wrap(module, save_onnx=False, onnx_prefix=""):
+            sub_module_dict = module._modules
+            for name, sub_module in sub_module_dict.items():
+                new_prefix = onnx_prefix + "_" + name
+                if isinstance(sub_module, torch.nn.ModuleList):
                     # We encounter a list of sub-modules.
                     # Let's wrap them one-by-one.
-                    for name1, sub1 in sub._modules.items():
-                        if is_supported(sub1):
-                            sub._modules[name1] = ORTModule(sub1, debug_options=self._debug_options)
+                    idx = 0
+                    for item_name, sub_module_item in sub_module._modules.items():
+                        # Avoid saving too many graphs.
+                        new_save_onnx = save_onnx and idx == 0
+                        sub_new_prefix = new_prefix + "_" + item_name
+                        if is_supported(sub_module_item):
+                            if sub_module_item in module_arg_pool and len(module_arg_pool[sub_module_item]) > 1:
+                                sub_module._modules[item_name] = _IteratedORTModule(
+                                    sub_module_item,
+                                    len(module_arg_pool[sub_module_item]),
+                                    self._log_level,
+                                    new_save_onnx,
+                                    sub_new_prefix,
+                                )
+                            else:
+                                sub_module._modules[item_name] = ORTModule(
+                                    sub_module_item,
+                                    debug_options=DebugOptions(
+                                        log_level=self._log_level, save_onnx=new_save_onnx, onnx_prefix=sub_new_prefix
+                                    ),
+                                )
                         else:
-                            recursive_wrap(sub1)
+                            recursive_wrap(sub_module_item, new_save_onnx, sub_new_prefix)
+                        idx += 1
                 else:
-                    if is_supported(sub):
+                    if is_supported(sub_module):
                         # Just wrap it as ORTModule when possible.
-                        sub_dict[name] = ORTModule(sub, debug_options=self._debug_options)
+                        if sub_module in module_arg_pool and len(module_arg_pool[sub_module]) > 1:
+                            sub_module_dict[name] = _IteratedORTModule(
+                                sub_module, len(module_arg_pool[sub_module]), self._log_level, save_onnx, new_prefix
+                            )
+                        else:
+                            sub_module_dict[name] = ORTModule(
+                                sub_module,
+                                debug_options=DebugOptions(
+                                    log_level=self._log_level, save_onnx=save_onnx, onnx_prefix=new_prefix
+                                ),
+                            )
                     else:
                         # This sub-module is not exportable to ONNX
                         # Let's check its sub-modules.
-                        recursive_wrap(sub)
+                        recursive_wrap(sub_module, save_onnx, new_prefix)
 
-        recursive_wrap(self._original_module)
+        if is_supported(self._original_module):
+            self._original_module = ORTModule(
+                self._original_module,
+                debug_options=DebugOptions(
+                    log_level=self._log_level, save_onnx=self._save_onnx, onnx_prefix=self._name_prefix
+                ),
+            )
+        else:
+            recursive_wrap(self._original_module, self._save_onnx, self._name_prefix)
+        if self._log_level <= LogLevel.WARNING:
+            warnings.warn(
+                f"Wrapped module: {str(self._original_module)}.",
+                UserWarning,
+            )
         self._initialized = True
 
     def forward(self, *inputs, **kwargs):

@@ -18,16 +18,12 @@ template <typename T>
 void ParsePropertyFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                   std::string& name,
                                   PropertyDataType& value) {
-  std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  int64_t expected_num_elements = 1;
-  for (auto& d : tensor_shape_vec) {
-    expected_num_elements *= d;
-  }
-  ORT_ENFORCE(expected_num_elements == 1, "Only scalar value support for checkpoint property.");
+  TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  ORT_ENFORCE(tensor_shape.Size() == 1, "Only scalar value is supported for checkpoint property.");
   Path model_path;
   InlinedVector<T> data_vector(1);
   T* p = data_vector.data();
-  ORT_THROW_IF_ERROR(utils::UnpackTensor<T>(tensor_proto, model_path, p, expected_num_elements));
+  ORT_THROW_IF_ERROR(utils::UnpackTensor<T>(tensor_proto, model_path, p, 1));
   name = tensor_proto.name();
   value = data_vector[0];
 }

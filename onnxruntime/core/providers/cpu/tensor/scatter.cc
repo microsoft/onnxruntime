@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
-
-#include "gsl/gsl"
+#include <core/common/safeint.h>
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_type_control_utils.h"
@@ -26,13 +26,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0, element_type_lists::All);
 }  // namespace op_kernel_type_control
 
-using ScatterDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 using EnabledScatterDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 
-using ScatterElementsDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 using EnabledScatterElementsDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 
@@ -64,7 +60,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterDataTypes>);
@@ -76,7 +71,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -88,7 +82,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -99,7 +92,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -181,10 +173,10 @@ Status GetIndices(
   const auto& input_data_shape = data_input.Shape();
   const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
-  const auto axis_dim_limit = input_data_shape[axis];
+  const auto axis_dim_limit = input_data_shape[narrow<size_t>(axis)];
 
   std::vector<int64_t> indices_data_result;
-  indices_data_result.reserve(num_indices);
+  indices_data_result.reserve(narrow<size_t>(num_indices));
 
   for (int64_t i = 0; i < num_indices; ++i) {
     const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
@@ -213,7 +205,7 @@ Status ScatterData(
   const auto input_elements = input_data_shape.Size();
   const auto total_input_bytes = data_input->SizeInBytes();
 
-  const auto num_indices = gsl::narrow<int64_t>(indices_data.size());
+  const auto num_indices = narrow<int64_t>(indices_data.size());
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
@@ -272,14 +264,14 @@ Status ScatterData(
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
     for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
-      dim_block_size[i] = input_data_shape[i + 1] * dim_block_size[i + 1];
+      dim_block_size[narrow<size_t>(i)] = input_data_shape[SafeInt<size_t>(i) + 1] * dim_block_size[SafeInt<size_t>(i) + 1];
     }
   }
 
   const auto* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
   // For every update we compute the destination offset and copy it there
   for (int64_t index = 0; index < num_indices;) {
-    const auto axis_idx = indices_data[index];
+    const auto axis_idx = indices_data[narrow<size_t>(index)];
 
     // Compute the offset
     // See comments above for dim_block_size
@@ -287,9 +279,9 @@ Status ScatterData(
     for (size_t i = 0; i < num_dims; ++i) {
       if (i == size_t(axis)) {
         // replace the counter with the update index for this dim
-        dst_offset += axis_idx * dim_block_size[i];
+        dst_offset += narrow<size_t>(axis_idx * dim_block_size[narrow<size_t>(i)]);
       } else {
-        dst_offset += dim_counters[i] * dim_block_size[i];
+        dst_offset += narrow<size_t>(dim_counters[narrow<size_t>(i)] * dim_block_size[narrow<size_t>(i)]);
       }
     }
 
@@ -301,15 +293,15 @@ Status ScatterData(
     // Increment counters
     // See comments for dim_counters above
     for (auto i = int64_t(num_dims - 1); i >= 0; --i) {
-      auto v = ++dim_counters[i];
-      assert(v <= upd_shape[i]);
-      if (v < upd_shape[i]) {
+      auto v = ++dim_counters[narrow<size_t>(i)];
+      assert(v <= upd_shape[narrow<size_t>(i)]);
+      if (v < upd_shape[narrow<size_t>(i)]) {
         // No carry, done
         break;
       }
       // No carry for the most significant dim
       assert(i > 0);
-      dim_counters[i] = 0;
+      dim_counters[narrow<size_t>(i)] = 0;
     }
   }
   return Status::OK();

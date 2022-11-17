@@ -1,16 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "synthetic_data_loader.h"
+
 #include <onnxruntime_cxx_api.h>
 
 #include <algorithm>
 #include <memory>
 #include <random>
 #include <type_traits>
-#include <variant>
 #include <vector>
-
-#include "synthetic_data_loader.h"
 
 namespace onnxruntime {
 namespace training {
@@ -94,27 +93,13 @@ void SyntheticSampleBatch::AddFloatInput(gsl::span<const int64_t> shape) {
   data = values;
 }
 
-#define ORT_RETURN_ON_ERROR(expr)                              \
-  do {                                                         \
-    OrtStatus* onnx_status = (expr);                           \
-    if (onnx_status != NULL) {                                 \
-      auto code = ort_api->GetErrorCode(onnx_status);          \
-      const char* msg = ort_api->GetErrorMessage(onnx_status); \
-      printf("Run failed with error code :%d\n", code);        \
-      printf("Error message :%s\n", msg);                      \
-      ort_api->ReleaseStatus(onnx_status);                     \
-      return false;                                            \
-    }                                                          \
-  } while (0);
-
-bool SyntheticSampleBatch::GetBatch(std::vector<OrtValue*>& batches) {
+void SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
   batches.clear();
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  const auto* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   for (size_t i = 0; i < data_vector_.size(); ++i) {
     SyntheticInput& input = data_vector_[i];
 
-    const bool ret = std::visit([&batches, &input, &ort_api, &memory_info](auto&& arg) -> bool {
+    std::visit([&batches, &input, &memory_info](auto&& arg) {
       ONNXTensorElementDataType elem_data_type;
       using T = std::decay_t<decltype(arg)>;
       if constexpr (std::is_same_v<typename T::value_type, uint8_t>) {
@@ -123,30 +108,17 @@ bool SyntheticSampleBatch::GetBatch(std::vector<OrtValue*>& batches) {
         elem_data_type = Ort::TypeToTensorType<typename T::value_type>::type;
       }
 
-      OrtValue* value = nullptr;
       const auto& shape_vector = input.ShapeVector();
-      // Be noted: the created OrtValue won't clean the raw data after its lifetime ended.
-      ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(
-          memory_info,
-          arg.data(), (input.NumOfElements() * sizeof(typename T::value_type)),
-          shape_vector.data(), shape_vector.size(),
-          elem_data_type,
-          &value));
-
-      batches.emplace_back(value);
-      return true;
+      batches.emplace_back(Ort::Value::CreateTensor(memory_info, arg.data(),
+                                                    (input.NumOfElements() * sizeof(typename T::value_type)),
+                                                    shape_vector.data(), shape_vector.size(),
+                                                    elem_data_type));
     },
-                                input.GetData());
-
-    if (!ret) {
-      return false;
-    }
+               input.GetData());
   }
-
-  return true;
 }
 
-bool SyntheticDataLoader::GetNextSampleBatch(std::vector<OrtValue*>& batches) {
+bool SyntheticDataLoader::GetNextSampleBatch(std::vector<Ort::Value>& batches) {
   if (sample_batch_iter_index_ >= NumOfSampleBatches()) {
     return false;
   }

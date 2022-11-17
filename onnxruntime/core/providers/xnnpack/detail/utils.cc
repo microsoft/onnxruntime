@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
-#include <stdint.h>
 #include <unordered_map>
 #include <vector>
 
+#include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/node_attr_utils.h"
@@ -14,6 +14,7 @@
 #include "onnx/defs/attr_proto_util.h"
 #include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
+
 namespace onnxruntime {
 namespace xnnpack {
 
@@ -160,7 +161,8 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     def.inputs.push_back(y_quant_param.scale.Name());
     def.inputs.push_back(y_quant_param.zero_point ? y_quant_param.zero_point->Name() : "");
     if (qtype == QuantizedOpType::QDQSoftmax) {
-      def.domain = kMSDomain; // reuse Qlinearsoftmax in kMSDomain, we need to define our own schema
+      def.domain = kDynamicDomainByCreate;
+      def.since_version = 1;
       def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
     }
   } else if (qtype == QuantizedOpType::QDQMaxPool) {
@@ -183,10 +185,11 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
 }
 
 // Fuse activation with node_unit.
-std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_unit, const Node& activation,
+std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_unit, const NodeUnit& activation_unit,
                                                          const GraphViewer& graph) {
   std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
   IndexedSubGraph::MetaDef& def = *metadef;
+  const Node& activation = activation_unit.GetNode();
 
   // we use the op type/domain to match the static xnnpack Conv or MaxPool kernel
   // registration
@@ -260,20 +263,6 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
   return metadef;
 }
 
-const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initializers,
-                                              const NodeUnitIODef& io_def) {
-  if (io_def.quant_param.has_value() == false) {
-    return nullptr;
-  }
-
-  const auto scale_name = io_def.quant_param->scale.Name();
-  auto it = initializers.find(scale_name);
-  if (it == initializers.cend()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
 std::pair<const onnx::TensorProto*, const onnx::TensorProto*>
 GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
                                  const NodeUnitIODef& io_def) {
@@ -318,7 +307,6 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
     return TensorTypeInvalid;
   }
 
-  std::vector<uint8_t> unpacked_tensor;
   // we have processed float-type in the beginning
   // we do not handle u8s8
   switch (input_type) {
@@ -347,14 +335,9 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
       } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          auto status = utils::UnpackInitializerData(*zero_tensor, node_unit.ModelPath(), unpacked_tensor);
-          if (!status.IsOK()) {
-            LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: "
-                                << ", error msg: " << status.ErrorMessage();
-            break;
-          }
-          const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-          for (size_t i = 0; i < unpacked_tensor.size(); i++) {
+          Initializer zp_val(*zero_tensor, node_unit.ModelPath());
+          auto zero_points = zp_val.DataAsSpan<int8_t>();
+          for (int64_t i = 0; i < zp_val.size(); i++) {
             if (zero_points[i] != 0) {
               LOGS_DEFAULT(VERBOSE) << "only support 0 as zero point for per-channel quantization, "
                                     << "zero_points[" << i << "] has value: " << zero_points[i];
@@ -390,7 +373,7 @@ gsl::span<const T> ReadConstantValues(const OpKernelInfo& info, int idx) {
     } else {
       // It's legal for zero-point to be null, we just give its default value 0
       static const T default_zp[] = {0};
-      return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::index_type>(1));
+      return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::size_type>(1));
     }
   }
   return (tensor->DataAsSpan<T>());

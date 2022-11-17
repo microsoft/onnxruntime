@@ -10,7 +10,7 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -358,7 +358,7 @@ bool Conv::IsConvOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
   return supported;
 }
 
-Conv::Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_{info} {
+Conv::Conv(const OpKernelInfo& info) : XnnpackKernel(info), conv_attrs_{info} {
   // get values from any fusion with an activation
   if (info.GetAttr<std::string>("activation", &conv_attrs_.activation).IsOK()) {
     std::vector<float> activation_params;
@@ -505,20 +505,21 @@ Status Conv::Compute(OpKernelContext* context) const {
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
+  pthreadpool_t t_pool = GetThreadPool();
 
   xnn_status status = xnn_status_invalid_state;
   if (conv_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), N, H, W, X.Data<float>(), Y->MutableData<float>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
     status = xnn_setup_convolution2d_nhwc_qs8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);
   } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_convolution2d_nhwc_qu8(op0_.get(), N, H, W, X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
     status = xnn_setup_convolution2d_nhwc_qc8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);
   }
 
   if (status != xnn_status_success) {
@@ -526,7 +527,7 @@ Status Conv::Compute(OpKernelContext* context) const {
                            OpTypeToString(conv_type_), "returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

@@ -31,7 +31,6 @@ private:
   bool has_graph_ = false;
   bool has_graph_exec_ = false;
 
-  CaptureId_t id_;
   cudaStream_t stream_ = nullptr; // Does not own the stream
 };
 

@@ -33,7 +33,7 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
   prepare.grouped_tensor_sizes.resize(prepare.num_of_weights);
   prepare.grouped_tensor_pointers.resize(prepare.num_of_weights);
 
-  const double cost = 1.0;
+  static constexpr double cost = 1.0;
   auto* tp = ctx->GetOperatorThreadPool();
 
   concurrency::ThreadPool::TryParallelFor(

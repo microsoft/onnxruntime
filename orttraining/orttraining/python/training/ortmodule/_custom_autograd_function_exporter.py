@@ -12,9 +12,10 @@ from packaging import version
 from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.training import ortmodule
 
 from . import _logger
-from ._fallback import ORTModuleONNXModelException, ORTModuleTorchModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
 # If CheckpointFunction is exported as PythonOp, the checkpointed computation
@@ -22,7 +23,47 @@ from ._fallback import ORTModuleONNXModelException, ORTModuleTorchModelException
 # for big models such as GPT-2. Exporting CheckpointFunction as PythonOp means
 # every transformer would be computed by Pytorch and ORT doesn't contribute
 # at all.
-BANNED_AUTOGRAD_FUNCTION_NAMES = set([torch.utils.checkpoint.CheckpointFunction.__name__])
+BANNED_AUTOGRAD_FUNCTION_NAMES = frozenset([torch.utils.checkpoint.CheckpointFunction.__name__])
+
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
+
+
+def _full_name(klass):
+    module = klass.__module__
+    if module == "builtins":
+        return klass.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + klass.__qualname__
+
+
+def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
+
+
+# For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
+# reference (in case it is released after module exported).
+NONTENSOR_OBJECT_POINTER_STORE = {}
+
+
+def _clear_nontensor_object_references():
+    NONTENSOR_OBJECT_POINTER_STORE.clear()
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -33,7 +74,10 @@ def _export_pt_1_10(g, n, *args, **kwargs):
     """
     try:
         name = kwargs["name"]
-        if name in BANNED_AUTOGRAD_FUNCTION_NAMES:
+        if name in BANNED_AUTOGRAD_FUNCTION_NAMES and (
+            not ortmodule._defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0)
+            or name != torch.utils.checkpoint.CheckpointFunction.__name__
+        ):
             raise Exception(
                 f"The autograd.Function {name} should not be exported to ONNX. "
                 "Please replace ORTModule with HierarchalORTModule to only"
@@ -44,9 +88,19 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         training_mode = None
         runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
         if runtime_pytorch_version >= version.parse("1.12"):
+            # FIXME: using privated modules
             from torch.onnx import _globals
 
-            training_mode = _globals.GLOBALS.training_mode
+            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9, training_mode is still a bool type
+            if isinstance(_globals.GLOBALS.training_mode, bool):
+                training_mode = _globals.GLOBALS.training_mode
+            else:
+                if _globals.GLOBALS.training_mode not in [
+                    torch.onnx.TrainingMode.EVAL,
+                    torch.onnx.TrainingMode.TRAINING,
+                ]:
+                    raise Exception(f"Unexpected training mode {_globals.GLOBALS.training_mode}")
+                training_mode = _globals.GLOBALS.training_mode == torch.onnx.TrainingMode.TRAINING
         else:
             training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
@@ -76,7 +130,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type().scalarType()])
+                scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -111,6 +165,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
+
+                    NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,
@@ -121,7 +177,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type().scalarType()])
+            scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
@@ -203,11 +259,16 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function, 
 
 def _post_process_enabling_autograd_fallback(exported_model):
     registered_name_mappings = {}
+    skipped_autograd_function_list = ortmodule._defined_from_envvar("ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS", "").split(
+        ","
+    )
     for kclass in torch.autograd.Function.__subclasses__():
+        full_qualified_name = _full_name(kclass)
+        if full_qualified_name in skipped_autograd_function_list:
+            continue
         # Collect mapping of class names to full qualified class names.
         if kclass.__name__ not in registered_name_mappings:
             registered_name_mappings[kclass.__name__] = []
-        full_qualified_name = kclass.__module__ + "." + kclass.__qualname__
         registered_name_mappings[kclass.__name__].append(full_qualified_name)
 
         # Register function with class names.

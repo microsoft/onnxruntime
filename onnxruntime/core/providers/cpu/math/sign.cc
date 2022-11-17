@@ -3,7 +3,7 @@
 
 #include <type_traits>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
@@ -22,8 +22,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Sign, Input, 0, element_type_lists::AllNumeric);
 }
 
-using SignDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Sign, Input, 0);
 using EnabledSignDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Sign, Input, 0);
 
@@ -39,7 +37,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     9,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SignDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSignDataTypes>()),
     Sign);
 
@@ -47,7 +44,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     Sign,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SignDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSignDataTypes>()),
     Sign);
 
@@ -77,9 +73,9 @@ inline T FloatingImpl(T val) {
 template <>
 struct CallSignImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    auto span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
+    auto span = gsl::make_span(input->Data<MLFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
     auto output_data = output->MutableData<MLFloat16>();
-    std::transform(span.cbegin(), span.cend(), output_data, [](const MLFloat16& val) {
+    std::transform(span.begin(), span.end(), output_data, [](const MLFloat16& val) {
       float fl = math::halfToFloat(val.val);
       return MLFloat16(math::floatToHalf(FloatingImpl(fl)));
     });
@@ -89,9 +85,9 @@ struct CallSignImpl<MLFloat16> {
 template <>
 struct CallSignImpl<BFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    auto span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
+    auto span = gsl::make_span(input->Data<BFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
     auto output_data = output->MutableData<BFloat16>();
-    std::transform(span.cbegin(), span.cend(), output_data, [](const BFloat16& val) {
+    std::transform(span.begin(), span.end(), output_data, [](const BFloat16& val) {
       float fl = val.ToFloat();
       return BFloat16(FloatingImpl(fl));
     });

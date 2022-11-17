@@ -79,7 +79,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO(tianleiwu): only calculate global index once per model instead of once per LongformerAttention node.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length);
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
@@ -258,7 +258,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              window_,
                                                              disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchLongformerAttentionKernel(
+  ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(
           device_prop,
           cublas,
           stream,
@@ -282,11 +282,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           disable_compact_memory,
           use_merged_qkv_weights,
-          use_half4_)) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
+          use_half4_));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());

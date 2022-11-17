@@ -12,7 +12,7 @@
  * Configuration information for a Run call.
  */
 struct OrtRunOptions {
-  /// Log severity.  See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+  /// Log severity.  See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use the log severity from the InferenceSession that the Run is for).
   int run_log_severity_level = -1;
   int run_log_verbosity_level = 0;  ///< VLOG level if debug build and run_log_severity_level is 0 (VERBOSE).
@@ -26,6 +26,10 @@ struct OrtRunOptions {
   // Set to 'true' to run only the nodes from feeds to required fetches.
   // So it is possible that only some of the nodes are executed.
   bool only_execute_path_to_fetches = false;
+
+  // Set to 'true' to synchronize execution providers with CPU at the end of session run.
+  // Taking CUDA EP as an example, it will trigger cudaStreamSynchronize on the compute stream.
+  bool synchronize_execution_providers = true;
 
 #ifdef ENABLE_TRAINING
   // Set to 'true' to run in training mode.

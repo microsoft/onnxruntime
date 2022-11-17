@@ -8,7 +8,7 @@
 
 /**
  * All APIs exported by winml_adapter_c_api.h are part of the private interface dedicated to supporting the WinML API.
- * This contract is subject to change based on the needs of the WinML API and is not intended for direct use by callers 
+ * This contract is subject to change based on the needs of the WinML API and is not intended for direct use by callers
  * of the onnxruntime c-api and usage of APIs in this header are *not* supported by the onnxruntime product.
   */
 
@@ -110,7 +110,7 @@ struct WinmlAdapterApi {
 	 * There is no inferencing or evaluation setup performed. Only ONNX load is done to reflect on the model's inputs/outputs and other properties.
 	 * This is used by WinML to support model reflection APIs.
     */
-  OrtStatus*(ORT_API_CALL* CreateModelFromData)(_In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModelFromData)(_In_opt_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
 
   /**
     * CloneModel
@@ -236,7 +236,7 @@ struct WinmlAdapterApi {
     * ModelEnsureNoFloat16
 	 * This api checks whether the model requires float 16 support.
 	 * This is used by WinML to fail gracefully when float 16 support is not available on the device.
-    * 
+    *
     * Can this API be moved into the EP during session initialization. Currently we do an early fp16 check to avoid initialization when it is not supported.
     */
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
@@ -267,7 +267,7 @@ struct WinmlAdapterApi {
     * CreateSessionWithoutModel
 	 * This api is used to create a Session that is completely uninitialized. While there are other Session creation APIs in the
     * c-abi, WinML uses this so that it can perform optimizations prior to loading the model, and initializing.
-    * Moreover, WinML needs a new api to support the OrtModel type, and prevent the parsing model protobufs again on session creation. 
+    * Moreover, WinML needs a new api to support the OrtModel type, and prevent the parsing model protobufs again on session creation.
     */
   OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
    _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session)NO_EXCEPTION;
@@ -289,8 +289,8 @@ struct WinmlAdapterApi {
   /**
     * SessionRegisterGraphTransformers
 	 * This api is used to enable DML specific graph transformations on an OrtSession.
-    * 
-    * Ideally these transformations should be configured by the contract between the runtime and the EP and not overridden by WinML. 
+    *
+    * Ideally these transformations should be configured by the contract between the runtime and the EP and not overridden by WinML.
     */
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
 
@@ -303,7 +303,7 @@ struct WinmlAdapterApi {
   /**
     * SessionLoadAndPurloinModel
 	 * This api is used to load an OrtModel into an OrtSession.
-    * 
+    *
  	 * Don't free the 'out' value as this API will defunct and release the OrtModel internally.
     */
   OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel* model)NO_EXCEPTION;
@@ -311,7 +311,7 @@ struct WinmlAdapterApi {
   /**
     * SessionStartProfiling
 	 * This api is used to start profiling OrtSession. The existing mechanism only allows configuring profiling at session creation.
-    * 
+    *
  	 * WinML uses this to toggle profilling on and off based on if a telemetry providers are being listened to.
     */
   OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtEnv* env, _In_ OrtSession* session)NO_EXCEPTION;
@@ -319,7 +319,7 @@ struct WinmlAdapterApi {
   /**
     * SessionEndProfiling
 	 * This api is used to end profiling OrtSession. The existing mechanism only allows configuring profiling at session creation.
-    * 
+    *
  	 * WinML uses this to toggle profilling on and off based on if a telemetry providers are being listened to.
     */
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
@@ -327,7 +327,7 @@ struct WinmlAdapterApi {
   /**
     * SessionCopyOneInputAcrossDevices
 	 * This api is used to copy and create an OrtValue input to prepare the input on the correct device.
-    * 
+    *
  	 * WinML uses this to copy gpu device OrtValues to the CPU and vice-versa.
     */
   OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char* const input_name, _In_ OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
@@ -345,7 +345,7 @@ struct WinmlAdapterApi {
     /**
     * SessionGetIntrapOpThreadSpinning
      * This api returns false if the ort session options config entry "session.intra_op.allow_spinning" is set to "0", and true otherwise
-    * 
+    *
     * WinML uses this to determine that the intra op thread spin policy was set correctly through OrtSessionOptions
     */
   OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinning)(_In_ OrtSession* session, _Out_ bool* allow_spinning)NO_EXCEPTION;
@@ -361,7 +361,7 @@ struct WinmlAdapterApi {
   /**
     * DmlExecutionProviderSetDefaultRoundingMode
 	  * This api is used to configure the DML EP to turn on/off rounding.
-    * 
+    *
  	  * WinML uses this to disable rounding during session initialization and then enables it again post initialization.
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled)NO_EXCEPTION;
@@ -369,7 +369,7 @@ struct WinmlAdapterApi {
   /**
     * DmlExecutionProviderFlushContext
 	 * This api is used to flush the DML EP.
-    * 
+    *
     * WinML communicates directly with DML to perform this as an optimization.
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
@@ -377,7 +377,7 @@ struct WinmlAdapterApi {
   /**
     * DmlExecutionProviderReleaseCompletedReferences
 	 * This api is used to release completed references after first run the DML EP.
-    * 
+    *
     * WinML communicates directly with DML to perform this as an optimization.
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
@@ -385,7 +385,7 @@ struct WinmlAdapterApi {
   /**
     * DmlCopyTensor
 	 * This api is used copy a tensor allocated by the DML EP Allocator to the CPU.
-    * 
+    *
     * WinML uses this when graphs are evaluated with DML, and their outputs remain on the GPU but need to be copied back to the CPU.
     */
   OrtStatus*(ORT_API_CALL* DmlCopyTensor)(_In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)NO_EXCEPTION;
@@ -393,7 +393,7 @@ struct WinmlAdapterApi {
   /**
     * GetProviderMemoryInfo
 	 * This api gets the memory info object associated with an EP.
-    * 
+    *
     * WinML uses this to manage caller specified D3D12 inputs/outputs. It uses the memory info here to call DmlCreateGPUAllocationFromD3DResource.
     */
   OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
@@ -401,7 +401,7 @@ struct WinmlAdapterApi {
   /**
     * GetProviderAllocator
 	 * This api gets associated allocator used by a provider.
-    * 
+    *
     * WinML uses this to create tensors, and needs to hold onto the allocator for the duration of the associated value's lifetime.
     */
   OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
@@ -409,7 +409,7 @@ struct WinmlAdapterApi {
   /**
     * FreeProviderAllocator
 	 * This api frees an allocator.
-    * 
+    *
     * WinML uses this to free the associated allocator for an ortvalue when creating tensors.
     * Internally this derefs a shared_ptr.
     */
@@ -418,7 +418,7 @@ struct WinmlAdapterApi {
   /**
     * ExecutionProviderSync
 	 * This api syncs the EP.
-    * 
+    *
     * WinML uses this to sync EP inputs/outputs directly.
     */
   OrtStatus*(ORT_API_CALL* ExecutionProviderSync)(_In_ OrtExecutionProvider* provider)NO_EXCEPTION;
@@ -434,7 +434,7 @@ struct WinmlAdapterApi {
   /**
     * ValueGetDeviceId
 	 * This api returns the device id of the OrtValue.
-    * 
+    *
     * WinML uses this to determine if an OrtValue is created on the needed device.
     */
   OrtStatus*(ORT_API_CALL* ValueGetDeviceId)(_In_ OrtValue* ort_value, _Out_ int16_t* device_id)NO_EXCEPTION;
@@ -442,7 +442,7 @@ struct WinmlAdapterApi {
   /**
     * SessionGetInputRequiredDeviceId
 	 * This api returns the required device id for a model input.
-    * 
+    *
     * WinML uses this to determine if an OrtValue is created on the needed device.
     */
   OrtStatus*(ORT_API_CALL* SessionGetInputRequiredDeviceId)(_In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id)NO_EXCEPTION;
@@ -471,7 +471,7 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* OperatorGetNumInputs)(
       _In_ const char* const op_type,
       _In_ int64_t opset,
-      _In_ const char* const op_domain, 
+      _In_ const char* const op_domain,
       _Out_ size_t* num_inputs)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* OperatorGetInputName)(

@@ -147,6 +147,12 @@ struct ProviderHost {
   virtual void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) = 0;
   virtual void CPUAllocator__Free(CPUAllocator* p, void* allocation) = 0;
 
+  virtual unsigned int GetThreadId() = 0;
+  virtual unsigned int GetProcessId() = 0;
+
+  virtual std::string demangle(const char* name) = 0;
+  virtual std::string demangle(const std::string& name) = 0;
+
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
@@ -157,8 +163,8 @@ struct ProviderHost {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
 #ifdef USE_ROCM
@@ -171,13 +177,12 @@ struct ProviderHost {
   virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                             const std::string& provider_type,
-                                                             gsl::span<const KernelRegistry* const> kernel_registries,
+                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                              gsl::span<const NodeIndex> tentative_nodes) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
@@ -218,9 +223,7 @@ struct ProviderHost {
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const std::vector<const KernelRegistry*>& kernel_registries) = 0;
-  //!!! This API will be deprecated soon
-  virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
+                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
@@ -244,6 +247,9 @@ struct ProviderHost {
   virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
   virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
   virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512_BF16(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAMX_BF16(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512Skylake(const CPUIDInfo* p) = 0;
 
   // logging::Logger
   virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
@@ -313,6 +319,7 @@ struct ProviderHost {
   virtual void AttributeProto__operator_delete(ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__operator_assign(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::AttributeProto& v) = 0;
 
+  virtual const std::string& AttributeProto__name(const ONNX_NAMESPACE::AttributeProto* p) const = 0;
   virtual ONNX_NAMESPACE::AttributeProto_AttributeType AttributeProto__type(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual int AttributeProto__ints_size(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual int AttributeProto__floats_size(const ONNX_NAMESPACE::AttributeProto* p) = 0;
@@ -359,6 +366,13 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::GraphProto* ModelProto__mutable_graph(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   virtual void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) = 0;
+
+  // NodeProto
+  virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;
+  virtual void NodeProto__operator_delete(ONNX_NAMESPACE::NodeProto* p) = 0;
+  virtual void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) = 0;
+  virtual int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) = 0;
+  virtual const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const = 0;
 
   // TensorProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() = 0;
@@ -494,7 +508,6 @@ struct ProviderHost {
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
   virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
-  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) = 0;
 
   // PrimitiveDataTypeBase
   virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
@@ -586,6 +599,7 @@ struct ProviderHost {
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept = 0;
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept = 0;
   virtual NodeIndex Node__Index(const Node* p) noexcept = 0;
+  virtual std::vector<gsl::not_null<const Graph*>> Node__GetSubgraphs(const Node* p) const noexcept = 0;
 
   virtual void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) = 0;
 
@@ -627,6 +641,8 @@ struct ProviderHost {
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__end(const NodeAttributes* p) = 0;
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) = 0;
   virtual void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) = 0;
+  virtual void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
+  virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
   // Model
   virtual void Model__operator_delete(Model* p) = 0;
@@ -649,6 +665,12 @@ struct ProviderHost {
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
 
+  virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
+  virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
+  virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
+  virtual bool Graph__IsSubgraph(const Graph* p) = 0;
+
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
@@ -660,7 +682,9 @@ struct ProviderHost {
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
 
   virtual bool GraphViewer__IsSubgraph(const GraphViewer* p) = 0;
+  virtual const Graph& GraphViewer__GetGraph(const GraphViewer* p) const = 0;
   virtual bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) = 0;
+  virtual const Node* GraphViewer__ParentNode(const GraphViewer* p) = 0;
   virtual int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept = 0;
   virtual int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept = 0;
 

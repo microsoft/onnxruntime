@@ -436,6 +436,11 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: provider_test_utils.cc(866): error: Value of: expect_result == ExpectResult::kExpectSuccess";
+  }
+
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 1, 1, 5},   // invalid kernel_shape, should be [1, 5]
       {},                            // output_padding
@@ -1045,7 +1050,7 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameUpper) {
   vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
   vector<int64_t> W_shape = {1, 2, 2};
   vector<int64_t> Y_shape = {1, 2, 4};
-  auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
+  auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 1.0f, 3.0f, 5.0f, 7.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
@@ -1068,13 +1073,18 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
   vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
   vector<int64_t> W_shape = {1, 2, 2};
   vector<int64_t> Y_shape = {1, 2, 4};
-  auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 1.0f, 3.0f, 5.0f, 7.0f};
+  auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
 }
 
 TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // output_padding
@@ -1083,7 +1093,7 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
       vector<int64_t>{2, 2},  // strides
       vector<int64_t>{1, 1},  // dilations
       1,                      // group
-      "SAME_LOWER"            // auto_pad
+      "SAME_UPPER"            // auto_pad
   };
 
   vector<float> X = {0.0f, 1.0f, 2.0f,

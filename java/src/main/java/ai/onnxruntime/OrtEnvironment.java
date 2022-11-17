@@ -15,8 +15,8 @@ import java.util.logging.Logger;
  *
  * <p>There can be at most one OrtEnvironment object created in a JVM lifetime. This class
  * implements {@link AutoCloseable} as before for backwards compatibility with 1.10 and earlier, but
- * the {@link #close} method is a no-op. The environment is closed by a JVM shutdown hook registered
- * on construction.
+ * the close method is a no-op. The environment is closed by a JVM shutdown hook registered on
+ * construction.
  */
 public final class OrtEnvironment implements AutoCloseable {
 

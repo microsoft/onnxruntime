@@ -35,15 +35,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template<typename T>
+template <typename T>
 T maybe2half(float x);
 
-template<>
+template <>
 float maybe2half(float x) {
   return x;
 }
 
-template<>
+template <>
 half maybe2half(float x) {
   return __float2half_rn(x);
 }
@@ -98,9 +98,9 @@ __global__ void SkipLayerNormKernelSmall(
   if (ILP * threadIdx.x < ld) {
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < ILP; i++) {
-      input_v[i] += hasBias ? skip_v[i] + bias_v[i]: skip_v[i];
+      input_v[i] += hasBias ? skip_v[i] + bias_v[i] : skip_v[i];
       const T rldval = rld * input_v[i];
       rldval_sum += rldval;
       rldvalsq_sum += rldval * input_v[i];
@@ -111,11 +111,10 @@ __global__ void SkipLayerNormKernelSmall(
 }
 
 template <typename T>
-bool LaunchSkipLayerNormKernel(
+Status LaunchSkipLayerNormKernel(
     cudaStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
     const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
     size_t element_size) {
-
   // this must be true because n is the total size of the tensor
   assert(element_count % ld == 0);
   bool hasBias = (bias == nullptr) ? false : true;
@@ -125,37 +124,37 @@ bool LaunchSkipLayerNormKernel(
       constexpr int block_size = 32;
       SkipLayerNormKernelSmall<T, block_size, 1>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64 / 2;
       SkipLayerNormKernelSmall<T, block_size, 2>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 384) {
       constexpr int block_size = 384 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 768) {
       constexpr int block_size = 768 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 1024) {
       constexpr int block_size = 1024 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
       SkipLayerNormKernel<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output);
+                                                 maybe2half<T>(epsilon), output);
     }
   } else {
     const int grid_size = element_count / ld;
@@ -163,41 +162,41 @@ bool LaunchSkipLayerNormKernel(
       constexpr int block_size = 32;
       SkipLayerNormKernelSmall<T, block_size, 1>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64;
       SkipLayerNormKernelSmall<T, block_size, 1>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128;
       SkipLayerNormKernelSmall<T, block_size, 1>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else if (ld == 384) {
       constexpr int block_size = 384;
       SkipLayerNormKernelSmall<T, block_size, 1>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+                                                 maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
       SkipLayerNormKernel<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output);
+                                                 maybe2half<T>(epsilon), output);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-template bool LaunchSkipLayerNormKernel<float>(cudaStream_t stream, float* output, const float* input,
+template Status LaunchSkipLayerNormKernel<float>(cudaStream_t stream, float* output, const float* input,
                                                const float* skip, const float* gamma, const float* beta,
                                                const float* bias, float epsilon, const int ld,
                                                const int element_count, size_t element_size);
 
-template bool LaunchSkipLayerNormKernel<half>(cudaStream_t stream, half* output, const half* input,
-                                               const half* skip, const half* gamma, const half* beta,
-                                               const half* bias, float epsilon, const int ld,
-                                               const int element_count, size_t element_size);
+template Status LaunchSkipLayerNormKernel<half>(cudaStream_t stream, half* output, const half* input,
+                                              const half* skip, const half* gamma, const half* beta,
+                                              const half* bias, float epsilon, const int ld,
+                                              const int element_count, size_t element_size);
 
 }  // namespace cuda
 }  // namespace contrib

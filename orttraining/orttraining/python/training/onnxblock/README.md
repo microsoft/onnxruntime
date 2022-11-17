@@ -99,7 +99,7 @@ onnxblock.save_checkpoint(my_model.parameters(), output_checkpoint_path)
 
 Once the models and checkpoint have been generated, they can be loaded in the online training step and executed.
 For an example on how the online training loop should be written given these generated files, refer to this
-[sample trainer](https://github.com/microsoft/onnxruntime/blob/master/orttraining/orttraining/test/training_api/trainer/trainer.cc).
-For all the `onnxblocks` that are supported, please look at the [building_blocks](https://github.com/microsoft/onnxruntime/blob/master/orttraining/orttraining/python/training/onnxblock/building_blocks.py).
-For all the loss blocks that are supported, please look at the [loss blocks](https://github.com/microsoft/onnxruntime/tree/master/orttraining/orttraining/python/training/onnxblock/loss/loss.py).
-For all the optimizer blocks that are supported, please look at the [optim blocks](https://github.com/microsoft/onnxruntime/blob/master/orttraining/orttraining/python/training/onnxblock/optim/optim.py).
+[sample trainer](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/test/training_api/trainer/trainer.cc).
+For all the `onnxblocks` that are supported, please look at the [building_blocks](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/building_blocks.py).
+For all the loss blocks that are supported, please look at the [loss blocks](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/loss/loss.py).
+For all the optimizer blocks that are supported, please look at the [optim blocks](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/optim/optim.py).

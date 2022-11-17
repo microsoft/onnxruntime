@@ -288,13 +288,8 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const std::vector<const KernelRegistry*>& kernel_registries) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
-}
-// !!! This API will be deprecated soon.
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
-  return g_host->IExecutionProvider__Compile(this, fused_nodes, node_compute_funcs);
+                                                                                  const IKernelLookup& kernel_lookup) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -342,13 +337,22 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 }
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
 }
 
+namespace profiling {
+
+std::string demangle(const char* name) { return g_host->demangle(name); }
+std::string demangle(const std::string& name) { return g_host->demangle(name); }
+
+}  // namespace profiling
+
 namespace logging {
+
+unsigned int GetThreadId() { return g_host->GetThreadId(); }
+unsigned int GetProcessId() { return g_host->GetProcessId(); }
 
 const char* Category::onnxruntime = "onnxruntime";
 
@@ -371,6 +375,10 @@ Status::Status(StatusCategory category, int code, const char* msg) {
 }
 
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {
+}
+
+StatusCategory Status::Category() const noexcept {
+  return IsOK() ? StatusCategory::NONE : state_->category;
 }
 
 int Status::Code() const noexcept {
@@ -477,15 +485,15 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
 
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
-                                    const gsl::span<const int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
+                                    gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
 Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
@@ -527,28 +535,63 @@ std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProces
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
-Status embed_layer_norm::CheckInputs(const OpKernelContext* context, bool quantizedVersion) { return g_host_cpu.embed_layer_norm__CheckInputs(context, quantizedVersion); }
-Status bias_gelu_helper::CheckInputs(const OpKernelContext* context) { return g_host_cpu.bias_gelu_helper__CheckInputs(context); }
-Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) const {
-  return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
+Status embed_layer_norm::CheckInputs(const OpKernelContext* context, bool quantizedVersion) {
+  return g_host_cpu.embed_layer_norm__CheckInputs(context, quantizedVersion);
 }
 
-Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor* extra_add_qk, const int max_threads_per_block) const {
-  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, max_threads_per_block);
+Status bias_gelu_helper::CheckInputs(const OpKernelContext* context) { return g_host_cpu.bias_gelu_helper__CheckInputs(context); }
+
+Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
+                                            const TensorShape& weights_shape,
+                                            const TensorShape& bias_shape,
+                                            const TensorShape& mask_shape,
+                                            const TensorShape& global_weights_shape,
+                                            const TensorShape& global_bias_shape,
+                                            const TensorShape& global_shape) const {
+  return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape,
+                                                         global_weights_shape, global_bias_shape, global_shape);
 }
-Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) const {
-  return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
+
+Status AttentionBase::CheckInputs(const TensorShape& input_shape,
+                                  const TensorShape* weights_shape,
+                                  const TensorShape& bias_shape,
+                                  const Tensor*& mask_index,
+                                  const Tensor* past,
+                                  const Tensor* extra_add_qk,
+                                  const Tensor* key,
+                                  const Tensor* value,
+                                  void* parameters,
+                                  const int max_threads_per_block) const {
+  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
+                                               mask_index, past, extra_add_qk,
+                                               key, value, parameters,
+                                               max_threads_per_block);
+}
+Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
+                                  int sequence_length, int& past_sequence_length) const {
+  return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size,
+                                              sequence_length, past_sequence_length);
 }
 
 namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
+
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
-Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
+Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                              const SessionState& subgraph_session_state) {
+  return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
+}
 
 void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
-Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
-Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
+Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
+
+Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                                const SessionState& subgraph_session_state) {
+  return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
+                                                             subgraph_session_state);
+}
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

@@ -17,11 +17,12 @@ size_t GetLongformerAttentionWorkspaceSize(
     size_t num_heads,
     size_t head_size,
     size_t sequence_length,
+
     size_t max_num_global,
     size_t window,
     bool disable_compact_memory);
 
-bool LaunchLongformerAttentionKernel(
+Status LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cublasHandle_t cublas,              // Cublas handle
     cudaStream_t stream,                // CUDA stream
@@ -45,8 +46,7 @@ bool LaunchLongformerAttentionKernel(
     const size_t element_size,          // Element size of input tensor,
     bool disable_compact_memory,        // Disable compact memory kernel
     bool use_merged_qkv_weights,
-    bool use_half4
-);
+    bool use_half4);
 
 }  // namespace cuda
 }  // namespace contrib

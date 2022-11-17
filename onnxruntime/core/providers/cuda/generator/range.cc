@@ -64,17 +64,15 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
 
-  int count = static_cast<int>(ceil(1.0 * (limit - start) / delta));
+  double num = (static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta);
+  int count = static_cast<int>(ceil(num));
   if (count <= 0)
     count = 0;
   TensorShape shape = {static_cast<int64_t>(count)};
   T* y = ctx->Output(0, shape)->MutableData<T>();
 
   if (count > 0) {
-    if (!RangeImpl(stream, start, delta, count, y)) {
-      CUDA_CALL(cudaGetLastError());
-      return Status(common::ONNXRUNTIME, common::FAIL);
-    }
+    ORT_RETURN_IF_ERROR(RangeImpl(stream, start, delta, count, y));
   }
 
   return Status::OK();

@@ -146,7 +146,7 @@ To verify the CUDA installation use `nvcc --version` in cmd.
 <br>
 <br>
 
-Build ONNX Runtime with TVM Execution Provider from source:
+#### **Build ONNX Runtime with TVM Execution Provider from source (Python):**
 - Use command line and clone sources from github:
 ```cmd
 git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -183,8 +183,24 @@ print(onnxruntime.get_available_providers())
 pip uninstall onnxruntime-tvm
 ```
 
+#### **Build ONNX Runtime with TVM Execution Provider from source (C#):**
+- Use command line and clone sources from github:
+```cmd
+git clone --recursive https://github.com/Microsoft/onnxruntime
+cd onnxruntime
+```
+- CPU build:
+
+Make sure you download [nuget.exe](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) and add path to it into `PATH` env.
+```
+build.bat --config Release --build_nuget --skip_tests --parallel --use_tvm --skip_onnx_tests --cmake_generator "Visual Studio 17 2022" --llvm_config llvm-config.exe
+```
+- Install C# nuget package for TVM EP. Default path to the package is `<path_to_onnxruntime_root>\build\Windows\Release\Release`.
+
+
 ## Configuration options
 TVM Executor Provider can be configured with the following provider options:
+1. Python
 ```python
 po = [dict(executor=tvm_executor_type,
            so_folder=folder_with_pretuned_files,
@@ -200,6 +216,31 @@ po = [dict(executor=tvm_executor_type,
            input_names = input_names_str,
            input_shapes = input_shapes_str)]
 tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionProvider"], provider_options=po)
+```
+
+2. C#
+
+Currently, only precompiled models are supported in C# (see the related section below).
+
+```CSharp
+SessionOptions session_options = new SessionOptions{};
+string tvm_ep_options = 
+  $"executor: {tvm_executor_type}, " +
+  $"so_folder: {folder_with_pretuned_files}, " +
+  $"check_hash: {check_hash}, " +
+  $"hash_file_path: {hash_file_path}, " +
+  $"target: {client_target}, " +
+  $"target_host: {client_target_host}, " +
+  $"opt_level: {client_opt_level}, " +
+  $"freeze_weights: {freeze}, " +
+  $"to_nhwc: {layout_transform}, " +
+  $"tuning_type: {tvm_optimizer_type}, " +
+  $"tuning_file_path: {client_tuning_logfile}, " +
+  $"input_names: {input_names_str}, " +
+  $"input_shapes: {input_shapes_str}";
+
+session_options.AppendExecutionProvider_Tvm(tvm_ep_options);
+using var tvm_session = new InferenceSession(modelFilePath, session_options);
 ```
 <br>
 
@@ -245,7 +286,7 @@ It is also possible to use a precompiled model.
 
 The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai)
 or compiled directly (see **Support precompiled model** section in
-[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 for more information on model compilation).
 
 In order to use the precompiled model, only need to pass two options:
@@ -261,7 +302,7 @@ You can read more about these options in section [Configuration options](#config
 
 
 ## Samples
-- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux and Windows systems.

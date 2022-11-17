@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include <cudnn.h>
 
@@ -24,7 +24,7 @@ enum RNN_Input_Index {
 };
 
 // Onnx RNN/GRU/LSTM only support 1 layer
-const int RNN_NUM_LAYERS = 1;
+constexpr int RNN_NUM_LAYERS = 1;
 
 class CudnnRNN {
  public:
@@ -105,7 +105,7 @@ class CudnnRnnBase : public CudaKernel {
     ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size));
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
-    ORT_ENFORCE(layout_ == 0, 
+    ORT_ENFORCE(layout_ == 0,
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 

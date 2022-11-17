@@ -24,7 +24,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0, 1], initializer_use_weight_qType=False)
+        ) = self.quantizer.quantize_activation(node, [0, 1])
         if not data_found or quantized_input_names is None:
             return super().quantize()
 

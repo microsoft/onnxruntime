@@ -1,0 +1,9 @@
+{{!Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license. See LICENSE file in the project root for full license information.}}
+
+<div id="search-results">
+  <div class="search-list">{{__global.searchResults}} <span></span></div>
+  <div class="sr-items">
+    <p><i class="glyphicon glyphicon-refresh index-loading"></i></p>
+  </div>
+  <ul id="pagination" data-first={{__global.pageFirst}} data-prev={{__global.pagePrev}} data-next={{__global.pageNext}} data-last={{__global.pageLast}}></ul>
+</div>

@@ -44,7 +44,7 @@ class Direct8BitOp(QuantOperatorBase):
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(node, [0])
+            ) = self.quantizer.quantize_activation(node, [0])
             if quantized_input_names is None:
                 return super().quantize()
 
@@ -71,8 +71,8 @@ class QDQDirect8BitOp(QDQOperatorBase):
 
     def quantize(self):
         if self.quantizer.force_quantize_no_input_check:
-            self.quantizer.quantize_tensor(self.node.input[0])
+            self.quantizer.quantize_activation_tensor(self.node.input[0])
             if not self.disable_qdq_for_node_output:
-                self.quantizer.quantize_tensor(self.node.output[0], self.node.input[0])
+                self.quantizer.quantize_activation_tensor(self.node.output[0], self.node.input[0])
         elif self.quantizer.is_tensor_quantized(self.node.input[0]) and not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(self.node.output[0], self.node.input[0])
+            self.quantizer.quantize_activation_tensor(self.node.output[0], self.node.input[0])

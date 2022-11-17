@@ -9,6 +9,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/optimizer/initializer.h"
 
 #include "coreml/NeuralNetwork.pb.h"
 
@@ -94,10 +95,9 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                                   const ONNX_NAMESPACE::TensorProto& tensor) {
   auto data_type = tensor.data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
+    Initializer unpacked_tensor(tensor);
     auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
-    CreateCoreMLWeight(weight, reinterpret_cast<const float*>(unpacked_tensor.data()), num_elements);
+    CreateCoreMLWeight(weight, unpacked_tensor.data<float>(), num_elements);
   } else {
     // TODO: support other type
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

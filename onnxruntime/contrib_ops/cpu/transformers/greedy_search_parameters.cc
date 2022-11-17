@@ -37,8 +37,7 @@ void GreedySearchParameters::ParseFromInputs(OpKernelContext* context) {
   num_beams = static_cast<int>(1);
 
   auto* repetition_penalty_tensor = context->Input<Tensor>(3);
-  repetition_penalty = repetition_penalty_tensor ?
-                       static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
+  repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 

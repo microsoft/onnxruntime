@@ -34,15 +34,8 @@ limitations under the License.
 using namespace onnxruntime::cuda;
 using namespace cub;
 
-#define CHECK(expr)         \
-  if (!CUBLAS_CALL(expr)) { \
-    return false;           \
-  }
-
-#define CHECK_CUDA(expr)  \
-  if (!CUDA_CALL(expr)) { \
-    return false;         \
-  }
+#define CHECK(expr) CUBLAS_RETURN_IF_ERROR(expr)
+#define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 
 namespace onnxruntime {
 namespace contrib {
@@ -63,7 +56,7 @@ namespace cuda {
 //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
 
 static size_t Align(size_t a) {
-  const size_t alignment = 128; // Align on a 16-byte boundary to avoid "misaligned address" error.
+  const size_t alignment = 128;  // Align on a 16-byte boundary to avoid "misaligned address" error.
   return CeilDiv(a, alignment) * alignment;
 }
 
@@ -88,7 +81,7 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     size_t scratch2_size = GetScratch2Size();
     return Align(scratch1_size + scratch2_size);
   } else {
-    return static_cast<size_t>(2) * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+    return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
 }
 
@@ -368,7 +361,7 @@ __launch_bounds__(blockSize)
   }
 }
 
-bool LaunchLongformerSoftmaxKernel(
+Status LaunchLongformerSoftmaxKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,
@@ -833,11 +826,11 @@ bool LaunchLongformerSoftmaxKernel(
     }
   }
 
-  return true;
+  return Status::OK();
 }
 
 template <typename T>
-bool LongformerQkvToContext(
+Status LongformerQkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,
@@ -875,33 +868,42 @@ bool LongformerQkvToContext(
   // The order of qkv space:
   //  Q, K, V, Global_K, Global_V, Global_Q (format 0)
   //  Q, K, V, Global_Q, Global_K, Global_V (format 1)
+  // Assume Q, K and V has same hidden size
   if (format == 1 || max_num_global == 0 || nullptr == global_input) {
-    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
-                           sequence_length, num_heads, head_size,
-                           input, bias, qkv,
-                           use_half4);
-
-    if (max_num_global > 0 && nullptr != global_input) {
+    if (bias == nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
+                                         max_threads_per_block, false, input, qkv));
+    } else {
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                              sequence_length, num_heads, head_size,
-                             global_input, global_bias, qkv + 3 * elements,
-                             use_half4);
+                             input, bias, qkv,
+                             use_half4, head_size);
+    }
+
+    if (max_num_global > 0 && nullptr != global_input) {
+      if (global_bias == nullptr) {
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
+                                           max_threads_per_block, false, global_input, qkv + 3 * elements));
+      } else {
+        LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
+                               sequence_length, num_heads, head_size,
+                               global_input, global_bias, qkv + 3 * elements,
+                               use_half4, head_size);
+      }
     }
   } else {
     LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
                            input, bias, qkv,
-                           use_half4);
+                           use_half4, head_size);
 
     compact_global_q = (disable_compact_memory == false);
     LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size,
                            compact_global_q ? max_num_global : sequence_length, num_heads, head_size,
                            global_input + 2 * elements, global_bias, qkv + 5 * elements,
-                           use_half4);
+                           use_half4, head_size);
   }
-  if (!CUDA_CALL(cudaPeekAtLastError())) {
-    return false;
-  }
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   // Transposed Q, K, V with shape (B, N, S, H)
   const T* q = qkv;
@@ -921,7 +923,7 @@ bool LongformerQkvToContext(
   T* temp_output = qkv;  // Q will be overwritten
 
   if (disable_compact_memory) {
-    if (!LaunchLongformerSoftmaxSimpleKernel(
+    ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxSimpleKernel(
             stream,
             cublas,
             workspace,
@@ -943,13 +945,10 @@ bool LongformerQkvToContext(
             num_heads,
             head_size,
             window,
-            element_size)) {
-      return false;
-    }
+            element_size));
   } else {
     ORT_ENFORCE(max_num_global <= window);
-
-    if (!LaunchLongformerSoftmaxKernel(
+    ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxKernel(
             stream,
             cublas,
             workspace,
@@ -973,9 +972,7 @@ bool LongformerQkvToContext(
             num_heads,
             head_size,
             window,
-            element_size)) {
-      return false;
-    }
+            element_size));
   }
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
@@ -983,7 +980,7 @@ bool LongformerQkvToContext(
                         num_heads, max_threads_per_block, false, temp_output, output);
 }
 
-bool LaunchLongformerAttentionKernel(
+Status LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,

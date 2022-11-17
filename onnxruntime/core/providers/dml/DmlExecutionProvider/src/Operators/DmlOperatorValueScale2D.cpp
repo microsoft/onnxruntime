@@ -6,7 +6,7 @@
 namespace Dml
 {
 
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#experimental-imagescaler
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#experimental-imagescaler
 class DmlOperatorValueScale2d : public DmlOperator
 {
 public:

@@ -5,7 +5,7 @@
 
 #include <string>
 #include <vector>
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -83,7 +83,7 @@ struct SessionOptions {
   std::string session_logid;  ///< logger id to use for session output
 
   /// Log severity for the inference session. Applies to session load, initialization, etc.
-  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+  /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use default logger severity)
   int session_log_severity_level = -1;
   int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).

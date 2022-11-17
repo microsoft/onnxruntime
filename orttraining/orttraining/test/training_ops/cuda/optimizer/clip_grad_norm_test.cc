@@ -8,9 +8,9 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+namespace {
 
-TEST(OptimizerTest, InplaceClipGradNorm) {
+void InplaceClipGradNormTest(std::vector<std::unique_ptr<IExecutionProvider>>* providers) {
   OpTester test("InplaceClipGradNorm", 1, onnxruntime::kMSDomain);
 
   SeqTensors<float> gradients_input;
@@ -28,12 +28,10 @@ TEST(OptimizerTest, InplaceClipGradNorm) {
   clipped_gradients.AddTensor({5}, {3.7654f, 4.2361f, 4.7068f, 5.1775f, 5.6481f});
   test.AddSeqOutput<float>("clipped_gradients", clipped_gradients);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.emplace_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, providers);
 }
 
-TEST(OptimizerTest, InplaceClipGradNormNoClipping) {
+void InplaceClipGradNormNoClippingTest(std::vector<std::unique_ptr<IExecutionProvider>>* providers) {
   OpTester test("InplaceClipGradNorm", 1, onnxruntime::kMSDomain);
 
   SeqTensors<float> gradients_input;
@@ -51,9 +49,35 @@ TEST(OptimizerTest, InplaceClipGradNormNoClipping) {
   clipped_gradients.AddTensor({5}, {8.f, 9.f, 10.f, 11.f, 12.f});
   test.AddSeqOutput<float>("clipped_gradients", clipped_gradients);
 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, providers);
+}
+
+}  // namespace
+
+TEST(OptimizerTest, InplaceClipGradNorm_CPU) {
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCpuExecutionProvider());
+  InplaceClipGradNormTest(&providers);
+}
+
+TEST(OptimizerTest, InplaceClipGradNormNoClipping_CPU) {
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCpuExecutionProvider());
+  InplaceClipGradNormNoClippingTest(&providers);
+}
+
+#ifdef USE_CUDA
+
+TEST(OptimizerTest, InplaceClipGradNorm_CUDA) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.emplace_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  InplaceClipGradNormTest(&providers);
+}
+
+TEST(OptimizerTest, InplaceClipGradNormNoClipping_CUDA) {
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  InplaceClipGradNormNoClippingTest(&providers);
 }
 
 #endif

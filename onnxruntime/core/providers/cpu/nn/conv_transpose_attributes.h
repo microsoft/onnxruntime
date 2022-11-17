@@ -176,15 +176,15 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
   void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
                          int64_t& pad_head, int64_t& pad_tail) const {
-    if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when total_pad is odd.
-      pad_head = total_pad - total_pad / 2;
-      pad_tail = total_pad / 2;
-    } else {
-      // for pad_type is NOTSET, SAME_LOWER or VALID
-      // set pad_head as total_pad/2, pad_tail as total_pad-total_pad/2.
-      // That said, we pad more on tail when total_pad is odd.
+    if (pad_type == AutoPadType::SAME_UPPER) {
+      // pad more on tail when total_pad is odd.
       pad_head = total_pad / 2;
       pad_tail = total_pad - total_pad / 2;
+    } else {
+      // When pad_type is NOTSET, SAME_LOWER or VALID,
+      // pad more on head when total_pad is odd.
+      pad_head = total_pad - total_pad / 2;
+      pad_tail = total_pad / 2;
     }
   }
 

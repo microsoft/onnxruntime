@@ -25,15 +25,7 @@ namespace onnxruntime {
 template <typename T>
 class ConvTranspose : public OpKernel {
  public:
-  ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {
-    if (conv_transpose_attrs_.auto_pad == AutoPadType::SAME_UPPER ||
-        conv_transpose_attrs_.auto_pad == AutoPadType::SAME_LOWER) {
-      // TODO(jcwchen): #9740 ORT 1.13 will correct the logic by switching them to meet ONNX spec
-      LOGS_DEFAULT(WARNING) << "The existing bug in the padding distribution for auto_pad type"
-                            << " SAME_UPPER/SAME_LOWER will be fixed in next ORT 1.13 release and hence the"
-                            << " results of ConvTranspose operator using the above auto_pad type(s) will be different.";
-    }
-  }
+  ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,

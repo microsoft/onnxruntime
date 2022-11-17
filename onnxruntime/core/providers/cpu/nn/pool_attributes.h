@@ -23,7 +23,6 @@ struct PoolAttributes {
   // Shared providers don't know about OpNodeProtoHelper
   PoolAttributes(const OpKernelInfo& info,
 #else
-  // Providers like Nuphar don't know about OpKernelInfo
   PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
 #endif
                  const std::string& op_name, int start_version)

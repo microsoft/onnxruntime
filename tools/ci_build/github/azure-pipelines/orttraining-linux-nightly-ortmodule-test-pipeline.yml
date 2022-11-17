@@ -1,0 +1,28 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_Nightly_ORTModule_tests
+
+  timeoutInMinutes: 120
+  pool: 'Onnxruntime-Linux-GPU-NC6sv3'
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  # Entry point for all ortmodule training tests
+  - script: |
+      docker run \
+        --gpus all \
+        --rm \
+        --volume $(Build.SourcesDirectory)/orttraining/orttraining/test/python:/onnxruntime_src \
+        --volume $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly:/requirements_torch_nightly \
+        ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu116-py38-torch1140dev \
+         bash -c "python3 -m pip install -r /requirements_torch_nightly/requirements.txt && python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py"
+    displayName: 'Run ORTModule Tests'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'

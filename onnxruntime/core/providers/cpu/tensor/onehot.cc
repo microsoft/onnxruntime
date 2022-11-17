@@ -26,7 +26,7 @@ using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
-// spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
+// spec: https://github.com/onnx/onnx/blob/main/docs/Operators.md#OneHot
 
 // T1: indices, T2: depth, T3: values
 #define REG_TYPED_ONE_HOT_OP_V9_10(types_str, in_type, out_type, depth_type) \
@@ -102,7 +102,7 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
 
   prefix_dim_size = 1;
   for (int64_t i = 0; i < true_axis; ++i) {
-    prefix_dim_size *= indices_dims[i];
+    prefix_dim_size *= indices_dims[onnxruntime::narrow<size_t>(i)];
   }
   suffix_dim_size = indices_shape.Size() / prefix_dim_size;
 
@@ -180,7 +180,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const auto* indices_data = indices->Data<in_type>();
   const auto indices_size = indices->Shape().Size();
   std::vector<in_type> adjusted_indices;
-  adjusted_indices.reserve(indices_size);
+  adjusted_indices.reserve(onnxruntime::narrow<size_t>(indices_size));
   for (int64_t i = 0; i < indices_size; ++i) {
     if (indices_data[i] < 0)
       adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));

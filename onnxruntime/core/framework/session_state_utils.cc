@@ -87,9 +87,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   // avoided if the Tensor class implements the do-nothing behavior when given a
   // nullptr for the allocator argument
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  TensorShape tensor_shape{tensor_shape_vec};
-
+  TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   tensor = Tensor(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 
   return common::Status::OK();
@@ -106,7 +104,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 
   // Get shape and type of the tensor, and allocate the empty tensor
-  TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};
+  TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
   if (m != nullptr) {
@@ -348,11 +346,11 @@ common::Status SaveInitializedTensors(
 template <typename T>  // T is container of const NodeArg* or NodeArg*
 static bool IsArgNameInInputsOutputs(const std::string& name,
                                      const T& graph_args) {
-  auto it = std::find_if(graph_args.cbegin(), graph_args.cend(),
+  auto it = std::find_if(graph_args.begin(), graph_args.end(),
                          [&name](const onnxruntime::NodeArg* arg) {
                            return arg->Name() == name;
                          });
-  return it != graph_args.cend();
+  return it != graph_args.end();
 }
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,

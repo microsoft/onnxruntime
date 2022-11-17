@@ -24,7 +24,8 @@ TrainingSession::TrainingSession(const Environment& session_env,
 Status TrainingSession::RegisterScheduler(
     const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
     std::optional<float> initial_lr) {
-  scheduler_ = std::move(get_scheduler(optimizer_));
+  ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
+  scheduler_ = get_scheduler(optimizer_);
   ORT_RETURN_IF_NOT(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
 
   if (initial_lr.has_value()) {
@@ -34,12 +35,20 @@ Status TrainingSession::RegisterScheduler(
   return Status::OK();
 }
 
-size_t TrainingSession::GetTrainModeOutputCount() const noexcept {
-  return module_->GetTrainModeOutputCount();
+size_t TrainingSession::GetTrainingModelOutputCount() const noexcept {
+  return module_->GetTrainingModelOutputCount();
 }
 
-size_t TrainingSession::GetEvalModeOutputCount() const noexcept {
-  return module_->GetEvalModeOutputCount();
+size_t TrainingSession::GetEvalModelOutputCount() const noexcept {
+  return module_->GetEvalModelOutputCount();
+}
+
+std::string TrainingSession::GetTrainingModelOutputName(size_t index) const noexcept {
+  return module_->GetTrainingModelOutputName(index);
+}
+
+std::string TrainingSession::GetEvalModelOutputName(size_t index) const noexcept {
+  return module_->GetEvalModelOutputName(index);
 }
 
 Status TrainingSession::TrainStep(const RunOptions&,
@@ -59,6 +68,7 @@ Status TrainingSession::ResetGrad() {
 }
 
 Status TrainingSession::OptimizerStep(const RunOptions&) {
+  ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
   return optimizer_->Step();
 }
 
@@ -72,14 +82,37 @@ Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool
 }
 
 Status TrainingSession::SetLearningRate(float learning_rate) noexcept {
+  ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
   ORT_RETURN_IF_ERROR(optimizer_->SetLearningRate(learning_rate));
 
   return Status::OK();
 }
 
+float TrainingSession::GetLearningRate() const {
+  ORT_ENFORCE(optimizer_, "No optimizer session initialized.");
+  return optimizer_->GetLearningRate();
+}
+
 Status TrainingSession::SchedulerStep() noexcept {
-  ORT_RETURN_IF_NOT(scheduler_, "No learning rate schedler was registered. Please register a valid learning rate scheduler");
+  ORT_RETURN_IF_NOT(scheduler_, "No learning rate scheduler was registered. Please register a valid learning rate scheduler");
   return scheduler_->Step();
+}
+
+size_t TrainingSession::GetParametersSize(const bool trainable_only) const {
+  return module_->GetParametersSize(trainable_only);
+}
+
+Status TrainingSession::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only) {
+  return module_->CopyParametersToBuffer(parameters_buffer, trainable_only);
+}
+
+Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
+  return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
+}
+
+Status TrainingSession::ExportModelForInferencing(const std::string& inference_model_path,
+                                                  gsl::span<const std::string> graph_output_names) const {
+  return module_->ExportModelForInferencing(inference_model_path, graph_output_names);
 }
 
 }  // namespace api

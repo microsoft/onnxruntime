@@ -70,7 +70,7 @@ void PrepareMask(const int32_t* mask_index,
                  int past_sequence_length) {
   const int all_sequence_length = past_sequence_length + sequence_length;
 
-  // mask_data has been filled with 0, and its shape is BxSxS*
+  // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;
 
   // 4D mask in Megatron GPT2 is currently not support in CPU kernel
@@ -91,7 +91,7 @@ void PrepareMask(const int32_t* mask_index,
             p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
           }
         }
-        p_mask += sequence_length * all_sequence_length;
+        p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
       }
     }
 
@@ -99,7 +99,9 @@ void PrepareMask(const int32_t* mask_index,
   }
 
   bool is_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() == 2);
-  bool has_mask_start_position = (nullptr != mask_index && mask_index_dims.size() == 1 && static_cast<int>(mask_index_dims.at(0)) == 2 * batch_size);
+  bool has_mask_start_position = (nullptr != mask_index &&
+                                  mask_index_dims.size() == 1 &&
+                                  static_cast<int>(mask_index_dims[0]) == 2 * batch_size);
 
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // TODO: mask_index can be used in softmax to save some calculation.
@@ -111,7 +113,7 @@ void PrepareMask(const int32_t* mask_index,
           p_mask[m_i] = (raw_mask[m_i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(-10000.0f);
         }
       } else {
-        // mask_index is 1D: (B) or (2B) => (Bx)S*
+        // mask_index is 1D: (B) or (2B) => (Bx)T
 
         // Handle right-side padding: mask value at or after the end position will be -10000.0
         int end_position = mask_index[b_i];
@@ -129,7 +131,7 @@ void PrepareMask(const int32_t* mask_index,
       }
     }
 
-    // Broadcast mask from (Bx)S* to (Bx)SxS*
+    // Broadcast mask from (Bx)T to (Bx)SxT
     for (int s_i = 1; s_i < sequence_length; s_i++) {
       memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
     }
@@ -147,10 +149,15 @@ void PrepareMask(const int32_t* mask_index,
   }
 }
 
-// Concatenate a past state chunk S'xH with input state chunk SxH into present state chunk S*xH
+// Concatenate a past state chunk PxH with input state chunk LxH into present state chunk TxH
 // Returns a pointer to the start of present state chunk.
 template <typename T>
-T* ConcatStateChunk(const T* past, const T* chunk, T* present, size_t past_chunk_length, size_t present_chunk_length, std::ptrdiff_t i) {
+T* ConcatStateChunk(const T* past,
+                    const T* chunk,
+                    T* present,
+                    size_t past_chunk_length,
+                    size_t present_chunk_length,
+                    std::ptrdiff_t i) {
   T* start = present + i * present_chunk_length;
 
   T* p = start;

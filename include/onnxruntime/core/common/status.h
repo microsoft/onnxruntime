@@ -19,7 +19,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <winerror.h>
 #endif
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 namespace onnxruntime {
 namespace common {
 
@@ -188,4 +188,8 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 }
 
 }  // namespace common
+
+// make Status directly available in the onnxruntime namespace as it is widely used
+using common::Status;
+
 }  // namespace onnxruntime

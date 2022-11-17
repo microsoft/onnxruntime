@@ -189,6 +189,8 @@ else()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
+                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\"                     \
+                        -s MAXIMUM_MEMORY=4294967296                                \
                         -s WASM=1                                                   \
                         -s NO_EXIT_RUNTIME=0                                        \
                         -s ALLOW_MEMORY_GROWTH=1                                    \
@@ -223,19 +225,17 @@ else()
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimdThreaded -s USE_PTHREADS=1")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
     else()
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
     endif()
   else()
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimd")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
     else()
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
     endif()
   endif()

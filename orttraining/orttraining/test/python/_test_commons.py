@@ -1,29 +1,20 @@
+import copy
 import math
 import os
-import sys
 import subprocess
-import copy
+import sys
+
 import numpy as np
-from numpy.testing import assert_allclose
-import torch
 import onnx
+import torch
+from numpy.testing import assert_allclose
 
 import onnxruntime
-from onnxruntime.training import optim, _utils
+from onnxruntime.training import _utils, optim
 
 
 def _single_run(execution_file, scenario, checkopint_dir=None):
     cmd = [sys.executable, execution_file]
-    if scenario:
-        cmd += ["--scenario", scenario]
-    if checkopint_dir:
-        cmd += ["--checkpoint_dir", checkopint_dir]
-    assert subprocess.call(cmd) == 0
-
-
-def _distributed_run(execution_file, scenario, checkopint_dir=None):
-    ngpus = torch.cuda.device_count()
-    cmd = ["mpirun", "-n", str(ngpus), "--tag-output", sys.executable, execution_file]
     if scenario:
         cmd += ["--scenario", scenario]
     if checkopint_dir:
@@ -249,12 +240,3 @@ def assert_all_states_close_ort(state_dict_pre_checkpoint, state_dict_post_check
                         state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
                         state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key],
                     )
-
-
-def assert_all_states_close_pytorch(state_dict_pre_checkpoint, pytorch_model):
-    """Assert that the state_dict_pre_checkpoint state dictionary is very close to the one extracted from the pytorch model after loading"""
-
-    pytorch_model.load_state_dict(state_dict_pre_checkpoint)
-    state_dict_pytorch = pytorch_model.state_dict()
-    for key, value in state_dict_pytorch.items():
-        assert_allclose(value, state_dict_pre_checkpoint[key])

@@ -339,7 +339,20 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
     info.cudnn_conv_algo_search = cudnn_conv_algo_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
+    info.tunable_op = tunable_op;
   }
+  return info;
+}
+#endif
+
+#ifdef USE_CANN
+const CANNExecutionProviderInfo GetCannExecutionProviderInfo(ProviderInfo_CANN* cann_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map) {
+  ORT_ENFORCE(cann_provider_info);
+  const auto it = provider_options_map.find(kCannExecutionProvider);
+  CANNExecutionProviderInfo info;
+  if (it != provider_options_map.end())
+    cann_provider_info->CANNExecutionProviderInfo__FromProviderOptions(it->second, info);
   return info;
 }
 #endif
@@ -359,6 +372,7 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
     info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
+    info.tunable_op = tunable_op;
   }
   return info;
 }
@@ -659,22 +673,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
 #endif
-  } else if (type == kNupharExecutionProvider) {
-#if USE_NUPHAR
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      ORT_THROW_IF_ERROR(
-          ProviderOptionsParser{}
-              .AddAssignmentToReference("nuphar_settings", nuphar_settings)
-              .Parse(it->second));
-    }
-
-    auto p = onnxruntime::NupharProviderFactoryCreator::Create(true, nuphar_settings.c_str())->CreateProvider();
-
-    // clear nuphar_settings after use to avoid it being accidentally passed on to next session
-    nuphar_settings.clear();
-    return p;
-#endif
   } else if (type == kTvmExecutionProvider) {
 #if USE_TVM
     onnxruntime::tvm::TvmEPOptions info{};
@@ -766,6 +764,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
     return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
+#endif
+  } else if (type == kCannExecutionProvider) {
+#ifdef USE_CANN
+    if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
+      const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info,
+                                                                          provider_options_map);
+      return cann_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+    } else {
+      ORT_THROW("create CANN ExecutionProvider fail");
+    }
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -891,8 +899,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   return type_proto.has_tensor_type();
 }
 
-#if defined(USE_NUPHAR) ||   \
-    defined(USE_OPENVINO) || \
+#if defined(USE_OPENVINO) || \
     defined(USE_CUDA) ||     \
     defined(USE_ROCM)
 static void LogDeprecationWarning(
@@ -944,19 +951,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-
-#ifdef USE_NUPHAR
-  // TODO remove deprecated global config
-  m.def("set_nuphar_settings", [](const std::string& str) {
-    LogDeprecationWarning("set_nuphar_settings", "Nuphar execution provider option \"nuphar_settings\"");
-    nuphar_settings = str;
-  });
-  // TODO remove deprecated global config
-  m.def("get_nuphar_settings", []() -> std::string {
-    LogDeprecationWarning("get_nuphar_settings");
-    return nuphar_settings;
-  });
-#endif
 
 #ifdef USE_OPENVINO
   m.def(
@@ -1083,6 +1077,8 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
+  // Note: Doesn't expose initial_growth_chunk_sizes_bytes option. This constructor kept for
+  // backwards compatibility, key-value pair constructor overload exposes all options
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
@@ -1093,7 +1089,32 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
     ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
     ort_arena_cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
     return ort_arena_cfg;
-  }));
+  }))
+      .def(py::init([](const py::dict& feeds) {
+    auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
+    for (const auto kvp : feeds) {
+      std::string key = kvp.first.cast<std::string>();
+      if (key == "max_mem") {
+        ort_arena_cfg->max_mem = kvp.second.cast<size_t>();
+      } else if (key == "arena_extend_strategy") {
+        ort_arena_cfg->arena_extend_strategy = kvp.second.cast<int>();
+      } else if (key == "initial_chunk_size_bytes") {
+        ort_arena_cfg->initial_chunk_size_bytes = kvp.second.cast<int>();
+      } else if (key == "max_dead_bytes_per_chunk") {
+        ort_arena_cfg->max_dead_bytes_per_chunk = kvp.second.cast<int>();
+      } else if (key == "initial_growth_chunk_size_bytes") {
+        ort_arena_cfg->initial_growth_chunk_size_bytes = kvp.second.cast<int>();
+        } else {
+        ORT_THROW("Invalid OrtArenaCfg option: ", key);
+      }
+    }
+    return ort_arena_cfg;
+  }))
+      .def_readwrite("max_mem", &OrtArenaCfg::max_mem)
+      .def_readwrite("arena_extend_strategy", &OrtArenaCfg::arena_extend_strategy)
+      .def_readwrite("initial_chunk_size_bytes", &OrtArenaCfg::initial_chunk_size_bytes)
+      .def_readwrite("max_dead_bytes_per_chunk", &OrtArenaCfg::max_dead_bytes_per_chunk)
+      .def_readwrite("initial_growth_chunk_size_bytes", &OrtArenaCfg::initial_growth_chunk_size_bytes);
 
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
@@ -1311,6 +1332,8 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("synchronize_execution_providers", &RunOptions::synchronize_execution_providers,
+                     R"pbdoc(Synchronize execution providers after executing session.)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1529,6 +1552,22 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
         return fetches;
+      })
+      .def("run_with_ortvaluevector", [](
+        PyInferenceSession* sess,
+        RunOptions run_options,
+        const std::vector<std::string>& feed_names,
+        const std::vector<OrtValue>& feeds,
+        const std::vector<std::string>& fetch_names,
+        std::vector<OrtValue>& fetches,
+        const std::vector<OrtDevice>& fetch_devices) -> void {
+
+        {
+          // release GIL to allow multiple python threads to invoke Run() in parallel.
+          py::gil_scoped_release release;
+          OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
+        }
+
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();

@@ -25,7 +25,7 @@
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/ort_value.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/greedy_search.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
@@ -127,43 +127,43 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
   // make a copy since we will update the parameters based on inputs later
   GreedySearchParameters parameters = parameters_;
 
-if (parameters_.model_type == 0) {  // GPT-2
+  if (parameters_.model_type == 0) {  // GPT-2
     // Subgraph has constraint that the output is either float or float16
     if (!gpt_subgraph_->IsOutputFloat16()) {
       GreedySearchGpt<float> impl{
-        *ctx_internal,
-        *decoder_session_state,
-        *gpt_subgraph_,
-        thread_pool,
-        cuda_stream_,
-        dumper_,
-        parameters,
-        GenerationCpuDeviceHelper::CreateGptInputs,
-        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
-        process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::GreedySearchProcessLogits<float>,
-        init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
-        device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
-        update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
+          *ctx_internal,
+          *decoder_session_state,
+          *gpt_subgraph_,
+          thread_pool,
+          cuda_stream_,
+          dumper_,
+          parameters,
+          GenerationCpuDeviceHelper::CreateGptInputs,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::GreedySearchProcessLogits<float>,
+          init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
+          device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*decoder_feeds_fetches_manager_);
     } else {
       GreedySearchGpt<MLFloat16> impl{
-        *ctx_internal,
-        *decoder_session_state,
-        *gpt_subgraph_,
-        thread_pool,
-        cuda_stream_,
-        dumper_,
-        parameters,
-        GenerationCpuDeviceHelper::CreateGptInputs,
-        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
-        process_logits_fp16_func_,
-        init_greedy_state_fp16_func_,
-        device_copy_func_,
-        update_gpt_feeds_fp16_func_};
+          *ctx_internal,
+          *decoder_session_state,
+          *gpt_subgraph_,
+          thread_pool,
+          cuda_stream_,
+          dumper_,
+          parameters,
+          GenerationCpuDeviceHelper::CreateGptInputs,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_fp16_func_,
+          init_greedy_state_fp16_func_,
+          device_copy_func_,
+          update_gpt_feeds_fp16_func_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*decoder_feeds_fetches_manager_);

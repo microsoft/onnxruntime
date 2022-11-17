@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "flatbuffers_utils.h"
-#include "schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
-#include "gsl/gsl"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

@@ -186,6 +186,11 @@ void SimpleWeightsNoBiasTwoRows(std::string direction,
 }
 
 TEST(LSTMTest, ForwardSimpleWeightsNoBiasTwoRows) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.28828835f, 0.36581863f, 0.45679406f,
       0.34526032f, 0.47220859f, 0.55850911f,
@@ -208,6 +213,11 @@ TEST(LSTMTest, ForwardSimpleWeightsNoBiasTwoRows) {
 }
 
 TEST(LSTMTest, ReverseSimpleWeightsNoBiasTwoRows) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.55391603f, 0.69201493f, 0.82696019f,
       0.64046413f, 0.82303363f, 0.91610711f,
@@ -227,6 +237,11 @@ TEST(LSTMTest, ReverseSimpleWeightsNoBiasTwoRows) {
 }
 
 TEST(LSTMTest, BidirectionalSimpleWeightsNoBiasTwoRows) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.28828835f, 0.36581863f, 0.45679406f,
       0.34526032f, 0.47220859f, 0.55850911f,
@@ -261,6 +276,11 @@ TEST(LSTMTest, BidirectionalSimpleWeightsNoBiasTwoRows) {
 }
 
 TEST(LSTMTest, MixedSequenceLengths) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   // we don't have numpy output for this, but by testing twice and swapping which batch is smaller
   // we can largely verify the behaviour by comparing to ForwardSimpleWeightsNoBiasTwoRows output.
   std::vector<int> seq_lengths{1, 2};
@@ -305,6 +325,11 @@ TEST(LSTMTest, MixedSequenceLengths) {
 }
 
 TEST(LSTMTest, MixedSequenceLengthsReverse) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   // we don't have numpy output for this, but by testing twice and swapping which batch is smaller
   // we can largely verify the behaviour by comparing to ReverseSimpleWeightsNoBiasTwoRows output.
   std::vector<int> seq_lengths{1, 2};
@@ -349,6 +374,11 @@ TEST(LSTMTest, MixedSequenceLengthsReverse) {
 
 // test path in LSTM model where batch_parallel_ is false and there are multiple steps (seq_length > 1)
 TEST(LSTMTest, BatchParallelFalseSeqLengthGreaterThanOne) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   int64_t seq_length = 2;
   int batch_size = 1;
   int64_t input_size = 1;
@@ -411,6 +441,11 @@ static void LargeBatchWithClip(const std::vector<float>& Y_h_data, float clip = 
 }
 
 TEST(LSTMTest, LargeBatchNoClipping) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_h_data = {
       0.90387899f, 0.9135572f, 0.91772245f,
       0.90897038f, 0.92132433f, 0.92825467f,
@@ -450,6 +485,11 @@ TEST(LSTMTest, LargeBatchNoClipping) {
 
 // make sure GateComputations with clipping works correctly if batch_parallel_ is true due to large batch size
 TEST(LSTMTest, LargeBatchWithClip) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_h_data = {
       0.88572926f, 0.89251395f, 0.89655037f,
       0.89074291f, 0.90035688f, 0.90727429f,
@@ -661,6 +701,11 @@ class LstmOpContext2x1x2x2 {
 };
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   ///////////////Attributes////////////////////////
   constexpr int seq_len = 2, batch_size = 1;
 
@@ -675,6 +720,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
@@ -693,6 +743,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = false;
@@ -711,6 +766,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
@@ -732,6 +792,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
@@ -751,6 +816,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
@@ -765,6 +835,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
@@ -780,6 +855,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
@@ -799,6 +879,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
@@ -819,6 +904,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh"};
@@ -843,6 +933,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
 //   memory reallocation due to change in batch size
 // The reallocation doesn't apply any more so this mainly tests larger batches with non-default activations.
 TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   ///////////////Attributes////////////////////////
   constexpr int seq_len = 2;
   int batch_size = 1;
@@ -903,6 +998,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
 // Most of these aren't relevant anymore as we don't re-use buffers given Compute is stateless.
 // It does test a batch > 1 with bidirectional output and custom activations though.
 TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   int batch_size = 1;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
@@ -975,6 +1075,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   int batch_size = 2;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
@@ -1019,6 +1124,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   int batch_size = 2;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
@@ -1065,6 +1175,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   constexpr int batch_size = 1;
 
@@ -1095,6 +1210,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength)
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthNoP) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   constexpr int batch_size = 1;
 
@@ -1125,7 +1245,18 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
   context.RunTest(X_data, batch_size, seq_len, &initial_h, &initial_c, Y_data, Y_h_data, {}, &sequence_length, false);
 }
 
+//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+#if defined(USE_CUDA) && defined(_WIN32)
+TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMShorterSeqInMiddle) {
+#else
 TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
+#endif
+
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   int batch_size = 3;
   std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
@@ -1165,7 +1296,18 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
+//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+#if defined(USE_CUDA) && defined(_WIN32)
+TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMZeroSeqInMiddle) {
+#else
 TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
+#endif
+
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   constexpr int seq_len = 2;
   int batch_size = 4;
   std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};

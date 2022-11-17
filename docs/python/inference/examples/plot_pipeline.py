@@ -6,7 +6,7 @@ Draw a pipeline
 ===============
 
 There is no other way to look into one model stored
-in ONNX format than looking into its node with 
+in ONNX format than looking into its node with
 *onnx*. This example demonstrates
 how to draw a model and to retrieve it in *json*
 format.
@@ -34,7 +34,7 @@ print(model)
 #################################
 # Draw a model with ONNX
 # ++++++++++++++++++++++
-# We use `net_drawer.py <https://github.com/onnx/onnx/blob/master/onnx/tools/net_drawer.py>`_
+# We use `net_drawer.py <https://github.com/onnx/onnx/blob/main/onnx/tools/net_drawer.py>`_
 # included in *onnx* package.
 # We use *onnx* to load the model
 # in a different way than before.

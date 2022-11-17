@@ -102,6 +102,20 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
+        /// <summary>
+        /// Converts C# UTF-16 string to UTF-8 zero terminated
+        /// byte[] instance
+        /// </summary>
+        /// <param name="str">string to be converted</param>
+        /// <returns>UTF-8 encoded equivalent</returns>
+        internal static byte[] GetPlatformSerializedString(string str)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
+            else
+                return StringToZeroTerminatedUtf8(str);
+        }
+
         // Delegate for string extraction from an arbitrary input/output object
         internal delegate string NameExtractor<in TInput>(TInput input);
     }

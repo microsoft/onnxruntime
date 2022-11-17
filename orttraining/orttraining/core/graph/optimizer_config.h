@@ -24,7 +24,7 @@ enum class AdasumReductionType : int64_t {
 };
 
 // Data types to support for mixed precision training.
-enum MixedPrecisionDataType {
+enum class MixedPrecisionDataType {
   FP16,
   BF16,
 };

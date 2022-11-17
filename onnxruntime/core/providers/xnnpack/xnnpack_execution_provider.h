@@ -9,13 +9,17 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 
+struct pthreadpool;
 namespace onnxruntime {
 // placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
+  int xnn_thread_pool_size{0};
   XnnpackExecutionProviderInfo() = default;
 
-  XnnpackExecutionProviderInfo(const ProviderOptions&) {
-    // future: parse ProviderOptions
+  XnnpackExecutionProviderInfo(const ProviderOptions& po) {
+    if (auto it = po.find("intra_op_num_threads"); it != po.end()) {
+      xnn_thread_pool_size = std::stoi(it->second);
+    }
   }
 };
 
@@ -25,8 +29,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   ~XnnpackExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const onnxruntime::GraphViewer& graph_viewer,
+      const IKernelLookup& /*kernel_lookup*/) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
@@ -38,6 +42,13 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
   // xnnpack does not support concurrent execution of a kernel
   bool ConcurrentRunSupported() const override { return false; }
+
+  pthreadpool* GetPrivateThreadPool() const {
+    return xnnpack_thread_pool_;
+  }
+
+ private:
+  pthreadpool* xnnpack_thread_pool_{nullptr};
 };
 
 }  // namespace onnxruntime

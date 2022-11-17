@@ -97,7 +97,7 @@ void foo(gsl::span<const std::string> names) {
 * Qualify usages of `auto` with `const`, `*`, `&` and `&&` where applicable to more clearly express the intent
 * When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
   * Use `ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE` initially
-  * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h>
+  * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/common.h>
 * Sometimes, `std::unique_ptr` might be considered for delayed or optional construction of objects or members of classes. Instead, use `std::optional` as appropriate to reduce the number of allocations.
 * Don't use `else` after `return`. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse `std::shared_ptr`. Use `std::shared_ptr` only if it's not clear when and where the object will be de-allocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
@@ -109,6 +109,19 @@ void foo(gsl::span<const std::string> names) {
 * Use [SafeInt](https://github.com/dcleblanc/SafeInt) when calculating the size of memory to allocate to protect against overflow errors
   * `#include "core/common/safeint.h"`
   * search for `SafeInt<size_t>` in the code for examples
+* The following C++ warnings should never be disabled in onnxruntime VC++ projects(Required by [Binskim](https://github.com/microsoft/binskim/blob/d9afb65c89a621411efded74c27999281d87867e/src/BinSkim.Rules/PERules/BA2007.EnableCriticalCompilerWarnings.cs)).
+  1. [4018](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4018) 'token' : signed/unsigned mismatch
+  2. [4146](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4146?view=msvc-160) unary minus operator applied to unsigned type, result still unsigned
+  3. [4244](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4244?view=msvc-160) 'argument' : conversion from 'type1' to 'type2', possible loss of data. For example, casting a int64_t to size_t. 
+  4. [4267](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4267?view=msvc-160) 'var' : conversion from 'size_t' to 'type', possible loss of data.
+  5. [4302](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4302?view=msvc-160) 'conversion' : truncation from 'type 1' to 'type 2'
+  6. [4308](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4308?view=msvc-160) negative integral constant converted to unsigned type 
+  7. [4532](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4532?view=msvc-160) 'continue' : jump out of \_\_finally/finally block has undefined behavior during termination handling
+  8. [4533](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4533?view=msvc-160) initialization of 'variable' is skipped by 'instruction'
+  9. [4700](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-and-level-4-c4700?view=msvc-160) uninitialized local variable 'name' used
+  10. [4789](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4789?view=msvc-160) buffer 'identifier' of size N bytes will be overrun; M bytes will be written starting at offset L
+  11. [4995](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4995?view=msvc-160) 'function': name was marked as #pragma deprecated 
+  12. [4996](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4996?view=msvc-160) Your code uses a function, class member, variable, or typedef that's marked deprecated
 
 #### Clang-format
 
@@ -121,6 +134,8 @@ There is a `.clang-format` file in the root directory that has the max line leng
 Visual Studio Code Analysis with [C++ Core guidelines](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md) rules enabled is configured to run on build for the `onnxruntime_common`, `onnxruntime_graph` and `onnxruntime_util` libraries. Updating the `onnxruntime_framework` and `onnxruntime_provider` libraries to enable Code Analysis and build warning free is pending.
 
 Code changes should build with no Code Analysis warnings, however this is somewhat difficult to achieve consistently as the Code Analysis implementation is in fairly constant flux. Different minor releases may have less false positives (a build with the latest version may be warning free, and a build with an earlier version may not), or detect additional problems (an earlier version builds warning free and a later version doesn't).
+
+We use [BinSkim Binary Analyzer](https://github.com/microsoft/binskim) to scan our binaries.
 
 ## Unit Testing and Code Coverage
 
@@ -141,7 +156,7 @@ Follow the [Black formatter](https://black.readthedocs.io)'s coding style when p
 
 Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). We use [Google's python style guide](https://google.github.io/styleguide/pyguide.html) as the style guide which is an extension to PEP8.
 
-Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/tree/master/.flake8).
+Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/blob/main/.flake8).
 
 Use `pyright`, which is provided as a component of the `pylance` extension in VS Code for static type checking.
 

@@ -9,7 +9,7 @@
 #include "Eigen/src/Core/arch/Default/Half.h"
 
 namespace onnxruntime {
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsNaN
 #define ADD_TYPED_ISNAN_OP_9(data_type)                                   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
       IsNaN,                                                              \
@@ -62,7 +62,7 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   auto& Y = *context->Output(0, dims);
 
   EigenMap<bool>(Y) =
-      ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), shape_size)
+      ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), onnxruntime::narrow<size_t>(shape_size))
           .array()
           .isNaN();
 

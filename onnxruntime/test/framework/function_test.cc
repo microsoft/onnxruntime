@@ -13,7 +13,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-
+#include "test/util/include/asserts.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -59,7 +59,7 @@ static void Check(const char* source,
   std::vector<OrtValue> fetches;
 
   status = session_object.Run(run_options, feeds, AsSpan({std::string(output_name)}), &fetches);
-  ASSERT_TRUE(status.IsOK()) << "Session Run failed.";
+  ASSERT_TRUE(status.IsOK()) << "Session Run failed: " << status.ErrorMessage() << std::endl;
 
   auto& tensor = fetches[0].Get<Tensor>();
   size_t size = static_cast<size_t>(tensor.Shape().Size());
@@ -287,5 +287,70 @@ TEST(FunctionTest, CallInConditional) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
+// Test use of attibute references, especially where source/target attribute
+// names are not the same. In this example, the "start : int = @s" attribute-reference
+// binds the attribute named "start" of the Shape op to the attribute named "s"
+// of the containing function myfun.
+TEST(FunctionTest, AttrName) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.myfun <s = 0> (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun <s> (lx) => (ly) {
+            d = Shape <start : int = @s> (lx)
+            df = Cast <to = 1> (d)
+            ly = Mul (lx, df)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {3.0, 6.0, 9.0});
+}
+
+// Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
+TEST(FunctionTest, NestedConstant) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 17 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            xseq = SequenceConstruct (x)
+            yseq = SequenceMap (xseq) <body =
+              zeropad (float[3] lx) => (float[6] ly) {
+                zeros = Constant <value = float[3] {0.0, 0.0, 0.0}> ()
+                ly = Concat <axis = 0> (lx, zeros)
+              }>
+            zero = Constant <value = int64{0}> ()
+            y = SequenceAt (yseq, zero)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
+}
+
+// GH13121. Model with function body that has variadic inputs (or outputs) was not loading.
+// Add handling for variadics to IOTypeConstraintHelper. Test model has a Concat and Split to test both variadic
+// inputs and outputs.
+TEST(FunctionTest, Variadics) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/function_with_variadics.onnx");
+
+  SessionOptions so;
+  so.session_logid = "FunctionTest.Variadics";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+}
 }  // namespace test
 }  // namespace onnxruntime

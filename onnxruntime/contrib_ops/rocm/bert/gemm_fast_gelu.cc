@@ -69,17 +69,13 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t fast_gelu_input_length = Y->Shape().Size();
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
 
-  if (!LaunchFastGeluKernel<HipT>(Stream(),
+  return LaunchFastGeluKernel<HipT>(Stream(),
                                   static_cast<int>(fast_gelu_input_length),
                                   static_cast<int>(bias_length),
                                   reinterpret_cast<HipT*>(gemm_buffer.get()),
                                   (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
                                   reinterpret_cast<HipT*>(Y->MutableData<T>()),
-                                  false)) {
-    HIP_CALL(hipGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-  return Status::OK();
+                                  false);
 }
 
 }  // namespace rocm

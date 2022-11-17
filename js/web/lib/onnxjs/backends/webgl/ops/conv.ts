@@ -129,7 +129,7 @@ export const parseConvAttributes: OperatorInitialization<ConvAttributes> = (node
 
 const validateInputs = (inputs: Tensor[], attributes: ConvAttributes): void => {
   // Refer to the below link for all input checks
-  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv
+  // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Conv
   if (!inputs || (inputs.length !== 2 && inputs.length !== 3)) {
     throw new Error('Conv requires 2 or 3 inputs');
   }

@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "OperatorHelper.h"
+#include "core/providers/common.h"
 
 namespace OperatorHelper
 {
@@ -332,7 +333,7 @@ namespace OperatorHelper
         {
             uint32_t padding = args.startPadding[dim] + args.endPadding[dim];
             uint32_t kernelLength = 1 + (args.windowSize[dim] - 1) * args.dilations[dim];
-            
+
             outputDimensions[dimOffset + dim] = (inputDimensions[dimOffset + dim] - 1) * args.strides[dim] + kernelLength + args.outputPadding[dim] - padding;
         }
 
@@ -426,9 +427,10 @@ namespace OperatorHelper
             std::fill(args.windowSize, args.windowSize + spatialDimensionCount, 1);
         }
 
-        std::string autoPad = kernelInfo.GetOptionalAttribute<std::string>(AttrName::AutoPad, AttrValue::NotSet);
+        std::string autoPadStr = kernelInfo.GetOptionalAttribute<std::string>(AttrName::AutoPad, AttrValue::NotSet);
+        auto autoPad = onnxruntime::StringToAutoPadType(autoPadStr);
 
-        if (autoPad == AttrValue::NotSet)
+        if (autoPad == onnxruntime::AutoPadType::NOTSET)
         {
             // Use the pad values in the pads argument.
             std::vector<int> pads = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::Pads);
@@ -444,7 +446,7 @@ namespace OperatorHelper
             std::copy(pads.begin(), pads.begin() + spatialDimensionCount, args.startPadding);
             std::copy(pads.begin() + spatialDimensionCount, pads.begin() + spatialDimensionCount * 2, args.endPadding);
         }
-        else if (autoPad == AttrValue::Valid)
+        else if (autoPad == onnxruntime::AutoPadType::VALID)
         {
             std::fill(args.startPadding, args.startPadding + spatialDimensionCount, 0);
             std::fill(args.endPadding, args.endPadding + spatialDimensionCount, 0);
@@ -452,15 +454,15 @@ namespace OperatorHelper
         else
         {
             args.autoPad = true;
-            args.autoPadSameUpper = autoPad == AttrValue::SameUpper;
-            assert(args.autoPadSameUpper || autoPad == AttrValue::SameLower);
+            args.autoPadSameUpper = autoPad == onnxruntime::AutoPadType::SAME_UPPER;
+            assert(args.autoPadSameUpper || autoPad == onnxruntime::AutoPadType::SAME_LOWER);
         }
 
         if (kernelInfo.HasAttribute(AttrName::OutputPadding, MLOperatorAttributeType::IntArray))
         {
             std::vector<int> outputPadding = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::OutputPadding);
             ML_CHECK_VALID_ARGUMENT(outputPadding.size() >= 2);
-        
+
             std::copy(outputPadding.begin(), outputPadding.begin() + spatialDimensionCount, args.outputPadding);
         }
         else
@@ -522,7 +524,7 @@ namespace OperatorHelper
             args.endPadding[dim] = padding - args.startPadding[dim];
         }
     }
-    
+
     void MatMulShapeMapping(
         std::vector<DimensionType>& inputShape0,
         std::vector<DimensionType>& inputShape1,
@@ -548,6 +550,81 @@ namespace OperatorHelper
 
         inputShape0.insert(inputShape0.begin(), outputShape.begin(), outputShape.end() - 2);
         inputShape1.insert(inputShape1.begin(), outputShape.begin(), outputShape.end() - 2);
+    }
+
+    void FusedMatMulShapeMapping(
+        std::vector<DimensionType>& inputShape0,
+        std::vector<DimensionType>& inputStride0,
+        std::vector<DimensionType>& inputShape1,
+        std::vector<DimensionType>& inputStride1,
+        std::vector<DimensionType>& outputShape)
+    {
+        // Get the padded input shapes, and undo the effect of padding removal from the output shape.
+        if (inputShape1.size() == 1)
+        {
+            inputShape1.push_back(1);
+            inputStride1.push_back(0);
+            outputShape.push_back(1);
+        }
+
+        if (inputShape0.size() == 1)
+        {
+            inputShape0.insert(inputShape0.begin(), 1);
+            inputStride0.insert(inputStride0.begin(), 0);
+            outputShape.insert(outputShape.end() - 1, 1);
+        }
+
+        auto broadcastedRank = std::max(inputShape0.size(), inputShape1.size());
+        inputShape0.insert(inputShape0.begin(), (broadcastedRank - inputShape0.size()), 1);
+        inputStride0.insert(inputStride0.begin(), (broadcastedRank - inputStride0.size()), 0);
+
+        inputShape1.insert(inputShape1.begin(), (broadcastedRank - inputShape1.size()), 1);
+        inputStride1.insert(inputStride1.begin(), (broadcastedRank - inputStride1.size()), 0);
+
+        BroadcastTensorShapeAndSetStrides(
+            gsl::make_span(inputShape0.data(), broadcastedRank - 2),
+            gsl::make_span(inputStride0.data(), broadcastedRank - 2),
+            gsl::make_span(inputShape1.data(), broadcastedRank - 2),
+            gsl::make_span(inputStride1.data(), broadcastedRank - 2)
+        );
+    }
+
+    std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
+        gsl::span<const uint32_t> sizes,
+        int32_t transBatch,
+        int32_t transpose)
+    {
+        const uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(sizes.size());
+        std::vector<uint32_t> newStrides(dimensionCount);
+        std::vector<uint32_t> newSizes(sizes.begin(), sizes.end());
+
+        // Calculate packed strides.
+        uint32_t stride = 1;
+        for (int i = dimensionCount - 1; i >= 0; i--)
+        {
+            newStrides[i] = stride;
+            stride *= sizes[i];
+        }
+
+        // According to contrib ops shape inference
+        // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc#L215
+        // `transBatch` needs to be applied first and then `transpose`.
+        if (transBatch)
+        {
+            ML_CHECK_VALID_ARGUMENT(dimensionCount > 2,
+                "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
+
+            std::rotate(newSizes.begin(), newSizes.end() - 2, newSizes.end() - 1);
+            std::rotate(newStrides.begin(), newStrides.end() - 2, newStrides.end() - 1);
+        }
+
+        if (transpose)
+        {
+            std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
+            std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
+        }
+
+        return std::make_pair(newSizes, newStrides);
     }
 
     std::vector<EdgeShapes> GetOutputShapeAsInputShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -617,18 +694,73 @@ namespace OperatorHelper
         return outputShape;
     }
 
+    void BroadcastTensorShapeAndSetStrides(
+        gsl::span<DimensionType> inputShape0,
+        gsl::span<DimensionType> inputStride0,
+        gsl::span<DimensionType> inputShape1,
+        gsl::span<DimensionType> inputStride1
+        )
+    {
+        if (inputShape0 != inputShape1)
+        {
+            ML_CHECK_VALID_ARGUMENT(
+                inputShape0.size() == inputShape1.size() &&
+                inputShape0.size() == inputStride0.size() &&
+                inputStride0.size() == inputStride1.size(),
+                "Size of inputShape0, inputStride0, inputShape1 and inputStride1 should be same while broadcasting");
+
+            // Walk backwards through both input shapes and broadcast each dimension,
+            // ignoring the last 2 dimensions (matrix dimensions).
+            auto rank = inputShape0.size();
+            auto inDim0Iter = inputShape0.rbegin();
+            auto inDim1Iter = inputShape1.rbegin();
+
+            auto inStride0Iter = inputStride0.rbegin();
+            auto inStride1Iter = inputStride1.rbegin();
+
+            while (rank-- > 0)
+            {
+                DimensionType inDimension0 = *inDim0Iter;
+                DimensionType inStride0 = *inStride0Iter;
+
+                DimensionType inDimension1 = *inDim1Iter;
+                DimensionType inStride1 = *inStride1Iter;
+
+                // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions.
+                if (inDimension0 == 0 || inDimension1 == 0)
+                {
+                    inDimension0 = 0;
+                    inDimension1 = 0;
+                }
+
+                ML_CHECK_VALID_ARGUMENT((inDimension0 == inDimension1) || (inDimension0 == 1) || (inDimension1 == 1));
+                auto broadcastedDimension = std::max(inDimension0, inDimension1);
+
+                inputShape0[rank] = broadcastedDimension;
+                inputShape1[rank] = broadcastedDimension;
+                inputStride0[rank] = (broadcastedDimension != inDimension0) ? 0 : inStride0;
+                inputStride1[rank] = (broadcastedDimension != inDimension1) ? 0 : inStride1;
+
+                ++inDim0Iter;
+                ++inStride0Iter;
+                ++inDim1Iter;
+                ++inStride1Iter;
+            }
+        }
+    }
+
     void ConvolutionHelperBase::InitializeKernelAndShapes(const IShapeInformationAdapter& shapeInformation)
     {
         const std::vector<DimensionType> inputDimensions = shapeInformation.GetInputTensorShape(m_inputTensorIndex);
         const std::vector<DimensionType> filterDims = shapeInformation.GetInputTensorShape(m_filterTensorIndex);
-    
+
         ML_CHECK_VALID_ARGUMENT(
             inputDimensions.size() >= 3 && inputDimensions.size() <= 5,
             "Input dimensions must be: 3, 4, 5."
         );
-          
+
         ResolvingPadding(inputDimensions);
-          
+
         m_outputShapes.resize(1);
         m_outputShapes[0] = InitializeKernelOutputDimensions(inputDimensions, m_kernel);
         m_outputShapes[0].GetShape()[C] = filterDims[K];
@@ -721,7 +853,7 @@ namespace OperatorHelper
                 int paddings = gsl::narrow_cast<int>((inputDimensions[i + dimOffset] - 1) * stride + windowSize - m_outputShapes[0].GetShape()[i + dimOffset]);
                 paddings = std::max<int>(0, paddings);
 
-                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? (paddings + 1) / 2 : paddings / 2;
+                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? paddings / 2 : (paddings + 1) / 2;
                 m_kernel.endPadding[i] = paddings - m_kernel.startPadding[i];
             }
         }
@@ -966,7 +1098,7 @@ namespace OperatorHelper
             m_startPadding.size() == outputDimensions.size() &&
             m_endPadding.size()   == outputDimensions.size()
             );
-            
+
         for (size_t i = 0; i < outputDimensions.size(); ++i)
         {
             outputDimensions[i] += m_startPadding[i] + m_endPadding[i];
@@ -1318,6 +1450,10 @@ namespace OperatorHelper
             return std::equal(a.begin(), a.end(), b.begin(), b.end());
         };
 
+        auto as_span = [](std::initializer_list<uint32_t> il) {
+            return gsl::make_span(il.begin(), il.size());
+        };
+
         std::array<uint32_t, 3> componentRanks;
         if (m_components.size() > componentRanks.size())
         {
@@ -1368,29 +1504,32 @@ namespace OperatorHelper
         struct RecognizedOperatorInfo
         {
             RecognizedOperatorType recognizedOperatorType;
-            std::initializer_list<const uint32_t> componentRanks;
-            std::initializer_list<const uint32_t> labelIndices;
+            std::initializer_list<uint32_t> componentRanks;
+            std::initializer_list<uint32_t> labelIndices;
         };
 
         const RecognizedOperatorInfo recognizedOperators[] = {
-            {RecognizedOperatorType::MatMul,           {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
-            {RecognizedOperatorType::MatMul,           {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
-            {RecognizedOperatorType::MatMul,           {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeA, {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
-            {RecognizedOperatorType::MatMulTransposeA, {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
-            {RecognizedOperatorType::MatMulTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeB, {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
-            {RecognizedOperatorType::MatMulTransposeB, {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
-            {RecognizedOperatorType::MatMulTransposeB, {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
-            {RecognizedOperatorType::MatMulTransposeB, {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
-            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 0}}, // ij->i
-            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 1}}, // ij->j
+            {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
+            {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
+            {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
+            {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
+            {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeB,     {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
+            {RecognizedOperatorType::MatMulTransposeB,     {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
+            {RecognizedOperatorType::MatMulTransposeB,     {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
+            {RecognizedOperatorType::MatMulTransposeB,     {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
+            {RecognizedOperatorType::MatMulNhcw,           {4,4,4},{0,1,2,3, 0,3,2,4, 0,1,2,4}}, // aibj,ajbk->aibk
+            {RecognizedOperatorType::MatMulNhcwTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,3,2,4}}, // ajbi,ajbk->aibk
+            {RecognizedOperatorType::MatMulNhcwTransposeB, {4,4,4},{0,1,2,3, 0,4,2,3, 0,1,2,4}}, // aibj,akbj->aibk
+            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 0}}, // ij->i
+            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 1}}, // ij->j
         };
 
         // For each recognized operator, compare the labels-per-component and label indices.
         for (auto& recognizedOperator : recognizedOperators)
         {
-            if (equals(m_labelIndices, recognizedOperator.labelIndices)
+            if (equals(m_labelIndices, as_span(recognizedOperator.labelIndices))
             &&  m_components.size() == recognizedOperator.componentRanks.size())
             {
                 for (size_t i = 0; i < m_components.size(); ++i)
@@ -1398,7 +1537,7 @@ namespace OperatorHelper
                     componentRanks[i] = m_components[i].GetDimensionCount();
                 }
 
-                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), recognizedOperator.componentRanks))
+                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), as_span(recognizedOperator.componentRanks)))
                 {
                     return recognizedOperator.recognizedOperatorType;
                 }
@@ -1463,9 +1602,12 @@ namespace OperatorHelper
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
     {
-        return m_recognizedOperatorType == RecognizedOperatorType::MatMul || 
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA || 
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB;
+        return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB;
     }
 
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1518,6 +1660,71 @@ namespace OperatorHelper
         {
             outputDims.push_back(matrixDim);
         }
+
+        return {std::move(outputDims)};
+    }
+
+    std::vector<EdgeShapes> FusedMatMulHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 2);
+
+        // Following numpy.matmul for shape inference:
+        // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
+        // The behavior depends on the arguments in the following way.
+        // * If both arguments are 2 - D they are multiplied like conventional matrices.
+        // * If either argument is N - D, N > 2, it is treated as a stack of matrices residing in the last two indexes and broadcast accordingly.
+        // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions. After matrix multiplication the prepended 1 is removed.
+        // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions. After matrix multiplication the appended 1 is removed.
+
+        auto inputShape0 = shapeInfo.GetInputTensorShape(0);
+        auto inputShape1 = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
+        ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
+
+        auto [sizesA, stridesA] = GetFusedMatMulSizesAndStrides(
+            inputShape0,
+            shapeInfo.GetOptionalAttribute(AttrName::TransBatchA, -1),
+            shapeInfo.GetOptionalAttribute(AttrName::TransA, -1)
+        );
+        inputShape0 = sizesA;
+
+        auto [sizesB, stridesB] = GetFusedMatMulSizesAndStrides(
+            inputShape1,
+            shapeInfo.GetOptionalAttribute(AttrName::TransBatchB, -1),
+            shapeInfo.GetOptionalAttribute(AttrName::TransB, -1)
+        );
+        inputShape1 = sizesB;
+
+        std::vector<uint32_t> outputMatrixDims;
+
+        // Modify the input and truncated output shapes per the above comments.
+        // The extra dimensions of the output beyond the two matrix dimensions
+        // will be computed afterward by broadcasting.
+        if (inputShape0.size() == 1)
+        {
+            inputShape0.insert(inputShape0.begin(), 1);
+        }
+        else
+        {
+            outputMatrixDims.push_back(inputShape0[inputShape0.size() - 2]);
+        }
+
+        if (inputShape1.size() == 1)
+        {
+            inputShape1.push_back(1);
+        }
+        else
+        {
+            outputMatrixDims.push_back(inputShape1[inputShape1.size() - 1]);
+        }
+
+        // Remove the matrix dimensions from each input, resulting in broadcastable shapes.
+        std::vector<uint32_t> batchDims0(inputShape0.begin(), inputShape0.end() - 2);
+        std::vector<uint32_t> batchDims1(inputShape1.begin(), inputShape1.end() - 2);
+
+        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions.
+        std::vector<uint32_t> outputDims = BroadcastTensorShape(batchDims0, batchDims1);
+        outputDims.insert(outputDims.end(), outputMatrixDims.begin(), outputMatrixDims.end());
 
         return {std::move(outputDims)};
     }
@@ -1611,7 +1818,7 @@ namespace OperatorHelper
         }
         }
     }
-    
+
     std::vector<EdgeShapes> RandomUniformHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         EdgeShapes outputShape(m_tensorShape);
@@ -1737,7 +1944,7 @@ namespace OperatorHelper
         // the first dimension of the output. The default axis is 1, which
         // preserves the first dimension (typically batch size), and flattens
         // the remaining dimensions. An axis of 0 means no input dimensions
-        // are flattened into the first output dimension, so the output is 1D 
+        // are flattened into the first output dimension, so the output is 1D
         // padded with a 1 in the first diemension.
         ML_CHECK_VALID_ARGUMENT(m_axis >= 0 && m_axis <= gsl::narrow_cast<int>(inputDimensions.size()));
         gsl::span<const DimensionType> outputDimensionsSpan(inputDimensions);
@@ -1770,7 +1977,7 @@ namespace OperatorHelper
         auto roiShape = shapeInfo.GetInputTensorShape(InputTensors::ROIS);
         auto inputShape = shapeInfo.GetInputTensorShape(InputTensors::INPUT);
         ML_CHECK_VALID_ARGUMENT(inputShape.size() >= 4, "inputShape must be >= 4.");
-        
+
         DimensionType outputDimensions[4] =
         {
             roiShape[0], // number of ROIs
@@ -1845,15 +2052,24 @@ namespace OperatorHelper
     {
         if (opsetVersion >= 13) // Axes are a dynamic input parameter.
         {
-            ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            if (kernelInformation.IsInputValid(1))
+            {
+                ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            }
         }
         else // Axes were a constant attribute parameter.
         {
             m_axes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
         std::vector<DimensionType> inputDimensions = shapeInformation.GetInputTensorShape(0);
+
         HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputDimensions.size()));
         std::sort(m_axes.begin(), m_axes.end());
+        if (m_axes.empty())
+        {
+            m_axes.resize(inputDimensions.size());
+            std::iota(m_axes.begin(), m_axes.end(), 0u);
+        }
     }
 
     std::vector<EdgeShapes> SqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1926,7 +2142,7 @@ namespace OperatorHelper
 
         return { outputDimensions };
     }
-    
+
     std::vector<EdgeShapes> SpaceToDepthHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto inputDimensions = shapeInfo.GetInputTensorShape(0);
@@ -2010,7 +2226,7 @@ namespace OperatorHelper
                 outputDimensions[inferDim] = inElementCount / outElementCount;
             }
         }
-        
+
         return { EdgeShapes(outputDimensions) };
     }
 
@@ -2036,10 +2252,10 @@ namespace OperatorHelper
 
         // Determine the broadcasted input shape.
         outputDimensions = OperatorHelper::BroadcastTensorShape(actualInputTensorShape, desiredTensorShape);
-        
+
         return { EdgeShapes(outputDimensions) };
     }
-    
+
     std::vector<EdgeShapes> ConstantOfShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         std::vector<uint32_t> outputDimensions;
@@ -2108,7 +2324,7 @@ namespace OperatorHelper
         auto& attributes = kernelInformation.GetAttributes();
         m_inputDimensions = shapeInformation.GetInputTensorShape(0);
         std::vector<int32_t> outputSizes;
-    
+
         if (opsetVersion >= 11)
         {
             if (kernelInformation.IsInputValid(1))
@@ -2139,7 +2355,7 @@ namespace OperatorHelper
             // From attribute, compatible with Upsample-7.
             m_scales = attributes.template GetOptionalAttribute<std::vector<float>>(AttrName::Scales, std::vector<float>());
         }
-    
+
         assert(m_outputDimensions.empty());
         ML_CHECK_VALID_ARGUMENT(m_scales.empty() || outputSizes.empty(), "scales and roi cannot both be present.");
 
@@ -2274,6 +2490,42 @@ namespace OperatorHelper
             outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(4))); // running_variance.shape = input_variance.shape
         }
         return outputDimensionsList;
+    }
+
+    void ShapeHelper::Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+        )
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetOutputCount() == 1);
+
+        std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
+        const uint32_t inputDimCount = static_cast<uint32_t>(inputShape.size());
+
+        const auto& attributes = kernelInformation.GetAttributes();
+        const int64_t startIndex = attributes.template GetOptionalAttribute<int64_t>(AttrName::Start, 0);
+        const int64_t endIndex = attributes.template GetOptionalAttribute<int64_t>(AttrName::End, inputDimCount);
+
+        // Compute the starting and ending indices for the slice
+        int64_t trueStart = startIndex < 0 ? startIndex + inputDimCount : startIndex;
+        trueStart = std::clamp<int64_t>(trueStart, 0, inputDimCount);
+
+        int64_t trueEnd = endIndex < 0 ? endIndex + inputDimCount : endIndex;
+        trueEnd = std::clamp<int64_t>(trueEnd, 0, inputDimCount);
+
+        m_sliceStart = static_cast<uint32_t>(trueStart);
+        m_sliceEnd = std::max<uint32_t>(static_cast<uint32_t>(trueEnd), m_sliceStart);
+    }
+
+    std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        return { EdgeShapes({m_sliceEnd - m_sliceStart}) };
+    }
+
+    std::vector<EdgeShapes> SizeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        return { EdgeShapes({}) };
     }
 
 } // namespace OperatorHelper
