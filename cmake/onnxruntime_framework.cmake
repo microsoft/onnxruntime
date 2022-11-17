@@ -49,15 +49,95 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 if (onnxruntime_USE_CLOUD)
 #option(CURL_USE_SCHANNEL ON)
 #add_subdirectory(external/curl)
-link_directories(${TRITON_ROOT}/lib)
-link_directories(${CURL_LIB_PATH})
-#target_include_directories(onnxruntime_framework PRIVATE external/curl/include ${TRITON_ROOT}/include)
-target_include_directories(onnxruntime_framework PRIVATE ${TRITON_ROOT}/include)
-target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static)
+#link_directories(${TRITON_ROOT}/lib)
+#link_directories(${CURL_LIB_PATH})
+
+include(ExternalProject)
+
 if (WIN32)
-  target_link_libraries(onnxruntime_framework PRIVATE ws2_32 crypt32 Wldap32)
-endif()
-endif()
+
+function(get_vcpkg)
+    ExternalProject_Add(vcpkg
+        GIT_REPOSITORY https://github.com/microsoft/vcpkg.git
+		PREFIX vcpkg
+        CONFIGURE_COMMAND ""
+        INSTALL_COMMAND ""
+        UPDATE_COMMAND ""
+        BUILD_COMMAND "<SOURCE_DIR>/bootstrap-vcpkg.sh"
+    )
+    ExternalProject_Get_Property(vcpkg SOURCE_DIR)
+    set(VCPKG_SRC ${SOURCE_DIR} PARENT_SCOPE)
+    set(VCPKG_DEPENDENCIES "vcpkg" PARENT_SCOPE)
+endfunction()
+
+function(vcpkg_install PACKAGE_NAME)
+    add_custom_command(
+        OUTPUT ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO
+        COMMAND ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
+        WORKING_DIRECTORY ${VCPKG_SRC}
+        DEPENDS vcpkg
+    )
+    add_custom_target(get${PACKAGE_NAME}
+        ALL
+        DEPENDS ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO
+    )
+    list(APPEND VCPKG_DEPENDENCIES "get${PACKAGE_NAME}")
+    set(VCPKG_DEPENDENCIES ${VCPKG_DEPENDENCIES} PARENT_SCOPE)
+endfunction()
+
+get_vcpkg()
+vcpkg_install(openssl)
+vcpkg_install(openssl-windows)
+vcpkg_install(rapidjson)
+vcpkg_install(re2)
+vcpkg_install(boost-interprocess)
+vcpkg_install(boost-stacktrace)
+vcpkg_install(zlib)
+vcpkg_install(pthread)
+vcpkg_install(b64)
+
+ExternalProject_Add(triton
+        GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
+		GIT_TAG buildfree
+		PREFIX triton
+		CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=x64-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
+		INSTALL_COMMAND ""
+		)
+else()
+
+find_package(ZLIB REQUIRED)
+find_package(RapidJson REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+ExternalProject_Add(triton
+        GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
+		GIT_TAG buildfree
+		PREFIX triton
+		CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
+		INSTALL_COMMAND ""
+		)
+
+endif() #if (WIN32)
+
+ExternalProject_Get_Property(triton SOURCE_DIR)
+set(TRITON_SRC ${SOURCE_DIR})
+
+ExternalProject_Get_Property(triton BINARY_DIR)
+set(TRITON_BIN ${BINARY_DIR}/binary)
+set(TRITON_THIRD_PARTY ${BINARY_DIR}/third-party)
+
+add_dependencies(onnxruntime_framework triton)
+target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
+link_directories(${TRITON_BIN}/lib ${TRITON_THIRD_PARTY}/curl/lib)
+target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static)
+
+if (WIN32)
+target_link_libraries(onnxruntime_framework PRIVATE ws2_32 crypt32 Wldap32)
+else()
+target_link_libraries(triton_ut PRIVATE httpclient_static curl ssl crypto ZLIB::ZLIB)
+endif() #if (WIN32)
+
+endif() #if (onnxruntime_USE_CLOUD)
 
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
