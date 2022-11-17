@@ -81,12 +81,11 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
 
     logits_casted = logits
     weight_casted = weight
-    output_type = logits.type()
+    output_type = None
 
     #####################################################################################################
-    # Workaround: cross_entropy_loss take fp16 as input and generate fp32 output. This will cause the
-    # scaled loss gradient becomes inf (cannot represented with fp16). Here if we find fp16 input, we
-    # just cast it to fp32 for loss calculation for safety.
+    # Workaround: cross_entropy_loss takes fp16 as input and generates fp32 output. This will cause the
+    # scaled loss gradient becomes inf (cannot represented with fp16).
     # sample aten graph:
     #     %target : Long(16, strides=[1], requires_grad=0, device=cuda:0)
     #     %input : Half(16, 3, strides=[3, 1], requires_grad=0, device=cuda:0) = aten::linear(%18, %13, %19)
@@ -94,10 +93,11 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
 
     if not node:
         # For lower version torch we cannot get node output types, we do the type promotion for safety.
+        # Assume a failure will happen if a non-float32 result is expected.
         if logits.type().scalarType() == "Half":
             logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
 
-        if not weight.node().mustBeNone() and logits.type().scalarType() == "Half":
+        if not weight.node().mustBeNone() and weight.type().scalarType() == "Half":
             weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
 
         output_type = logits_casted.type()
@@ -107,8 +107,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         loss_scalar_type = loss_output.type().scalarType()
         logits_scalar_type = logits.type().scalarType()
         if loss_scalar_type != logits_scalar_type and logits_scalar_type == "Half" and loss_scalar_type == "Float":
-            # TODO: remove the cast once we support SoftmaxCrossEntropyLossInternal supports fp16 input
-            # and fp32 output.
+            # TODO: remove the cast once SoftmaxCrossEntropyLossInternal supports fp16 input and fp32 output.
             logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
             if not weight.node().mustBeNone():
                 if weight.type().scalarType() == "Half":
