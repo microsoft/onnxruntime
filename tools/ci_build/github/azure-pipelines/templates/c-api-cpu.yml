@@ -70,6 +70,12 @@ jobs:
   steps:
     - template: set-version-number-variables-step.yml
 
+    - task: UsePythonVersion@0
+      # Use python 3.8 to avoid build some of the required packages
+      displayName: Use Python 3.8
+      inputs:
+        versionSpec: 3.8
+
     - script: |
         set -e
         pushd .
