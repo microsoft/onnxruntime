@@ -75,3 +75,4 @@
 [submodule "cmake/external/XNNPACK"]
 	path = cmake/external/XNNPACK
 	url = https://github.com/google/XNNPACK.git
+	ignore = dirty

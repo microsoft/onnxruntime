@@ -17,8 +17,11 @@
 // each operator provides a helper to check if supported
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
+#include "core/providers/xnnpack/math/gemm.h"
+#include "core/providers/xnnpack/math/matmul.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/softmax.h"
+
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -92,6 +95,8 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
       {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
       {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      {"Gemm", Gemm::IsGemmOnnxNodeSupported},
+      {"MatMul", MatMul::IsMatMulOnnxNodeSupported},
   };
 
   bool supported = false;
