@@ -7,6 +7,8 @@
 
 namespace onnxruntime {
 
+constexpr size_t SessConfigMaxLen = 10240;
+
 bool SessionOptions::TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept {
   bool found = false;
   config_value.clear();
@@ -32,8 +34,8 @@ Status SessionOptions::AddConfigEntry(_In_z_ const char* config_key, _In_z_ cons
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
 
   std::string val(config_value);
-  if (val.length() > 1024)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 1024");
+  if (val.length() > SessConfigMaxLen)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length ", SessConfigMaxLen);
 
   auto iter = session_configurations.find(config_key);
   if (iter != session_configurations.cend()) {

@@ -7,28 +7,34 @@
 #endif
 #include <thread>
 #include "core/session/ort_apis.h"
+#include "core/common/logging/logging.h"
+
 
 namespace onnxruntime {
+
 namespace concurrency {
+
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
-  if (options.thread_pool_size == 1)
-    return nullptr;
-  std::vector<size_t> cpu_list;
-  ThreadOptions to;
-  if (options.affinity_vec_len != 0) {
-    to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
+  if (options.thread_pool_size == 1) {
+    return {};
   }
-  if (options.thread_pool_size <= 0) {  // default
-    cpu_list = Env::Default().GetThreadAffinityMasks();
-    if (cpu_list.empty() || cpu_list.size() == 1)
-      return nullptr;
-    options.thread_pool_size = static_cast<int>(cpu_list.size());
-    if (options.auto_set_affinity)
-      to.affinity = cpu_list;
+  ThreadOptions to;
+  if (options.thread_pool_size <= 0) {
+    options.thread_pool_size = static_cast<int>(Env::Default().GetDefaultThreadpoolSetting(to.affinity));
+    if (options.thread_pool_size <= 0) {
+      LOGS_DEFAULT(ERROR) << "Failed to get a valid default size, skip creating the threadpool"; 
+      return {};
+    }
+    LOGS_DEFAULT(WARNING) << "Setting threadpool size to " << options.thread_pool_size << " with default affinity";
+  } else if (!options.affinity_str.empty()) {
+    auto num_of_affinity_read = Env::Default().ReadThreadAffinityConfig(options.affinity_str, to.affinity);
+    if (options.thread_pool_size - 1 != static_cast<int>(num_of_affinity_read)) {
+      LOGS_DEFAULT(WARNING) << "Number of valid affinity configurations does not equal to thread_pool_size - 1, ignored";
+      to.affinity.clear();
+    }
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
-
   return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);
 }
@@ -97,6 +103,17 @@ ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_opt
   }
   tp_options->intra_op_thread_pool_params.set_denormal_as_zero = true;
   tp_options->inter_op_thread_pool_params.set_denormal_as_zero = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  if (!affinity_string) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null affinity string");
+  }
+  tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
 }
 

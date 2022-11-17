@@ -462,7 +462,7 @@ def is_linux():
 
 
 def validate_platform():
-    if not(is_windows() or is_linux()):
+    if not (is_windows() or is_linux()):
         raise Exception('Native Nuget generation is currently supported only on Windows and Linux')
 
 

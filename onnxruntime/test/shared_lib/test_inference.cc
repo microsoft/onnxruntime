@@ -194,6 +194,13 @@ TEST_P(CApiTestWithProvider, simple) {
 
 TEST(CApiTest, dim_param) {
   Ort::SessionOptions session_options;
+
+#ifdef _WIN32
+  // set session option to also test "session.intra_op_thread_affinities"
+  session_options.SetIntraOpNumThreads(3);
+  session_options.AddConfigEntry("session.intra_op_thread_affinities", "1;2");
+#endif
+
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
   auto in0 = session.GetInputTypeInfo(0);

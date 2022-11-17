@@ -13,7 +13,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "dependencies": {
     "prebuild-install": "^6.0.0"
   },

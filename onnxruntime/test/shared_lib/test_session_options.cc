@@ -12,3 +12,9 @@ TEST(CApiTest, session_options_graph_optimization_level) {
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 }
+
+TEST(CApiTest, session_options_set_intra_thread_affinity) {
+  // Test set optimization level succeeds when valid level is provided.
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
+}

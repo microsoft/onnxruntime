@@ -2109,6 +2109,8 @@ static constexpr OrtApi ort_api_1_to_7 = {
     &OrtApis::SetCurrentGpuDeviceId,
     &OrtApis::GetCurrentGpuDeviceId,
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SetGlobalIntraOpThreadAffinity,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

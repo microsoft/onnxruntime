@@ -58,17 +58,24 @@ struct ThreadOptions {
   // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
   unsigned int stack_size = 0;
 
-  // Thread affinity means a thread can only run on the logical processors that the thread is allowed to run on.
-  // If the vector is not empty, set the affinity of each thread to just one CPU.
-  // Index is thread index, value is CPU ID, starting from zero. For example, the first thread in the pool will be bound
-  // to the logical processor with id of affinity[0]. If the vector is empty, the thread can run on all the processors
-  // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
-  // processor group [0,1,2,3] may only contain half of the physical cores.
-  std::vector<size_t> affinity;
+  // This is a vector hosting affinity settings for threads in the threadpool.
+  // Note - affinity.size() does not necessarily amount to thread_pool_size - 1.
+  // POSIX and windows have different ways to fetch, save, and interpret the affinity vector.
+  // This is because, for windows, logical processors are organized in groups, which enforces that per-thread affinity must be set with a
+  // group_id + logic_processor_bitmastk pair, whereas POSIX simply does this by processor id(s).
+  // That being said, for windows, we are saving group_id and logic_processor_bitmask into the affinity vector per single thread,
+  // meaning each thread will be indexed to two elements in the vector, for POSIX, it is just one.
+  // e.g. for windows, assume we have 3 threads in the threadpool, indexed as 0,1,2.
+  // Then the affinity vector will have 6 elements, indexed as 0,1,2,3,4,5.
+  // Finally, we have threads[0] mapped to affinity[0] (which is a group_id), and affinity[1] (which is a logical_processor_bitmask),
+  // thread[1] mapped to affinity[2], and affinity[3],
+  // thread[2] mapped to affinity[4], and affinity[5].
+  std::vector<uint64_t> affinity;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
 };
+
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
@@ -108,8 +115,21 @@ class Env {
 
   virtual int GetNumCpuCores() const = 0;
 
-  // This function doesn't support systems with more than 64 logical processors
-  virtual std::vector<size_t> GetThreadAffinityMasks() const = 0;
+  // Return default threadpool size, and set default affinity vector.
+  // Note - affinity.size() does not necessarily amount to the threadpool size,
+  // e.g., for windows, affinities vector could be 0,1,0,2, which stands for ((0,1),(0,2)),
+  // the first pair (0,1) will be applied to a thread, the second pair (0,2) will be applied to another,
+  // so the returned value will be 2.
+  // For POSIX, the implementation is entirely different, affinity.size() will be rightly the threadpool size.
+  virtual size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinity) const = 0;
+
+  // Read affinity setting from a string, and return the number of threads that the affinity_str represents.
+  // NOTE - affinities.size() may or may not be the returned value.
+  // e.g., for windows, affinities vector could be 0,1,0,2, which stands for ((0,1),(0,2)),
+  // the first pair (0,1) will be applied to a thread, the second pair (0,2) will be applied to another,
+  // so the returned value will be 2.
+  // For POSIX of this branch, the function is not implemented, customer will have an exception when trying to set affinity by a string.
+  virtual size_t ReadThreadAffinityConfig(const std::string& affinity_str, std::vector<uint64_t>& affinities) const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {

@@ -1,30 +1,10 @@
-trigger: none
-
 jobs:
-- template: templates/linux-ci.yml
-  parameters:
-    AgentPool : 'Linux-Single-GPU-V100'
-    JobName: 'Onnxruntime_Linux_GPU_Training'
-    SubmoduleCheckoutMode: 'recursive'
-    RunDockerBuildArgs: >
-      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
-      -x "
-      --enable_training
-      --config $(buildConfig)
-      --build_wheel
-      --enable_nvtx_profile
-      "
-    DoNugetPack: 'false'
-    ArtifactName: 'drop-linux'
-    TimeoutInMinutes: 120
-    # Enable unreleased onnx opsets in CI builds
-    # This facilitates testing the implementation for the new opsets
-    AllowReleasedOpsetOnly: '0'
-    Strategy: 
-      maxParallel: 2
-      matrix:
-        Debug:
-          buildConfig: Debug
-        Release:
-          buildConfig: Release
-
+- job: Linux_Build
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU-2019
+  steps:
+  - script: |
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'dummpy step'

@@ -1,49 +1,10 @@
-trigger: none
-
 jobs:
-- job: Onnxruntime_Linux_GPU_Distributed_Test
-
+- job: Linux_Build
   timeoutInMinutes: 120
-  pool: 'Linux-Multi-GPU-V100'
-
+  workspace:
+    clean: all
+  pool: Linux-CPU-2019
   steps:
-  - checkout: self
-    clean: true
-    submodules: recursive
-
-  - template: templates/run-docker-build-steps.yml
-    parameters:
-      RunDockerBuildArgs: |
-        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
-        -t onnxruntime_distributed_tests_image \
-        -x " \
-          --config RelWithDebInfo \
-          --enable_training \
-          --update --build \
-          --build_wheel \
-          " \
-        -m
-      DisplayName: 'Build'
-
-    # Entry point for all distributed CI tests.
-    # Refer to orttraining/orttraining/test/python/how_to_add_distributed_ci_pipeline_tests.md for guidelines on how to add new tests to this pipeline.
   - script: |
-      docker run \
-        --gpus all \
-        --shm-size=1024m \
-        --rm \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        onnxruntime_distributed_tests_image \
-          /build/RelWithDebInfo/launch_test.py \
-            --cmd_line_with_args "python orttraining_distributed_tests.py" \
-            --cwd /build/RelWithDebInfo \
-    displayName: 'Run orttraining_distributed_tests.py'
-    condition: succeededOrFailed()
-    timeoutInMinutes: 120
-  
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
-        
-  - template: templates/clean-agent-build-directory-step.yml
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'dummpy step'

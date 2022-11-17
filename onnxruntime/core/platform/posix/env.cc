@@ -191,13 +191,19 @@ class PosixEnv : public Env {
     // TODO if you need the number of physical cores you'll need to parse
     // /proc/cpuinfo and grep for "cpu cores".
     // However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
-    return std::thread::hardware_concurrency();
+    return std::thread::hardware_concurrency() / 2;
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    std::vector<size_t> ret(std::thread::hardware_concurrency() / 2);
-    std::iota(ret.begin(), ret.end(), 0);
-    return ret;
+  size_t GetDefaultThreadpoolSetting(std::vector<uint64_t>& affinities) const override {
+    affinities.clear();
+    affinities.resize(std::thread::hardware_concurrency() >> 1);
+    std::iota(affinities.begin(), affinities.end(), 0);
+    return affinities.size();
+  }
+
+  size_t ReadThreadAffinityConfig(const std::string&, std::vector<uint64_t>&) const override {
+    ORT_THROW("PosixEnv::ReadThreadAffinityConfig not implemented, do not set affinity!");
+    return 0;
   }
 
   void SleepForMicroseconds(int64_t micros) const override {
