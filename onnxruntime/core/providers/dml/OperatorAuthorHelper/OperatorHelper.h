@@ -323,6 +323,7 @@ struct KernelInformationAdapter : IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const { return m_informationSource.GetConstantInputTensor(inputIndex); }
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept { return m_informationSource.HasAttribute(name, type); }
     virtual MLOperatorAttributes const& GetAttributes() const noexcept { return m_informationSource; }
+    virtual ~KernelInformationAdapter();
 
     InformationSourceType& m_informationSource;
 };
@@ -338,6 +339,7 @@ struct ShapeInformationAdapter : IShapeInformationAdapter
 
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const { return m_informationSource.GetInputTensorDimensionCount(inputIndex); }
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const { return m_informationSource.GetInputTensorShape(inputIndex); }
+    virtual ~ShapeInformationAdapter();
 
     InformationSourceType& m_informationSource;
 };
