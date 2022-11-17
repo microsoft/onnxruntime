@@ -32,7 +32,7 @@ RoctracerManager::~RoctracerManager() {}
 
 #define ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(expr_) \
 do {  \
-  if (expr_ != ROCTRACER_STATUS_SUCESS) { \
+  if (expr_ != ROCTRACER_STATUS_SUCCESS) { \
     OnStopLogging();  \
     return false;  \
   } \
