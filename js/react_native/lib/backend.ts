@@ -73,7 +73,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
           throw new Error('Native module method "loadModelFromBytes" is not defined');
         }
         const modelDataBuffer = Buffer.from(this.#pathOrBuffer);
-        const modelDataByteArray = new Uint8Array(modelDataBuffer)
+        const modelDataByteArray = new Uint8Array(modelDataBuffer);
         results = await this.#inferenceSession.loadModelFromBytes(modelDataByteArray, options);
       }
       // resolve promise if onnxruntime session is successfully created
