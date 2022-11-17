@@ -13,6 +13,7 @@ from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, 
 
 from onnxruntime.training import ortmodule
 
+
 def wrap_custom_export_function(original_func):
     # Starting from PyTorch 1.11, there has been a change to symbolic function signature
     # in terms of how additional context is accessed. More info at
@@ -24,10 +25,13 @@ def wrap_custom_export_function(original_func):
         def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
             node = ctx.cur_node
             return original_func(graph, node, *args, **kwargs)
+
         return _export_with_ctx
     except ImportError:
+
         def _export_with_no_ctx(graph, *args, **kwargs):
             return original_func(graph, None, *args, **kwargs)
+
         return _export_with_no_ctx
 
 
@@ -75,7 +79,6 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
     if label_smoothing > 0.0:
         raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
 
-
     logits_casted = logits
     weight_casted = weight
     output_type = logits.type()
@@ -100,11 +103,10 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         output_type = logits_casted.type()
     else:
         # For higher version torch we can get node output types, only adding cast for known type promotion cases.
-        loss_output  = list(node.outputs())[0]
+        loss_output = list(node.outputs())[0]
         loss_scalar_type = loss_output.type().scalarType()
         logits_scalar_type = logits.type().scalarType()
-        if (loss_scalar_type != logits_scalar_type and \
-            logits_scalar_type == "Half" and loss_scalar_type == "Float"):
+        if loss_scalar_type != logits_scalar_type and logits_scalar_type == "Half" and loss_scalar_type == "Float":
             # TODO: remove the cast once we support SoftmaxCrossEntropyLossInternal supports fp16 input
             # and fp32 output.
             logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
@@ -112,7 +114,9 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
                 if weight.type().scalarType() == "Half":
                     weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
                 else:
-                    warnings.warn("Unsupported diverged input and output types for weight when export cross_entropy_loss.")
+                    warnings.warn(
+                        "Unsupported diverged input and output types for weight when export cross_entropy_loss."
+                    )
 
         else:
             warnings.warn("Unsupported diverged input and output types for logits when export cross_entropy_loss.")
