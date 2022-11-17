@@ -108,7 +108,7 @@
     </Compile>
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TrainingEnabledNativeBuild)' == 'true'">
+  <ItemGroup>
     <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\training_api\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
