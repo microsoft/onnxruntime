@@ -11,12 +11,8 @@
 #include "core/common/gpu_profiler_common.h"
 #include "core/common/inlined_containers.h"
 
-
-
 namespace onnxruntime {
 namespace profiling {
-
-using CUPTIActivityBuffer = ProfilerActivityBuffer;
 
 class CUPTIManager : public GPUTracerManager
 {

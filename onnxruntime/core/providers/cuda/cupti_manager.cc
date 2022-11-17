@@ -3,6 +3,8 @@
 namespace onnxruntime {
 namespace profiling {
 
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+
 static inline std::string GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
   switch (kind) {
     case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
@@ -157,6 +159,8 @@ void CUPTIAPI CUPTIManager::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
       ProfilerActivityBuffer::CreateFromPreallocatedBuffer(reinterpret_cast<char*>(buffer), valid_size)
     );
 }
+
+#endif /* defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
 
 } // namespace profiling
 } // namespace onnxruntime
