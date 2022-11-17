@@ -42,11 +42,13 @@ _CAST_PYTORCH_TO_ONNX = {
     "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
 }
 
+
 def _full_name(klass):
     module = klass.__module__
     if module == "builtins":
         return klass.__qualname__  # avoid outputs like 'builtins.str'
     return module + "." + klass.__qualname__
+
 
 def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
     try:
