@@ -30,33 +30,49 @@ RoctracerManager& RoctracerManager::GetInstance() {
 
 RoctracerManager::~RoctracerManager() {}
 
+#define ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(expr_) \
+do {  \
+  if (expr_ != ROCTRACER_STATUS_SUCESS) { \
+    OnStopLogging();  \
+    return false;  \
+  } \
+} while (false)
+
 bool RoctracerManager::OnStartLogging() {
   // The following line shows up in all the samples, I do not know
   // what the point is, but without it, the roctracer APIs don't work.
-  roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
+
+  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
+    roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr) != ROCTRACER_STATUS_SUCCESS
+  );
 
   roctracer_properties_t hcc_cb_properties;
   memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
   hcc_cb_properties.buffer_size = kActivityBufferSize;
   hcc_cb_properties.buffer_callback_fun = ActivityCallback;
-  roctracer_open_pool(&hcc_cb_properties);
+  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_open_pool(&hcc_cb_properties));
 
   // Enable selective activity and API callbacks for the HIP APIs
-  roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
-  roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
+  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API));
+  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API));
 
   for (auto const& logged_api : hip_api_calls_to_trace) {
     uint32_t cid = 0;
-    roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, logged_api.c_str(), &cid, nullptr);
-    roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, cid, ApiCallback, nullptr);
-    roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid);
+    ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
+      roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, logged_api.c_str(), &cid, nullptr)
+    );
+    ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
+      roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, cid, ApiCallback, nullptr)
+    );
+    ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
+      roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid)
+    );
   }
 
   // Enable activity logging in the HIP_OPS/HCC_OPS domain.
-  roctracer_enable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
+  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_enable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS));
 
-  roctracer_start();
-  logging_enabled_ = true;
+  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_start());
   return true;
 }
 
