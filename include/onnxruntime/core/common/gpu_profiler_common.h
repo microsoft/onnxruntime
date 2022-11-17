@@ -39,7 +39,7 @@ class GPUTracerManager
 {
 public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GPUTracerManager);
-  virtual ~GPUTracerManager() {}
+  virtual ~GPUTracerManager();
 
   virtual uint64_t RegisterClient();
   virtual void DeregisterClient(uint64_t client_handle);

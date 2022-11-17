@@ -11,16 +11,10 @@
 
 
 namespace onnxruntime {
-
 namespace profiling {
 
 // audupa: Debugging only, delete before merging
 // #define CUDA_VERSION 11600
-
-// auto KEVENT = onnxruntime::profiling::KERNEL_EVENT;
-// std::atomic_flag CudaProfiler::enabled{0};
-// std::vector<CudaProfiler::KernelStat> CudaProfiler::stats;
-// std::unordered_map<uint32_t, uint64_t> CudaProfiler::id_map;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 

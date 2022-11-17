@@ -28,11 +28,9 @@ RoctracerManager& RoctracerManager::GetInstance() {
   return instance;
 }
 
-RoctracerManager::~RoctracerManager() {
-  StopLogging();
-}
+RoctracerManager::~RoctracerManager() {}
 
-void RoctracerManager::OnStartLogging() {
+bool RoctracerManager::OnStartLogging() {
   // The following line shows up in all the samples, I do not know
   // what the point is, but without it, the roctracer APIs don't work.
   roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
@@ -59,9 +57,10 @@ void RoctracerManager::OnStartLogging() {
 
   roctracer_start();
   logging_enabled_ = true;
+  return true;
 }
 
-void RoctracerManager::StopLogging() {
+void RoctracerManager::OnStopLogging() {
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
   roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
   roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
@@ -242,7 +241,7 @@ void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivit
     for (; current_record < data_end; roctracer_next_record(current_record, &current_record)) {
       EventRecord event;
       if (current_record->domain == ACTIVITY_DOMAIN_EXT_API) {
-        NotifyNewCorrelation(current_record->correlation_id, current_record->external_id)
+        NotifyNewCorrelation(current_record->correlation_id, current_record->external_id);
         continue;
       } else if (current_record->domain == ACTIVITY_DOMAIN_HIP_OPS) {
         if (current_record->op == 1 && current_record->kind == HipOpMarker) {

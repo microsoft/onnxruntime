@@ -36,7 +36,7 @@ class RoctracerManager : public GPUTracerManager {
   bool PushUniqueCorrelation(uint64_t unique_cid) override;
   void PopUniqueCorrelation(uint64_t& popped_unique_cid) override;
   void OnStopLogging() override;
-  void OnStartLogging() override;
+  bool OnStartLogging() override;
   void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
                               const TimePoint& start_time) override;
   void FlushActivities() override;
