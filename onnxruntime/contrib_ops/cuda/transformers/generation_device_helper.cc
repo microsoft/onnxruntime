@@ -222,7 +222,6 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   int batch_size = parameters->batch_size;
   int num_beams = parameters->num_beams;
-
   int vocab_size = parameters->vocab_size;
   bool output_scores = parameters->output_scores;
 

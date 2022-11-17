@@ -70,7 +70,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
-  // the vocab_size hasn't been specified by the user (as an attribute of BemSearch)
+  // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
   if (vocab_size == -1) {
     vocab_size = vocabulary_size;
   }

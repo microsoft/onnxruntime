@@ -30,7 +30,6 @@ Example 5: convert gpt2 model with greedy search:
 import argparse
 import logging
 import math
-import numpy
 import os
 import sys
 import time
@@ -94,9 +93,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     input_group.add_argument(
         "-m",
         "--model_name_or_path",
-        required=False,
+        required=True,
         type=str,
-        default="gpt2",
         help="Pytorch model checkpoint path, or pretrained model name in the list: "
         + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
     )
@@ -146,9 +144,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
     output_group.add_argument(
         "--output",
-        required=False,
+        required=True,
         type=str,
-        default="C:\\Users\\hasesh\\Desktop\\result.onnx",
         help="Output path for onnx model with beam search.",
     )
 
@@ -157,7 +154,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--precision",
         required=False,
         type=Precision,
-        default=Precision.FLOAT16,
+        default=Precision.FLOAT32,
         choices=[Precision.FLOAT32, Precision.FLOAT16],
         help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
     )
@@ -181,7 +178,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--pad_logits_matmul_weight", 
         required=False, 
         action="store_true", 
-        help="Pad logits MatMul weight to be a multiple of 8 in the dimension where dim value is the vocab size"
+        help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size"
     )
     output_group.set_defaults(pad_logits_matmul_weight=True)
 
@@ -251,9 +248,9 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
 
-    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=15, help="Min sequence length")
+    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=1, help="Min sequence length")
 
-    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=15, help="Max sequence length")
+    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
 
     beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
 
@@ -294,7 +291,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group.add_argument(
         "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
     )
-    test_group.set_defaults(use_gpu=True)
+    test_group.set_defaults(use_gpu=False)
 
     test_group.add_argument(
         "--disable_parity",
@@ -890,7 +887,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     
     # We only want to pad the logits MatMul weight in the decoder for fp16 models.
     # The inherent assumption is that fp16 models run on GPU for which all
-    # dims need to be a multiple of 8 to use tensor cores.
+    # dims need to be a multiple of 8 to leverage tensor cores.
     # NOTE: We currently only support padding the MatMul logits weight for GPT2 BeamSearch.
     # This can be expanded to other models/decoding strategies later
     logits_matmul_weight_padded = False
@@ -1012,6 +1009,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         ]
     )
 
+    # Explicitly pass in the vocab size via an attribute
     if logits_matmul_weight_padded:
         attr_to_extend.extend([onnx.helper.make_attribute("vocab_size", vocab_size)])
 
