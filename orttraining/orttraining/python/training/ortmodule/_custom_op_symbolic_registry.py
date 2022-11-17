@@ -84,12 +84,15 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
     output_type = None
 
     #####################################################################################################
-    # Workaround: cross_entropy_loss takes fp16 as input and generates fp32 output. This will cause the
-    # scaled loss gradient becomes inf (cannot represented with fp16).
+    # Workaround: cross_entropy_loss takes fp16 as input and generates fp32 output.
     # sample aten graph:
     #     %target : Long(16, strides=[1], requires_grad=0, device=cuda:0)
     #     %input : Half(16, 3, strides=[3, 1], requires_grad=0, device=cuda:0) = aten::linear(%18, %13, %19)
     #     Float(requires_grad=0, device=cuda:0) = aten::cross_entropy_loss(%input, %target, %21, %22, %23, %24)
+    # If ORT do the compute with the input data type, the scaled loss gradient will become inf (cannot represented
+    # with fp16). Here we try to cast the fp16 to fp32 based on the export context (if there is).
+    # Currently not all type promotion/demotion are considered, only fp16 to fp32 is considered. For others, they
+    # remain the same behavior as before, but leave a warning message.
 
     if not node:
         # For lower version torch we cannot get node output types, we do the type promotion for safety.
@@ -115,10 +118,14 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
                 else:
                     warnings.warn(
                         "Unsupported diverged input and output types for weight when export cross_entropy_loss."
+                        f"weight type: {weight.type().scalarType()}, loss type: {loss_scalar_type}"
                     )
 
         else:
-            warnings.warn("Unsupported diverged input and output types for logits when export cross_entropy_loss.")
+            warnings.warn(
+                "Unsupported diverged input and output types for logits when export cross_entropy_loss."
+                f"logits type: {logits_scalar_type}, loss type: {loss_scalar_type}"
+            )
 
         output_type = loss_output.type()
     # End of workaround
