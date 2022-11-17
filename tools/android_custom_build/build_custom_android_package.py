@@ -136,7 +136,7 @@ def main():
         args.docker_path,
         "run",
         "--rm",
-        "-it",
+        "-i",
         f"--volume={str(working_dir)}:/workspace/shared",
         args.docker_image_tag,
         "/usr/bin/env",
