@@ -15,7 +15,6 @@ from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
 from . import _logger
-from ._custom_op_symbolic_registry import pytorch_type_to_onnx_type, wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
@@ -26,12 +25,34 @@ from ._fallback import ORTModuleONNXModelException, wrap_exception
 # at all.
 BANNED_AUTOGRAD_FUNCTION_NAMES = frozenset([torch.utils.checkpoint.CheckpointFunction.__name__])
 
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
 
 def _full_name(klass):
     module = klass.__module__
     if module == "builtins":
         return klass.__qualname__  # avoid outputs like 'builtins.str'
     return module + "." + klass.__qualname__
+
+def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
 # For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
@@ -108,7 +129,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = pytorch_type_to_onnx_type(arg.type().scalarType())
+                scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -155,7 +176,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = pytorch_type_to_onnx_type(arg.type().scalarType())
+            scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
@@ -199,7 +220,19 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         raise wrap_exception(ORTModuleONNXModelException, e)
 
 
-export_python_op_func = wrap_custom_export_function(_export_pt_1_10)
+# Starting from PyTorch 1.11, there has been a change to symbolic function signature
+# in terms of how additional context is accessed. More info at
+# https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
+# This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
+try:
+    from torch.onnx import SymbolicContext
+
+    def _export(ctx: SymbolicContext, g, *args, **kwargs):
+        n = ctx.cur_node
+        return _export_pt_1_10(g, n, *args, **kwargs)
+
+except ImportError:
+    _export = _export_pt_1_10
 
 
 def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):

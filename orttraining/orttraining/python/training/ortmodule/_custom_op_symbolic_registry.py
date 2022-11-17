@@ -13,37 +13,6 @@ from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, 
 
 from onnxruntime.training import ortmodule
 
-
-def _enforce_check(condition, message):
-    if not condition:
-        raise RuntimeError(f"Enforced failure: {message}")
-
-
-# Mapping from pytorch scalar type to onnx scalar type.
-_CAST_PYTORCH_TO_ONNX = {
-    "Byte": [torch.onnx.TensorProtoDataType.UINT8, 1],
-    "Char": [torch.onnx.TensorProtoDataType.INT8, 1],
-    "Double": [torch.onnx.TensorProtoDataType.DOUBLE, 8],
-    "Float": [torch.onnx.TensorProtoDataType.FLOAT, 4],
-    "Half": [torch.onnx.TensorProtoDataType.FLOAT16, 2],
-    "Int": [torch.onnx.TensorProtoDataType.INT32, 4],
-    "Long": [torch.onnx.TensorProtoDataType.INT64, 8],
-    "Short": [torch.onnx.TensorProtoDataType.INT16, 2],
-    "Bool": [torch.onnx.TensorProtoDataType.BOOL, 1],
-    "ComplexFloat": [torch.onnx.TensorProtoDataType.COMPLEX64, 8],
-    "ComplexDouble": [torch.onnx.TensorProtoDataType.COMPLEX128, 16],
-    "BFloat16": [torch.onnx.TensorProtoDataType.BFLOAT16, 2],
-    "Undefined": [torch.onnx.TensorProtoDataType.UNDEFINED, -1],
-}
-
-
-def pytorch_type_to_onnx_type(scalar_type: str) -> torch.onnx.TensorProtoDataType:
-    try:
-        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
-    except AttributeError:
-        return _CAST_PYTORCH_TO_ONNX[scalar_type][0]
-
-
 def wrap_custom_export_function(original_func):
     # Starting from PyTorch 1.11, there has been a change to symbolic function signature
     # in terms of how additional context is accessed. More info at
@@ -55,43 +24,11 @@ def wrap_custom_export_function(original_func):
         def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
             node = ctx.cur_node
             return original_func(graph, node, *args, **kwargs)
-
         return _export_with_ctx
     except ImportError:
-        return original_func
-
-
-def _check_all_tensor_type_match(tensors):
-    if len(tensors) == 0:
-        return True
-    first_type = tensors[0].type().scalarType()
-    for tensor in tensors:
-        if tensor.type().scalarType() != first_type:
-            return False
-    return True
-
-
-def _check_input_output_types(lhs_scalar_type, rhs_scalar_type):
-    lhs_onnx_type, lhs_byte_per_elem = _CAST_PYTORCH_TO_ONNX[lhs_scalar_type]
-    rhs_onnx_type, rhs_byte_per_elem = _CAST_PYTORCH_TO_ONNX[rhs_scalar_type]
-    _enforce_check(lhs_onnx_type != torch.onnx.TensorProtoDataType.UNDEFINED, "lhs type is undefined")
-    _enforce_check(rhs_onnx_type != torch.onnx.TensorProtoDataType.UNDEFINED, "rhs type is undefined")
-
-    if lhs_byte_per_elem == rhs_byte_per_elem:
-        return 0, rhs_onnx_type  # no type conversion needed
-    if lhs_byte_per_elem > rhs_byte_per_elem:
-        warnings.warn(
-            f"Type demotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type} ",
-            UserWarning,
-        )
-        return -1, rhs_onnx_type  # need type demotion
-
-    warnings.warn(
-        f"Type promotion found for tensors during custom exporter: {lhs_scalar_type}, {rhs_scalar_type}, "
-        f"which implies potential performance loss to keep precision in ORT. ",
-        UserWarning,
-    )
-    return 1, rhs_onnx_type  # need type promotion
+        def _export_with_no_ctx(graph, *args, **kwargs):
+            return original_func(graph, None, *args, **kwargs)
+        return _export_with_no_ctx
 
 
 class CustomOpSymbolicRegistry:
@@ -112,7 +49,7 @@ class CustomOpSymbolicRegistry:
             )
 
 
-def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None, need_context=False):
+def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None, need_node=False):
     def symbolic_wrapper(fn):
         need_register = True
         if torch_version_start is not None and Version(torch.__version__) < Version(torch_version_start):
@@ -122,7 +59,7 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
             need_register = False
 
         updated_fn = fn
-        if need_context is True:
+        if need_node is True:
             updated_fn = wrap_custom_export_function(fn)
 
         if need_register:
@@ -132,33 +69,57 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
     return symbolic_wrapper
 
 
-@register_symbolic("cross_entropy_loss", need_context=True)
+@register_symbolic("cross_entropy_loss", need_node=True)
 def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index, label_smoothing=0.0):
-    has_weight = not weight.node().mustBeNone()
-    if has_weight:
-        _enforce_check(
-            _check_all_tensor_type_match([logits, weight]),
-            f"custom exporter for cross_entropy_loss: logits and weight must have the same type: {logits}, {weight}",
-        )
-
-    outputs = list(node.outputs())
-    _enforce_check(
-        _check_all_tensor_type_match(outputs), "custom exporter for cross_entropy_loss: outputs must have the same type"
-    )
-
     label_smoothing = sym_help._maybe_get_const(label_smoothing, "f")
-    _enforce_check(not (label_smoothing > 0.0), "Unsupported: ONNX does not support label_smoothing")
+    if label_smoothing > 0.0:
+        raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
 
-    loss_output = outputs[0]
-    flag, rhs_onnx_type = _check_input_output_types(logits.type().scalarType(), loss_output.type().scalarType())
+
+    logits_casted = logits
     weight_casted = weight
-    if flag > 0:
-        # do input type promotion
-        logits_casted = g.op("Cast", logits, to_i=rhs_onnx_type)
-        if has_weight:
-            weight_casted = g.op("Cast", weight, to_i=rhs_onnx_type)
+    output_type = logits.type()
+
+    #####################################################################################################
+    # Workaround: cross_entropy_loss take fp16 as input and generate fp32 output. This will cause the
+    # scaled loss gradient becomes inf (cannot represented with fp16). Here if we find fp16 input, we
+    # just cast it to fp32 for loss calculation for safety.
+    # sample aten graph:
+    #     %target : Long(16, strides=[1], requires_grad=0, device=cuda:0)
+    #     %input : Half(16, 3, strides=[3, 1], requires_grad=0, device=cuda:0) = aten::linear(%18, %13, %19)
+    #     Float(requires_grad=0, device=cuda:0) = aten::cross_entropy_loss(%input, %target, %21, %22, %23, %24)
+
+    if not node:
+        # For lower version torch we cannot get node output types, we do the type promotion for safety.
+        if logits.type().scalarType() == "Half":
+            logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+
+        if not weight.node().mustBeNone() and logits.type().scalarType() == "Half":
+            weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+
+        output_type = logits_casted.type()
     else:
-        logits_casted = logits
+        # For higher version torch we can get node output types, only adding cast for known type promotion cases.
+        loss_output  = list(node.outputs())[0]
+        loss_scalar_type = loss_output.type().scalarType()
+        logits_scalar_type = logits.type().scalarType()
+        if (loss_scalar_type != logits_scalar_type and \
+            logits_scalar_type == "Half" and loss_scalar_type == "Float"):
+            # TODO: remove the cast once we support SoftmaxCrossEntropyLossInternal supports fp16 input
+            # and fp32 output.
+            logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+            if not weight.node().mustBeNone():
+                if weight.type().scalarType() == "Half":
+                    weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+                else:
+                    warnings.warn("Unsupported diverged input and output types for weight when export cross_entropy_loss.")
+
+        else:
+            warnings.warn("Unsupported diverged input and output types for logits when export cross_entropy_loss.")
+
+        output_type = loss_output.type()
+    # End of workaround
+    ##################################
 
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, "i")
@@ -174,8 +135,8 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         reduction_s=reduction,
         outputs=2,
     )
-    output.setType(logits_casted.type())
-    log_prob.setType(logits_casted.type())
+    output.setType(output_type)
+    log_prob.setType(output_type)
     return output
 
 

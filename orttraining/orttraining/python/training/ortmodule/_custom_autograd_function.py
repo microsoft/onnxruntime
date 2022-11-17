@@ -44,7 +44,7 @@ def enable_custom_autograd_support(to_enable=True):
     )
     from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
-    from ._custom_autograd_function_exporter import _clear_nontensor_object_references, export_python_op_func
+    from ._custom_autograd_function_exporter import _clear_nontensor_object_references, _export
 
     if to_enable is True and custom_autograd_function_enabler.state is False:
         if custom_autograd_function_enabler.already_enabled is False:
@@ -65,10 +65,10 @@ def enable_custom_autograd_support(to_enable=True):
         try:
             # This is for the latest Pytorch nightly after this commit:
             # https://github.com/pytorch/pytorch/commit/11bc435622e6b7207bbf37ed1aafe999e1f296ec
-            register_custom_op_symbolic("prim::PythonOp", export_python_op_func, 1)
+            register_custom_op_symbolic("prim::PythonOp", _export, 1)
         except:
             # This applies to Pytorch 1.9 and 1.9.1.
-            register_custom_op_symbolic("::prim_PythonOp", export_python_op_func, 1)
+            register_custom_op_symbolic("::prim_PythonOp", _export, 1)
 
         custom_autograd_function_enabler.state = True
     elif to_enable is False and custom_autograd_function_enabler.state is True:
