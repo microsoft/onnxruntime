@@ -103,7 +103,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
                         {"block_z", std::to_string(kernel->blockZ)},
                     };
 
-                    std::string name{kernel->name};
+                    std::string name {demangle(kernel->name)};
 
                     new (&event) EventRecord {
                         /* cat = */ EventCategory::KERNEL_EVENT,

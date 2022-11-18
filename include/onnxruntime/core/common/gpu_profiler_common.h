@@ -95,27 +95,22 @@ public:
 
   uint64_t RegisterClient() {
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-    if (logging_enabled_) {
-      auto res = next_client_id_++;
-      per_client_events_by_ext_correlation_.insert({res, {}});
-      ++num_active_clients_;
-      return res;
-    }
-    return 0;
+    auto res = next_client_id_++;
+    per_client_events_by_ext_correlation_.insert({res, {}});
+    ++num_active_clients_;
+    return res;
   }
 
   void DeregisterClient(uint64_t client_handle) {
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-    if (logging_enabled_) {
-      auto it = per_client_events_by_ext_correlation_.find(client_handle);
-      if (it == per_client_events_by_ext_correlation_.end()) {
-        return;
-      }
-      per_client_events_by_ext_correlation_.erase(it);
-      --num_active_clients_;
-      if (num_active_clients_ == 0) {
-        StopLogging();
-      }
+    auto it = per_client_events_by_ext_correlation_.find(client_handle);
+    if (it == per_client_events_by_ext_correlation_.end()) {
+      return;
+    }
+    per_client_events_by_ext_correlation_.erase(it);
+    --num_active_clients_;
+    if (num_active_clients_ == 0 && logging_enabled_) {
+      StopLogging();
     }
   }
 
@@ -273,9 +268,9 @@ protected:
   }
 
 private:
+  // Requires: manager_instance_mutex_ should be held
   void StopLogging() {
     auto this_as_derived = static_cast<TDerived*>(this);
-    std::lock_guard<std::mutex> lock(manager_instance_mutex_);
     if (!logging_enabled_) {
         return;
     }
@@ -284,6 +279,7 @@ private:
     Clear();
   }
 
+  // Requires: manager_instance_mutex_ should be held
   void Clear() {
     unprocessed_activity_buffers_.clear();
     unique_correlation_id_to_client_offset_.clear();
@@ -370,11 +366,12 @@ protected:
         uint64_t increment = 1;
         for (auto& evt : map_iter.second) {
           evt.args["op_name"] = event_iter->args["op_name"];
+          evt.args["parent_name"] = event_iter->name;
 
-          // roctracer doesn't use Jan 1 1970 as an epoch for its timestamps.
+          // Tracers may not use Jan 1 1970 as an epoch for timestamps.
           // So, we adjust the timestamp here to something sensible.
           evt.ts = event_iter->ts + increment;
-          ++increment;
+          increment += evt.dur;
         }
         merged_events.emplace_back(*event_iter);
         ++event_iter;
