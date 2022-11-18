@@ -211,7 +211,7 @@ def main():
             squad_v2_format=True,
         )
 
-        gpu_ep = ''
+        gpu_ep = ""
         if torch.version.hip:
             gpu_ep = "ROCMExecutionProvider"
         else:
