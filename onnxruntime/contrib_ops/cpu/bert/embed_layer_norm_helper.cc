@@ -25,9 +25,16 @@ Status CheckInputs(const OpKernelContext* context, bool quantizedVersion) {
   if (!quantizedVersion) {
     const Tensor* position_ids = context->Input<Tensor>(8);  // optional. nullptr if not provided
 
-    if (nullptr != position_ids && input_ids->Shape() != position_ids->Shape()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "input_ids and position_ids shall have same shape");
+    if (nullptr != position_ids) {
+      if (input_ids->Shape()[1] != position_ids->Shape()[1]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                       "input_ids and position_ids shall have same sequence_length");
+      }
+      if (position_ids->Shape()[0] != input_ids->Shape()[0] &&
+          position_ids->Shape()[0] != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                       "position_ids's first dimension shall be 1 or batch_size");
+      }
     }
   }
 
