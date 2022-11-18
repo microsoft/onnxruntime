@@ -28,7 +28,7 @@ def parse_args():
 
     default_docker_interactive_mode_flag = "it"
     parser.add_argument(
-        "docker_interactive_mode_flag",
+        "--docker_interactive_mode_flag",
         default=default_docker_interactive_mode_flag,
         help="The docker run flag specifying whether to run in interactive mode. "
              "If unspecified, docker would run in interactive mode. "
