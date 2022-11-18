@@ -79,7 +79,12 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
 /**
  * Represent multi-dimensional arrays to feed to or fetch from model inferencing.
  */
-export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {}
+export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {
+  /**
+   * Create an Image from tensor data - output is Imagedata object
+   */
+  toImage(): ImageData;
+}
 
 export interface TensorConstructor {
   // #region specify element type
@@ -249,6 +254,12 @@ export interface TensorFactory {
   /**
    * Create a new tensor object from image object
    * @param image - Image object holding the image data
+   */
+  fromImage(image: string): Tensor;
+
+  /**
+   * Create a new tensor object from image object
+   * @param image - Image object holding the image data
    * @param format - specifies the pixel format
    */
   fromImage(image: ImageBitmap, format?: string): Tensor;
@@ -263,13 +274,6 @@ export interface TensorFactory {
    *     it by 255.
    */
   bufferToTensor(buffer: Uint8ClampedArray, imgH: number, imgW: number, format: string, norm: boolean): Tensor;
-
-  /**
-   * Create a new tensor object from image object
-   * @param tensor - Input tensor for image generation
-   * @param idElement - HTML element ID
-   */
-  toImage(tensor: Tensor): HTMLImageElement;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

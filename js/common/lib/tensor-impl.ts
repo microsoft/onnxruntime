@@ -219,10 +219,16 @@ export class Tensor implements TensorInterface {
   static fromImage(image: ImageData): Tensor;
   static fromImage(image: HTMLImageElement): Tensor;
   static fromImage(image: ImageBitmap, format?: string): Tensor;
-  static fromImage(image: ImageData|HTMLImageElement|ImageBitmap, format?: 'rgb'|'rbg'|'rgba'): Tensor {
+  static fromImage(image: string): Tensor;
+
+  static fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, format?: 'rgb'|'rbg'|'rgba'): Tensor {
     const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
     const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
     const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
+    const isURL = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
+
+    let height: number;
+    let width: number;
 
     let data: Uint8ClampedArray;
 
@@ -230,12 +236,16 @@ export class Tensor implements TensorInterface {
       const pixels2DContext = document.createElement('canvas').getContext('2d');
 
       if (pixels2DContext != null) {
-        pixels2DContext.drawImage(image as HTMLImageElement, 0, 0, image.width, image.height);
-        data = pixels2DContext.getImageData(0, 0, image.width, image.height).data;
+        height = (image as HTMLImageElement).height;
+        width = (image as HTMLImageElement).width;
+        pixels2DContext.drawImage(image as HTMLImageElement, 0, 0, width, height);
+        data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
         throw new Error('Can not access image data');
       }
     } else if (isImageDataEle) {
+      height = (image as ImageData).height;
+      width = (image as ImageData).width;
       data = (image as ImageData).data;
     } else if (isImageBitmap) {
       if (format == null) {
@@ -244,9 +254,25 @@ export class Tensor implements TensorInterface {
       const pixels2DContext = document.createElement('canvas').getContext('2d');
 
       if (pixels2DContext != null) {
-        pixels2DContext.drawImage(image as ImageBitmap, 0, 0, image.width, image.height);
-        data = pixels2DContext.getImageData(0, 0, image.width, image.height).data;
-        return Tensor.bufferToTensor(data, image.width, image.width, format);
+        height = (image as ImageBitmap).height;
+        width = (image as ImageBitmap).width;
+        pixels2DContext.drawImage(image as ImageBitmap, 0, 0, width, height);
+        data = pixels2DContext.getImageData(0, 0, width, height).data;
+        return Tensor.bufferToTensor(data, height, width, format);
+      } else {
+        throw new Error('Can not access image data');
+      }
+    } else if (isURL) {
+      const img = new Image();
+      img.src = image as string;
+      document.body.appendChild(img);
+      const pixels2DContext = document.createElement('canvas').getContext('2d');
+
+      if (pixels2DContext != null) {
+        height = img.height;
+        width = img.width;
+        pixels2DContext.drawImage(img, 0, 0, width, height);
+        data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
         throw new Error('Can not access image data');
       }
@@ -254,26 +280,26 @@ export class Tensor implements TensorInterface {
       throw new Error('Input data provided is not supported - aborted tensor creation');
     }
 
-    return Tensor.bufferToTensor(data, image.width, image.width);
+    return Tensor.bufferToTensor(data, height, width);
   }
 
-  static toImage(tensor: Tensor): ImageData;
-  static toImage(tensor: Tensor): ImageData {
+  toImage(): ImageData;
+  toImage(): ImageData {
     const pixels2DContext = document.createElement('canvas').getContext('2d');
     let image: ImageData;
     if (pixels2DContext != null) {
-      const imageHeight = tensor.dims[3];
-      const imageWidth = tensor.dims[2];
+      const imageHeight = this.dims[3];
+      const imageWidth = this.dims[2];
       image = pixels2DContext.createImageData(imageWidth, imageHeight);
       let rPointer = 0;
       let gPointer = imageWidth * imageHeight;
       let bPointer = imageWidth * imageHeight * 2;
 
       for (let i = 0; i < imageHeight * imageWidth * 4; i += 4) {
-        image.data[i + 0] = (tensor.data[rPointer++] as number) * 255.;  // R value
-        image.data[i + 1] = (tensor.data[gPointer++] as number) * 255.;  // G value
-        image.data[i + 2] = (tensor.data[bPointer++] as number) * 255.;  // B value
-        image.data[i + 3] = NaN;                                         // A value
+        image.data[i + 0] = (this.data[rPointer++] as number) * 255.;  // R value
+        image.data[i + 1] = (this.data[gPointer++] as number) * 255.;  // G value
+        image.data[i + 2] = (this.data[bPointer++] as number) * 255.;  // B value
+        image.data[i + 3] = NaN;                                       // A value
       }
     } else {
       throw new Error('Can not access image data');
