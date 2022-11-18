@@ -4,6 +4,7 @@
 #include "core/providers/cpu/signal/window_functions.h"
 
 #include <cmath>
+#include <core/common/safeint.h>
 
 #include "core/providers/common.h"
 #include "core/providers/cpu/signal/utils.h"
@@ -79,7 +80,7 @@ static Status create_cosine_sum_window(OpKernelContext* ctx, onnx::TensorProto_D
 
   utils::MLTypeCallDispatcher<float, double, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t>
       dispatcher(output_datatype);
-  return dispatcher.InvokeRet<Status, CosineSumWindow>(Y, size, a0, a1, a2, is_periodic);
+  return dispatcher.InvokeRet<Status, CosineSumWindow>(Y, onnxruntime::narrow<size_t>(size), a0, a1, a2, is_periodic);
 }
 
 Status HannWindow::Compute(OpKernelContext* ctx) const {
@@ -145,7 +146,7 @@ struct CreateMelWeightMatrix {
     auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
 
     // Set the weight matrix to 0
-    memset(Y_data, 0, num_spectrogram_bins * num_mel_bins * sizeof(T));
+    memset(Y_data, 0, num_spectrogram_bins * SafeInt<size_t>(num_mel_bins) * sizeof(T));
 
     // The mel filterbank is a triangular shaped peak with a height of 1 and a base equal to the size of the MEL range
     // divided by the number of bins needed times 2. This triangle is then slid across the mel domain linearly, with a
@@ -155,7 +156,7 @@ struct CreateMelWeightMatrix {
     // low_frequency where the mel triangle filter banks begin, and they end on the high_frequency_mel
     // The range is divided evenly to create the needed points corresponding to the begin, center, end points of each
     // triangle filterbank
-    InlinedVector<size_t> frequency_bins(num_mel_bins + 2);
+    InlinedVector<size_t> frequency_bins(SafeInt<size_t>(num_mel_bins) + 2);
     auto low_frequency_mel = hz_to_mel_scale(lower_edge_hertz);
     auto high_frequency_mel = hz_to_mel_scale(upper_edge_hertz);
     auto mel_step = (high_frequency_mel - low_frequency_mel) / static_cast<float>(frequency_bins.size());

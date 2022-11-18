@@ -76,8 +76,8 @@ class BatchNorm : public OpKernel {
     Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
     const auto& dims_vec = x_shape.GetDims();
-    const size_t N = dims_vec[0];
-    const size_t C = dims_vec[1];  // assume NCHW as per the spec
+    const size_t N = onnxruntime::narrow<size_t>(dims_vec[0]);
+    const size_t C = onnxruntime::narrow<size_t>(dims_vec[1]);  // assume NCHW as per the spec
 
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;

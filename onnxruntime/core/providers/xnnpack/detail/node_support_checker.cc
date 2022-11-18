@@ -18,6 +18,8 @@
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/conv_transpose.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
+#include "core/providers/xnnpack/math/gemm.h"
+#include "core/providers/xnnpack/math/matmul.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/resize.h"
 #include "core/providers/xnnpack/nn/softmax.h"
@@ -96,6 +98,8 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"AveragePool", AveragePool::IsOnnxNodeSupported},
       {"Softmax", Softmax::IsOnnxNodeSupported},
       {"Resize", Resize::IsOnnxNodeSupported},
+      {"Gemm", Gemm::IsOnnxNodeSupported},
+      {"MatMul", MatMul::IsOnnxNodeSupported},
   };
 
   bool supported = false;
