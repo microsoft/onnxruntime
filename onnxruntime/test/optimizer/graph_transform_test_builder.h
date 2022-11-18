@@ -350,9 +350,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
  * @param pre_graph_checker The graph checker function before applying the transformer
  * @param post_graph_checker The graph checker function after applying the transformer
  */
-void TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
-                          const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
-                          TransformerLevel level, unsigned steps, const std::function<void(Graph&)>& pre_graph_checker,
-                          const std::function<void(Graph&)>& post_graph_checker);
+Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
+                            const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                            TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
+                            const std::function<Status(Graph&)>& post_graph_checker);
 }  // namespace test
 }  // namespace onnxruntime

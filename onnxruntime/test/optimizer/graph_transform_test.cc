@@ -216,15 +216,17 @@ TEST_F(GraphTransformationTests, NoopElimination) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 
   auto pre_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
-                  CountOpsInGraph(graph)["Div"],
-              1);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
+                          CountOpsInGraph(graph)["Div"] ==
+                      1);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
-                  CountOpsInGraph(graph)["Div"],
-              0);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
+                          CountOpsInGraph(graph)["Div"] ==
+                      0);
+    return Status::OK();
   };
 
   // x+0, float.
@@ -244,8 +246,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // 0+x, fp16.
@@ -265,8 +267,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // x-0, double.
@@ -286,8 +288,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // x*1, int32.
@@ -307,8 +309,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // 1*x, int64.
@@ -328,8 +330,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // x/1, float.
@@ -349,8 +351,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Invalid case: x+1.
@@ -370,8 +372,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: initializer rank is larger.
@@ -391,8 +393,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: 0-x.
@@ -412,8 +414,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: x-1.
@@ -433,8 +435,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: 0*x.
@@ -454,8 +456,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: output is graph output.
@@ -473,8 +475,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: 1/x.
@@ -494,8 +496,8 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, pre_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
   }
 }
 
@@ -3795,7 +3797,7 @@ TEST_F(GraphTransformationTests, FastGeluFusionWithCastsTest3) {
 TEST_F(GraphTransformationTests, QuickGelu) {
   // Sigmoid(x*alpha)*x, float
   {
-    const float alpha = 1.702f;
+    constexpr float alpha = 1.702f;
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
       auto* alpha_arg = builder.MakeInitializer<float>({}, {alpha});
@@ -3809,31 +3811,33 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 1);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "QuickGelu") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
-          ASSERT_EQ(alpha, attrs.at("alpha").f());
+          ORT_RETURN_IF_NOT(attrs.find("alpha") != attrs.end());
+          ORT_RETURN_IF_NOT(alpha == attrs.at("alpha").f());
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // x*Sigmoid(alpha*x), MLFloat16
   {
-    const float alpha = -1.f;
+    constexpr float alpha = -1.f;
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
       auto* alpha_arg = builder.MakeInitializer<MLFloat16>({}, {static_cast<MLFloat16>(alpha)});
@@ -3847,31 +3851,33 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 1);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "QuickGelu") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
-          ASSERT_EQ(alpha, attrs.at("alpha").f());
+          ORT_RETURN_IF_NOT(attrs.find("alpha") != attrs.end());
+          ORT_RETURN_IF_NOT(alpha == attrs.at("alpha").f());
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Sigmoid's output is consumed by other node.
   {
-    const float alpha = 1.702f;
+    constexpr float alpha = 1.702f;
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
       auto* alpha_arg = builder.MakeInitializer<float>({}, {alpha});
@@ -3887,24 +3893,26 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
-      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 0);
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // First Mul's output is consumed by other node.
   {
-    const float alpha = -1.f;
+    constexpr float alpha = -1.f;
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
       auto* alpha_arg = builder.MakeInitializer<MLFloat16>({}, {static_cast<MLFloat16>(alpha)});
@@ -3920,19 +3928,21 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
-      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 0);
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Sigmoid(x)*x, float
@@ -3947,26 +3957,28 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 1);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 1);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "QuickGelu") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
-          ASSERT_EQ(1.0f, attrs.at("alpha").f());
+          ORT_RETURN_IF_NOT(attrs.find("alpha") != attrs.end());
+          ORT_RETURN_IF_NOT(1.0f == attrs.at("alpha").f());
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // x*Sigmoid(x), MLFloat16
@@ -3981,26 +3993,28 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 1);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 1);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "QuickGelu") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
-          ASSERT_EQ(1.0f, attrs.at("alpha").f());
+          ORT_RETURN_IF_NOT(attrs.find("alpha") != attrs.end());
+          ORT_RETURN_IF_NOT(1.0f == attrs.at("alpha").f());
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -4144,20 +4158,22 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_NoLeadingOnes) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
   auto pre_graph_checker = [&](Graph& graph) {
     for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
-    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Softmax"] == 1);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 1);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"] == 1);
     for (auto& node : graph.Nodes()) {
       if (node.OpType() == "BiasSoftmax") {
         auto& attrs = node.GetAttributes();
-        ASSERT_TRUE(attrs.find("axis") != attrs.end());
-        ASSERT_TRUE(attrs.find("is_inner_broadcast") != attrs.end());
-        ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
-        ASSERT_EQ(static_cast<int>(attrs.at("is_inner_broadcast").i()), 0);
+        ORT_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+        ORT_RETURN_IF_NOT(attrs.find("is_inner_broadcast") != attrs.end());
+        ORT_RETURN_IF_NOT(6 == static_cast<int>(attrs.at("axis").i()));
+        ORT_RETURN_IF_NOT(static_cast<int>(attrs.at("is_inner_broadcast").i()) == 0);
       }
     }
+    return Status::OK();
   };
 
   // Input and bias have different ranks.
@@ -4173,8 +4189,8 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Input and bias have same rank.
@@ -4190,8 +4206,8 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -4208,17 +4224,19 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OpSet13InValidAxis) {
 
   auto pre_graph_checker = [&](Graph& graph) {
     for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
-    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Softmax"] == 1);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 0);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Softmax"] == 1);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"] == 0);
+    return Status::OK();
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-  TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                       pre_graph_checker, post_graph_checker);
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
@@ -5647,16 +5665,18 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   {
@@ -5676,16 +5696,18 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
     };
 
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -5713,16 +5735,17 @@ Be noted:
  the Mul's input initializer 64 is a 1-D int32_t.
 */
 TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
-  auto pre_graph_checker = [&](Graph& graph) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
     auto op_count_pre = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_pre.size(), 6U);
-    ASSERT_EQ(op_count_pre["Add"], 3);
-    ASSERT_EQ(op_count_pre["Clip"], 3);
-    ASSERT_EQ(op_count_pre["Sub"], 3);
-    ASSERT_EQ(op_count_pre["Mul"], 3);
-    ASSERT_EQ(op_count_pre["Neg"], 1);
-    ASSERT_EQ(op_count_pre["Cast"], 1);
-    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 15U);
+    ORT_RETURN_IF_NOT(op_count_pre.size() == 6U);
+    ORT_RETURN_IF_NOT(op_count_pre["Add"] == 3);
+    ORT_RETURN_IF_NOT(op_count_pre["Clip"] == 3);
+    ORT_RETURN_IF_NOT(op_count_pre["Sub"] == 3);
+    ORT_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
+    ORT_RETURN_IF_NOT(op_count_pre["Neg"] == 1);
+    ORT_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
+    ORT_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 15U);
+    return Status::OK();
   };
 
   std::vector<int64_t> adders{256, 512};
@@ -5734,7 +5757,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
     int32_t muler = mulers[test_data_index];
     auto post_graph_checker = [adder, suber, muler](Graph& graph) {
       const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-      ASSERT_EQ(initialized_tensor_set.size(), 5U);
+      ORT_RETURN_IF_NOT(initialized_tensor_set.size() == 5U);
       const NodeArg* add_initializer = nullptr;
       const NodeArg* clip_min_initializer = nullptr;
       const NodeArg* clip_max_initializer = nullptr;
@@ -5745,44 +5768,49 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
         if (node.OpType().compare("Add") == 0) {
           if (!add_initializer) {
             add_initializer = node.InputDefs()[1];
+            ORT_RETURN_IF_NOT(add_initializer != nullptr);
             const TensorShapeProto* s = add_initializer->Shape();
-            ASSERT_EQ(s->dim_size(), 0);
+            ORT_RETURN_IF_NOT(s->dim_size() == 0);
           } else {
-            ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+            ORT_RETURN_IF_NOT(add_initializer == node.InputDefs()[1]);
             CheckShapeEquality(add_initializer->Shape(), node.InputDefs()[1]->Shape());
           }
         } else if (node.OpType().compare("Clip") == 0) {
           if (!clip_min_initializer && !clip_max_initializer) {
             clip_min_initializer = node.InputDefs()[1];
             clip_max_initializer = node.InputDefs()[2];
+            ORT_RETURN_IF(clip_min_initializer == nullptr);
+            ORT_RETURN_IF(clip_max_initializer == nullptr);
             const TensorShapeProto* s1 = clip_min_initializer->Shape();
             const TensorShapeProto* s2 = clip_max_initializer->Shape();
-            ASSERT_EQ(s1->dim_size(), 0);
-            ASSERT_EQ(s2->dim_size(), 0);
+            ORT_RETURN_IF_NOT(s1->dim_size() == 0);
+            ORT_RETURN_IF_NOT(s2->dim_size() == 0);
           } else {
-            ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
-            ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
+            ORT_RETURN_IF_NOT(clip_min_initializer == node.InputDefs()[1]);
+            ORT_RETURN_IF_NOT(clip_max_initializer == node.InputDefs()[2]);
             CheckShapeEquality(clip_min_initializer->Shape(), node.InputDefs()[1]->Shape());
             CheckShapeEquality(clip_max_initializer->Shape(), node.InputDefs()[2]->Shape());
           }
         } else if (node.OpType().compare("Sub") == 0) {
           if (!sub_initializer) {
             sub_initializer = node.InputDefs()[1];
-            ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+            ORT_RETURN_IF(sub_initializer == nullptr);
+            ORT_RETURN_IF_NOT(sub_initializer->Shape()->dim_size() == 0);
           } else {
-            ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+            ORT_RETURN_IF_NOT(sub_initializer == node.InputDefs()[1]);
             CheckShapeEquality(sub_initializer->Shape(), node.InputDefs()[1]->Shape());
           }
         } else if (node.OpType().compare("Mul") == 0) {
           if (!mul_initializer) {
             mul_initializer = node.InputDefs()[1];
+            ORT_RETURN_IF(mul_initializer == nullptr);
             const TensorShapeProto* s = mul_initializer->Shape();
-            ASSERT_EQ(s->dim_size(), 1);
+            ORT_RETURN_IF_NOT(s->dim_size() == 1);
             auto dim1 = s->dim(0);
-            ASSERT_TRUE(s->dim(0).has_dim_value());
-            ASSERT_EQ(s->dim(0).dim_value(), 1);
+            ORT_RETURN_IF_NOT(s->dim(0).has_dim_value());
+            ORT_RETURN_IF_NOT(s->dim(0).dim_value() == 1);
           } else {
-            ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+            ORT_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
             CheckShapeEquality(mul_initializer->Shape(), node.InputDefs()[1]->Shape());
           }
         }
@@ -5790,35 +5818,37 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
 
       for (const auto& entry : initialized_tensor_set) {
         InlinedVector<int64_t> values;
-        const bool require_constant = true;
+        constexpr bool require_constant = true;
         NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
-        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
-        if (entry.first.compare(add_initializer->Name()) == 0) {
-          ASSERT_EQ(values.size(), 1U);
-          ASSERT_EQ(values[0], adder);
-        } else if (entry.first.compare(clip_min_initializer->Name()) == 0) {
-          ASSERT_EQ(values.size(), 1U);
-          ASSERT_EQ(values[0], 0);
-        } else if (entry.first.compare(clip_max_initializer->Name()) == 0) {
-          ASSERT_EQ(values.size(), 1U);
-          ASSERT_EQ(values[0], 511);
-        } else if (entry.first.compare(sub_initializer->Name()) == 0) {
-          ASSERT_EQ(values.size(), 1U);
-          ASSERT_EQ(values[0], suber);
-        } else if (entry.first.compare(mul_initializer->Name()) == 0) {
-          ASSERT_EQ(values.size(), 1U);
-          ASSERT_EQ(values[0], muler);
+        ORT_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+
+        if (add_initializer != nullptr && entry.first.compare(add_initializer->Name()) == 0) {
+          ORT_RETURN_IF_NOT(values.size() == 1U);
+          ORT_RETURN_IF_NOT(values[0] == adder);
+        } else if (clip_min_initializer != nullptr && entry.first.compare(clip_min_initializer->Name()) == 0) {
+          ORT_RETURN_IF_NOT(values.size() == 1U);
+          ORT_RETURN_IF_NOT(values[0] == 0);
+        } else if (clip_max_initializer != nullptr && entry.first.compare(clip_max_initializer->Name()) == 0) {
+          ORT_RETURN_IF_NOT(values.size() == 1U);
+          ORT_RETURN_IF_NOT(values[0] == 511);
+        } else if (sub_initializer != nullptr && entry.first.compare(sub_initializer->Name()) == 0) {
+          ORT_RETURN_IF_NOT(values.size() == 1U);
+          ORT_RETURN_IF_NOT(values[0] == suber);
+        } else if (mul_initializer != nullptr && entry.first.compare(mul_initializer->Name()) == 0) {
+          ORT_RETURN_IF_NOT(values.size() == 1U);
+          ORT_RETURN_IF_NOT(values[0] == muler);
         }
       }
 
       auto op_count = CountOpsInGraph(graph);
-      ASSERT_EQ(op_count.size(), 6U);
-      ASSERT_EQ(op_count["Add"], 3);
-      ASSERT_EQ(op_count["Clip"], 3);
-      ASSERT_EQ(op_count["Sub"], 3);
-      ASSERT_EQ(op_count["Mul"], 3);
-      ASSERT_EQ(op_count["Neg"], 1);
-      ASSERT_EQ(op_count["Cast"], 1);
+      ORT_RETURN_IF_NOT(op_count.size() == 6U);
+      ORT_RETURN_IF_NOT(op_count["Add"] == 3);
+      ORT_RETURN_IF_NOT(op_count["Clip"] == 3);
+      ORT_RETURN_IF_NOT(op_count["Sub"] == 3);
+      ORT_RETURN_IF_NOT(op_count["Mul"] == 3);
+      ORT_RETURN_IF_NOT(op_count["Neg"] == 1);
+      ORT_RETURN_IF_NOT(op_count["Cast"] == 1);
+      return Status::OK();
     };
 
     auto build_test_case = [adder, suber, muler](ModelTestBuilder& builder) {
@@ -5858,8 +5888,8 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
     const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-      TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1,
-                           1, pre_graph_checker, post_graph_checker);
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -5903,50 +5933,53 @@ Be noted:
 TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_pre.size(), 2U);
-    ASSERT_EQ(op_count_pre["Div"], 1);
-    ASSERT_EQ(op_count_pre["Mul"], 12);
-    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 12U);
+    ORT_RETURN_IF_NOT(op_count_pre.size() == 2U);
+    ORT_RETURN_IF_NOT(op_count_pre["Div"] == 1);
+    ORT_RETURN_IF_NOT(op_count_pre["Mul"] == 12);
+    ORT_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 12U);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
     const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    ASSERT_EQ(initialized_tensor_set.size(), 1U);
+    ORT_RETURN_IF_NOT(initialized_tensor_set.size() == 1U);
     const NodeArg* mul_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
           mul_initializer = node.InputDefs()[1];
-          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+          ORT_RETURN_IF(mul_initializer == nullptr);
+          ORT_RETURN_IF_NOT(mul_initializer->Shape()->dim_size() == 0);
         } else {
-          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+          ORT_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
         }
       }
     }
-
+    ORT_RETURN_IF(mul_initializer == nullptr);
     for (const auto& entry : initialized_tensor_set) {
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_EQ(float_const.size(), 1);
+        ORT_RETURN_IF_NOT(float_const.size() == 1);
         float float_const_value;
         if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
         } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           float_const_value = *(float_const.data<float>());
         } else {
-          ASSERT_TRUE(false);
+          return Status(common::ONNXRUNTIME, common::FAIL, "unexpected type");
         }
 
-        ASSERT_EQ(float_const_value, 1.0f);
+        ORT_RETURN_IF_NOT(float_const_value == 1.0f);
       }
     }
 
     auto op_count = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count.size(), 2U);
-    ASSERT_EQ(op_count["Div"], 1);
-    ASSERT_EQ(op_count["Mul"], 12);
+    ORT_RETURN_IF_NOT(op_count.size() == 2U);
+    ORT_RETURN_IF_NOT(op_count["Div"] == 1);
+    ORT_RETURN_IF_NOT(op_count["Mul"] == 12);
+    return Status::OK();
   };
 
   const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
@@ -5957,9 +5990,9 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                         TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // MLFloat16 data type tests.
@@ -5969,9 +6002,9 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
 
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
-                         TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -5994,60 +6027,65 @@ Be noted:
 TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_pre.size(), 4U);
-    ASSERT_EQ(op_count_pre["Div"], 1);
-    ASSERT_EQ(op_count_pre["Cast"], 1);
-    ASSERT_EQ(op_count_pre["Mul"], 3);
-    ASSERT_EQ(op_count_pre["Add"], 3);
-    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 6U);
+    ORT_RETURN_IF_NOT(op_count_pre.size() == 4U);
+    ORT_RETURN_IF_NOT(op_count_pre["Div"] == 1);
+    ORT_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
+    ORT_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
+    ORT_RETURN_IF_NOT(op_count_pre["Add"] == 3);
+    ORT_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 6U);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
     const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    ASSERT_EQ(initialized_tensor_set.size(), 2U);
+    ORT_RETURN_IF_NOT(initialized_tensor_set.size() == 2U);
     const NodeArg* mul_initializer = nullptr;
     const NodeArg* add_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
           mul_initializer = node.InputDefs()[1];
-          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+          ORT_RETURN_IF(mul_initializer == nullptr);
+          ORT_RETURN_IF_NOT(mul_initializer->Shape()->dim_size() == 0);
         } else {
-          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+          ORT_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
         }
       } else if (node.OpType().compare("Add") == 0) {
         if (!add_initializer) {
           add_initializer = node.InputDefs()[1];
-          ASSERT_EQ(add_initializer->Shape()->dim_size(), 0);
+          ORT_RETURN_IF(add_initializer == nullptr);
+          ORT_RETURN_IF_NOT(add_initializer->Shape()->dim_size() == 0);
         } else {
-          ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+          ORT_RETURN_IF_NOT(add_initializer == node.InputDefs()[1]);
         }
       }
     }
-
+    ORT_RETURN_IF(mul_initializer == nullptr);
+    ORT_RETURN_IF(add_initializer == nullptr);
     for (const auto& entry : initialized_tensor_set) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
       if (entry.first.compare(mul_initializer->Name()) == 0) {
-        ASSERT_EQ(float_const.size(), 1);
-        ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        ORT_RETURN_IF_NOT(float_const.size() == 1);
+        ORT_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         float float_const_value = *(float_const.data<float>());
-        ASSERT_EQ(float_const_value, 1.0f);
+        ORT_RETURN_IF_NOT(float_const_value == 1.0f);
       } else if (entry.first.compare(add_initializer->Name()) == 0) {
-        ASSERT_EQ(float_const.size(), 1);
-        ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        ORT_RETURN_IF_NOT(float_const.size() == 1);
+        ORT_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
-        ASSERT_EQ(float_const_value, 1.0f);
+        ORT_RETURN_IF_NOT(float_const_value == 1.0f);
       }
     }
 
     auto op_count = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count.size(), 4U);
-    ASSERT_EQ(op_count["Div"], 1);
-    ASSERT_EQ(op_count["Mul"], 3);
-    ASSERT_EQ(op_count["Cast"], 1);
-    ASSERT_EQ(op_count["Add"], 3);
+    ORT_RETURN_IF_NOT(op_count.size() == 4U);
+    ORT_RETURN_IF_NOT(op_count["Div"] == 1);
+    ORT_RETURN_IF_NOT(op_count["Mul"] == 3);
+    ORT_RETURN_IF_NOT(op_count["Cast"] == 1);
+    ORT_RETURN_IF_NOT(op_count["Add"] == 3);
+    return Status::OK();
   };
 
   const std::vector<int> opsets{12, 13, 14};
@@ -6076,9 +6114,9 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                         TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6105,57 +6143,62 @@ Be noted:
 TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_pre.size(), 4U);
-    ASSERT_EQ(op_count_pre["Div"], 1);
-    ASSERT_EQ(op_count_pre["Mul"], 12);
-    ASSERT_EQ(op_count_pre["Sub"], 12);
-    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 24U);
+    ORT_RETURN_IF_NOT(op_count_pre.size() == 4U);
+    ORT_RETURN_IF_NOT(op_count_pre["Div"] == 1);
+    ORT_RETURN_IF_NOT(op_count_pre["Mul"] == 12);
+    ORT_RETURN_IF_NOT(op_count_pre["Sub"] == 12);
+    ORT_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 24U);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
     const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    ASSERT_EQ(initialized_tensor_set.size(), 2U);
+    ORT_RETURN_IF_NOT(initialized_tensor_set.size() == 2U);
     const NodeArg* mul_initializer = nullptr;
     const NodeArg* sub_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
           mul_initializer = node.InputDefs()[1];
-          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+          ORT_RETURN_IF(mul_initializer == nullptr);
+          ORT_RETURN_IF_NOT(mul_initializer->Shape()->dim_size() == 0);
         } else {
-          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+          ORT_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
         }
       } else if (node.OpType().compare("Sub") == 0) {
         if (!sub_initializer) {
           sub_initializer = node.InputDefs()[1];
-          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+          ORT_RETURN_IF(sub_initializer == nullptr);
+          ORT_RETURN_IF_NOT(sub_initializer->Shape()->dim_size() == 0);
         } else {
-          ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+          ORT_RETURN_IF_NOT(sub_initializer == node.InputDefs()[1]);
         }
       }
     }
-
+    ORT_RETURN_IF(mul_initializer == nullptr);
+    ORT_RETURN_IF(sub_initializer == nullptr);
     for (const auto& entry : initialized_tensor_set) {
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_EQ(int64_const.size(), 1);
+        ORT_RETURN_IF_NOT(int64_const.size() == 1);
         int64_t int64_const_value = *(int64_const.data<int64_t>());
-        ASSERT_EQ(int64_const_value, std::numeric_limits<int64_t>::max());
+        ORT_RETURN_IF_NOT(int64_const_value == std::numeric_limits<int64_t>::max());
       } else if (entry.first.compare(sub_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_EQ(float_const.size(), 1);
+        ORT_RETURN_IF_NOT(float_const.size() == 1);
         float float_const_value = *(float_const.data<float>());
-        ASSERT_EQ(float_const_value, std::numeric_limits<float>::infinity());
+        ORT_RETURN_IF_NOT(float_const_value == std::numeric_limits<float>::infinity());
       }
     }
 
     auto op_count = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count.size(), 4U);
-    ASSERT_EQ(op_count["Div"], 1);
-    ASSERT_EQ(op_count["Mul"], 12);
-    ASSERT_EQ(op_count["Sub"], 12);
+    ORT_RETURN_IF_NOT(op_count.size() == 4U);
+    ORT_RETURN_IF_NOT(op_count["Div"] == 1);
+    ORT_RETURN_IF_NOT(op_count["Mul"] == 12);
+    ORT_RETURN_IF_NOT(op_count["Sub"] == 12);
+    return Status::OK();
   };
 
   const std::vector<int> opsets{12, 13, 14};
@@ -6186,9 +6229,9 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                         TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6219,67 +6262,70 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
   };
 
-  auto pre_graph_checker = [&](Graph& graph) { ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3); };
+  auto pre_graph_checker = [&](Graph& graph) { ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] ==3); return Status::OK(); };
 
   // OpSet-12
   {
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["Split"], 1);
-      ASSERT_EQ(CountOpsInGraph(graph)["Squeeze"], 3);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "Split") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("axis") != attrs.end());
-          ASSERT_EQ(2, static_cast<int>(attrs.at("axis").i()));
+          ORT_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+          ORT_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
         } else if (node.OpType() == "Squeeze") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("axes") != attrs.end());
-          ASSERT_EQ(2, static_cast<int>(attrs.at("axes").ints().at(0)));
+          ORT_RETURN_IF_NOT(attrs.find("axes") != attrs.end());
+          ORT_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axes").ints().at(0)));
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14
   {
     auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 0);
-      ASSERT_EQ(CountOpsInGraph(graph)["Split"], 1);
-      ASSERT_EQ(CountOpsInGraph(graph)["Squeeze"], 3);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+      ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "Split") {
           auto& attrs = node.GetAttributes();
-          ASSERT_TRUE(attrs.find("axis") != attrs.end());
-          ASSERT_EQ(2, static_cast<int>(attrs.at("axis").i()));
+          ORT_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+          ORT_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
         } else if (node.OpType() == "Squeeze") {
           const NodeArg& input_arg = *(node.InputDefs()[1]);
           const ONNX_NAMESPACE::TensorProto* tensor_proto =
               graph_utils::GetConstantInitializer(graph, input_arg.Name());
-          ASSERT_TRUE(tensor_proto != nullptr);
+          ORT_RETURN_IF_NOT(tensor_proto != nullptr);
           Initializer init_const{*tensor_proto, graph.ModelPath()};
-          ASSERT_TRUE(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
-          ASSERT_EQ(2, static_cast<int>(*(init_const.data<int64_t>())));
+          ORT_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          ORT_RETURN_IF_NOT(2 == static_cast<int>(*(init_const.data<int64_t>())));
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
 TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
-  auto pre_graph_checker = [&](Graph& graph) { ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3); };
+  auto pre_graph_checker = [&](Graph& graph) { ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3); return Status::OK(); };
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3);
-    ASSERT_EQ(CountOpsInGraph(graph)["Split"], 0);
-    ASSERT_EQ(CountOpsInGraph(graph)["Squeeze"], 0);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
+    ORT_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 0);
+    return Status::OK();
   };
 
   // Invalid shape.
@@ -6314,8 +6360,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Invalid Gather indices.
@@ -6350,8 +6396,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Invalid Gather axis.
@@ -6386,16 +6432,17 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
 TEST_F(GraphTransformationTests, GatherToSliceFusion) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_map = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_map["Range"], 1);
-    ASSERT_EQ(op_count_map["Gather"], 1);
+    ORT_RETURN_IF_NOT(op_count_map["Range"] == 1);
+    ORT_RETURN_IF_NOT(op_count_map["Gather"] == 1);
+    return Status::OK();
   };
 
   // OpSet-12, Tind is int32.
@@ -6415,25 +6462,26 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
 
     auto post_graph_checker = [&](Graph& graph) {
       auto op_count_map = CountOpsInGraph(graph);
-      ASSERT_EQ(op_count_map["Range"], 0);
-      ASSERT_EQ(op_count_map["Gather"], 0);
-      ASSERT_EQ(op_count_map["Slice"], 1);
+      ORT_RETURN_IF_NOT(op_count_map["Range"] == 0);
+      ORT_RETURN_IF_NOT(op_count_map["Gather"] == 0);
+      ORT_RETURN_IF_NOT(op_count_map["Slice"] == 1);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "Slice") {
           const NodeArg& input_arg = *(node.InputDefs()[3]);
           const ONNX_NAMESPACE::TensorProto* tensor_proto =
               graph_utils::GetConstantInitializer(graph, input_arg.Name());
-          ASSERT_TRUE(tensor_proto != nullptr);
+          ORT_RETURN_IF_NOT(tensor_proto != nullptr);
           Initializer init_const{*tensor_proto, graph.ModelPath()};
-          ASSERT_TRUE(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32);
-          ASSERT_EQ(2, *(init_const.data<int32_t>()));
+          ORT_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32);
+          ORT_RETURN_IF_NOT(2 == *(init_const.data<int32_t>()));
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
-    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14, Tind is int64.
@@ -6453,25 +6501,26 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
 
     auto post_graph_checker = [&](Graph& graph) {
       auto op_count_map = CountOpsInGraph(graph);
-      ASSERT_EQ(op_count_map["Range"], 0);
-      ASSERT_EQ(op_count_map["Gather"], 0);
-      ASSERT_EQ(op_count_map["Slice"], 1);
+      ORT_RETURN_IF_NOT(op_count_map["Range"] == 0);
+      ORT_RETURN_IF_NOT(op_count_map["Gather"] == 0);
+      ORT_RETURN_IF_NOT(op_count_map["Slice"] == 1);
       for (auto& node : graph.Nodes()) {
         if (node.OpType() == "Slice") {
           const NodeArg& input_arg = *(node.InputDefs()[3]);
           const ONNX_NAMESPACE::TensorProto* tensor_proto =
               graph_utils::GetConstantInitializer(graph, input_arg.Name());
-          ASSERT_TRUE(tensor_proto != nullptr);
+          ORT_RETURN_IF_NOT(tensor_proto != nullptr);
           Initializer init_const{*tensor_proto, graph.ModelPath()};
-          ASSERT_TRUE(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
-          ASSERT_EQ(2, static_cast<int32_t>(*(init_const.data<int64_t>())));
+          ORT_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          ORT_RETURN_IF_NOT(2 == static_cast<int32_t>(*(init_const.data<int64_t>())));
         }
       }
+      return Status::OK();
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 
