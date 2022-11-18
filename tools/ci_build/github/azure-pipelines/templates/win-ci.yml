@@ -148,7 +148,7 @@ jobs:
     - task: PublishPipelineArtifact@1
       condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
       inputs:
-        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe' 
+        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\_deps\protobuf-build\Debug\protoc.exe' 
         artifactName: 'drop-extra' 
 
 
