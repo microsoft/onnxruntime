@@ -15,6 +15,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include <type_traits>
+#include "api_utils.h"
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
@@ -146,106 +147,79 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
   API_IMPL_END
 };
 
-namespace onnxruntime {
-struct KernelIOInfo {
-  using UniqueTypeInfoPtr = std::unique_ptr<OrtTypeInfo, decltype(&OrtApis::ReleaseTypeInfo)>;
-
-  KernelIOInfo(OrtTypeInfo* type_info, std::string name)
-    : type_info_(type_info, OrtApis::ReleaseTypeInfo), name_(std::move(name)) {}
-  ~KernelIOInfo() = default;
-
-  // Disable copying (move only)
-  KernelIOInfo(const KernelIOInfo& other) = delete;
-  KernelIOInfo& operator=(const KernelIOInfo& other) = delete;
-  KernelIOInfo(KernelIOInfo&& other) = default;
-  KernelIOInfo& operator=(KernelIOInfo&& other) = default;
-
-  static OrtStatus* FromNodeArg(const onnxruntime::NodeArg* node_arg, KernelIOInfo** out) {
-      const ONNX_NAMESPACE::TypeProto* type_proto = node_arg->TypeAsProto();
-
-      if (type_proto == nullptr) {
-        return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "KernelInfo input/output does not have a type");
-      }
-
-      OrtTypeInfo* type_info = nullptr;
-      OrtStatus* status = OrtTypeInfo::FromTypeProto(type_proto, &type_info);
-
-      *out = new onnxruntime::KernelIOInfo(type_info, node_arg->Name());
-      return status;
-  }
-
-  const OrtTypeInfo* GetTypeInfo() const { return type_info_.get(); }
-  const std::string& GetName() const { return name_; }
- private:
-  UniqueTypeInfoPtr type_info_;
-  std::string name_;
-};
-}
-
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ OrtKernelIOInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
+                    _Out_writes_z_(size) char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto input_defs = op_info->node().InputDefs();
 
   if (index >= input_defs.size()) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "KernelInfo input index is out of bounds");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "::OrtKernelInfo input index is out of bounds");
   }
 
-  onnxruntime::KernelIOInfo* input_info = nullptr;
-  OrtStatus* status = onnxruntime::KernelIOInfo::FromNodeArg(input_defs[index], &input_info);
+  auto status = CopyStringToOutputArg(input_defs[index]->Name(),
+                                      "Output buffer is not large enough for ::OrtKernelInfo input name", out, size);
 
-  *out = reinterpret_cast<OrtKernelIOInfo*>(input_info);
-  return status;
+  return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ OrtKernelIOInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
+                    _Out_writes_z_(size) char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto output_defs = op_info->node().OutputDefs();
 
   if (index >= output_defs.size()) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "KernelInfo output index is out of bounds");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "::OrtKernelInfo output index is out of bounds");
   }
 
-  onnxruntime::KernelIOInfo* output_info = nullptr;
-  OrtStatus* status = onnxruntime::KernelIOInfo::FromNodeArg(output_defs[index], &output_info);
+  auto status = CopyStringToOutputArg(output_defs[index]->Name(),
+                                      "Output buffer is not large enough for ::OrtKernelInfo output name", out, size);
 
-  *out = reinterpret_cast<OrtKernelIOInfo*>(output_info);
-  return status;
+  return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseKernelIOInfo, _Frees_ptr_opt_ OrtKernelIOInfo* io_info) {
-  if (io_info != nullptr) {
-    delete reinterpret_cast<onnxruntime::KernelIOInfo*>(io_info);
-  }
-}
-
-ORT_API_STATUS_IMPL(OrtApis::KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info,
-                    _Outptr_result_z_ const char** out, _Out_opt_ size_t* length) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                    _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
-  const auto* actual_io_info = reinterpret_cast<const onnxruntime::KernelIOInfo*>(io_info);
-  const std::string& name = actual_io_info->GetName();
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const auto input_defs = op_info->node().InputDefs();
 
-  *out = name.c_str();
-
-  if (length) {
-    *length = name.length();
+  if (index >= input_defs.size()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "::OrtKernelInfo input index is out of bounds");
   }
 
-  return nullptr;
+  const onnxruntime::NodeArg* node_arg = input_defs[index];
+  const ONNX_NAMESPACE::TypeProto* type_proto = node_arg->TypeAsProto();
+
+  if (type_proto == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo input does not have a type");
+  }
+
+  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info,
-                    _Outptr_ const OrtTypeInfo** type_info) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                    _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
-  const auto* actual_io_info = reinterpret_cast<const onnxruntime::KernelIOInfo*>(io_info);
-  *type_info = actual_io_info->GetTypeInfo();
-  return nullptr;
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const auto output_defs = op_info->node().OutputDefs();
+
+  if (index >= output_defs.size()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "::OrtKernelInfo output index is out of bounds");
+  }
+
+  const onnxruntime::NodeArg* node_arg = output_defs[index];
+  const ONNX_NAMESPACE::TypeProto* type_proto = node_arg->TypeAsProto();
+
+  if (type_proto == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo output does not have a type");
+  }
+
+  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
   API_IMPL_END
 }
 

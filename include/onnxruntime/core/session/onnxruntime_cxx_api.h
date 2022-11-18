@@ -206,7 +206,6 @@ ORT_DEFINE_RELEASE(Status);
 ORT_DEFINE_RELEASE(OpAttr);
 ORT_DEFINE_RELEASE(Op);
 ORT_DEFINE_RELEASE(KernelInfo);
-ORT_DEFINE_RELEASE(KernelIOInfo);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -1417,35 +1416,6 @@ struct KernelContext {
 struct KernelInfo;
 
 namespace detail {
-
-template <typename T>
-struct KernelIOInfoImpl : Base<T> {
-  using B = Base<T>;
-  using B::B;
-
-  // TODO: Return a std::string_view when C++17 support is added (avoid string copy).
-  std::string GetName() const;
-  ConstTypeInfo GetTypeInfo() const;
-};
-
-}  // namespace detail
-
-using ConstKernelIOInfo = detail::KernelIOInfoImpl<detail::Unowned<const OrtKernelIOInfo>>;
-
-/// <summary>
-/// This struct owns the OrtKernelIOInfo* pointer.
-/// Provides convenience functions to retrieve type, shape, and name information
-/// for KernelInfo inputs and outputs. Can be used in a custom op kernel's construction
-/// function to initialize kernel state during ORT session creation.
-/// </summary>
-struct KernelIOInfo : detail::KernelIOInfoImpl<OrtKernelIOInfo> {
-  explicit KernelIOInfo(std::nullptr_t) {}       ///< Create an empty instance to initialize later
-  explicit KernelIOInfo(OrtKernelIOInfo* io_info);  ///< Take ownership of the instance
-
-  ConstKernelIOInfo GetConst() const { return ConstKernelIOInfo{this->p_}; }
-};
-
-namespace detail {
 namespace attr_utils {
 void GetAttr(const OrtKernelInfo* p, const char* name, float&);
 void GetAttr(const OrtKernelInfo* p, const char* name, int64_t&);
@@ -1478,8 +1448,11 @@ struct KernelInfoImpl : Base<T> {
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
 
-  KernelIOInfo GetInputInfo(size_t index) const;
-  KernelIOInfo GetOutputInfo(size_t index) const;
+  std::string GetInputName(size_t index) const;
+  std::string GetOutputName(size_t index) const;
+
+  TypeInfo GetInputTypeInfo(size_t index) const;
+  TypeInfo GetOutputTypeInfo(size_t index) const;
 };
 
 }  // namespace detail

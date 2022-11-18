@@ -169,10 +169,10 @@ MyCustomKernelWithVariadicIO::MyCustomKernelWithVariadicIO(const OrtKernelInfo* 
 
   // Show how to use KernelInfo APIs to enforce expected input shapes on kernel/session creation.
   for (int64_t i = 0; i < this->num_inputs_; ++i) {
-    Ort::KernelIOInfo input_info = kinfo.GetInputInfo(i);
-    Ort::ConstTensorTypeAndShapeInfo type_info = input_info.GetTypeInfo().GetTensorTypeAndShapeInfo();
+    Ort::TypeInfo type_info = kinfo.GetInputTypeInfo(i);
+    Ort::ConstTensorTypeAndShapeInfo type_shape_info = type_info.GetTensorTypeAndShapeInfo();
 
-    if (type_info.GetDimensionsCount() != 1) {
+    if (type_shape_info.GetDimensionsCount() != 1) {
       ORT_CXX_API_THROW("Input can only have a dimension of 1", OrtErrorCode::ORT_INVALID_GRAPH);
     }
   }

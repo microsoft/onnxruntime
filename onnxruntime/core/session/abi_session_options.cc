@@ -11,6 +11,7 @@
 #include <sstream>
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
+#include "api_utils.h"
 
 OrtSessionOptions::~OrtSessionOptions() = default;
 
@@ -196,21 +197,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.str().c_str());
   }
 
-  const std::string& value = *value_opt;
+  auto status = CopyStringToOutputArg(*value_opt, "Output buffer is not large enough for session config entry", config_value,
+                                      size);
 
-  if (config_value == nullptr) {  // User is querying the true size of the config value.
-    *size = value.size() + 1;
-    return nullptr;
-  } else if (*size >= value.size() + 1) {  // User provided a buffer that is large enough.
-    std::memcpy(config_value, value.data(), value.size());
-    config_value[value.size()] = '\0';
-    *size = value.size() + 1;
-    return nullptr;
-  }
-
-  // User has provided a buffer that is not large enough.
-  *size = value.size() + 1;
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough for session config entry");
+  return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 

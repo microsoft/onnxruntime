@@ -407,15 +407,14 @@ ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggin
 
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
-ORT_API_STATUS_IMPL(KernelInfo_GetInputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ OrtKernelIOInfo** out);
-ORT_API_STATUS_IMPL(KernelInfo_GetOutputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ OrtKernelIOInfo** out);
-ORT_API(void, ReleaseKernelIOInfo, _Frees_ptr_opt_ OrtKernelIOInfo* io_info);
-ORT_API_STATUS_IMPL(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_result_z_ const char** out,
-                    _Out_opt_ size_t* length);
-ORT_API_STATUS_IMPL(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info,
-                    _Outptr_ const OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
+                    _Out_writes_z_(size) char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
+                    _Out_writes_z_(size) char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                    _Outptr_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                    _Outptr_ OrtTypeInfo** type_info);
 
 ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_ int* out);

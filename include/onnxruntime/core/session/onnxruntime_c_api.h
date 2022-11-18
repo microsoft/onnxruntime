@@ -60,7 +60,6 @@ extern "C" {
 #define _Out_writes_z_(X)
 #define _Success_(X)
 #define _Outptr_result_buffer_maybenull_(X)
-#define _Outptr_result_z_
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #else
 #include <specstrings.h>
@@ -271,7 +270,6 @@ ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
-ORT_RUNTIME_CLASS(KernelIOInfo);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3625,71 +3623,79 @@ struct OrtApi {
   */
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief Get information (e.g., type, shape, and name) for an input from ::OrtKernelInfo.
+  /** \brief Get the name of a ::OrtKernelInfo's input.
   *
-  * \param[in]  info     An instance of ::OrtKernelInfo.
-  * \param[in]  index    The index of the input info to get.
-  *                      Returns a failure status if out-of-bounds.
-  * \param[out] out      Pointer set to instance of ::OrtKernelIOInfo on success.
-  *                      Must be released with OrtApi::ReleaseKernelIOInfo
+  * If `out` is nullptr, the value of `size` is set to the size of the name
+  * string (including null-terminator), and a success status is returned.
   *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.14
-  */
-  ORT_API2_STATUS(KernelInfo_GetInputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                  _Outptr_ OrtKernelIOInfo** out);
-
-  /** \brief Get information (e.g., type, shape, and name) for an output from ::OrtKernelInfo.
+  * If the `size` parameter is greater than or equal to the name string's size,
+  * the value of `size` is set to the true size of the string (including null-terminator),
+  * the provided memory is filled with the string's contents, and a success status is returned.
   *
-  * \param[in]  info     An instance of ::OrtKernelInfo.
-  * \param[in]  index    The index of the output info to get.
-  *                      Returns a failure status if out-of-bounds.
-  * \param[out] out      Pointer set to instance of ::OrtKernelIOInfo on success.
-  *                      Must be released with OrtApi::ReleaseIOInfo
+  * If the `size` parameter is less than the actual string's size and `out`
+  * is not nullptr, the value of `size` is set to the true size of the string
+  * and a failure status is returned.
+  *
+  * \param[in] info  An instance of ::OrtKernelInfo.
+  * \param[in] index  The index of the input name to get. Returns a failure status if out-of-bounds.
+  * \param[out] out   Memory location into which to write the UTF-8 null-terminated string representing the 
+  *                   input's name.
+  * \param[in,out] size  Pointer to the size of the `out` buffer. See above comments for details.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelInfo_GetOutputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                  _Outptr_ OrtKernelIOInfo** out);
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
+                  _Out_writes_z_(size) char* out, _Inout_ size_t* size);
 
-  /// @}
-  /// \name OrtKernelIOInfo
-  /// @{
-
-  /* \brief: Release ::OrtKernelIOInfo
+  /** \brief Get the name of a ::OrtKernelInfo's output.
   *
-  * \param[in] OrtIOInfo
+  * If `out` is nullptr, the value of `size` is set to the size of the name
+  * string (including null-terminator), and a success status is returned.
   *
-  * \since Version 1.14
-  */
-  ORT_CLASS_RELEASE(KernelIOInfo);
-
-  /** \brief Get the name of a KernelInfo's input or output.
+  * If the `size` parameter is greater than or equal to the name string's size,
+  * the value of `size` is set to the true size of the string (including null-terminator),
+  * the provided memory is filled with the string's contents, and a success status is returned.
   *
-  * \param[in]     io_info  An instance of ::OrtKernelIOInfo.
-  * \param[out]    out      Pointer set to the non-modifiable UTF-8 null-terminated string representing the 
-  *                         input or output name. Do not free, as this is owned by the ::OrtKernelIOInfo object.
-  * \param[in,out] length   Optional pointer set to the name's length (not counting the null-terminator).
-  *                         Ignored if NULL.
+  * If the `size` parameter is less than the actual string's size and `out`
+  * is not nullptr, the value of `size` is set to the true size of the string
+  * and a failure status is returned.
+  *
+  * \param[in] info  An instance of ::OrtKernelInfo.
+  * \param[in] index  The index of the output name to get. Returns a failure status if out-of-bounds.
+  * \param[out] out   Memory location into which to write the UTF-8 null-terminated string representing the 
+  *                   output's name.
+  * \param[in,out] size  Pointer to the size of the `out` buffer. See above comments for details.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_result_z_ const char** out,
-                  _Out_opt_ size_t* length);
+  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
+                  _Out_writes_z_(size) char* out, _Inout_ size_t* size);
 
-  /** \brief Get the type information for a KenerlInfo input or output.
+  /** \brief Get the type information for a ::OrtKernelInfo's input.
   *
-  * \param[in]  io_info   An instance of ::OrtKernelIOInfo.
-  * \param[out] type_info Pointer set to a non-modifiable ::OrtTypeInfo.
-  *                       Do not free, as this is owned by the ::OrtKernelIOInfo object.
+  * \param[in] info  An instance of ::OrtKernelInfo.
+  * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo.
+  *                       Must be freed with OrtApi::ReleaseTypeInfo
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info,
-                  _Outptr_ const OrtTypeInfo** type_info);
+  ORT_API2_STATUS(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Get the type information for a ::OrtKernelInfo's output.
+  *
+  * \param[in] info  An instance of ::OrtKernelInfo.
+  * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo.
+  *                       Must be freed with OrtApi::ReleaseTypeInfo
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                  _Outptr_ OrtTypeInfo** type_info);
 
   /// @}
   /// \name OrtSessionOptions

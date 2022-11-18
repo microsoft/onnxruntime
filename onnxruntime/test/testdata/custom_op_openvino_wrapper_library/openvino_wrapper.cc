@@ -55,15 +55,7 @@ static bool AreShapesEqual(const std::vector<int64_t>& ort_shape, const ov::Shap
   return true;
 }
 
-static bool AreIONodesEqual(Ort::ConstKernelIOInfo ort_node, const ov::Output<ov::Node>& ov_node) {
-  // Check name
-  const std::string ort_name = ort_node.GetName();
-  const std::string ov_name = ov_node.get_any_name();
-  if (ort_name != ov_name) {
-    return false;
-  }
-
-  Ort::ConstTypeInfo type_info = ort_node.GetTypeInfo();
+static bool AreIOTypesEqual(Ort::ConstTypeInfo type_info, const ov::Output<ov::Node>& ov_node) {
   Ort::ConstTensorTypeAndShapeInfo type_shape_info = type_info.GetTensorTypeAndShapeInfo();
 
   // Check element type.
@@ -95,20 +87,28 @@ static bool ValidateInputsAndOutputs(const Ort::ConstKernelInfo& kinfo, const ov
 
   // Check input names, shapes, and element types.
   for (size_t i = 0; i < num_inputs; ++i) {
-    const Ort::KernelIOInfo ort_input = kinfo.GetInputInfo(i);
+    Ort::TypeInfo ort_type = kinfo.GetInputTypeInfo(i);
     const auto& ov_input = ov_inputs[i];
 
-    if (!AreIONodesEqual(ort_input.GetConst(), ov_input)) {
+    if (kinfo.GetInputName(i) != ov_input.get_any_name()) {
+      return false;
+    }
+
+    if (!AreIOTypesEqual(ort_type.GetConst(), ov_input)) {
       return false;
     }
   }
 
   // Check output names, shapes, and element types.
   for (size_t i = 0; i < num_outputs; ++i) {
-    const Ort::KernelIOInfo ort_output = kinfo.GetOutputInfo(i);
+    Ort::TypeInfo ort_type = kinfo.GetOutputTypeInfo(i);
     const auto& ov_output = ov_outputs[i];
 
-    if (!AreIONodesEqual(ort_output.GetConst(), ov_output)) {
+    if (kinfo.GetOutputName(i) != ov_output.get_any_name()) {
+      return false;
+    }
+
+    if (!AreIOTypesEqual(ort_type.GetConst(), ov_output)) {
       return false;
     }
   }

@@ -1408,26 +1408,6 @@ inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType
 
 namespace detail {
 template <typename T>
-inline std::string KernelIOInfoImpl<T>::GetName() const {
-  const char* out = nullptr;
-  size_t length = 0;
-  Ort::ThrowOnError(GetApi().KernelIOInfo_GetName(this->p_, &out, &length));
-  return std::string(out, length);  // TODO: Return a std::string_view (C++17)
-}
-
-template <typename T>
-inline ConstTypeInfo KernelIOInfoImpl<T>::GetTypeInfo() const {
-  const OrtTypeInfo* out = nullptr;
-  Ort::ThrowOnError(GetApi().KernelIOInfo_GetTypeInfo(this->p_, &out));
-  return ConstTypeInfo{out};
-}
-
-}  // namespace detail
-
-inline KernelIOInfo::KernelIOInfo(OrtKernelIOInfo* io_info) : detail::KernelIOInfoImpl<OrtKernelIOInfo>{io_info} {}
-
-namespace detail {
-template <typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
   OrtKernelInfo* info_copy = nullptr;
   Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
@@ -1449,17 +1429,47 @@ inline size_t KernelInfoImpl<T>::GetOutputCount() const {
 }
 
 template <typename T>
-inline KernelIOInfo KernelInfoImpl<T>::GetInputInfo(size_t index) const {
-  OrtKernelIOInfo* out = nullptr;
-  ThrowOnError(GetApi().KernelInfo_GetInputInfo(this->p_, index, &out));
-  return KernelIOInfo{out};
+inline std::string KernelInfoImpl<T>::GetInputName(size_t index) const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetInputName(this->p_, index, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetInputName(this->p_, index, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
 }
 
 template <typename T>
-inline KernelIOInfo KernelInfoImpl<T>::GetOutputInfo(size_t index) const {
-  OrtKernelIOInfo* out = nullptr;
-  ThrowOnError(GetApi().KernelInfo_GetOutputInfo(this->p_, index, &out));
-  return KernelIOInfo{out};
+inline std::string KernelInfoImpl<T>::GetOutputName(size_t index) const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputName(this->p_, index, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputName(this->p_, index, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline TypeInfo KernelInfoImpl<T>::GetInputTypeInfo(size_t index) const {
+  OrtTypeInfo* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetInputTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
+}
+
+template <typename T>
+inline TypeInfo KernelInfoImpl<T>::GetOutputTypeInfo(size_t index) const {
+  OrtTypeInfo* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetOutputTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
