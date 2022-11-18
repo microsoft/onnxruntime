@@ -823,18 +823,28 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
 #ifdef ENABLE_TRAINING_ON_DEVICE
-  // Python apis only supports CPU device for now.
-  // TODO(adamlouly) : Add support for CUDA device.
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
       .def(py::init([](const std::string& model_uri,
                        onnxruntime::training::api::CheckpointState& state,
-                       std::optional<std::string> eval_model_uri) {
+                       std::optional<std::string> eval_model_uri,
+                       std::optional<std::string> provider_type) {
         onnxruntime::SessionOptions session_option;
+        std::vector<std::shared_ptr<IExecutionProvider>> provider;
+
+        if (provider_type == "cuda") {
+          OrtCUDAProviderOptions provider_options{};
+          provider_options.do_copy_in_default_stream = true;
+          if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+            provider.push_back(factory->CreateProvider());
+        } else {
+          provider = std::vector<std::shared_ptr<IExecutionProvider>>();
+        }
+
         return std::make_unique<onnxruntime::training::api::Module>(
             model_uri,
             state.module_checkpoint_state.named_parameters, session_option,
-            GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
+            GetTrainingORTEnv(), provider, eval_model_uri);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -890,12 +900,24 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
   training_optimizer.def(py::init([](
                                       const std::string optimizer_model_uri,
-                                      onnxruntime::training::api::Module* model) {
+                                      onnxruntime::training::api::Module* model,
+                                      std::optional<std::string> provider_type) {
                       onnxruntime::SessionOptions session_option;
+                      std::vector<std::shared_ptr<IExecutionProvider>> provider;
+
+                      if (provider_type == "cuda") {
+                        OrtCUDAProviderOptions provider_options{};
+                        provider_options.do_copy_in_default_stream = true;
+                        if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+                          provider.push_back(factory->CreateProvider());
+                      } else {
+                        provider = std::vector<std::shared_ptr<IExecutionProvider>>();
+                      }
+
                       return std::make_unique<onnxruntime::training::api::Optimizer>(
                           optimizer_model_uri,
                           model->NamedParameters(), session_option,
-                          GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                          GetTrainingORTEnv(), provider);
                     }))
       .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());

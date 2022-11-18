@@ -17,14 +17,15 @@ class Module:
 
     training: bool
 
-    def __init__(self, train_model_uri, state, eval_model_uri=None) -> None:
+    def __init__(self, train_model_uri, state, eval_model_uri=None, provider_type="cpu") -> None:
         """
         Initializes Model for Training.
         __init__ will call an internatl function to create the model.
         """
         # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self.training = True
-        self._model = C.Module(train_model_uri, state._state, eval_model_uri)
+        self._provider_type = provider_type
+        self._model = C.Module(train_model_uri, state._state, eval_model_uri, provider_type)
 
     def __call__(self, user_inputs):
         """
@@ -94,7 +95,7 @@ class Module:
                 self.get_parameters_size(trainable_only),
             ],
             np.float32,
-            "cpu",
+            self._provider_type,
             0,
         )._ortvalue
         self._model.copy_parameters_to_buffer(parameters)
