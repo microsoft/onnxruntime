@@ -804,67 +804,69 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
-if (onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(Protobuf)
-endif()
-if (Protobuf_FOUND)
-  message("Use protobuf from preinstalled system lib")
-  if (onnxruntime_USE_FULL_PROTOBUF)
-    set(PROTOBUF_LIB protobuf::libprotobuf)
-    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
-    # variable exists and may leave it in a wrong state.
-    if (NOT Protobuf_USE_STATIC_LIBS)
-      # ONNX Runtime itself can work in such a setting but it may cause compatibility issues
-      # when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
-      message(WARNING "Use Protobuf_USE_STATIC_LIBS to ensure compatibility with other ONNX ecosystem components.")
-    endif()
-  else()
-    set(PROTOBUF_LIB protobuf::libprotobuf-lite)
-  endif()
+if(Patch_FOUND)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
 else()
-  message("Use protobuf from submodule")
-  # use protobuf as a submodule
-  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
-    set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
-  endif()
-  if (onnxruntime_DISABLE_RTTI)
-    set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
-  endif()
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
+endif()
 
+FetchContent_Declare(
+  Protobuf
+  URL https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip
+  URL_HASH SHA1=b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
+  SOURCE_SUBDIR  cmake
+  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
+  FIND_PACKAGE_ARGS NAMES Protobuf
+)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
+  set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
+endif()
+if (onnxruntime_DISABLE_RTTI)
+  set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
+endif()
+
+FetchContent_MakeAvailable(Protobuf)
+if(Protobuf_FOUND)
+  message("Protobuf version: ${Protobuf_VERSION}")
+else()
+  # Adjust warning flags
   if (TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-    add_executable(protobuf::protoc ALIAS protoc)
+    if (NOT MSVC)
+      target_compile_options(libprotoc PRIVATE "-w")
+    endif()
   endif()
   if (TARGET protoc)
+    add_executable(protobuf::protoc ALIAS protoc)
+    if (NOT MSVC)
+      target_compile_options(protoc PRIVATE "-w")
+    endif()
     set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
     get_target_property(PROTOC_OSX_ARCH protoc OSX_ARCHITECTURES)
     if (PROTOC_OSX_ARCH)
-        if (${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST PROTOC_OSX_ARCH)
-           message("protoc can run")
-        else()
-           list(APPEND PROTOC_OSX_ARCH ${CMAKE_HOST_SYSTEM_PROCESSOR})
-           set_target_properties(protoc PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
-           set_target_properties(libprotoc PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
-           set_target_properties(libprotobuf PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
-        endif()
+      if (${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST PROTOC_OSX_ARCH)
+        message("protoc can run")
+      else()
+        list(APPEND PROTOC_OSX_ARCH ${CMAKE_HOST_SYSTEM_PROCESSOR})
+        set_target_properties(protoc PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+        set_target_properties(libprotoc PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
+        set_target_properties(libprotobuf PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
+      endif()
     endif()
+   endif()
+  if (TARGET libprotobuf AND NOT MSVC)
+    target_compile_options(libprotobuf PRIVATE "-w")
   endif()
-  if (onnxruntime_USE_FULL_PROTOBUF)
-    set(PROTOBUF_LIB libprotobuf)
-  else()
-    set(PROTOBUF_LIB libprotobuf-lite)
+  if (TARGET libprotobuf-lite AND NOT MSVC)
+    target_compile_options(libprotobuf-lite PRIVATE "-w")
   endif()
 endif()
-
-if (UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
-  #https://github.com/protocolbuffers/protobuf/issues/5923
-  target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
-endif()
-
-if (MSVC AND NOT onnxruntime_PREFER_SYSTEM_LIB)
-  target_compile_options(${PROTOBUF_LIB} PRIVATE "/wd5054")
+if (onnxruntime_USE_FULL_PROTOBUF)
+  set(PROTOBUF_LIB protobuf::libprotobuf)
+else()
+  set(PROTOBUF_LIB protobuf::libprotobuf-lite)
 endif()
 
 include(protobuf_function.cmake)
@@ -1149,8 +1151,15 @@ else()
     list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
   endif()
 
-  if (HAS_ENUM_CONSTEXPR_CONVERSION)
-    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
+  #see:https://reviews.llvm.org/D131307
+  #It was intended that the 'enum-constexpr-conversion' type warnings can not be silenced by -w
+  if(HAS_ENUM_CONSTEXPR_CONVERSION AND NOT Protobuf_FOUND)
+    if (TARGET libprotobuf)
+      target_compile_options(libprotobuf PRIVATE "-Wno-enum-constexpr-conversion")
+    endif()
+    if (TARGET libprotobuf-lite)
+      target_compile_options(libprotobuf-lite PRIVATE "-Wno-enum-constexpr-conversion")
+    endif()
   endif()
 endif()
 
@@ -1570,8 +1579,21 @@ else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
 
+if(Patch_FOUND)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+else()
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
+endif()
+
+FetchContent_Declare(
+  onnx
+  URL https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip
+  URL_HASH SHA1=edc8e1338c02f3ab222f3d803a24e17608c13895
+  PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+)
+
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
+  FetchContent_MakeAvailable(onnx)
 else()
   include(onnx_minimal)
 endif()

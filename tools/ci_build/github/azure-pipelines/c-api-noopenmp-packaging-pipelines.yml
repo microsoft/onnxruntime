@@ -662,7 +662,7 @@ jobs:
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     ArtifactName: 'drop-nuget-dml'
@@ -685,7 +685,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     ArtifactName: 'drop-win-dml-x86-zip'
@@ -707,7 +707,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
     ArtifactName: 'drop-win-dml-arm64-zip'
@@ -729,7 +729,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
     ArtifactName: 'drop-win-dml-arm-zip'
