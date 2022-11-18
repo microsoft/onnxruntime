@@ -160,12 +160,16 @@ else()
     ${onnxruntime_webassembly_src}
   )
 
-  # we catch exceptions at the api level
-  file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/wasm/api.cc"
-    "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
-  )
-  set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS "-s DISABLE_EXCEPTION_CATCHING=0")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING)
+    # we catch exceptions at the api level
+    file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/wasm/api.cc"
+      "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+    )
+    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
+    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
+    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+  endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
     nsync_cpp
@@ -206,7 +210,7 @@ else()
                         -s LLD_REPORT_UNDEFINED \
                         -s VERBOSE=0 \
                         -s NO_FILESYSTEM=1 \
-                        -s DISABLE_EXCEPTION_CATCHING=0 \
+                        ${WASM_API_EXCEPTION_CATCHING} \
                         --closure 1 \
                         --no-entry")
 
