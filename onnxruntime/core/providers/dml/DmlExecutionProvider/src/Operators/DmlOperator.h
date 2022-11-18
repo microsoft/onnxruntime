@@ -64,8 +64,8 @@ namespace Dml
             );
 
         // This method only works with DML_GRAPH.
-        // To make it work without DML_GRAPH, we need to add new functionality 
-        // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC 
+        // To make it work without DML_GRAPH, we need to add new functionality
+        // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC
         // rather than IDMLOperator.
         void SetDmlOperatorGraphDesc(
             const MLOperatorGraphDesc&& operatorGraphDesc,
@@ -103,8 +103,9 @@ namespace Dml
         // It returns nullptr if there is no work to do (0 bytes).
         //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
-
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
+
+        ComPtr<IDMLCompiledOperator> InitializeCast(TensorDesc& inputDesc, TensorDesc& outputDesc);
 
         TensorDesc CreateTensorDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,
@@ -140,7 +141,7 @@ namespace Dml
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
-        
+
     };
 
 } // namespace Dml
