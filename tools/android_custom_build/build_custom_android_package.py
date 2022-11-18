@@ -145,7 +145,7 @@ def main():
         args.docker_path,
         "run",
         "--rm",
-        "-{args.docker_interactive_mode_flag}",
+        f"-{args.docker_interactive_mode_flag}",
         f"--volume={str(working_dir)}:/workspace/shared",
         args.docker_image_tag,
         "/usr/bin/env",
