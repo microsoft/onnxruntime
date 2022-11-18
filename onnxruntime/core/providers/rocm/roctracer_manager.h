@@ -26,20 +26,21 @@ struct ApiCallRecord {
   hip_api_data_t api_data_{};
 };
 
-class RoctracerManager : public GPUTracerManager {
+class RoctracerManager : public GPUTracerManager<RoctracerManager> {
+  friend class GPUTracerManager<RoctracerManager>;
  public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoctracerManager);
   ~RoctracerManager();
   static RoctracerManager& GetInstance();
 
  protected:
-  bool PushUniqueCorrelation(uint64_t unique_cid) override;
-  void PopUniqueCorrelation(uint64_t& popped_unique_cid) override;
-  void OnStopLogging() override;
-  bool OnStartLogging() override;
+  bool PushUniqueCorrelation(uint64_t unique_cid);
+  void PopUniqueCorrelation(uint64_t& popped_unique_cid);
+  void OnStopLogging();
+  bool OnStartLogging();
   void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
-                              const TimePoint& start_time) override;
-  void FlushActivities() override;
+                              const TimePoint& start_time);
+  void FlushActivities();
 
  private:
   RoctracerManager() = default;

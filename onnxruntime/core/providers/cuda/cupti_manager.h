@@ -14,21 +14,22 @@
 namespace onnxruntime {
 namespace profiling {
 
-class CUPTIManager : public GPUTracerManager
+class CUPTIManager : public GPUTracerManager<CUPTIManager>
 {
+    friend class GPUTracerManager<CUPTIManager>;
 public:
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CUPTIManager);
     ~CUPTIManager();
     static CUPTIManager& GetInstance();
 
 protected:
-  bool PushUniqueCorrelation(uint64_t unique_cid) override;
-  void PopUniqueCorrelation(uint64_t& popped_unique_cid) override;
-  bool OnStartLogging() override;
-  void OnStopLogging() override;
+  bool PushUniqueCorrelation(uint64_t unique_cid);
+  void PopUniqueCorrelation(uint64_t& popped_unique_cid);
+  bool OnStartLogging();
+  void OnStopLogging();
   void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
-                              const TimePoint& start_time) override;
-  void FlushActivities() override;
+                              const TimePoint& start_time);
+  void FlushActivities();
 
 private:
     static constexpr size_t kActivityBufferSize = 32 * 1024;
