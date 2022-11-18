@@ -109,7 +109,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         // Transform the output to the correct value from LookupTable
-        std::transform(condition.cbegin(), condition.cend(), output.begin(),
+        std::transform(condition.begin(), condition.end(), output.begin(),
                        [target, &value,&look_up_table,is_copy](bool condition_element) {
                          return condition_element == target ? is_copy ? value : look_up_table[value] : T{};
                        });
@@ -123,7 +123,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         // Transform the output to the correct value from LookupTable
-        std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
+        std::transform(condition.begin(), condition.end(), value.cbegin(), output.begin(),
                        [target,&look_up_table,is_copy](bool condition_element, const T& value_element) {
                          return condition_element == target ? is_copy ? value_element : look_up_table[value_element] : T{};
                        });
