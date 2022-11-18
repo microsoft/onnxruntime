@@ -198,7 +198,7 @@ def main():
         tokenizer.doc_stride = min(sequence_length // 2, 128)
 
         use_gpu = False
-        if args.provider is not "CPUExecutionProvider":
+        if args.provider != "CPUExecutionProvider":
             use_gpu = True
 
         ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, use_gpu, args.provider)
