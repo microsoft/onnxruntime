@@ -138,10 +138,8 @@ class TritonVectorAddTunable : public IKernelExplorer {
       .def("Run", &TritonVectorAddTunable<type>::Run);
 
 void InitTritonVectorAdd(py::module m) {
-  //REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, half);
+  initTritonKernels<float,1024>(); 
   REGISTER_OP_FOR_ALL_BLOCK_SIZE(TritonVectorAdd, float, 1024);
-
-  //REGISTER_TUNABLE_OP(half);
   REGISTER_TUNABLE_OP(float)
 }
 

@@ -4,6 +4,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernels/codegen/vector_add_triton.h"
 #include "python/tools/kernel_explorer/kernels/vector_add.h"
 #include "python/tools/kernel_explorer/kernels/fast_gelu.h"
 #include "python/tools/kernel_explorer/kernels/gemm.h"
@@ -18,6 +19,7 @@ PYBIND11_MODULE(_kernel_explorer, m) {
       .def(py::init<py::array>())
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
   InitVectorAdd(m);
+  InitTritonVectorAdd(m);
   InitFastGelu(m);
   InitGemm(m);
   InitSkipLayerNorm(m);
