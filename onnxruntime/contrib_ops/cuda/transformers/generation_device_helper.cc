@@ -250,8 +250,13 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
   // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
   if (input_length > 1 || logits_batch_size == batch_size) {
+    // Move the pointer in increments of padded_vocab_size to account for any padding
+    // if any in the logits weight of the MatMul.
     const CudaT* current_logits = logits_data + (input_length - 1) * padded_vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
+      // We only copy what is relevant (i.e.) vocab_size as padded_vocab_size will contain
+      // some logits corresponding to the "padded" vocab size which we will ignore
+      // for token generation.
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
@@ -282,7 +287,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size,
-      is_reuse_logits_buffer ? padded_vocab_size : vocab_size, 
+      is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
       vocab_size,
       batch_size * num_beams);
 

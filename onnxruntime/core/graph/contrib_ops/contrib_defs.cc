@@ -451,11 +451,20 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     updateOutputShape(ctx, 1, sequences_scores_shape);
 
     if (ctx.getNumOutputs() > 2) {
+      auto vocab_size_attr = ctx.getAttribute("vocab_size");
+      int64_t vocab_size = vocab_size_attr ? static_cast<int64_t>(vocab_size_attr->i()) : -1;
+
       ONNX_NAMESPACE::TensorShapeProto scores_shape;
       scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
       scores_shape.add_dim()->set_dim_value(batch_size);
       scores_shape.add_dim()->set_dim_value(num_beams_value);
-      scores_shape.add_dim();  // vocab_size is unknown
+      if (vocab_size != -1) {
+        // vocab_size is provided by the user - use that
+        scores_shape.add_dim()->set_dim_value(vocab_size);
+      } else {
+        // vocab_size is unknown
+        scores_shape.add_dim();
+      }
       updateOutputShape(ctx, 2, scores_shape);
     }
   }

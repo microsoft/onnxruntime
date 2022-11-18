@@ -405,7 +405,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
 <dt><tt>vocab_size</tt> : int</dt>
-<dd>Size of the vocabulary.If not provided, it will be inferred from the decoder subgraph's output shape</dd>
+<dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
 #### Inputs (5 - 10)
@@ -1313,7 +1313,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>mask</tt> (optional) : T1</dt>
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
 <dt><tt>position_ids</tt> (optional) : T1</dt>
-<dd>2D position ids with shape (batch_size, sequence_length)</dd>
+<dd>2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)</dd>
 </dl>
 
 #### Outputs (2 - 3)
