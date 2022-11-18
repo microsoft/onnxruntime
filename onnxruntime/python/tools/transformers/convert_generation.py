@@ -174,13 +174,13 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(run_shape_inference=False)
 
     output_group.add_argument(
-        "-plw", 
-        "--pad_logits_matmul_weight", 
+        "-pvs", 
+        "--pad_vocab_size", 
         required=False, 
         action="store_true", 
         help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size"
     )
-    output_group.set_defaults(pad_logits_matmul_weight=True)
+    output_group.set_defaults(pad_vocab_size=True)
 
     output_group.add_argument(
         "-i",
@@ -438,11 +438,24 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     # Sanity check - the logits need to be produced by a MatMul node
     if matmul_node.op_type != "MatMul":
         return False
-    
-    # The logits MatMul weight MUST be an initializer
+
+    # The logits MatMul weight MUST be an initializer (or)
+    # it MUST be flowing through a Transpose whose input is
+    # an initializer
+    pad_along_axis_1 = True
     logits_weight = decoder_model.get_initializer(matmul_node.input[1])
     if logits_weight is None:
-        return False
+        transpose_before_matmul = decoder_model.match_parent(matmul_node, "Transpose", 1)
+        
+        if transpose_before_matmul is None :
+            return False
+        
+        logits_weight = decoder_model.get_initializer(transpose_before_matmul.input[0])
+
+        if logits_weight is None :
+            return False
+
+        pad_along_axis_1 = False
 
     # The logits MatMul weight MUST be fp16
     if (logits_weight.data_type != TensorProto.DataType.FLOAT16):
@@ -453,11 +466,11 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
         return False
 
     # Pad and over-write the initializer (if needed)
-    # TODO(hasesh): Can/Will the weights be transposed in any scenario ?
     actual_vocab_size = logits_weight.dims[1]
 
     if ((actual_vocab_size % 8) == 0):
-        return False
+        # Already "padded"
+        return True
     
     padded_vocab_size = math.ceil(actual_vocab_size / 8) * 8
     padding = padded_vocab_size - actual_vocab_size
@@ -465,10 +478,16 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     # TODO(hasesh): Handle cases where the fp16 data is stored in the
     # non-raw data field 
     if logits_weight.raw_data:
-        padding_data = np.zeros((logits_weight.dims[0], padding), dtype=np.float16)
-        weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=1)
+        if pad_along_axis_1:
+            padding_data = np.zeros((logits_weight.dims[0], padding), dtype=np.float16)
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis = 1)
+            logits_weight.dims[1] = padded_vocab_size
+        else:
+            padding_data = np.zeros((padding, logits_weight.dims[1]), dtype=np.float16)
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis = 0)
+            logits_weight.dims[0] = padded_vocab_size
+        
         logits_weight.raw_data = weight_with_padding.tobytes()
-        logits_weight.dims[1] = padded_vocab_size
     else:
         return False
 
@@ -891,7 +910,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # NOTE: We currently only support padding the MatMul logits weight for GPT2 BeamSearch.
     # This can be expanded to other models/decoding strategies later
     logits_matmul_weight_padded = False
-    if args.pad_logits_matmul_weight and args.precision == Precision.FLOAT16 and is_gpt2 and generation_type == GenerationType.BEAMSEARCH:
+    if args.pad_vocab_size and args.precision == Precision.FLOAT16 and is_gpt2 and generation_type == GenerationType.BEAMSEARCH:
         logger.info(f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
                     "The file will be overwritten.")
         logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
