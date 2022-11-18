@@ -848,10 +848,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
         }
       }));
-          if (all_lengths_known) {
-            output_shape->mutable_dim(axis)->set_dim_value(total_length);
-          }
-        }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QGemm, 1,
