@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_allocator.h"
@@ -99,7 +100,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return std::make_unique<ROCMExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
+          return std::make_unique<ROCMExternalAllocator>(id, HIP, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
         },
         device_id,
         false);
@@ -109,7 +110,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   } else {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
-          return std::make_unique<ROCMAllocator>(id, CUDA);
+          return std::make_unique<ROCMAllocator>(id, HIP);
         },
         device_id,
         true,
@@ -154,6 +155,15 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
+  auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+      "ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
+  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
+    info.tunable_op.enabled = *env_tunable_op_enabled;
+  }
+}
+
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
@@ -180,11 +190,13 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
+
+  OverrideTunableOpInfoByEnv(info_);
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
   // Prevent memory leak when people don't call
-  // OnRunStart and OnRunEnd when calling CudaKernel's.
+  // OnRunStart and OnRunEnd when calling HipKernel's.
   ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
 
   // clean up thread local context caches
@@ -200,6 +212,20 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   if (!external_stream_ && stream_) {
     HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+void ROCMExecutionProvider::EnableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = true;
+}
+
+void ROCMExecutionProvider::DisableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = false;
+}
+
+bool ROCMExecutionProvider::IsTunableOpEnabled() const {
+  return info_.tunable_op.enabled;
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
@@ -286,7 +312,7 @@ void ROCMExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // AllocateBufferOnCPUPinned.
 
   std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  void* stream = GetComputeStream();
+  hipStream_t stream = static_cast<hipStream_t>(GetComputeStream());
   auto it = deferred_release_buffer_pool_.find(stream);
   if (it != deferred_release_buffer_pool_.end()) {
     it->second.push_back(p);
@@ -311,22 +337,22 @@ struct CpuBuffersInfo {
   // should contain all values in
   // deferred_release_buffer_pool_[my_stream]
   // when release my_stream's buffers.
-  void** buffers;
-  // CPU buffer buffers[i].
-  // Number of buffer points in "buffers".
-  size_t n_buffers;
+  std::vector<void*> buffers;
 };
 
 void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {
-  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
-  for (size_t i = 0; i < info->n_buffers; ++i) {
-    info->allocator->Free(info->buffers[i]);
+  // The passed-in raw_info is a unmanaged pointer from
+  // std::unique_ptr<CpuBuffersInfo>.release().
+  // We rewrap raw_info as std::unique_ptr<CpuBuffersInfo> so that
+  // it will be cleaned up automatically at the end of this function.
+  std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
+  cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
+  for (auto ptr : cpu_buffers_info->buffers) {
+    cpu_buffers_info->allocator->Free(ptr);
   }
-  delete[] info->buffers;
-  delete info;
 }
 
-Status ROCMExecutionProvider::EnqueueDeferredRelease() {
+Status ROCMExecutionProvider::EnqueueDeferredRelease(bool actually_defer) {
   // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
   // They have to be released outside GPU kernels because they must be alive
   // during asynchronous GPU computation even after the CPU part (e.g,
@@ -338,25 +364,38 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // This iteration enqueues a callback to release all buffers
     // in it->second on it->first.
 
-    auto stream = static_cast<hipStream_t>(it->first);
+    auto stream = it->first;
     auto& buffers = it->second;
-    // Allocate a heap object to extend the lifetime of allocator and buffer pointers
-    // until the end of callback (aka ReleaseCpuBufferCallback).
-    auto cpu_buffers_info = new CpuBuffersInfo;
+    // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
+    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     // This allocator must be the same to the allocator
     // used in AllocateBufferOnCPUPinned.
     cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    cpu_buffers_info->buffers = new void*[buffers.size()];
-    for (size_t i = 0; i < buffers.size(); ++i) {
-      cpu_buffers_info->buffers[i] = buffers.at(i);
-    }
-    cpu_buffers_info->n_buffers = buffers.size();
+    cpu_buffers_info->buffers = buffers;
+    // Release the ownership of cpu_buffers_info so that the underlying
+    // object will keep alive until the end of ReleaseCpuBufferCallback.
     // TODO(wechi): CUDA deprecates cudaStreamAddCallback and
     // uses another API, cudaLaunchHostFunc(which can be
     // captured in CUDA graph). Once AMD adds similar feature,
     // we should replace the following line with
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
-    HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info, 0));
+    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
+      if (actually_defer) {
+        // Release memory asynchronously to avoid blocking the compute stream.
+        HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      } else {
+        ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
+      }
+    } else {
+      // Per
+      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
+      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
+      // are using the host memory.
+      HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));
+      // hipHostFree and all other GPU APIs cannot be called by hipStreamAddCallback per spec.
+      // So we just do synchrous release.
+      ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
+    }
   }
   // All buffers are scheduled for release.
   // Let's clear releated information so that
@@ -376,9 +415,10 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
   // Enqueue deferred CPU memory release on related streams.
   // This will release all deferred-release CPU buffers allocated
   // before calling OnRunEnd.
-  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-
-  if (sync_stream) {
+  if (!sync_stream) {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
+  } else {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease(/* actually_defer = */ false));
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
   }
 
@@ -1271,6 +1311,14 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, float, LessOrEqual);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, double, LessOrEqual);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual);
+
+// Opset 17
+// TODO: Enable LayerNormalization. It uses the same implementation as the old contrib op.
+// See https://github.com/microsoft/onnxruntime/pull/13066
+// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, float, LayerNormalization);
+// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
+// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization);
+// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization);
 
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -2193,6 +2241,12 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, float, LessOrEqual)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, double, LessOrEqual)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual)>,
+
+      // Opset 17
+      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, float, LayerNormalization)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -2254,7 +2308,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                     const IKernelLookup& kernel_lookup) const {
   InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -2262,19 +2316,11 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
-    const KernelCreateInfo* rocm_kernel_def = nullptr;
     if (!node.GetExecutionProviderType().empty()) {
       continue;
     }
 
-    for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(node, Type(), &rocm_kernel_def);
-
-      // at least one registry has a ROCM kernel for this node
-      if (st.IsOK())
-        break;
-    }
-
+    const KernelCreateInfo* rocm_kernel_def = kernel_lookup.LookUpKernel(node);
     // none of the provided registries has a ROCM kernel for this node
     if (rocm_kernel_def == nullptr) {
       LOGS_DEFAULT(INFO) << "ROCM kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
@@ -2305,7 +2351,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For ROCM EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
@@ -2322,7 +2368,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(info_.device_id);
   OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
   // setup ROCM allocator
@@ -2354,7 +2400,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     if (!rocm_pinned_alloc) {
       AllocatorCreationInfo pinned_memory_info(
           [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
+            return std::make_unique<ROCMPinnedAllocator>(device_id, HIP_PINNED);
           },
           pinned_device.Id());
       rocm_pinned_alloc = CreateAllocator(pinned_memory_info);

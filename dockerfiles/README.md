@@ -3,7 +3,7 @@
 - CPU: [Dockerfile](Dockerfile.source), [Instructions](#cpu)
 - CUDA/cuDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
 - MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
-- NUPHAR: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
+- ROCm: [Dockerfile](Dockerfile.rocm), [Instructions](#rocm)
 - OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
 - TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
 - VitisAI: [Dockerfile](Dockerfile.vitisai)
@@ -278,27 +278,6 @@ Nothing else from ONNX Runtime source tree will be copied/installed to the image
 
 Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
-## NUPHAR
-*Public Preview*
-
-**Ubuntu 16.04, Python Bindings**
-
-1. Update submodules
-```
-git submodule update --init
-```
-
-2. Build the docker image from the Dockerfile in this repository.
-  ```
-  docker build -t onnxruntime-nuphar -f Dockerfile.nuphar .
-  ```
-
-3. Run the Docker image
-
-  ```
-  docker run -it onnxruntime-nuphar
-  ```
-
 ## MIGraphX
 **Ubuntu 18.04, rocm4.5, AMDMIGraphX v1.2**
 
@@ -311,4 +290,18 @@ git submodule update --init
 
   ```
   docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
+  ```
+
+   ## ROCm
+**Ubuntu 20.04, ROCm5.2.3**
+
+1. Build the docker image from the Dockerfile in this repository.
+  ```
+  docker build -t onnxruntime-rocm -f Dockerfile.rocm .
+  ```
+
+2. Run the Docker image
+
+  ```
+  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video --privileged onnxruntime-rocm
   ```

@@ -10,8 +10,11 @@ target 'OnnxruntimeModuleExample' do
 
   use_frameworks!
 
-  if File.exist?('../../local_pods/onnxruntime-mobile-c.zip')
-    pod 'onnxruntime-mobile-c', :podspec => '../../onnxruntime-mobile-c.podspec'
+  # Mobile build:
+  # if File.exist?('../../local_pods/onnxruntime-mobile-c.zip')
+  #   pod 'onnxruntime-mobile-c', :podspec => '../../onnxruntime-mobile-c.podspec'
+  if File.exist?('../../local_pods/onnxruntime-c.zip')
+    pod 'onnxruntime-c', :podspec => '../../onnxruntime-c.podspec'
   end
   pod 'onnxruntime-react-native', :path => '../node_modules/onnxruntime-react-native'
 

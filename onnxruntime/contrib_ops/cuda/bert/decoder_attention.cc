@@ -85,7 +85,7 @@ Status CheckInputs(const TensorShape& query_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "q_weights shall have shape (hidden size, hidden size)");
   }
 
-  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != static_cast<int64_t>(2 * hidden_size)) {
+  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != 2 * static_cast<int64_t>(hidden_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_weights shall have shape (hidden size, 2 * hidden size)");
   }
 
@@ -95,7 +95,7 @@ Status CheckInputs(const TensorShape& query_shape,
                            bias_dims.size());
   }
 
-  if (bias_dims[0] != 3 * hidden_size) {
+  if (bias_dims[0] != 3 * static_cast<int64_t>(hidden_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bias shall have shape (3 * hidden size)");
   }
 

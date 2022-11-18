@@ -3,6 +3,8 @@
 
 #include "test/util/include/test_utils.h"
 
+#include "core/common/narrow.h"
+#include "core/common/span_utils.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -25,19 +27,19 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
   for (size_t i = 0, end = expected_fetches.size(); i < end; ++i) {
     auto& ltensor = expected_fetches[i].Get<Tensor>();
     auto& rtensor = fetches[i].Get<Tensor>();
-    ASSERT_EQ(ltensor.Shape().GetDims(), rtensor.Shape().GetDims());
+    ASSERT_TRUE(SpanEq(ltensor.Shape().GetDims(), rtensor.Shape().GetDims()));
     auto element_type = ltensor.GetElementType();
     switch (element_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        EXPECT_THAT(ltensor.DataAsSpan<int32_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int32_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        EXPECT_THAT(ltensor.DataAsSpan<int64_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int64_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int64_t>(), rtensor.DataAsSpan<int64_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        EXPECT_THAT(ltensor.DataAsSpan<uint8_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<uint8_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint8_t>(), rtensor.DataAsSpan<uint8_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
@@ -143,6 +145,26 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   }
 }
 
+void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
+                        const ONNX_NAMESPACE::TensorShapeProto* shape2) {
+  EXPECT_NE(shape1, nullptr);
+  EXPECT_NE(shape2, nullptr);
+  EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
+  auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
+  for (int i = 0; i < min_dims; ++i) {
+    auto dim1 = shape1->dim(i);
+    auto dim2 = shape2->dim(i);
+    EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
+    if (dim1.has_dim_value()) {
+      EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
+    }
+    EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
+    if (dim1.has_dim_param()) {
+      EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
+    }
+  }
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
   using namespace ONNX_NAMESPACE;
@@ -151,7 +173,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
   gsl::span<const int64_t> ind_span;
   std::vector<int64_t> converted_indices;
   TensorShape ind_shape(indices_proto.dims().data(), indices_proto.dims().size());
-  const auto elements = gsl::narrow<size_t>(ind_shape.Size());
+  const auto elements = narrow<size_t>(ind_shape.Size());
   const bool has_raw_data = indices_proto.has_raw_data();
   switch (indices_proto.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
@@ -159,7 +181,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
         const auto& rd = indices_proto.raw_data();
         ASSERT_EQ(rd.size(), elements * sizeof(int64_t));
         ASSERT_STATUS_OK(utils::UnpackInitializerData(indices_proto, model_path, unpack_buffer));
-        ind_span = gsl::make_span(unpack_buffer).as_span<const int64_t>();
+        ind_span = ReinterpretAsSpan<const int64_t>(gsl::make_span(unpack_buffer));
       } else {
         ind_span = gsl::make_span(indices_proto.int64_data().cbegin(), indices_proto.int64_data().cend());
       }
@@ -170,8 +192,8 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
         const auto& rd = indices_proto.raw_data();
         ASSERT_EQ(rd.size(), elements * sizeof(int32_t));
         ASSERT_STATUS_OK(utils::UnpackInitializerData(indices_proto, model_path, unpack_buffer));
-        auto int32_span = gsl::make_span(unpack_buffer).as_span<const int32_t>();
-        converted_indices.insert(converted_indices.cend(), int32_span.cbegin(), int32_span.cend());
+        auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
+        converted_indices.insert(converted_indices.cend(), int32_span.begin(), int32_span.end());
       } else {
         converted_indices.insert(converted_indices.cend(), indices_proto.int32_data().cbegin(), indices_proto.int32_data().cend());
       }
@@ -183,8 +205,8 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
       const auto& rd = indices_proto.raw_data();
       ASSERT_EQ(rd.size(), elements * sizeof(int16_t));
       ASSERT_STATUS_OK(utils::UnpackInitializerData(indices_proto, model_path, unpack_buffer));
-      auto int16_span = gsl::make_span(unpack_buffer).as_span<const int16_t>();
-      converted_indices.insert(converted_indices.cend(), int16_span.cbegin(), int16_span.cend());
+      auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
+      converted_indices.insert(converted_indices.cend(), int16_span.begin(), int16_span.end());
       ind_span = gsl::make_span(converted_indices);
       break;
     }
@@ -193,15 +215,15 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
       const auto& rd = indices_proto.raw_data();
       ASSERT_EQ(rd.size(), elements);
       ASSERT_STATUS_OK(utils::UnpackInitializerData(indices_proto, model_path, unpack_buffer));
-      auto int8_span = gsl::make_span(unpack_buffer).as_span<const int8_t>();
-      converted_indices.insert(converted_indices.cend(), int8_span.cbegin(), int8_span.cend());
+      auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
+      converted_indices.insert(converted_indices.cend(), int8_span.begin(), int8_span.end());
       ind_span = gsl::make_span(converted_indices);
       break;
     }
     default:
       ASSERT_TRUE(false);
   }
-  ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
+  ASSERT_TRUE(SpanEq(ind_span, expected_indicies));
 }
 
 #endif  // DISABLE_SPARSE_TENSORS

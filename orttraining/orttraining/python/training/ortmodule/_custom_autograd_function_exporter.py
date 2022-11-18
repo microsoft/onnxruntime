@@ -12,6 +12,7 @@ from packaging import version
 from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.training import ortmodule
 
 from . import _logger
 from ._fallback import ORTModuleONNXModelException, wrap_exception
@@ -42,6 +43,13 @@ _CAST_PYTORCH_TO_ONNX = {
 }
 
 
+def _full_name(klass):
+    module = klass.__module__
+    if module == "builtins":
+        return klass.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + klass.__qualname__
+
+
 def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
     try:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
@@ -66,7 +74,10 @@ def _export_pt_1_10(g, n, *args, **kwargs):
     """
     try:
         name = kwargs["name"]
-        if name in BANNED_AUTOGRAD_FUNCTION_NAMES:
+        if name in BANNED_AUTOGRAD_FUNCTION_NAMES and (
+            not ortmodule._defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0)
+            or name != torch.utils.checkpoint.CheckpointFunction.__name__
+        ):
             raise Exception(
                 f"The autograd.Function {name} should not be exported to ONNX. "
                 "Please replace ORTModule with HierarchalORTModule to only"
@@ -77,9 +88,19 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         training_mode = None
         runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
         if runtime_pytorch_version >= version.parse("1.12"):
+            # FIXME: using privated modules
             from torch.onnx import _globals
 
-            training_mode = _globals.GLOBALS.training_mode
+            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9, training_mode is still a bool type
+            if isinstance(_globals.GLOBALS.training_mode, bool):
+                training_mode = _globals.GLOBALS.training_mode
+            else:
+                if _globals.GLOBALS.training_mode not in [
+                    torch.onnx.TrainingMode.EVAL,
+                    torch.onnx.TrainingMode.TRAINING,
+                ]:
+                    raise Exception(f"Unexpected training mode {_globals.GLOBALS.training_mode}")
+                training_mode = _globals.GLOBALS.training_mode == torch.onnx.TrainingMode.TRAINING
         else:
             training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
@@ -238,11 +259,16 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function, 
 
 def _post_process_enabling_autograd_fallback(exported_model):
     registered_name_mappings = {}
+    skipped_autograd_function_list = ortmodule._defined_from_envvar("ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS", "").split(
+        ","
+    )
     for kclass in torch.autograd.Function.__subclasses__():
+        full_qualified_name = _full_name(kclass)
+        if full_qualified_name in skipped_autograd_function_list:
+            continue
         # Collect mapping of class names to full qualified class names.
         if kclass.__name__ not in registered_name_mappings:
             registered_name_mappings[kclass.__name__] = []
-        full_qualified_name = kclass.__module__ + "." + kclass.__qualname__
         registered_name_mappings[kclass.__name__].append(full_qualified_name)
 
         # Register function with class names.

@@ -10,6 +10,9 @@ struct CPUIDInfo final {
 
   bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
   bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+  bool HasAVX512_BF16() const { return g_host->CPUIDInfo__HasAVX512_BF16(this); }
+  bool HasAMX_BF16() const { return g_host->CPUIDInfo__HasAMX_BF16(this); }
+  bool HasAVX512Skylake() const { return g_host->CPUIDInfo__HasAVX512Skylake(this); }
 
   PROVIDER_DISALLOW_ALL(CPUIDInfo)
 };
@@ -511,8 +514,6 @@ struct KernelRegistry final {
 
   Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
 
-  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
-
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
   void operator=(const KernelRegistry&) = delete;
@@ -697,6 +698,10 @@ struct Graph final {
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
 
   const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
+  const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
+  const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
+  bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
@@ -884,7 +889,7 @@ inline Status OpKernelInfo::GetAttrs(const std::string& name, TensorShapeVector&
   Status status = this->GetAttrsAsSpan<int64_t>(name, span);
   if (status.IsOK()) {
     out.reserve(span.size());
-    out.assign(span.cbegin(), span.cend());
+    out.assign(span.begin(), span.end());
   }
   return status;
 }

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
   "Version": 1,
   "Registrations": [
     {
@@ -112,16 +113,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
-          "repositoryUrl": "https://github.com/NVlabs/cub.git"
-        },
-        "comments": "git submodule at cmake/external/cub"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "3c73d91c0b04e2b59462f0a741be8c07024c1bc0",
           "repositoryUrl": "https://github.com/jarro2783/cxxopts.git"
         },
@@ -162,7 +153,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
+          "commitHash": "c220895fd1163c01f0a8b44229fb9e4fe0ae0958",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -192,7 +183,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "53495a2a7d6ba7e0691a7f3602e9a5324bba6e45",
+          "commitHash": "58d77fa8070e8cec2dc1ed015d66b454c8d78850",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/googletest"
@@ -252,7 +243,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f7ee1ac60d06abe8e26c9b6bbe1e3db5286b614b",
+          "commitHash": "5a5f8a5935762397aa68429b5493084ff970f774",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -342,7 +333,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0dab03ba7bc438d7ba3eac2b2c1eb39ed520f928",
+          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"

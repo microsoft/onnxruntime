@@ -25,17 +25,17 @@ struct BilinearParams {
 
   BufferUniquePtr idx_scale_data_buffer_holder;
 
-  int32_t* input_width_mul_y1;
-  int32_t* input_width_mul_y2;
+  int32_t* input_width_mul_y1{nullptr};
+  int32_t* input_width_mul_y2{nullptr};
 
-  int32_t* in_x1;
-  int32_t* in_x2;
+  int32_t* in_x1{nullptr};
+  int32_t* in_x2{nullptr};
 
-  float* dx1;
-  float* dx2;
+  float* dx1{nullptr};
+  float* dx2{nullptr};
 
-  float* dy1;
-  float* dy2;
+  float* dy1{nullptr};
+  float* dy2{nullptr};
 };
 
 // Same as above, but doesn't use any floating-point for the coefficient (i.e., d*_scale_10)
@@ -45,17 +45,17 @@ struct BilinearParamsInteger {
 
   BufferUniquePtr idx_scale_data_buffer_holder;
 
-  int32_t* input_width_mul_y1;
-  int32_t* input_width_mul_y2;
+  int32_t* input_width_mul_y1{nullptr};
+  int32_t* input_width_mul_y2{nullptr};
 
-  int32_t* in_x1;
-  int32_t* in_x2;
+  int32_t* in_x1{nullptr};
+  int32_t* in_x2{nullptr};
 
-  int32_t* dx1_scale_10;
-  int32_t* dx2_scale_10;
+  int32_t* dx1_scale_10{nullptr};
+  int32_t* dx2_scale_10{nullptr};
 
-  int32_t* dy1_scale_10;
-  int32_t* dy2_scale_10;
+  int32_t* dy1_scale_10{nullptr};
+  int32_t* dy2_scale_10{nullptr};
 };
 
 template <typename T>

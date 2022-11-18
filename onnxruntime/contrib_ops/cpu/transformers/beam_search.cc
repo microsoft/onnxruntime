@@ -26,7 +26,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/sequences.h"

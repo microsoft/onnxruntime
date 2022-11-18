@@ -1,6 +1,6 @@
 # docker build --network=host --file Dockerfile.rocm4.3.1.pytorch --tag ort:rocm4.3.1-pytorch .
 
-FROM rocm/pytorch:rocm4.3.1_ubuntu18.04_py3.6_pytorch_1.9.0  
+FROM rocm/pytorch:rocm4.3.1_ubuntu18.04_py3.6_pytorch_1.9.0
 
 RUN apt-get -y install gpg-agent
 RUN wget -q -O - http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
@@ -137,7 +137,7 @@ RUN git clone -b wezhan/tnlrv4 --recursive https://github.com/microsoft/onnxrunt
 
 RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy sacremoses sacrebleu
 
-RUN pip install transformers==2.10.0 sklearn tensorboardX
+RUN pip install transformers==2.10.0 scikit-learn tensorboardX
 RUN pip install --pre torch-ort -f https://download.onnxruntime.ai/torch_ort_nightly.html
 RUN python -m torch_ort.configure
 
@@ -151,7 +151,6 @@ RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd
 ENTRYPOINT service ssh restart && /bin/bash
 
 # Add model and scripts
-ADD model ${WORKSPACE_DIR}/model
 ADD script ${WORKSPACE_DIR}/script
 RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
 

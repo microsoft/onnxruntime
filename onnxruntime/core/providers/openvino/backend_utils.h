@@ -49,13 +49,13 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor);
+void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor);
 
 template <typename T>
-void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node);
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node);
 
-OrtValue*
-GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
+Ort::UnownedValue
+GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
                 std::shared_ptr<ngraph::Node> node);
@@ -63,19 +63,19 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
 InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
 
-OrtValue*
-GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
+Ort::UnownedValue
+GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 OVInferRequestPtr infer_request,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
 #if defined (OV_API_20)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
+                   std::string input_name, Ort::KernelContext& context,
                    const SubGraphContext& subgraph_context);
 
-void FillOutputBlob(OVTensorPtr outputBlob, OrtValue* output_tensor,
-                    Ort::CustomOpApi& ort, size_t batch_slice_idx);
+void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
+                    size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
@@ -91,11 +91,11 @@ std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
 perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perfMap);
 
 void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
+                   std::string input_name, Ort::KernelContext& context,
                    InferenceEngine::Precision precision, const SubGraphContext& subgraph_context);
 
-void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_tensor,
-                    Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx);
+void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::UnownedValue& output_tensor,
+                    InferenceEngine::Precision precision, size_t batch_slice_idx);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 

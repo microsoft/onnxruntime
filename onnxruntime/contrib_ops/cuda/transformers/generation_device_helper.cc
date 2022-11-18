@@ -249,7 +249,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
-      gsl::span<T> target = next_token_logits.subspan(i * vocab_size, vocab_size);
+      gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
       if (logits_batch_size == batch_beam_size) {
@@ -394,7 +394,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   gsl::span<const float> next_scores = gsl::make_span(
       cpu_state->topk_scores.data(),
-      static_cast<typename gsl::span<float>::index_type>(topk_scores->Shape().Size()));
+      static_cast<typename gsl::span<float>::size_type>(topk_scores->Shape().Size()));
   gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
   gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
 
@@ -475,8 +475,8 @@ Status GreedySearchProcessLogits(
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
 
-  cuda::LaunchLogitsProcessKernel<float>(
-      reinterpret_cast<float*>(next_token_scores.data()),
+  cuda::LaunchLogitsProcessKernel<CudaT>(
+      reinterpret_cast<CudaT*>(next_token_scores.data()),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
       parameters->batch_size,
@@ -579,7 +579,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
-    for (gsl::index j = 0; j < beam_indices.length(); j++) {
+    for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam,
@@ -623,7 +623,7 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
-    for (gsl::index j = 0; j < beam_indices.length(); j++) {
+    for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_beam = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<T> past_beam = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
@@ -652,7 +652,7 @@ Status UpdateGptFeeds(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx) {
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   auto element_type = DataTypeImpl::GetType<int32_t>();
@@ -714,7 +714,7 @@ Status UpdateDecoderFeeds(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences&,
     const transformers::IConsoleDumper* dumper) {
@@ -725,14 +725,14 @@ Status UpdateDecoderFeeds(
   //              past_key_cross_0, past_value_cross_0, ...
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
-  if (!has_hidden_state) {
+  if (use_sequence_as_input_ids) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "BeamSearch CUDA Op does not support no hidden state senario in decoder input");
+                           "BeamSearch CUDA Op does not support using sequence as input_ids in decoder input");
   }
   ORT_UNUSED_PARAMETER(current_length);
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   auto element_type = DataTypeImpl::GetType<int32_t>();
@@ -941,7 +941,7 @@ template Status UpdateDecoderFeeds<float>(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
@@ -957,7 +957,7 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);

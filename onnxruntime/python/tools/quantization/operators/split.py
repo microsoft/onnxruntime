@@ -42,7 +42,7 @@ class QSplit(QuantOperatorBase):
             self.quantizer.quantized_value_map[output_name] = q_output
 
         if len(node.input) > 1:
-            quantized_input_names = quantized_input_names.extend(node.input[1:])
+            quantized_input_names.extend(node.input[1:])
         quantized_node = onnx.helper.make_node(
             node.op_type, quantized_input_names, quantized_output_names, quantized_node_name, **kwargs
         )

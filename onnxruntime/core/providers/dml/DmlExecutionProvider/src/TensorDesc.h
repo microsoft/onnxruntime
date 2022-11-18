@@ -43,11 +43,45 @@ namespace Dml
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
+        void SetStrides(gsl::span<const uint32_t> strides);
   
         inline uint64_t GetBufferSizeInBytes() const
         { 
             assert(m_tensorType == DML_TENSOR_TYPE_BUFFER);
             return m_bufferTensorDesc.TotalTensorSizeInBytes;
+        }
+
+        static TensorDesc ConstructDefaultTensorDesc(
+            const MLOperatorTensorDataType dataType,
+            gsl::span<const uint32_t> tensorShape)
+        {
+            return TensorDesc(
+                        dataType,
+                        tensorShape, // desired
+                        tensorShape, // actual
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        1, // minDimensionCount
+                        0
+                    );
+        }
+
+        static TensorDesc ConstructBroadcastedTensorDesc(
+            const MLOperatorTensorDataType dataType,
+            gsl::span<const uint32_t> desiredTensorShape,
+            gsl::span<const uint32_t> actualTensorShape)
+        {
+            return TensorDesc(
+                        dataType,
+                        desiredTensorShape,
+                        actualTensorShape,
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        1, // minDimensionCount
+                        0
+                    );
         }
 
     private:

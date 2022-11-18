@@ -104,19 +104,27 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   SessionOptions so;
   InferenceSessionWrapper session1(so, GetEnvironment());
   InferenceSessionWrapper session2(so, GetEnvironment());
+  InferenceSessionWrapper session3(so, GetEnvironment());
 
   // and use the same EP instances in both
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
+  std::vector<std::shared_ptr<IExecutionProvider>> eps1{
+      std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);
   init_session(eps, session2);
+  init_session(eps1, session3);
 
   // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
   ASSERT_EQ(eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get(),
             eps[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get())
+      << "EPs do not have the same default allocator";
+  ASSERT_EQ(eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get(),
+            eps1[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get())
       << "EPs do not have the same default allocator";
 }
 
@@ -223,13 +231,13 @@ TEST(XnnpackEP, TestQDQConvU8U8) {
 
 TEST(XnnpackEP, TestQDQConvS8S8) {
   RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
-                                     int8_t /* WeightType */,
-                                     int32_t /* BiasType */,
-                                     int8_t /* OutputType */>(
-                    {1, 1, 5, 5} /* input_shape */,
-                    {1, 1, 3, 3} /* weights_shape */),
-                "xnnpack_qdq_test_graph_conv_s8s8",
-                {ExpectedEPNodeAssignment::Some, 0.2f});
+                                    int8_t /* WeightType */,
+                                    int32_t /* BiasType */,
+                                    int8_t /* OutputType */>(
+                   {1, 1, 5, 5} /* input_shape */,
+                   {1, 1, 3, 3} /* weights_shape */),
+               "xnnpack_qdq_test_graph_conv_s8s8",
+               {ExpectedEPNodeAssignment::Some, 0.2f});
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8.onnx";
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", 0.7f);

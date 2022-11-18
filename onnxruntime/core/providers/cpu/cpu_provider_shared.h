@@ -61,15 +61,15 @@ struct ProviderHostCPU {
   virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) = 0;
 
   // From cpu/tensor/slice.h
-  virtual Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                              const gsl::span<const int64_t>& raw_ends,
-                                              const gsl::span<const int64_t>& raw_axes,
+  virtual Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                              gsl::span<const int64_t> raw_ends,
+                                              gsl::span<const int64_t> raw_axes,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
 
-  virtual Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                              const gsl::span<const int64_t>& raw_ends,
-                                              const gsl::span<const int64_t>& raw_axes,
-                                              const gsl::span<const int64_t>& raw_steps,
+  virtual Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                              gsl::span<const int64_t> raw_ends,
+                                              gsl::span<const int64_t> raw_axes,
+                                              gsl::span<const int64_t> raw_steps,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
   virtual Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
                                                  const Tensor& ends_tensor,
@@ -127,19 +127,51 @@ struct ProviderHostCPU {
 #ifndef DISABLE_CONTRIB_OPS
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
-  virtual Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) = 0;
-  virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor* extra_add_qk, const int max_threads_per_block) = 0;
-  virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) = 0;
+
+  virtual Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p,
+  const TensorShape& input_shape,
+  const TensorShape& weights_shape,
+  const TensorShape& bias_shape,
+  const TensorShape& mask_shape,
+  const TensorShape& global_weights_shape,
+  const TensorShape& global_bias_shape,
+  const TensorShape& global_shape) = 0;
+
+  virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
+                                            const TensorShape& input_shape,
+                                            const TensorShape* weights_shape,
+                                            const TensorShape& bias_shape,
+                                            const Tensor*& mask_index,
+                                            const Tensor* past,
+                                            const Tensor* extra_add_qk,
+                                            const Tensor* key,
+                                            const Tensor* value,
+                                            void* parameters,
+                                            const int max_threads_per_block) = 0;
+
+  virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,
+                                            OpKernelContext* context,
+                                            const Tensor* past,
+                                            int batch_size,
+                                            int head_size,
+                                            int sequence_length,
+                                            int& past_sequence_length) = 0;
 
   // BeamSearch
   virtual void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) = 0;
   virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) = 0;
-  virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+  virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p,
+                                                        const SessionState& session_state,
+                                                        const std::string& attribute_name,
+                                                        const SessionState& subgraph_session_state) = 0;
 
   // GreedySearch
   virtual void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) = 0;
   virtual Status GreedySearch__Compute(const contrib::transformers::GreedySearch* p, OpKernelContext* ctx) = 0;
-  virtual Status GreedySearch__SetupSubgraphExecutionInfo(contrib::transformers::GreedySearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+  virtual Status GreedySearch__SetupSubgraphExecutionInfo(contrib::transformers::GreedySearch* p,
+                                                          const SessionState& session_state,
+                                                          const std::string& attribute_name,
+                                                          const SessionState& subgraph_session_state) = 0;
 
 #ifdef ENABLE_ATEN
   virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;

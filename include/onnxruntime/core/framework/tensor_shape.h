@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include "onnxruntime_config.h"
 
 #ifndef DISABLE_ABSEIL
@@ -29,6 +29,8 @@
 #endif
 #endif  // DISABLE_ABSEIL
 
+#include "core/common/span_utils.h"
+
 namespace onnxruntime {
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -47,7 +49,7 @@ class TensorShapeVector : public std::vector<int64_t> {
   using Base = std::vector<int64_t>;
 
  public:
-   using Base::Base;
+  using Base::Base;
 };
 
 #endif  // DISABLE_ABSEIL
@@ -96,7 +98,7 @@ class TensorShape {
   int64_t operator[](size_t idx) const { return values_[idx]; }
   int64_t& operator[](size_t idx) { return values_[idx]; }
 
-  bool operator==(const TensorShape& other) const noexcept { return GetDims() == other.GetDims(); }
+  bool operator==(const TensorShape& other) const noexcept { return SpanEq(GetDims(), other.GetDims()); }
   bool operator!=(const TensorShape& other) const noexcept { return !(*this == other); }
 
   size_t NumDimensions() const noexcept {
@@ -187,7 +189,7 @@ class TensorShape {
   void Allocate(size_t size);
 
   gsl::span<int64_t> values_;
-  int64_t small_buffer_[kTensorShapeSmallBufferElementsSize];
+  int64_t small_buffer_[kTensorShapeSmallBufferElementsSize]{0};
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
   friend struct ProviderHostImpl;  // So that the shared provider interface can access Allocate

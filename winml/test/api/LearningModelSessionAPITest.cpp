@@ -1116,6 +1116,7 @@ static void ModelBuilding_ConstantMatmul() {
 #endif
 }
 
+#if !defined(BUILD_INBOX)
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
   bool isCPU = (kind == LearningModelDeviceKind::Default || kind == LearningModelDeviceKind::Cpu);
   std::vector<float> real_input =
@@ -1263,6 +1264,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
 
   DiscreteFourierTransform_2D(kind);
 }
+#endif
 
 static void ModelBuilding_DiscreteFourierTransform() {
 #if !defined(BUILD_INBOX)

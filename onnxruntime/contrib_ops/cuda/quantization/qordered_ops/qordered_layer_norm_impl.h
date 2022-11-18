@@ -10,7 +10,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-void QOrderedLayerNorm(
+Status QOrderedLayerNorm(
     cudaStream_t stream, const cudaDeviceProp& device_prop, cublasLtOrder_t order,
     const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
     const T* gamma, const T* beta, const float epsilon,

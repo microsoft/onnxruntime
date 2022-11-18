@@ -333,11 +333,23 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
             )");
 
   builder.Add(R"(
-                adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
-                grad_BCD = Sub (prob_BCD, adj_BCD)
-                d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
-                d_logits = Reshape (d_logits_BCD, orig_shape)
+              adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
+              grad_BCD = Sub (prob_BCD, adj_BCD)
+              d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
             )");
+
+  if (ctx.hasInput(5)) {
+    builder.Add(R"(
+                d_logits_without_bias = Reshape (d_logits_BCD, orig_shape)
+                bias_shaped = Reshape (bias, orig_shape)
+                d_logits = Add(d_logits_without_bias, bias_shaped)
+              )");
+  } else {
+    builder.Add(R"(
+                d_logits = Reshape (d_logits_BCD, orig_shape)
+              )");
+  }
+
   schema.BuildFunction(functionProto);
   return true;
 };
@@ -2464,24 +2476,6 @@ Example 4:
         propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Sin")
-      .AllowUncheckedAttributes()
-      .Input(0, "dY", "Sin output's grad", "T")
-      .Input(1, "X", "Input tensor", "T")
-      .Output(0, "dX", "Sin input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           {{"X_1"}, "Cos", {"X"}},
-           {{"dX"}, "Mul", {"X_1", "dY"}}}));
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2639,6 +2633,19 @@ Example 4:
 
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuickGeluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("QuickGeluGrad")
+      .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
       .SetDomain(kMSDomain)
@@ -3670,7 +3677,9 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOp's ", i, "th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i));
+                      "PythonOp's ", i, "th input type must be ",
+                      TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)), " but got ",
+                      TensorProto_DataType_Name(inferred_input_type->tensor_type().elem_type()));
         }
 
         // The first output is a pointer which points to
@@ -3892,6 +3901,7 @@ Return true if all elements are true and false otherwise.
       .Input(4, "ignore_index",
              "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
              "I", OpSchema::Optional)
+      .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                       "Constrain to float, float16 and double tensors.")

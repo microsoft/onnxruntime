@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include "core/common/inlined_containers.h"
+#include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -258,8 +259,8 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
   // Can't use ContainerEq on float
   EXPECT_EQ(actual_values.size(), sparse_details::values.size());
   // std::equal() with a predicate is only in C++20
-  auto actual_begin = actual_values.cbegin();
-  const auto actual_end = actual_values.cend();
+  auto actual_begin = actual_values.begin();
+  const auto actual_end = actual_values.end();
   auto expected_begin = sparse_details::values.cbegin();
   while (actual_begin != actual_end) {
     auto diff = *actual_begin - *expected_begin;
@@ -1542,7 +1543,7 @@ void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, int64
   p_node.AddAttribute(attr_name, attr_value);
 }
 
-void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::initializer_list<int64_t> attr_value) {
+void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, gsl::span<const int64_t> attr_value) {
   p_node.AddAttribute(attr_name, attr_value);
 }
 
@@ -1556,7 +1557,7 @@ TEST_F(GraphTest, TypeAttribute) {
   outputs.push_back(&output_arg);
   auto& node_1 = graph.AddNode("node_1", "RandomNormal", "node 1.", inputs, outputs);
   AddAttribute(node_1, "dtype", TensorProto_DataType_FLOAT);
-  AddAttribute(node_1, "shape", {2, 3});
+  AddAttribute(node_1, "shape", AsSpan<int64_t>({2, 3}));
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
@@ -1793,7 +1794,8 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()),
+                                   tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
         return tensor_proto;
@@ -1807,7 +1809,13 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
 
   const TensorProto* external_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, external_data));
-  ASSERT_TRUE(utils::HasExternalData(*external_data));
+  if (external_data) {
+    ASSERT_TRUE(utils::HasExternalData(*external_data));
+  } else {
+    // Fail the test because external_data shouldn't be nullptr.
+    // This if-else is added for suppressing warning C6011: dereferencing NULL pointer.
+    ASSERT_TRUE(false);
+  }
 
   // Replace things.
   ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors(injection_initializers));
@@ -1817,17 +1825,21 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   const TensorProto* with_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, with_data));
   // No longer has external data
-  ASSERT_FALSE(utils::HasExternalData(*with_data));
-
-  const auto& original_tensor = ort_value.Get<Tensor>();
-
-  Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data, replaced_tensor));
-
-  ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
-  const auto original_span = original_tensor.DataAsSpan<int32_t>();
-  const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();
-  ASSERT_EQ(original_span, replaced_span);
+  if (with_data) {
+    ASSERT_FALSE(utils::HasExternalData(*with_data));
+    const auto& original_tensor = ort_value.Get<Tensor>();
+    Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data,
+                                                replaced_tensor));
+    ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
+    const auto original_span = original_tensor.DataAsSpan<int32_t>();
+    const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();
+    ASSERT_EQ(original_span, replaced_span);
+  } else {
+    // Fail the test because with_data shouldn't be nullptr.
+    // This if-else is added for suppressing warning C6011: dereferencing NULL pointer.
+    ASSERT_TRUE(false);
+  }
 }
 #endif
 

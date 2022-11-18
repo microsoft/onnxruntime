@@ -88,7 +88,7 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
     ctx->Output(0, {0, 3});
   } else {
     // concatenate outputs
-    const int last_dim = 3;
+    constexpr int last_dim = 3;
     const int num_elements = last_dim * total_num_saved_outputs;
     Tensor* output = ctx->Output(0, {static_cast<int64_t>(total_num_saved_outputs), last_dim});
     ORT_ENFORCE(output != nullptr);

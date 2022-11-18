@@ -9,3 +9,4 @@ argparse
 sympy==1.10.1
 flatbuffers
 protobuf==3.18.1
+packaging

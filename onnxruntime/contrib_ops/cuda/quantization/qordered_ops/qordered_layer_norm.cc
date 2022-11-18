@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_layer_norm.h"
-#include "qordered_layer_norm_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_layer_norm.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_layer_norm_impl.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
@@ -81,18 +83,16 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const float* scale_y = ctx->Input<Tensor>(4)->Data<float>();
 
   if (scale->IsDataType<MLFloat16>()) {
-    QOrderedLayerNorm(Stream(), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
-                      X_data, *scale_x, Y_data, *scale_y, static_cast<const __half*>(scale_data),
-                      static_cast<const __half*>(bias_data),
-                      static_cast<float>(epsilon_), batch, rows, cols);
+    return QOrderedLayerNorm(Stream(), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
+                             X_data, *scale_x, Y_data, *scale_y, static_cast<const __half*>(scale_data),
+                             static_cast<const __half*>(bias_data),
+                             static_cast<float>(epsilon_), batch, rows, cols);
   } else {
-    QOrderedLayerNorm(Stream(), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
-                      X_data, *scale_x, Y_data, *scale_y, static_cast<const float*>(scale_data),
-                      static_cast<const float*>(bias_data),
-                      static_cast<float>(epsilon_), batch, rows, cols);
+    return QOrderedLayerNorm(Stream(), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
+                             X_data, *scale_x, Y_data, *scale_y, static_cast<const float*>(scale_data),
+                             static_cast<const float*>(bias_data),
+                             static_cast<float>(epsilon_), batch, rows, cols);
   }
-
-  return Status::OK();
 }
 
 }  // namespace cuda
