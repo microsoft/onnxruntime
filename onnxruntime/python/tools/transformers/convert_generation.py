@@ -34,7 +34,6 @@ import os
 import sys
 import time
 from enum import Enum
-from fusion_utils import NumpyHelper
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -42,6 +41,7 @@ import numpy as np
 import onnx
 import torch
 from benchmark_helper import Precision
+from fusion_utils import NumpyHelper
 from onnx import GraphProto, ModelProto, TensorProto
 from transformers import (
     GPT2Config,
