@@ -24,7 +24,6 @@ namespace cuda {
       FakeQuant<T>);
 
 REGISTER_FAKEQUANT_KERNEL_TYPED(float)
-REGISTER_FAKEQUANT_KERNEL_TYPED(double)
 
 template <typename T>
 Status FakeQuant<T>::ComputeInternal(OpKernelContext* ctx) const {

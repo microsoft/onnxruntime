@@ -25,7 +25,7 @@ void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const 
           const auto quantized_value = static_cast<int64_t>(
               std::nearbyint(input_data[idx] / quant_scale) + quant_zero_point);
 
-          // De-Quantize
+          // Clamp and De-Quantize
           fake_quantized_data[idx] =
               (std::min(quant_max, std::max(quant_min, quantized_value)) - quant_zero_point) * quant_scale;
 
@@ -48,7 +48,6 @@ void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const 
       FakeQuant<T>);
 
 REGISTER_FAKEQUANT_KERNEL_TYPED(float)
-REGISTER_FAKEQUANT_KERNEL_TYPED(double)
 
 template <typename T>
 Status FakeQuant<T>::Compute(OpKernelContext* ctx) const {

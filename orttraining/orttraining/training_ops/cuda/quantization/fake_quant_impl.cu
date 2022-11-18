@@ -16,21 +16,42 @@ template <typename T>
 __global__ void FakeQuantPerTensorImpl(const int64_t num_elements, const T* input_data, const T quant_scale,
                                        const T quant_zero_point, const int64_t quant_min, const int64_t quant_max,
                                        T* fake_quantized_data, bool* quantization_mask_data) {
-  CUDA_LONG idx = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
+  T values[NumElementsPerThread];
+  T fake_quantized_values[NumElementsPerThread];
+  bool mask_values[NumElementsPerThread];
+
+  CUDA_LONG idx = start;
+  // Load
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (idx < num_elements) {
-      // Quantize
-      const auto quantized_value =
-          static_cast<int64_t>(std::nearbyint(input_data[idx] / quant_scale) + quant_zero_point);
+      values[i] = input_data[idx];
+      idx += NumThreadsPerBlock;
+    }
+  }
 
-      // De-Quantize
-      fake_quantized_data[idx] = (fminf(quant_max, fmaxf(quant_min, quantized_value)) - quant_zero_point) * quant_scale;
+  // Compute
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    // Quantize
+    const auto quantized_value = std::nearbyint(values[i] / quant_scale) + quant_zero_point;
+    // Clamp and De-Quantize
+    fake_quantized_values[i] =
+        (fminf(quant_max, fmaxf(quant_min, quantized_value)) - quant_zero_point) * quant_scale;
+    // Compute mask
+    mask_values[i] = (quant_min <= quantized_value && quantized_value <= quant_max);
+  }
 
-      // Calculate quantization mask needed for gradient computation
-      quantization_mask_data[idx] = (quant_min <= quantized_value && quantized_value <= quant_max);
-      idx += blockDim.x;
+  // Write
+  idx = start;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (idx < num_elements) {
+      fake_quantized_data[idx] = fake_quantized_values[i];
+      quantization_mask_data[idx] = mask_values[i];
+      idx += NumThreadsPerBlock;
     }
   }
 }
@@ -52,7 +73,6 @@ void FakeQuantPerTensor(cudaStream_t stream, const int64_t num_elements, const T
                                       const int64_t quant_max, T* fake_quantized_data, bool* quantization_mask_data);
 
 SPECIALIZED_FAKEQUANT_IMPL(float)
-SPECIALIZED_FAKEQUANT_IMPL(double)
 
 #undef SPECIALIZED_DROPOUT_GRAD_IMPL
 
