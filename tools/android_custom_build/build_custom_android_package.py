@@ -26,6 +26,15 @@ def parse_args():
         "working_dir", type=pathlib.Path, help="The directory used to store intermediate and output files."
     )
 
+    default_docker_interactive_mode_flag = "it"
+    parser.add_argument(
+        "docker_interactive_mode_flag",
+        default=default_docker_interactive_mode_flag,
+        help="The docker run flag specifying whether to run in interactive mode. "
+             "If unspecified, docker would run in interactive mode. "
+             "Use 'i' for this argument if want to run in non-interactive mode. ",
+    )
+
     parser.add_argument(
         "--onnxruntime_branch_or_tag",
         help="The ONNX Runtime branch or tag to build. "
@@ -136,7 +145,7 @@ def main():
         args.docker_path,
         "run",
         "--rm",
-        "-i",
+        "-{args.docker_interactive_mode_flag}",
         f"--volume={str(working_dir)}:/workspace/shared",
         args.docker_image_tag,
         "/usr/bin/env",
