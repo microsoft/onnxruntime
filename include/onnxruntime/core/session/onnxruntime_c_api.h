@@ -369,7 +369,16 @@ typedef enum OrtCudnnConvAlgoSearch {
 */
 typedef struct OrtCUDAProviderOptions {
 #ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtCUDAProviderOptions()
+      : device_id{},
+        cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive},
+        gpu_mem_limit{SIZE_MAX},
+        arena_extend_strategy{},
+        do_copy_in_default_stream{1},
+        has_user_compute_stream{},
+        user_compute_stream{},
+        default_memory_arena_cfg{},
+        tunable_op_enabled{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -420,6 +429,12 @@ typedef struct OrtCUDAProviderOptions {
   */
   OrtArenaCfg* default_memory_arena_cfg;
 
+  /** \brief Enable TunableOp.
+  *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+  */
+  int tunable_op_enabled;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
@@ -436,8 +451,8 @@ typedef struct OrtROCMProviderOptions {
         do_copy_in_default_stream{1},
         has_user_compute_stream{},
         user_compute_stream{},
-        tunable_op_enabled{false},
-        default_memory_arena_cfg{} {}
+        default_memory_arena_cfg{},
+        tunable_op_enabled{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -483,15 +498,15 @@ typedef struct OrtROCMProviderOptions {
   */
   void* user_compute_stream;
 
+  /** \brief ROCM memory arena configuration parameters
+  */
+  OrtArenaCfg* default_memory_arena_cfg;
+
   /** \brief Enable TunableOp.
   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
   *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
   */
   int tunable_op_enabled;
-
-  /** \brief ROCM memory arena configuration parameters
-  */
-  OrtArenaCfg* default_memory_arena_cfg;
 
 } OrtROCMProviderOptions;
 

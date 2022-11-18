@@ -145,14 +145,14 @@ class TunableOp {
 
  private:
   static void WarmUp(Op<ParamsT>& op, const ParamsT* param) {
-    const int num_iter = 4;
+    constexpr const int num_iter = 4;
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
     }
   }
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param) {
-    const int num_iter = 100;
+    constexpr const int num_iter = 100;
     TimerT timer{param->Stream()};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
