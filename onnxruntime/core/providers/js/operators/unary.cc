@@ -87,6 +87,28 @@ JSEP_ELEMENTWISE_KERNEL(Atanh, 9, float, Atanh)
 
 // activation
 
+JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_2_DEFAULT(ClipV10, ClipV10, min, 3.402823e+38f, max, -3.402823e+38f)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(Clip, 6, 10, float, ClipV10)
+JSEP_KERNEL_IMPL(Clip, Clip)
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Clip, kOnnxDomain, 11, 11, kJsExecutionProvider,
+    KernelDefBuilder()
+      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+      .InputMemoryType(OrtMemTypeCPUInput, 1)
+      .InputMemoryType(OrtMemTypeCPUInput, 2),
+    Clip);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Clip, kOnnxDomain, 12, 12, kJsExecutionProvider,
+    KernelDefBuilder()
+      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+      .InputMemoryType(OrtMemTypeCPUInput, 1)
+      .InputMemoryType(OrtMemTypeCPUInput, 2),
+    Clip);
+ONNX_OPERATOR_KERNEL_EX(Clip, kOnnxDomain, 13, kJsExecutionProvider,
+    KernelDefBuilder()
+      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+      .InputMemoryType(OrtMemTypeCPUInput, 1)
+      .InputMemoryType(OrtMemTypeCPUInput, 2),
+    Clip);
+
 JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(Elu, Elu, alpha, 1.0)
 JSEP_ELEMENTWISE_KERNEL(Elu, 6, float, Elu)
 

@@ -5,9 +5,20 @@ import {OrtWasmModule} from '../binding/ort-wasm';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {TensorView} from './tensor';
+import {ShapeUtil} from './util';
 import {ComputeContext, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
+
+class TensorViewImpl implements TensorView {
+  constructor(
+      private module: OrtWasmModule, public readonly dataType: number, public readonly data: number,
+      public readonly dims: readonly number[]) {}
+
+  getFloat32Array(): Float32Array {
+    return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+  }
+}
 
 class OpKernelContext implements ComputeContext {
   readonly opKernelContext: number;
@@ -29,13 +40,14 @@ class OpKernelContext implements ComputeContext {
       for (let d = 0; d < dim; d++) {
         dims.push(heapU32[dataIndex++]);
       }
-      inputs.push({dataType, data, dims});
+      inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
     this.inputs = inputs;
   }
 
-  compute(program: ProgramInfoLoader|ProgramInfo): number {
-    return this.backend.run(program, this.inputs, this.output.bind(this));
+  compute(program: ProgramInfoLoader|ProgramInfo, inputIndices?: readonly number[]): number {
+    const mappedInputs = inputIndices?.map(i => this.inputs[i]) ?? this.inputs;
+    return this.backend.run(program, mappedInputs, this.output.bind(this));
   }
 
   output(index: number, dims: readonly number[]): number {

@@ -13,43 +13,50 @@ struct pthreadpool;
 namespace onnxruntime {
 namespace js {
 
-#define JSEP_INIT_KERNEL(x) EM_ASM({ Module.jsepCreateKernel(#x, $0, undefined); }, this)
-#define JSEP_INIT_KERNEL_ATTRIBUTE(x, attr, ...) EM_ASM({ Module.jsepCreateKernel(#x, $0, attr); }, this, __VA_ARGS__)
+#define JSEP_INIT_KERNEL(optype) EM_ASM({ Module.jsepCreateKernel(#optype, $0, undefined); }, this)
+#define JSEP_INIT_KERNEL_ATTRIBUTE(optype, attr, ...) EM_ASM({ Module.jsepCreateKernel(#optype, $0, attr); }, this, __VA_ARGS__)
 
-#define JSEP_KERNEL_IMPL(classname, x)                       \
+#define JSEP_KERNEL_IMPL(classname, optype)                  \
 class classname : public JsKernel {                          \
 public:                                                      \
     classname(const OpKernelInfo& info) : JsKernel(info) {   \
-        JSEP_INIT_KERNEL(x);                                 \
+        JSEP_INIT_KERNEL(optype);                            \
     }                                                        \
 };
 
-#define JSEP_KERNEL_TYPED_IMPL(classname, x)                 \
+#define JSEP_KERNEL_TYPED_IMPL(classname, optype)            \
 template<typename T>                                         \
 class classname : public JsKernel {                          \
 public:                                                      \
     classname(const OpKernelInfo& info) : JsKernel(info) {   \
-        JSEP_INIT_KERNEL(x);                                 \
+        JSEP_INIT_KERNEL(optype);                            \
     }                                                        \
 };
 
-#define JSEP_CLASS_IMPL_ATTRIBUTE(classname, x, attr_pre, attr, ...)       \
+#define JSEP_CLASS_IMPL_ATTRIBUTE(classname, optype, attr_pre, attr, ...)  \
 class classname : public JsKernel {                                        \
 public:                                                                    \
     classname(const OpKernelInfo& info) : JsKernel(info) {                 \
         attr_pre                                                           \
-        JSEP_INIT_KERNEL_ATTRIBUTE(x, attr, __VA_ARGS__);                  \
+        JSEP_INIT_KERNEL_ATTRIBUTE(optype, attr, __VA_ARGS__);             \
     }                                                                      \
 };
 
-#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(classname, x, attr_name, default_value, ...) \
-    JSEP_CLASS_IMPL_ATTRIBUTE(classname, x, , ({#attr_name:$1}), static_cast<double>(info.GetAttrOrDefault<float>(#attr_name, 1.0)))
+#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(classname, optype, attr_name, default_value, ...) \
+    JSEP_CLASS_IMPL_ATTRIBUTE(classname, optype, , ({#attr_name:$1}), static_cast<double>(info.GetAttrOrDefault<float>(#attr_name, default_value)))
 
-#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT(classname, x, attr_name, ...) \
-    JSEP_CLASS_IMPL_ATTRIBUTE(classname, x,                           \
-        float value;                                                  \
-        ORT_ENFORCE(info.GetAttr<float>(#attr_name, &value)); ,       \
+#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_2_DEFAULT(classname, optype, attr_name_1, default_value_1, attr_name_2, default_value_2, ...) \
+    JSEP_CLASS_IMPL_ATTRIBUTE(classname, optype, , ({#attr_name_1:$1, #attr_name_2:$2}),                                              \
+                              static_cast<double>(info.GetAttrOrDefault<float>(#attr_name_1, default_value_1)),                       \
+                              static_cast<double>(info.GetAttrOrDefault<float>(#attr_name_2, default_value_2)))
+
+
+#define JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT(classname, optype, attr_name, ...) \
+    JSEP_CLASS_IMPL_ATTRIBUTE(classname, optype,                           \
+        float value;                                                       \
+        ORT_ENFORCE(info.GetAttr<float>(#attr_name, &value)); ,            \
         , ({#attr_name:$1}), static_cast<double>(value))
+
 
 class JsKernel : public OpKernel {
  public:
@@ -87,11 +94,11 @@ class JsKernel : public OpKernel {
         }
       }
 
-      // printf("temp data size: %zu. Data: ", temp_data_size);
-      // for (int i=0; i < (int)temp_data_size/4;i++) {
-      //   printf("%u ", p_inputs_data[i]);
-      // }
-      // printf("\n");
+      printf("temp data size: %zu. Data: ", temp_data_size);
+      for (int i=0; i < (int)temp_data_size/4;i++) {
+        printf("%u ", p_inputs_data[i]);
+      }
+      printf("\n");
 
       int status = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, p_inputs_data);
 
