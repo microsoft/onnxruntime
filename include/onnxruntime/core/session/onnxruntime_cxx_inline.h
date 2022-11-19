@@ -374,30 +374,37 @@ inline ThreadingOptions::ThreadingOptions() {
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalIntraOpNumThreads(int intra_op_num_threads) {
   ThrowOnError(GetApi().SetGlobalIntraOpNumThreads(p_, intra_op_num_threads));
+  return *this;
 }
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalInterOpNumThreads(int inter_op_num_threads) {
   ThrowOnError(GetApi().SetGlobalInterOpNumThreads(p_, inter_op_num_threads));
+  return *this;
 }
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalSpinControl(int allow_spinning) {
   ThrowOnError(GetApi().SetGlobalSpinControl(p_, allow_spinning));
+  return *this;
 }
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalDenormalAsZero() {
   ThrowOnError(GetApi().SetGlobalDenormalAsZero(p_));
+  return *this;
 }
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
   ThrowOnError(GetApi().SetGlobalCustomCreateThreadFn(p_, ort_custom_create_thread_fn));
+  return *this;
 }
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalCustomThreadCreationOptions(void* ort_custom_thread_creation_options) {
   ThrowOnError(GetApi().SetGlobalCustomThreadCreationOptions(p_, ort_custom_thread_creation_options));
+  return *this;
 }
 
 inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
   ThrowOnError(GetApi().SetGlobalCustomJoinThreadFn(p_, ort_custom_join_thread_fn));
+  return *this;
 }
 
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
