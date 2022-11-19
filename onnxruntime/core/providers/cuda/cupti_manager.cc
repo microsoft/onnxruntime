@@ -145,10 +145,11 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
 }
 
 void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
-  uint8_t* bfr = (uint8_t*)malloc(kActivityBufferSize + kActivityBufferAlignSize);
-  *size = kActivityBufferSize;
-  *buffer = AlignBuffer(bfr, kActivityBufferAlignSize);
+  // ProfilerActivityBuffer expects a char[], match up new[] and delete[] types just to be safe!
+  auto buf = new char[kActivityBufferSize]
+
   *maxNumRecords = 0;
+  *buffer = reinterpret_cast<uint8_t*>(buf);
 }
 
 void CUPTIAPI CUPTIManager::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t valid_size) {

@@ -33,19 +33,6 @@ class CUPTIManager : public GPUTracerManager<CUPTIManager> {
 
  private:
   static constexpr size_t kActivityBufferSize = 32 * 1024;
-  static constexpr size_t kActivityBufferAlignSize = 8;
-
-  // TODO: Is this even needed? malloc() is required to return
-  // a memory block that meets the alignment requirements for _any_ data type.
-  // On any platform that supports an 8-byte datatype (double? long long?)
-  // this means that malloc() already returns memory aligned at
-  // _at least_ 8 byte boundaries, rendering this additional alignment
-  // redundant?
-  static constexpr uint8_t* AlignBuffer(uint8_t* buffer, int align) {
-    return (((uintptr_t)(buffer) & ((align)-1))
-                ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1)))
-                : (buffer));
-  }
 
   CUPTIManager() = default;
 
