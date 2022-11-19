@@ -65,7 +65,6 @@ def main():
 
     benchmark_fail_csv = fail_name + csv_ending
     benchmark_metrics_csv = metrics_name + csv_ending
-    benchmark_success_csv = success_name + csv_ending
     benchmark_latency_csv = latency_name + csv_ending
     benchmark_status_csv = status_name + csv_ending
     benchmark_session_csv = session_name + csv_ending
@@ -100,9 +99,6 @@ def main():
                 "false",
             ]
 
-            if args.track_memory:
-                command.append("-z")
-
             if ep == standalone_trt or ep == standalone_trt_fp16:
                 command.extend(["--trtexec", trtexec])
 
@@ -128,8 +124,6 @@ def main():
                         benchmark_fail_csv,
                         "--benchmark_latency_csv",
                         benchmark_latency_csv,
-                        "--benchmark_success_csv",
-                        benchmark_success_csv,
                     ]
                 )
 
@@ -217,7 +211,7 @@ def main():
 
             pretty_print(pp, model_to_latency)
 
-            output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
+            write_inference_latency_csv(model_to_latency, os.path.join(path, benchmark_latency_csv), args.io_binding)
             logger.info("\nSaved model latency results to {}".format(benchmark_latency_csv))
 
     logger.info("\n===========================================")

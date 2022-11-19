@@ -67,7 +67,7 @@ jobs:
         value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
 
     - name: optional_arguments
-      value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
+      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
     - name: image
       value: ort-image-$(Build.BuildId)

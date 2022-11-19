@@ -19,10 +19,6 @@ from perf_utils import (
     fail_name,
     group_title,
     latency_name,
-    latency_over_time_name,
-    memory_ending,
-    memory_name,
-    memory_over_time_name,
     model_title,
     ort_provider_list,
     provider_list,
@@ -85,38 +81,6 @@ def adjust_columns(table, columns, db_columns, model_group):
     return table
 
 
-def get_latency_over_time(report_url, latency_table):
-    """
-    Returns a new Pandas table with data that tracks the latency of model/EP inference runs over time.
-
-    :param report_url: The URL of the Azure pipeline run/report which produced this latency data.
-    :param latency_table: The Pandas table containing per model/EP latencies with the schema:
-                          | Model    | ORT-CPUFp32 | ORT-CUDAFp32 | ... |       Group     | ...
-                          =====================================================================
-                          | resnet.. |    43.61    |     4.18     | ... | onnx-zoo-models | ...
-
-    :return: A new table in which the EPs are not hardcoded as columns. Ex:
-             | Model    |      Group      |      Ep      | Latency | ...
-             ===========================================================
-             | resnet.. | onnx-zoo-models | ORT-CPUFp32  |  43.61  | ...
-             | resnet.. | onnx-zoo-models | ORT-CUDAFp32 |  4.18   | ...
-    """
-
-    over_time = latency_table.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Latency")
-    over_time = over_time.assign(ReportUrl=report_url)
-    over_time = over_time[
-        [
-            model_title,
-            group_title,
-            "Ep",
-            "Latency",
-            "ReportUrl",
-        ]
-    ]
-    over_time.fillna("", inplace=True)
-    return over_time
-
-
 def get_failures(fail, model_group):
     """
     Returns a new Pandas table with data that tracks failed model/EP inference runs.
@@ -131,64 +95,6 @@ def get_failures(fail, model_group):
     fail_db_columns = [model_title, "Ep", "ErrorType", "ErrorMessage"]
     fail = adjust_columns(fail, fail_columns, fail_db_columns, model_group)
     return fail
-
-
-def get_memory(memory, model_group):
-    """
-    Returns a new Pandas table with data that tracks peak memory usage per model/EP.
-
-    :param memory: The Pandas table containing raw memory usage data imported from a CSV file.
-    :param model_group: The model group namespace to append as a column.
-
-    :return: The updated table.
-    """
-
-    memory_columns = [model_title]
-    for provider in provider_list:
-        if cpu not in provider:
-            memory_columns.append(provider + memory_ending)
-    memory_db_columns = [
-        model_title,
-        cuda,
-        trt,
-        standalone_trt,
-        cuda_fp16,
-        trt_fp16,
-        standalone_trt_fp16,
-    ]
-    memory = adjust_columns(memory, memory_columns, memory_db_columns, model_group)
-    return memory
-
-
-def get_memory_over_time(memory_table):
-    """
-    Returns a new Pandas table with data that tracks the peak memory usage of model/EP inference runs over time.
-
-    :param memory_table: The Pandas table containing per model/EP memory usage with the schema:
-                          | Model    | ORT-CUDAFp16 | ORT-CUDAFp32 | ... |       Group     | ...
-                          ======================================================================
-                          | resnet.. |     685      |     873      | ... | onnx-zoo-models | ...
-
-    :return: A new table in which the EPs are not hardcoded as columns. Ex:
-             | Model    |      Group      |      Ep      | MemUsage | ...
-             ============================================================
-             | resnet.. | onnx-zoo-models | ORT-CUDAFp16 |   685    | ...
-             | resnet.. | onnx-zoo-models | ORT-CUDAFp32 |   873    | ...
-    """
-
-    over_time = memory_table.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="MemUsage")
-    over_time = over_time[
-        [
-            model_title,
-            group_title,
-            "Ep",
-            "MemUsage",
-        ]
-    ]
-
-    over_time.fillna("", inplace=True)
-
-    return over_time
 
 
 def get_session_over_time(session_table):
@@ -259,24 +165,6 @@ def get_status_over_time(status_table):
     ]
 
     return over_time
-
-
-def get_latency(latency, model_group):
-    """
-    Returns a new Pandas table with data that tracks inference run latency per model/EP.
-
-    :param latency: The Pandas table containing raw latency data imported from a CSV file.
-    :param model_group: The model group namespace to append as a column.
-
-    :return: The updated table.
-    """
-
-    latency_columns = [model_title]
-    for provider in provider_list:
-        latency_columns.append(provider + avg_ending)
-    latency_db_columns = table_headers
-    latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
-    return latency
 
 
 def get_status(status, model_group):
@@ -406,10 +294,7 @@ def main():
 
         tables = [
             fail_name,
-            memory_name,
-            memory_over_time_name,
             latency_name,
-            latency_over_time_name,
             status_name,
             status_over_time_name,
             specs_name,
@@ -444,13 +329,8 @@ def main():
                         ignore_index=True,
                     )
                 elif latency_name in csv:
-                    table_results[memory_name] = pd.concat(
-                        [table_results[memory_name], get_memory(table, model_group)],
-                        ignore_index=True,
-                    )
-
                     table_results[latency_name] = pd.concat(
-                        [table_results[latency_name], get_latency(table, model_group)],
+                        [table_results[latency_name], table.assign(Group=model_group)],
                         ignore_index=True,
                     )
                 elif status_name in csv:
@@ -458,12 +338,6 @@ def main():
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
             os.chdir(result_file)
-
-        if not table_results[memory_name].empty:
-            table_results[memory_over_time_name] = get_memory_over_time(table_results[memory_name])
-
-        if not table_results[latency_name].empty:
-            table_results[latency_over_time_name] = get_latency_over_time(args.report_url, table_results[latency_name])
 
         if not table_results[session_name].empty:
             table_results[session_over_time_name] = get_session_over_time(table_results[session_name])
