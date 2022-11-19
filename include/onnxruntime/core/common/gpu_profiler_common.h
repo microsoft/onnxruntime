@@ -11,7 +11,6 @@
 #include <vector>
 #include <utility>
 
-
 namespace onnxruntime {
 namespace profiling {
 
@@ -35,18 +34,18 @@ namespace profiling {
 class ProfilerActivityBuffer {
  public:
   ProfilerActivityBuffer()
-    : data_(nullptr), size_(0) {}
+      : data_(nullptr), size_(0) {}
 
   ProfilerActivityBuffer(const char* data, size_t size)
-    : data_(std::make_unique<char[]>(size)), size_(size) {
+      : data_(std::make_unique<char[]>(size)), size_(size) {
     memcpy(data_.get(), data, size_);
   }
 
   ProfilerActivityBuffer(const ProfilerActivityBuffer& other)
-    : ProfilerActivityBuffer(other.GetData(), other.GetSize()) {}
+      : ProfilerActivityBuffer(other.GetData(), other.GetSize()) {}
 
   ProfilerActivityBuffer(ProfilerActivityBuffer&& other)
-    : ProfilerActivityBuffer() {
+      : ProfilerActivityBuffer() {
     std::swap(data_, other.data_);
     std::swap(size_, other.size_);
   }
@@ -56,7 +55,7 @@ class ProfilerActivityBuffer {
       return *this;
     }
 
-    new (this) ProfilerActivityBuffer {other};
+    new (this) ProfilerActivityBuffer{other};
     return *this;
   }
 
@@ -65,7 +64,7 @@ class ProfilerActivityBuffer {
       return *this;
     }
 
-    new (this) ProfilerActivityBuffer {std::move(other)};
+    new (this) ProfilerActivityBuffer{std::move(other)};
     return *this;
   }
 
@@ -87,9 +86,8 @@ class ProfilerActivityBuffer {
 }; /* end class ProfilerActivityBuffer */
 
 template <typename TDerived>
-class GPUTracerManager
-{
-public:
+class GPUTracerManager {
+ public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GPUTracerManager);
   virtual ~GPUTracerManager() {}
 
@@ -117,7 +115,7 @@ public:
   void StartLogging() {
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
     if (logging_enabled_) {
-        return;
+      return;
     }
 
     auto this_as_derived = static_cast<TDerived*>(this);
@@ -220,7 +218,7 @@ public:
     PopCorrelation(unused);
   }
 
-protected:
+ protected:
   GPUTracerManager() = default;
 
 #if 0
@@ -267,12 +265,12 @@ protected:
     events_pending_client_mapping_.erase(pending_it);
   }
 
-private:
+ private:
   // Requires: manager_instance_mutex_ should be held
   void StopLogging() {
     auto this_as_derived = static_cast<TDerived*>(this);
     if (!logging_enabled_) {
-        return;
+      return;
     }
     this_as_derived->OnStopLogging();
     logging_enabled_ = false;
@@ -343,7 +341,7 @@ private:
 
 // Base class for a GPU profiler
 class GPUProfilerBase : public EpProfiler {
-protected:
+ protected:
   GPUProfilerBase() = default;
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
     Events merged_events;
@@ -378,8 +376,8 @@ protected:
       }
 
       merged_events.insert(merged_events.end(),
-                          std::make_move_iterator(map_iter.second.begin()),
-                          std::make_move_iterator(map_iter.second.end()));
+                           std::make_move_iterator(map_iter.second.begin()),
+                           std::make_move_iterator(map_iter.second.end()));
     }
 
     // move any remaining events

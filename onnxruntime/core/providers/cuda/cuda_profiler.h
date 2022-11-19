@@ -26,7 +26,7 @@ class CudaProfiler final : public GPUProfilerBase {
   void Start(uint64_t) override;
   void Stop(uint64_t) override;
 
-private:
+ private:
   uint64_t client_handle_ = 0;
   TimePoint profiling_start_time_{};
 };

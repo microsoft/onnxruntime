@@ -26,6 +26,7 @@ struct ApiCallRecord {
 
 class RoctracerManager : public GPUTracerManager<RoctracerManager> {
   friend class GPUTracerManager<RoctracerManager>;
+
  public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoctracerManager);
   ~RoctracerManager();
@@ -46,7 +47,6 @@ class RoctracerManager : public GPUTracerManager<RoctracerManager> {
   static void ApiCallback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
   bool CreateEventForActivityRecord(const roctracer_record_t* record, uint64_t start_time_ns,
                                     const ApiCallRecord& call_record, EventRecord& event);
-
 
   // Some useful constants for processing activity buffers
   static constexpr uint32_t HipOpMarker = 4606;

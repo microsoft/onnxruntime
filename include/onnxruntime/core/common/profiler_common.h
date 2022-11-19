@@ -24,8 +24,7 @@ static constexpr const char* event_category_names_[EVENT_CATEGORY_MAX] = {
     "Session",
     "Node",
     "Kernel",
-    "Api"
-};
+    "Api"};
 
 // Timing record for all events.
 struct EventRecord {

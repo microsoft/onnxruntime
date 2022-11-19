@@ -9,7 +9,6 @@
 #include "cupti_manager.h"
 #include "cuda_profiler.h"
 
-
 namespace onnxruntime {
 namespace profiling {
 

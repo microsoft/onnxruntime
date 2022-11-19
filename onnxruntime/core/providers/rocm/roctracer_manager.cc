@@ -31,12 +31,12 @@ RoctracerManager& RoctracerManager::GetInstance() {
 RoctracerManager::~RoctracerManager() {}
 
 #define ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(expr_) \
-do {  \
-  if (expr_ != ROCTRACER_STATUS_SUCCESS) { \
-    OnStopLogging();  \
-    return false; \
-  } \
-} while (false)
+  do {                                               \
+    if (expr_ != ROCTRACER_STATUS_SUCCESS) {         \
+      OnStopLogging();                               \
+      return false;                                  \
+    }                                                \
+  } while (false)
 
 bool RoctracerManager::OnStartLogging() {
   // The following line shows up in all the samples, I do not know
@@ -56,14 +56,11 @@ bool RoctracerManager::OnStartLogging() {
   for (auto const& logged_api : hip_api_calls_to_trace) {
     uint32_t cid = 0;
     ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
-      roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, logged_api.c_str(), &cid, nullptr)
-    );
+        roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, logged_api.c_str(), &cid, nullptr));
     ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
-      roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, cid, ApiCallback, nullptr)
-    );
+        roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, cid, ApiCallback, nullptr));
     ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
-      roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid)
-    );
+        roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid));
   }
 
   // Enable activity logging in the HIP_OPS/HCC_OPS domain.
