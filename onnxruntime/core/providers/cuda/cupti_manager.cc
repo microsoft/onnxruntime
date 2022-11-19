@@ -147,7 +147,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
 void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
   // ProfilerActivityBuffer expects a char[], match up new[] and delete[] types just to be safe!
   auto buf = new char[kActivityBufferSize]
-
+  *size = kActivityBufferSize;
   *maxNumRecords = 0;
   *buffer = reinterpret_cast<uint8_t*>(buf);
 }
