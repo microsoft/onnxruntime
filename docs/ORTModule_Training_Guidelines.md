@@ -32,7 +32,7 @@ Sample usage as below:
 ```diff
 	model = build_model()
 
-+	from onnxruntime.training import ORTModule
++	from onnxruntime.training.ortmodule import ORTModule
 +	model = ORTModule(model)
 ```
 
@@ -44,7 +44,7 @@ More options for **developers**.
 ```diff
 	model = build_model()
 
-+	from onnxruntime.training import ORTModule, DebugOptions, LogLevel
++	from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 +	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/debug_options.py) for more details.
@@ -189,7 +189,7 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 ```diff
 	model = build_model()
 
-+	from onnxruntime.training import ORTModule
++	from onnxruntime.training.ortmodule import ORTModule
 +	model = ORTModule(model)
 
 -	optimizer = AdamW(model.parameters(), lr=1)

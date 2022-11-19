@@ -6,7 +6,7 @@
     <OnnxRuntimeBuildDirectory>@CMAKE_BINARY_DIR@/..</OnnxRuntimeBuildDirectory>
     <OnnxSourceDirectory>@onnx_SOURCE_DIR@</OnnxSourceDirectory>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisDirectory)</OnnxRuntimeCsharpRoot>
-	<ProtocDirectory>@protobuf_BINARY_DIR@</ProtocDirectory>
+    <ProtocDirectory>@protobuf_BINARY_DIR@</ProtocDirectory>
     <RestorePackagesPath>$(MSBuildThisFileDirectory)\packages</RestorePackagesPath>
     <RestoreConfigFile>$(MSBuildThisFileDirectory)\NuGet.CSharp.config</RestoreConfigFile>
     <MSBuildWarningsAsMessages>NU1503</MSBuildWarningsAsMessages>

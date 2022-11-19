@@ -251,7 +251,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
       if (r == static_cast<size_t>(axis)) {
         continue;
       }
-      cumulative_packed_stride /= X_shape[onnxruntime::narrow<size_t>(r)];
+      cumulative_packed_stride /= onnxruntime::narrow<size_t>(X_shape[r]);
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
       X_offset += index * SafeInt<size_t>(X_shape.SizeFromDimension(r + 1)) / complex_input_factor;
@@ -265,7 +265,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
       if (r == static_cast<size_t>(axis)) {
         continue;
       }
-      cumulative_packed_stride /= X_shape[onnxruntime::narrow<size_t>(r)];
+      cumulative_packed_stride /= onnxruntime::narrow<size_t>(X_shape[r]);
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
       Y_offset += index * SafeInt<size_t>(Y_shape.SizeFromDimension(r + 1)) / 2;
