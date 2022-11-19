@@ -102,7 +102,7 @@ namespace test {
     if (condition) {                                                             \
       return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,   \
                                            ::onnxruntime::common::FAIL,          \
-                                           #condition##" is evaluated to true"); \
+                                           #condition " is evaluated to true"); \
     }                                                                            \
   } while (false)
 
