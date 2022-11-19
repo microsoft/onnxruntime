@@ -16,6 +16,24 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+#define TEST_RETURN_IF(condition)                                               \
+  do {                                                                          \
+    if (condition) {                                                            \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,  \
+                                           ::onnxruntime::common::FAIL,         \
+                                           #condition " is evaluated to true"); \
+    }                                                                           \
+  } while (false)
+
+#define TEST_RETURN_IF_NOT(condition)                                            \
+  do {                                                                           \
+    if (!(condition)) {                                                          \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,   \
+                                           ::onnxruntime::common::FAIL,          \
+                                           #condition " is evaluated to false"); \
+    }                                                                            \
+  } while (false)
+
 namespace onnxruntime {
 namespace test {
 template <typename T>

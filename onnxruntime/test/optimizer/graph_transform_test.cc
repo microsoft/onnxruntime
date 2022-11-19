@@ -97,24 +97,6 @@ namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
-#define TEST_RETURN_IF(condition)                                                \
-  do {                                                                           \
-    if (condition) {                                                             \
-      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,   \
-                                           ::onnxruntime::common::FAIL,          \
-                                           #condition " is evaluated to true"); \
-    }                                                                            \
-  } while (false)
-
-#define TEST_RETURN_IF_NOT(condition)                                            \
-  do {                                                                           \
-    if (!(condition)) {                                                          \
-      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,   \
-                                           ::onnxruntime::common::FAIL,          \
-                                           #condition " is evaluated to false"); \
-    }                                                                            \
-  } while (false)
-
 TEST_F(GraphTransformationTests, IdentityElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "abs-id-max.onnx";
   std::shared_ptr<Model> model;
