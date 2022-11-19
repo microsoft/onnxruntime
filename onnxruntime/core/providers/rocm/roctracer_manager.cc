@@ -34,17 +34,14 @@ RoctracerManager::~RoctracerManager() {}
 do {  \
   if (expr_ != ROCTRACER_STATUS_SUCCESS) { \
     OnStopLogging();  \
-    return false;  \
+    return false; \
   } \
 } while (false)
 
 bool RoctracerManager::OnStartLogging() {
   // The following line shows up in all the samples, I do not know
   // what the point is, but without it, the roctracer APIs don't work.
-
-  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(
-    roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr) != ROCTRACER_STATUS_SUCCESS
-  );
+  roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
 
   roctracer_properties_t hcc_cb_properties;
   memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
@@ -72,7 +69,7 @@ bool RoctracerManager::OnStartLogging() {
   // Enable activity logging in the HIP_OPS/HCC_OPS domain.
   ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_enable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS));
 
-  ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(roctracer_start());
+  roctracer_start();
   return true;
 }
 
@@ -88,7 +85,7 @@ void RoctracerManager::OnStopLogging() {
 
 void RoctracerManager::ActivityCallback(const char* begin, const char* end, void* arg) {
   size_t size = end - begin;
-  RoctracerActivityBuffer activity_buffer{reinterpret_cast<const char*>(begin), size};
+  ProfilerActivityBuffer activity_buffer{reinterpret_cast<const char*>(begin), size};
   auto& instance = GetInstance();
   instance.EnqueueActivityBuffer(std::move(activity_buffer));
 }
@@ -247,7 +244,7 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
   return true;
 }
 
-void RoctracerManager::ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
+void RoctracerManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                                               const TimePoint& start_time) {
   auto start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
 

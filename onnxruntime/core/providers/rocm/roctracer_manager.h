@@ -18,8 +18,6 @@
 namespace onnxruntime {
 namespace profiling {
 
-using RoctracerActivityBuffer = ProfilerActivityBuffer;
-
 struct ApiCallRecord {
   uint32_t domain_;
   uint32_t cid_;
@@ -38,7 +36,7 @@ class RoctracerManager : public GPUTracerManager<RoctracerManager> {
   void PopUniqueCorrelation(uint64_t& popped_unique_cid);
   void OnStopLogging();
   bool OnStartLogging();
-  void ProcessActivityBuffers(const std::vector<RoctracerActivityBuffer>& buffers,
+  void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                               const TimePoint& start_time);
   void FlushActivities();
 

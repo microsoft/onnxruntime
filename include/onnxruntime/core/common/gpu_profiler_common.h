@@ -263,7 +263,7 @@ protected:
       return;
     }
     // Map the pending events to the right client
-    MapEventsToClient(tracer_correlation_id, std::move(pending_it->second));
+    MapEventsToClient(unique_correlation_id, std::move(pending_it->second));
     events_pending_client_mapping_.erase(pending_it);
   }
 
