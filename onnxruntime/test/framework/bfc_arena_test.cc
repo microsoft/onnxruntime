@@ -289,18 +289,17 @@ TEST(BFCArenaTest, TestReserve) {
 TEST(BFCArenaTest, TestShrink) {
   AllocatorStats stats;
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, ArenaExtendStrategy::kSameAsRequested);
-  //void* p1 = a.Alloc(1024);
-  void* p1 = a.Alloc(4096);
-  a.Alloc(1024);
+  void* p1k = a.Alloc(1024);
+  /* void* p10M =*/ a.Alloc(10 * 1024 * 1024);
   a.GetStats(&stats);
-  EXPECT_EQ(stats.num_arena_extensions, 2);
-  a.Free(p1);
+  EXPECT_EQ(stats.num_arena_extensions, 2) << "Expect 2 regions but got " << stats.num_arena_extensions << " region";
+  a.Free(p1k);
 
   EXPECT_EQ(a.Shrink(), Status::OK());
   a.GetStats(&stats);
-  EXPECT_EQ(stats.num_arena_extensions, 1);
-  EXPECT_EQ(stats.num_arena_shrinkages, 1);
-  EXPECT_EQ(stats.total_allocated_bytes, 1024);
+  EXPECT_EQ(stats.num_arena_extensions, 1) << "1 region left as p10M is still in use";
+  EXPECT_EQ(stats.num_arena_shrinkages, 1) << "shrink only once as only p1k is freed";
+  EXPECT_EQ(stats.total_allocated_bytes, 10485760) << "Expect 1024 bytes but actually " << stats.total_allocated_bytes << " bytes";
 }
 
 class BadAllocator : public IAllocator {
@@ -402,7 +401,7 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
 
   std::unordered_map<Stream*, uint64_t> syncTable;
   stream2.CloneCurrentStreamSyncTable(syncTable);
-  EXPECT_EQ(syncTable.size(), 1) << "";
+  EXPECT_EQ(syncTable.size(), 1) << "stream2 has been updated with stream1's nofitication on the clock";
   a.Free(p2);
 }
 

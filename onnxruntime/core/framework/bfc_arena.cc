@@ -437,6 +437,9 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
   // if trying to use an unsafe chunk from other streams, secure it.
   if (other_stream_candidate) {
     SecureTheChunk(other_stream_candidate->stream, stream, wait_fn);
+    // if find some available chunk, make sure mark it as "being used" before return
+    other_stream_candidate->allocation_id = next_allocation_id_++;
+    other_stream_candidate->bin_num = kInvalidBinNum;
   }
 
   return other_stream_candidate;
