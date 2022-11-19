@@ -549,6 +549,7 @@ Status BFCArena::Shrink() {
 
       device_allocator_->Free(region_ptr);
       region_manager_.RemoveAllocationRegion(region_ptr);
+      stats_.num_arena_extensions--;
     }
 
     ++i;

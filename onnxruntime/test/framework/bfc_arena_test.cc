@@ -273,7 +273,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST(BFCArenaTest, TestReserve) {
-  // Configure a 1MiB byte limit
+  // Configure a 1GiB byte limit
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
 
   void* first_ptr = a.Alloc(sizeof(float) * (1 << 6));
@@ -284,6 +284,23 @@ TEST(BFCArenaTest, TestReserve) {
   AllocatorStats stats;
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
+}
+
+TEST(BFCArenaTest, TestShrink) {
+  AllocatorStats stats;
+  BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, ArenaExtendStrategy::kSameAsRequested);
+  //void* p1 = a.Alloc(1024);
+  void* p1 = a.Alloc(4096);
+  a.Alloc(1024);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_arena_extensions, 2);
+  a.Free(p1);
+
+  EXPECT_EQ(a.Shrink(), Status::OK());
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_arena_extensions, 1);
+  EXPECT_EQ(stats.num_arena_shrinkages, 1);
+  EXPECT_EQ(stats.total_allocated_bytes, 1024);
 }
 
 class BadAllocator : public IAllocator {
@@ -372,6 +389,21 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   a.Free(stream2_chunk_d);
   a.Free(stream2_chunk_e);
   a.Free(stream2_chunk_f);
+}
+
+TEST(StreamAwareArenaTest, TestSecureTheChunk) {
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, true);
+  OrtDevice tmp;
+  StreamMock stream1(tmp), stream2(tmp);
+
+  void* p1 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream1, nullptr);
+  a.Free(p1);
+  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2, nullptr);
+
+  std::unordered_map<Stream*, uint64_t> syncTable;
+  stream2.CloneCurrentStreamSyncTable(syncTable);
+  EXPECT_EQ(syncTable.size(), 1) << "";
+  a.Free(p2);
 }
 
 }  // namespace test
