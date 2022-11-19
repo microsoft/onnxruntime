@@ -189,6 +189,7 @@ namespace detail {
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
+ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
@@ -338,6 +339,36 @@ struct Status : detail::Base<OrtStatus> {
   explicit Status(const std::exception&);  ///< Creates status instance out of exception
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
+};
+
+/** \brief The ThreadingOptions
+ *
+ * The ThreadingOptions used for set global threadpools' options of The Env.
+ */
+struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
+  /// \brief Wraps OrtApi::CreateThreadingOptions
+  ThreadingOptions();
+
+  /// \brief Wraps OrtApi::SetGlobalIntraOpNumThreads
+  ThreadingOptions& SetGlobalIntraOpNumThreads(int intra_op_num_threads);
+
+  /// \brief Wraps OrtApi::SetGlobalInterOpNumThreads
+  ThreadingOptions& SetGlobalInterOpNumThreads(int inter_op_num_threads);
+
+  /// \brief Wraps OrtApi::SetGlobalSpinControl
+  ThreadingOptions& SetGlobalSpinControl(int allow_spinning);
+
+  /// \brief Wraps OrtApi::SetGlobalDenormalAsZero
+  ThreadingOptions& SetGlobalDenormalAsZero();
+
+  /// \brief Wraps OrtApi::SetGlobalCustomCreateThreadFn
+  ThreadingOptions& SetGlobalCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);
+
+  /// \brief Wraps OrtApi::SetGlobalCustomThreadCreationOptions
+  ThreadingOptions& SetGlobalCustomThreadCreationOptions(void* ort_custom_thread_creation_options);
+
+  /// \brief Wraps OrtApi::SetGlobalCustomJoinThreadFn
+  ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
 };
 
 /** \brief The Env (Environment)
