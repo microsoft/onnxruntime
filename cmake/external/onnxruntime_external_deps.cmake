@@ -53,11 +53,17 @@ FetchContent_Declare(
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
+if(Patch_FOUND)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+else()
+ set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
+endif()
 FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   SOURCE_SUBDIR  cmake
+  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   FIND_PACKAGE_ARGS NAMES Protobuf
 )
 
@@ -275,12 +281,18 @@ else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
 
-FetchContent_Declare(
-      onnx
-      URL ${DEP_URL_onnx}
-      URL_HASH SHA1=${DEP_SHA1_onnx}
-)
+if(Patch_FOUND)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+else()
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
+endif()
 
+FetchContent_Declare(
+  onnx
+  URL ${DEP_URL_onnx}
+  URL_HASH SHA1=${DEP_SHA1_onnx}
+  PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+)
 
 
 if (CPUINFO_SUPPORTED)

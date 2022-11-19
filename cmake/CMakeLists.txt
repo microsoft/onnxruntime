@@ -1178,10 +1178,7 @@ function(onnxruntime_add_include_to_target dst_target)
         target_include_directories(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_COMPILE_DEFINITIONS>)
         target_sources(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_SOURCES>)
-<<<<<<< HEAD
       endif()
-=======
->>>>>>> origin/main
     endforeach()
 endfunction()
 
@@ -1319,44 +1316,6 @@ endif()
 if (onnxruntime_USE_EXTENSIONS)
   include(extensions)
 endif()
-
-<<<<<<< HEAD
-=======
-if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
-  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single
-  #parameter version of SetTotalBytesLimit(). The second parameter is ignored.
-  #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
-  #TODO: fix the warning in ONNX and re-enable this flag
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
-  string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
-endif()
-
-# ONNX
-if (NOT onnxruntime_USE_FULL_PROTOBUF)
-  set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
-else()
-  set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
-endif()
-
-if(Patch_FOUND)
-  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
-else()
-  set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
-endif()
-
-FetchContent_Declare(
-  onnx
-  URL https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip
-  URL_HASH SHA1=edc8e1338c02f3ab222f3d803a24e17608c13895
-  PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
-)
-
-if (NOT onnxruntime_MINIMAL_BUILD)
-  FetchContent_MakeAvailable(onnx)
-else()
-  include(onnx_minimal)
-endif()
->>>>>>> origin/main
 
 if (MSVC)
    string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
