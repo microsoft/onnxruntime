@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {TensorView} from '../../tensor';
-import {ShapeUtil} from '../../util';
+import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
@@ -89,32 +89,25 @@ export interface ClipAttributes extends AttributeWithCacheKey {
   readonly max: number;
 }
 
-export const clip = (context: ComputeContext, attributes: ClipAttributes): number =>
-    context.compute(createElementwiseProgramInfoLoader(
+export const clip = (context: ComputeContext, attributes: ClipAttributes): number => context.compute(
+    createElementwiseProgramInfoLoader(
         context.inputs[0], 'Clip', a => `clamp(${a}, clip_min_, clip_max_)`, `
-    let clip_min_: vec4<f32> = vec4(f32(${attributes.min}));
-    let clip_max_: vec4<f32> = vec4(f32(${attributes.max}));
+    const clip_min_: vec4<f32> = vec4(f32(${attributes.min}));
+    const clip_max_: vec4<f32> = vec4(f32(${attributes.max}));
 `,
-        attributes.cacheKey));
+        attributes.cacheKey),
+    [0]);
 
-// export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createAttributeWithCacheKey(
-//     {min: node.attributes.getFloat('min', MIN_CLIP), max: node.attributes.getFloat('max', MAX_CLIP)});
+const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAttributes => {
+  const min = (inputs.length >= 2) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
+  const max = (inputs.length >= 3) ? inputs[2].getFloat32Array()[0] : MAX_CLIP;
+  return createAttributeWithCacheKey({min, max});
+};
 
-// const generateClipAttributesFromInputs = (handler: WebGpuInferenceHandler, inputs: Tensor[]): ClipAttributes => {
-//   if (inputs.length >= 3 &&
-//       (!handler.session.isInitializer(inputs[1].dataId) || !handler.session.isInitializer(inputs[2].dataId))) {
-//     throw new Error('dynamic clip attributes are not allowed');
-//   }
-
-//   const min = (inputs.length >= 3) ? inputs[1].numberData[0] : MIN_CLIP;
-//   const max = (inputs.length >= 3) ? inputs[2].numberData[0] : MAX_CLIP;
-//   return createAttributeWithCacheKey({min, max});
-// };
-
-// export const clipV11 = (context: ComputeContext ): number=> {
-//   const attributes = generateClipAttributesFromInputs(handler, inputs);
-//   return clip(handler, [inputs[0]], attributes);
-// };
+export const clipV11 = (context: ComputeContext): number => {
+  const attributes = generateClipAttributesFromInputs(context.inputs);
+  return clip(context, attributes);
+};
 
 export const ceil = (context: ComputeContext): number =>
     context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Ceil', 'ceil'));

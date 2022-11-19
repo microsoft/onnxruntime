@@ -9,11 +9,20 @@
 namespace onnxruntime {
 namespace js {
 
-class JsCPUAllocator : public CPUAllocator {
+class JsCPUInputAllocator : public CPUAllocator {
  public:
-  JsCPUAllocator()
+  JsCPUInputAllocator()
       : CPUAllocator(
-            OrtMemoryInfo("JsCPUAllocator", OrtAllocatorType::OrtDeviceAllocator,
+            OrtMemoryInfo("JsCPUInputAllocator", OrtAllocatorType::OrtDeviceAllocator,
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                          0, OrtMemTypeCPUInput)){};
+};
+
+class JsCPUOutputAllocator : public CPUAllocator {
+ public:
+  JsCPUOutputAllocator()
+      : CPUAllocator(
+            OrtMemoryInfo("JsCPUOutputAllocator", OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
                           0, OrtMemTypeCPUOutput)){};
 };

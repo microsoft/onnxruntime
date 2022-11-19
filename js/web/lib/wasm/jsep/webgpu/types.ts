@@ -98,6 +98,6 @@ export interface Artifact {
 export interface ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  compute(program: ProgramInfoLoader|ProgramInfo): number;
+  compute(program: ProgramInfoLoader|ProgramInfo, inputIndices?: readonly number[]): number;
   output(index: number, dims: readonly number[]): number;
 }

@@ -15,6 +15,7 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "allocator.h"
 #include "data_transfer.h"
+#include "js_kernel_lookup.h"
 
 namespace onnxruntime {
 
@@ -103,6 +104,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Asin
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Acosh);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, Atanh);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 10, Clip);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 11, Clip);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, 12, Clip);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Clip);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, Elu);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 12, Add);
@@ -181,6 +186,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(9, Atanh),
 
       // activations
+      KERNEL_CREATE_INFO_VERSIONED(6, 10, Clip),
+      KERNEL_CREATE_INFO_VERSIONED(11, 11, Clip),
+      KERNEL_CREATE_INFO_VERSIONED(12, 12, Clip),
+      KERNEL_CREATE_INFO(13, Clip),
       KERNEL_CREATE_INFO(6, Elu),
 
       // binary - math
@@ -244,10 +253,18 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  AllocatorCreationInfo default_memory_info([&](int) { return std::make_unique<js::JsCPUAllocator>(); });
 
-  AllocatorPtr default_allocator = CreateAllocator(default_memory_info);
-  InsertAllocator(default_allocator);
+  printf("JsExecutionProvider::RegisterAllocator() \n");
+
+  AllocatorCreationInfo cpuInputAllocatorCreationInfo([&](int) {
+    return std::make_unique<js::JsCPUInputAllocator>();
+  });
+  InsertAllocator(CreateAllocator(cpuInputAllocatorCreationInfo));
+
+  AllocatorCreationInfo cpuOutputAllocatorCreationInfo([&](int) {
+    return std::make_unique<js::JsCPUOutputAllocator>();
+  });
+  InsertAllocator(CreateAllocator(cpuOutputAllocatorCreationInfo));
 
   // use_arena might have some issue, for this to work need to change
   // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/execution_frame.cc#L507
@@ -262,20 +279,33 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
 
-  auto list = IExecutionProvider::GetCapability(graph, kernel_lookup);
-  //printf("JsExecutionProvider::GetCapability() results:\n");
+  auto lookup = JsKernelLookup{kernel_lookup};
+  auto list = IExecutionProvider::GetCapability(graph, lookup);
+  printf("JsExecutionProvider::GetCapability() results:\n");
 
-  for (size_t i=0; i < list.size(); i++) {
-    //printf("  subgraph %zu: %zu node(s)\n", i, list[i]->sub_graph->nodes.size());
-    for (size_t j=0;j<list[i]->sub_graph->nodes.size();j++) {
-      auto node_index = list[i]->sub_graph->nodes[j];
+  for (size_t i = 0; i < list.size(); i++) {
+    auto &nodes = list[i]->sub_graph->nodes;
+    printf("  subgraph %zu: %zu node(s)\n", i, list[i]->sub_graph->nodes.size());
+    for (size_t j = 0; j < nodes.size(); j++) {
+      auto node_index = nodes[j];
       auto *node = graph.GetNode(node_index);
-      auto *kernel_info = kernel_lookup.LookUpKernel(*node);
+      auto *kernel_info = lookup.LookUpKernel(*node);
 
       (void)(node_index);
       (void)(node);
       (void)(kernel_info);
-      //printf("    node[%zu]: [%s][%s][%s]\n", node_index, node->Domain().c_str(), node->OpType().c_str(), node->Name().c_str());
+      printf("    node[%zu]: [%s][%s][%s]\n", node_index, node->Domain().c_str(), node->OpType().c_str(), node->Name().c_str());
+
+      // if (node->OpType() == "Clip" && node->InputDefs().size() == 3) {
+      //   printf("Clip node: [%s] %s, %s\n", node->Name().c_str(), node->InputDefs()[1]->Name().c_str(), node->InputDefs()[2]->Name().c_str());
+      //   if (!graph.IsConstantInitializer(node->InputDefs()[1]->Name(), true) ||
+      //       !graph.IsConstantInitializer(node->InputDefs()[2]->Name(), true)) {
+      //     printf("--erasing\n");
+      //     nodes.erase(nodes.begin() + j);
+      //     j--;
+      //     continue;
+      //   }
+      // }
     }
   }
 
