@@ -3,7 +3,6 @@
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {init} from './jsep';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
