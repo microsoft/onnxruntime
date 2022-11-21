@@ -14,7 +14,6 @@
 
 using onnxruntime::rocm::tunable::blas::BlasOp;
 using onnxruntime::rocm::tunable::blas::BlasOpToString;
-using onnxruntime::rocm::tunable::blas::column_major::Gemm;
 
 namespace onnxruntime {
 namespace contrib {
@@ -40,22 +39,22 @@ struct GemmFastGeluParams : onnxruntime::rocm::tunable::OpParams {
   T beta;
   T* c;
   int64_t ldc;
-  bool has_bias{true};
   bool tuning{false};
 };
 
 template <typename T>
 Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
-  if (Gemm(params->tuning, params->stream, params->handle,
-           params->opb, params->opa,
-           params->n, params->m, params->k,
-           params->alpha, params->b, params->ldb, params->a, params->lda,
-           params->beta, params->c, params->ldc) != Status::OK()) {
+  namespace column_major = onnxruntime::rocm::tunable::blas::column_major;
+  if (column_major::Gemm(params->tuning, params->stream, params->handle,
+                         params->opb, params->opa,
+                         params->n, params->m, params->k,
+                         params->alpha, params->b, params->ldb, params->a, params->lda,
+                         params->beta, params->c, params->ldc) != Status::OK()) {
     return Status(common::ONNXRUNTIME, common::FAIL, "GemmFastGelu call column_major::Gemm failed");
   }
 
   int64_t fast_gelu_input_length = params->m * params->n;
-  int64_t bias_length = (params->has_bias) ? params->n : 0;
+  int64_t bias_length = (params->bias != nullptr) ? params->n : 0;
 
   // inplace computation
   return LaunchFastGeluKernel<T>(params->stream,

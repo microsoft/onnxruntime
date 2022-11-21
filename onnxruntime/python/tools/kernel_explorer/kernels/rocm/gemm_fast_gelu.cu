@@ -45,7 +45,6 @@ class GemmFastGeluUnfused : public IKernelExplorer {
     params_.beta = beta;
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
-    params_.has_bias = (params_.bias != nullptr) ? true : false;
   }
 
   ~GemmFastGeluUnfused() {
@@ -97,7 +96,6 @@ class GemmFastGeluTunableOp : public IKernelExplorer {
     params_.beta = beta;
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
-    params_.has_bias = (params_.bias != nullptr) ? true : false;
 
     op_.EnableTuning();
   }

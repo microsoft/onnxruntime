@@ -10,7 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_basic_size, get_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
 def dtype_to_funcs(dtype):
@@ -79,7 +79,7 @@ all_transabs = list(product([True, False], repeat=2))
 
 
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_basic_size(full=False) + get_bert_sizes(full=False))
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
 def test_gemmfastgelu_bert_cases(dtype, size, transab):
     for func in dtype_to_funcs(dtype):
@@ -131,7 +131,7 @@ def profile_with_args(transa, transb, dtype, m, n, k):
 
 def profile():
     for dtype in dtypes:
-        for m, n, k in get_bert_sizes(full=True):
+        for m, n, k in get_gemm_bert_sizes(full=True):
             profile_with_args(False, False, dtype, m, n, k)
             print()
         print()

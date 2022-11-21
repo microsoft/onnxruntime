@@ -35,7 +35,7 @@ def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, tran
     return bound
 
 
-def get_bert_sizes(full=True):
+def get_gemm_bert_sizes(full=True):
     bert_base_sizes = [
         # m, n, k
         (384, 768, 768),
@@ -59,7 +59,7 @@ def get_bert_sizes(full=True):
     return bert_sizes
 
 
-def get_basic_size(full=True):
+def get_gemm_basic_sizes(full=True):
     if full:
         return list(product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3))
 

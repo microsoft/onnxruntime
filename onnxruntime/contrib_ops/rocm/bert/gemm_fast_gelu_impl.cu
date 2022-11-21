@@ -52,7 +52,6 @@ Status LaunchGemmFastGeluKernel(bool tuning,
   params.beta = beta;
   params.c = c;
   params.ldc = ldc;
-  params.has_bias = (bias != nullptr) ? true : false;
 
   if (tuning) {
     static GemmFastGeluTunableOp<T> op;

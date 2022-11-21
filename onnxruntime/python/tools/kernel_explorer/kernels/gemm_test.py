@@ -9,7 +9,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_basic_size, get_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
 def dtype_to_suffix(dtype):
@@ -76,14 +76,14 @@ all_transabs = list(product([True, False], repeat=2))
 
 
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_basic_size(full=True) + get_bert_sizes(full=False))
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=True) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
 def test_rocblas_gemm_all_cases(dtype, size, transab):
     _test_gemm(getattr(ke, "RocblasGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
 
 
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_basic_size(full=False) + get_bert_sizes(full=False))
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
 def test_ck_gemm_bert_cases(dtype, size, transab):
     wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
@@ -92,7 +92,7 @@ def test_ck_gemm_bert_cases(dtype, size, transab):
 
 # Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_basic_size(full=False) + get_bert_sizes(full=False))
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
 def test_gemm_tunable_bert_cases(dtype, size, transab):
     wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
@@ -143,7 +143,7 @@ def profile_with_args(transa, transb, dtype, m, n, k):
 
 def profile():
     for dtype in dtypes:
-        for m, n, k in get_bert_sizes(full=True):
+        for m, n, k in get_gemm_bert_sizes(full=True):
             profile_with_args(False, False, dtype, m, n, k)
             print()
         print()
