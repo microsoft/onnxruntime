@@ -26,6 +26,16 @@ def parse_args():
         "working_dir", type=pathlib.Path, help="The directory used to store intermediate and output files."
     )
 
+    default_docker_psuedo_tty = True
+    parser.add_argument(
+        "--docker_psuedo_tty",
+        default=default_docker_psuedo_tty,
+        help="The docker run flag specifying whether to run in interactive mode. "
+             "If unspecified, docker would run in interactive mode using a psuedo TTY. "
+             "Specify 'False' for this argument if want to run in non-interactive mode. ",
+    )
+
+
     parser.add_argument(
         "--onnxruntime_branch_or_tag",
         help="The ONNX Runtime branch or tag to build. "
@@ -132,10 +142,17 @@ def main():
         else f"/workspace/onnxruntime/{DEFAULT_BUILD_SETTINGS_RELATIVE_PATH}"
     )
 
+    docker_psuedo_tty_flag = (
+        "-it"
+        if args.docker_psuedo_tty
+        else "-i"
+    )
+
     docker_run_cmd = [
         args.docker_path,
         "run",
         "--rm",
+        docker_psuedo_tty_flag,
         f"--volume={str(working_dir)}:/workspace/shared",
         args.docker_image_tag,
         "/usr/bin/env",
