@@ -67,7 +67,7 @@ class TestONNXModel(TestCaseTempDir):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def dyn_qop_conv_test(self, weight_type, extra_options={}, use_quant_config=False):
+    def dyn_qop_conv_bias_test(self, weight_type, extra_options={}, use_quant_config=False):
         activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
@@ -99,7 +99,7 @@ class TestONNXModel(TestCaseTempDir):
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 
-    def dyn_qdq_conv_test(self, activation_type, weight_type, extra_options={}):
+    def dyn_qdq_conv_bias_test(self, activation_type, weight_type, extra_options={}):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
@@ -134,25 +134,25 @@ class TestONNXModel(TestCaseTempDir):
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 
-    def test_dyn_qop_conv_u8u8(self):
+    def test_dyn_qop_conv_bias_u8u8(self):
         for use_quant_config in [True, False]:
-            self.dyn_qop_conv_test(QuantType.QUInt8, use_quant_config=use_quant_config)
+            self.dyn_qop_conv_bias_test(QuantType.QUInt8, use_quant_config=use_quant_config)
 
     # TODO: uncomment following after ConvInteger s8 supportted
-    # def test_dyn_qop_conv_s8s8(self):
-    #    self.dyn_qop_conv_test(QuantType.QInt8, extra_options={"ActivationSymmetric": True})
+    # def test_dyn_qop_conv_bias_s8s8(self):
+    #    self.dyn_qop_conv_bias_test(QuantType.QInt8, extra_options={"ActivationSymmetric": True})
 
-    def test_dyn_qdq_conv_u8u8(self):
-        self.dyn_qdq_conv_test(QuantType.QUInt8, QuantType.QUInt8)
+    def test_dyn_qdq_conv_bias_u8u8(self):
+        self.dyn_qdq_conv_bias_test(QuantType.QUInt8, QuantType.QUInt8)
 
-    def test_dyn_qdq_conv_u8s8(self):
-        self.dyn_qdq_conv_test(QuantType.QUInt8, QuantType.QInt8)
+    def test_dyn_qdq_conv_bias_u8s8(self):
+        self.dyn_qdq_conv_bias_test(QuantType.QUInt8, QuantType.QInt8)
 
-    def test_dyn_qdq_conv_s8u8(self):
-        self.dyn_qdq_conv_test(QuantType.QInt8, QuantType.QUInt8)
+    def test_dyn_qdq_conv_bias_s8u8(self):
+        self.dyn_qdq_conv_bias_test(QuantType.QInt8, QuantType.QUInt8)
 
-    def test_dyn_qdq_conv_s8s8(self):
-        self.dyn_qdq_conv_test(QuantType.QInt8, QuantType.QInt8)
+    def test_dyn_qdq_conv_bias_s8s8(self):
+        self.dyn_qdq_conv_bias_test(QuantType.QInt8, QuantType.QInt8)
 
 
 if __name__ == "__main__":
