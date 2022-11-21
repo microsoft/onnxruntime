@@ -52,12 +52,13 @@ jobs:
               --use_tensorrt --tensorrt_placeholder_builder --tensorrt_home /usr \
               --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75
       workingDirectory: $(Build.SourcesDirectory)
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
       testResultsFiles: '**/*.results.xml'
       searchFolder: '$(Build.BinariesDirectory)'
-       testRunTitle: 'Unit Test Run'
+      testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
 
   - template: templates/clean-agent-build-directory-step.yml
