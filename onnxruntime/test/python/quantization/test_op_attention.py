@@ -19,6 +19,13 @@ from onnxruntime.tools import symbolic_shape_infer
 
 
 class TestOpAttention(TestCaseTempDir):
+    @classmethod
+    def setUpClass(cls):
+        super(TestOpAttention, cls).setUpClass()
+        np.random.seed(1)
+        cls.model_fp32_path = Path(cls._tmp_model_dir.name).joinpath("attention.fp32.onnx").as_posix()
+        cls.construct_model_attention_and_matmul(cls, cls.model_fp32_path)
+
     def construct_model_attention_and_matmul(self, output_model_path):
         #      (input)
         #         |
@@ -74,7 +81,7 @@ class TestOpAttention(TestCaseTempDir):
         model_inferenced = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(model)
         onnx.save(model_inferenced, output_model_path)
 
-    def dynamic_attention_quant_test(self, model_fp32_path, per_channel, reduce_range):
+    def dyn_attention_test(self, per_channel, reduce_range):
         per_channel_type_str = ".per_channel" if (per_channel) else ""
         reduce_range_type_str = ".reduce_range" if (reduce_range) else ""
         model_qop_path = (
@@ -88,9 +95,8 @@ class TestOpAttention(TestCaseTempDir):
             .as_posix()
         )
 
-        # Test Dynamic QOperator
         quantize_dynamic(
-            model_fp32_path,
+            self.model_fp32_path,
             model_qop_path,
             per_channel=per_channel,
             reduce_range=reduce_range,
@@ -99,14 +105,13 @@ class TestOpAttention(TestCaseTempDir):
         check_op_type_count(self, model_qop_path, **quant_nodes)
         check_model_correctness(
             self,
-            model_fp32_path,
+            self.model_fp32_path,
             model_qop_path,
             {"input": np.random.rand(1, 5, 10).astype(np.float32)},
         )
 
-        # Test Dynamic QDQ
         quantize_dynamic(
-            model_fp32_path,
+            self.model_fp32_path,
             model_qdp_path,
             quant_format=QuantFormat.QDQ,
             per_channel=per_channel,
@@ -116,19 +121,22 @@ class TestOpAttention(TestCaseTempDir):
         check_op_type_count(self, model_qdp_path, **quant_nodes)
         check_model_correctness(
             self,
-            model_fp32_path,
+            self.model_fp32_path,
             model_qdp_path,
             {"input": np.random.rand(1, 5, 10).astype(np.float32)},
         )
 
-    def test_quantize_attention(self):
-        np.random.seed(1)
-        model_fp32_path = Path(self._tmp_model_dir.name).joinpath("attention.fp32.onnx").as_posix()
-        self.construct_model_attention_and_matmul(model_fp32_path)
+    def test_dyn_attention(self):
+        self.dyn_attention_test(False, False)
 
-        for per_channel in [True, False]:
-            for reduce_range in [True, False]:
-                self.dynamic_attention_quant_test(model_fp32_path, per_channel, reduce_range)
+    def test_dyn_attention_reduce_range(self):
+        self.dyn_attention_test(False, True)
+
+    def test_dyn_attention_per_channel(self):
+        self.dyn_attention_test(True, False)
+
+    def test_dyn_attention_per_channel_reduce_range(self):
+        self.dyn_attention_test(True, True)
 
 
 if __name__ == "__main__":
