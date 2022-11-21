@@ -218,7 +218,7 @@ def main():
             squad_v2_format=True,
         )
 
-        result["provider"] = args.provider if use_gpu else "CPUExecutionProvider"
+        result["provider"] = args.provider
         result["disable_fused_attention"] = disable_fused_attention
         result["pretrained_model_name"] = pretrained_model_name
         result["onnx_path"] = onnx_path
