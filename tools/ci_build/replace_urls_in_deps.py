@@ -1,7 +1,7 @@
-import csv
-import sys
-import os
 import argparse
+import csv
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
