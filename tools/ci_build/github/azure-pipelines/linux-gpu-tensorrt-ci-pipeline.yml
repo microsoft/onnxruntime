@@ -14,7 +14,7 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   workspace:
     clean: all
-  pool: Linux-CPU-2019
+  pool: onnxruntime-tensorrt-linuxbuild-T4 
   steps:
   - checkout: self
     clean: true
@@ -30,7 +30,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+        docker run -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
@@ -42,7 +42,7 @@ jobs:
             onnxruntimetensorrt85gpubuild \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Release --update --build \
+              --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
@@ -52,6 +52,15 @@ jobs:
               --use_tensorrt --tensorrt_placeholder_builder --tensorrt_home /usr \
               --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75
       workingDirectory: $(Build.SourcesDirectory)
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+       testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/clean-agent-build-directory-step.yml
 
   - task: CmdLine@2
     inputs:
