@@ -1514,7 +1514,7 @@ class PlannerImpl {
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void CalculateLifetime(std::vector<int>& ort_value_usecount) {
-    auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
+    auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       auto node_index = execution_plan[program_counter];
       // the node (aka operator) which carries the considered program (aka computation).
@@ -1704,7 +1704,7 @@ class PlannerImpl {
   void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                             const std::string& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
-    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_);
+    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
@@ -1803,7 +1803,7 @@ class PlannerImpl {
     }
     // 4. set notification owners
     plan_.notification_owners.resize(num_notifications);
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
       auto it = node_to_notification.find(node_index);
       if (it != node_to_notification.end()) {
         // notification owned by the node who produced it.
@@ -1900,7 +1900,7 @@ class PlannerImpl {
       }
     }
 
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
       auto* node = graph_viewer_.GetNode(node_index);
       const auto& output_defs = node->OutputDefs();
       for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
@@ -1937,7 +1937,7 @@ class PlannerImpl {
     }
 
     InlinedHashSet<OrtValueIndex> producable_values;
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
       auto* node = graph_viewer_.GetNode(node_index);
       // add the output to produce nodes list
       for (auto* output_def : node->OutputDefs()) {
@@ -1996,7 +1996,7 @@ class PlannerImpl {
       }
     };
 
-    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder().size();
+    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder()).size();
     plan_.node_execution_order_in_training.reserve(num_of_nodes);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       process_stream(i, -1);
@@ -2075,7 +2075,7 @@ Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
 
   // build value_node_map
-  for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+  for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
     auto* node = graph_viewer_.GetNode(node_index);
     const auto& output_defs = node->OutputDefs();
     for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
@@ -2160,7 +2160,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
     }
   }
   void DumpPartition() const;
-  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
+  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes, ExecutionOrder& execution_order) override;
   virtual const std::string& Name() const override {
     return name;
   }
@@ -2276,9 +2276,10 @@ void DeviceBasedPartitioner::DumpPartition() const {
 
 Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                               const ExecutionProviders& execution_providers,
-                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
+                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                                              ExecutionOrder& execution_order) {
   InlinedHashMap<std::string, int> op_type_counter;
-  auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
+  auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
   if (max_streams_.empty() && node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
     // partition by ep, each has one stream
