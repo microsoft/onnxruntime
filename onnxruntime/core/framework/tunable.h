@@ -52,6 +52,17 @@ class Timer {
   StreamT stream_;
 };
 
+template <typename T, typename Arg, typename E = void>
+struct HasIsSupportedMethod {
+  constexpr static bool value = false;
+};
+
+template <typename T, typename Arg>
+struct HasIsSupportedMethod<
+    T, Arg, std::enable_if_t<std::is_same_v<decltype(std::declval<T>().IsSupported(std::declval<Arg>())), Status>>> {
+  constexpr static bool value = true;
+};
+
 // A type erased Callable wrapper. We could have used std::function<Status<const ParamsT*>> here. However, std::function
 // requires the callable object to be CopyConstructible and CopyAssignable. This is not suitable for move only functor
 // or move captured lambda. So we create a simple wrapper for our purpose here.
@@ -64,17 +75,27 @@ class Op {
   template <typename T>
   explicit Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}
   Status operator()(const ParamsT* param) { return (*callable_)(param); }
+  Status IsSupported(const ParamsT* param) { return (*callable_).IsSupported(param); }
 
  private:
   struct ICallable {
     virtual ~ICallable() = default;
     virtual Status operator()(const ParamsT*) = 0;
+    virtual Status IsSupported(const ParamsT*) = 0;
   };
 
   template <typename T>
   struct CallableImpl : ICallable {
     explicit CallableImpl(T&& c) : c_{std::move(c)} {}
     Status operator()(const ParamsT* param) override { return c_(param); }
+
+    Status IsSupported(const ParamsT* param) override {
+      if constexpr (HasIsSupportedMethod<T, const ParamsT*>::value) {
+        return c_.IsSupported(param);
+      } else {
+        return c_(param);
+      }
+    }
 
    private:
     T c_;
@@ -86,7 +107,7 @@ class Op {
 // NOTE: onnxruntime's Status currently does not have a StatusCode::UNSUPPORTED. Currently, we do not want to extend the
 // enum. So we reuse StatusCode::INVALID_ARGUMENT for this purpose. It can be interpreted as "The input argument is not
 // valid for this specialized kernel implementation.". This semantic is crucial for the tuning mechanism.
-#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...)   \
+#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...)  \
   do {                                                             \
     if (condition) {                                               \
       return ORT_MAKE_STATUS(NONE, INVALID_ARGUMENT, __VA_ARGS__); \
@@ -163,7 +184,7 @@ class TunableOp {
   }
 
   static bool IsSupported(Op<ParamsT>& op, const ParamsT* param) {
-    Status status = op(param);
+    Status status = op.IsSupported(param);
     if (status.Category() == common::StatusCategory::NONE && status.Code() == common::StatusCode::INVALID_ARGUMENT) {
       return false;
     }
