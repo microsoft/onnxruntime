@@ -382,6 +382,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
+          "repositoryUrl": "https://github.com/google/nsync.git"
+        },
+        "comments": "google_nsync"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
@@ -392,20 +402,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a3534567187d2edc428efd3f13466ff75fe5805c",
-          "repositoryUrl": "https://github.com/microsoft/GSL.git"
+          "commitHash": "4f8fba14066156b73f1189a2b8bd568bde5284c5",
+          "repositoryUrl": "https://github.com/nlohmann/json.git"
         },
-        "comments": "microsoft_gsl"
+        "comments": "json"
       }
     },
     {
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4f8fba14066156b73f1189a2b8bd568bde5284c5",
-          "repositoryUrl": "https://github.com/nlohmann/json.git"
+          "commitHash": "a3534567187d2edc428efd3f13466ff75fe5805c",
+          "repositoryUrl": "https://github.com/microsoft/GSL.git"
         },
-        "comments": "json"
+        "comments": "microsoft_gsl"
       }
     },
     {

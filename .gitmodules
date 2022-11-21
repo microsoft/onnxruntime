@@ -40,9 +40,6 @@
 [submodule "cmake/external/dlpack"]
 	path = cmake/external/dlpack
 	url = https://github.com/dmlc/dlpack.git
-[submodule "cmake/external/SafeInt/safeint"]
-	path = cmake/external/SafeInt/safeint
-	url = https://github.com/dcleblanc/SafeInt.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
