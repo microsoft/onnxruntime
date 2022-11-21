@@ -2160,7 +2160,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
     }
   }
   void DumpPartition() const;
-  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes, ExecutionOrder& execution_order) override;
+  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes, ExecutionOrder execution_order) override;
   virtual const std::string& Name() const override {
     return name;
   }
@@ -2277,7 +2277,7 @@ void DeviceBasedPartitioner::DumpPartition() const {
 Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                               const ExecutionProviders& execution_providers,
                                               std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                                              ExecutionOrder& execution_order) {
+                                              ExecutionOrder execution_order) {
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
