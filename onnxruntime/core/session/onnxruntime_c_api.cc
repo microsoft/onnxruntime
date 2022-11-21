@@ -1989,7 +1989,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, _In_z_ const char* domain_name, 
               "Specified domain and type names combination does not refer to a registered opaque type");
   const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
-  GSL_SUPPRESS(r .11)
   std::unique_ptr<OrtValue> ort_val = std::make_unique<OrtValue>();
   non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
   *out = ort_val.release();
