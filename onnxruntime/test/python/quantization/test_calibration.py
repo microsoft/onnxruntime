@@ -399,7 +399,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         graph.initializer.extend([conv1_w, conv2_w])
 
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_5.onnx")
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("test_model_5.onnx")
         onnx.save(model, test_model_path)
 
         augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_5.onnx")
