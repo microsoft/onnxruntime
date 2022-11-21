@@ -19,13 +19,16 @@ void DnnlConcat::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     const auto& input_tensor = node.Input(static_cast<int>(IN_DATA_0 + i));
     if (input_rank == -1) {
       // Tensor rank is assumed to be the same for all inputs          
-      input_rank = static_cast<int64_t>(input_tensor.Dim().size());
+      const auto tensor_rank = static_cast<int64_t>(input_tensor.Dim().size());
+      if (tensor_rank > 0) {
+        input_rank = tensor_rank;
+      }
     }
     auto src_mem = sp.GetMemory(input_tensor);
     src_mds.push_back(src_mem.get_desc());
   }
 
-  auto axis = GetAxis(node, input_rank);
+  auto axis = GetAxis(node, std::max(input_rank, 0L));
 
   // Create primitive descriptor
   auto concat_pd = dnnl::concat::primitive_desc(axis, src_mds, dnnl_engine);
@@ -59,13 +62,11 @@ int64_t DnnlConcat::GetAxis(DnnlNode& node, int64_t input_rank) {
     "Axis value is not an integer");
 
   int64_t signed_axis = axis_attr->second().i();  
-  ORT_ENFORCE(((signed_axis < 0) && (signed_axis >= -input_rank)) || ((signed_axis >= 0) && (signed_axis <= (input_rank - 1))),
-    "Axis value ", signed_axis, "is not between input rank ", -input_rank, " and ", input_rank - 1);
-
   if (signed_axis < 0) {
     signed_axis += input_rank;
   }
   return signed_axis;
 }
+
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

@@ -1096,69 +1096,77 @@ bool DnnlConcatNodeCapability::AreAllInputsOfSameType(const Node* node) const {
   // All inputs must be of the same type
   const auto node_inputs = node->InputDefs();
   if (!node_inputs.empty() && node_inputs[0]->TypeAsProto() != nullptr) {
-    const auto node_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
-    // Ensure that any other inputs have the same datatype as the first
+    const auto ref_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
+    // Ensure that other inputs have the same datatype as the first
     for (size_t i=1; i<node_inputs.size(); ++i) {
-      if (node_inputs[i]->TypeAsProto() != nullptr && 
-          node_inputs[i]->TypeAsProto()->tensor_type().elem_type() != node_datatype) {
+      if (node_inputs[i]->TypeAsProto() != nullptr &&
+          node_inputs[i]->TypeAsProto()->tensor_type().elem_type() != ref_datatype) {
         return false;
       }
     }
   }
   return true;
-}  
+}
 
 bool DnnlConcatNodeCapability::AreAxisAndDimensionsSupported(const Node* node) const {
-  const auto& attributes = node->GetAttributes();
+  auto& attributes = node->GetAttributes();
   auto axis_attr = attributes.find("axis");
   if (axis_attr != attributes.end()) {
     if (axis_attr->second().type() != ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
       // Axis must be an integer
-      return false;
+        return false;
     }
-  } else {
-    // Axis is required.
+  }
+  else {
+    // Axis is required
     return false;
-  }    
+  }
 
+  int64_t signed_axis = axis_attr->second().i();
+
+  // Veriy input dimensions
   const auto& node_inputs = node->InputDefs();
+  auto ref_input_it = std::find_if(node_inputs.begin(), node_inputs.end(), 
+                      [](const auto input) {
+                        return input->Shape() != nullptr;
+                      });
+  if (ref_input_it != node_inputs.end()) {
+    const auto ref_input = *ref_input_it;
+    const auto ref_input_shape = ref_input->Shape();
+    const auto ref_input_rank = ref_input_shape->dim_size();
 
-  // Validate axis
-  int64_t signed_axis = axis_attr->second().i();  
-  const auto first_input_shape = node_inputs[0]->Shape();
-  if (first_input_shape != nullptr) {
-    const auto first_input_rank = first_input_shape->dim_size();      
-    // Axis must be b/w [-first_input_rank, first_input_rank-1]
-    if (signed_axis < 0 && signed_axis < -first_input_rank) {
-      return false;
-    }
-    if (signed_axis >= 0 && signed_axis >= first_input_rank) {
-      return false;
-    }
-
-    // Verify that dimensions of all other inputs match except on the axis.
-    const auto actual_axis = (signed_axis >= 0) ? signed_axis : signed_axis + first_input_rank;    
-    for (size_t i=1; i<node_inputs.size(); ++i) {
-      const auto& other_input_shape = node_inputs[i]->Shape();
-      if (other_input_shape == nullptr) {
-        // Unknown shape for other input
+    // DNNL only supports tensors of 6 or fewer dimensions on GPU  
+    if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+      if(ref_input_rank > 6 ){
         return false;
       }
-      if (other_input_shape->dim_size() != first_input_rank) {
-        // Rank doesn't match first input.
+    }  
+
+    // Verify that input tensors match shapes except on the axis dimension.
+    const auto adjusted_axis = (signed_axis >= 0) ? signed_axis : signed_axis + ref_input_rank;
+    for (auto input : node_inputs) {
+      if (input == ref_input) {
+        continue;
+      }
+      
+      const auto input_shape = input->Shape();
+      if (input_shape == nullptr) {
+        continue;
+      }
+      if (input_shape->dim_size() != ref_input_rank) {
+        // Rank doesn't match reference input.
         return false;
       }
-      for (int d=0; d<first_input_rank; ++d) {
-        // The axis dim is not expected to match.
-        if (d == actual_axis) {
+      for (int d=0; d<ref_input_rank; ++d) {
+        if (d == adjusted_axis) {
           continue;
         }
-        const auto& first_input_dim = first_input_shape->dim(d);
-        const auto& other_input_dim = other_input_shape->dim(d);
-        if (first_input_dim.has_dim_value() && other_input_dim.has_dim_value()) {
-          if (first_input_dim.dim_value() != other_input_dim.dim_value()) {
+        const auto& ref_input_dim = ref_input_shape->dim(d);
+        const auto& input_dim = input_shape->dim(d);
+        if (ref_input_dim.has_dim_value() && input_dim.has_dim_value()) {
+          if (ref_input_dim.dim_value() != input_dim.dim_value()) {
             return false;
-          }        
+          }
         }
       }
     }

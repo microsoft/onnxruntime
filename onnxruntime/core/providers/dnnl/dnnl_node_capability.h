@@ -130,7 +130,7 @@ class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
  * In general node_data consist of a tuple that has:
  * (INPUT_POS, <IsThisInputMandatory?(true or false)>, {list, of, supported, types})
  *
- * We always asume that the input 0 of the map corresponds to the node input with index 0,
+ * We always assume that the input 0 of the map corresponds to the node input with index 0,
  * so if a node has M mandatory inputs and O optional, the map should contain the first
  * N inputs followed by the other M optional.
  *
