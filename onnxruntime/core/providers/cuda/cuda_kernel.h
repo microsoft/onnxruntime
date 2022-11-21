@@ -92,6 +92,8 @@ class CudaKernel : public OpKernel {
     return ctx->GetComputeStream();
   }
 
+  bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
+
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>

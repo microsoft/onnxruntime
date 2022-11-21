@@ -10,7 +10,6 @@
 #include "migraphx_execution_provider_utils.h"
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
-//#include "migraphx_call.h"
 #include "migraphx_inc.h"
 
 #include <fstream>

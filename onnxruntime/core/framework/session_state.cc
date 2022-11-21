@@ -1516,7 +1516,7 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 }
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
-  std::lock_guard<onnxruntime::OrtMutex> lock(mem_patterns_lock_);
+  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
   if (!device_stream_pool_.empty()) {
     auto device_stream = std::move(device_stream_pool_.back());
     device_stream_pool_.pop_back();
@@ -1530,7 +1530,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
-  device_stream_pool_.emplace_back(std::move(device_stream_collection));
+  device_stream_pool_.push_back(std::move(device_stream_collection));
 }
 
 }  // namespace onnxruntime
