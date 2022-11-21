@@ -100,12 +100,13 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
 
-  auto inputs = node_unit.Inputs();
+  const auto& op_type = node_unit.OpType();
+  const auto& inputs = node_unit.Inputs();
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
+    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+    InitializeQuantizeParam(quantize_param, is_quantized_model);
     auto& input_name = inputs[input_i].node_arg.Name();
 
     if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
@@ -117,6 +118,11 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     const auto* type_proto = inputs[input_i].node_arg.TypeAsProto();
     int32_t onnx_data_type;
     ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+    // For Quantized model, Gather indices use int32 without quantization
+    if (is_quantized_model && "Gather" == op_type && 1 == input_i) {
+      qnn_data_type = QNN_DATATYPE_INT_32;
+      InitializeQuantizeParam(quantize_param, false);
+    }
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");

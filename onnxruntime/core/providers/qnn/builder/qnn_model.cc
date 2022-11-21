@@ -123,7 +123,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     // Q, DQ nodes in the node unit only carry the quantization parameters
     // Add the QNN node when it is the target node (It's a normal node or a singel Q/DQ node)
     LOGS_DEFAULT(VERBOSE) << " node name: [" << node->Name()
-                          << " node optype: [" << node->OpType()
+                          << "] node optype: [" << node->OpType()
                           << "] as part of the NodeUnit type: [" << node_unit.OpType()
                           << "] name: [" << node_unit.Name()
                           << "]";

@@ -45,6 +45,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Softmax", {}},
           {"Sqrt", {}},
           {"ReduceMean", {}},
+          {"Relu", {}},
           {"LeakyRelu", {}},
           {"Sigmoid", {}}};
 }

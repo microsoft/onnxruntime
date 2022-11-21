@@ -87,15 +87,22 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
       }
     };
 
-    bool is_qdq_node = IsQdqNode(node_unit);
-    if (is_quantized_model_ && NodeUnit::Type::SingleNode == node_unit.UnitType() &&
-        node_unit.OpType() != "Transpose") {
-      LOGS(logger, VERBOSE) << "Single node!";
-      return is_qdq_node;
+    // Is quantized model, is Q/DQ singel node, Qnn support Quantize & Dequantize op
+    if (is_quantized_model_ && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
+      if (IsQdqNode(node_unit)) {
+        LOGS(logger, VERBOSE) << "Single Q/DQ node is supported in QDQ model. Node name: " << node_unit.Name()
+                              << " is supported in QDQ model.";
+        return true;
+      } else {
+        LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported in QDQ model. Node name: " << node_unit.Name()
+                              << " Op type: " << node_unit.OpType();
+        // TODO: still can support it for some ops like Transpose.
+        return false;
+      }
     }
 
-    // non-quantized model required for backend, but a QDQ model encountered
-    if (!is_quantized_model_ && is_qdq_node) {
+    // Non-NPU backend, quantized model not supported, but a QDQ node encountered
+    if (!is_quantized_model_ && IsQdqNode(node_unit)) {
       LOGS(logger, ERROR) << "There's no reason to run a QDQ model on non HTP/DSP backend!";
       return false;
     }
@@ -158,9 +165,9 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                            node_unit_supported_result,
                                            logger);
     LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()
+                          << "] Operator type: [" << node.OpType()
                           << "] as part of the NodeUnit type: [" << node_unit->OpType()
                           << "] index: [" << node_unit->Index()
                           << "] name: [" << node_unit->Name()

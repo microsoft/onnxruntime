@@ -41,8 +41,12 @@ Status QnnBackendManager::LoadBackend() {
         QNN_API_VERSION_MINOR <= interface_providers[pIdx]->apiVersion.coreApiVersion.minor) {
       found_valid_interface = true;
       qnn_interface_ = interface_providers[pIdx]->QNN_INTERFACE_VER_NAME;
+      // TODO: use the backend id from API, remove EP provider option runtime
+      auto backend_id = interface_providers[pIdx]->backendId;
       LOGS_DEFAULT(INFO) << "Found valid interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR;
+                         << "." << QNN_API_VERSION_MINOR
+                         << " backend provider name: " << interface_providers[pIdx]->providerName
+                         << " backend id: " << backend_id;
       break;
     }
   }
