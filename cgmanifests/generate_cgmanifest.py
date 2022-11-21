@@ -54,7 +54,7 @@ def add_github_dep(name, parsed_url):
     if len(segments) == 5 and len(PurePosixPath(segments[4]).stem) == 40:
         commit = PurePosixPath(segments[4]).stem
         dep = GitDep(commit, git_repo_url)
-        if not dep in git_deps:
+        if dep not in git_deps:
             git_deps[dep] = name
     else:
         if len(segments) == 5:
@@ -82,7 +82,7 @@ def add_github_dep(name, parsed_url):
             print("unrecognized github url path:" + parsed_url.path)
             return
         dep = GitDep(commit, git_repo_url)
-        if not dep in git_deps:
+        if dep not in git_deps:
             git_deps[dep] = name
 
 
