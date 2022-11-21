@@ -88,6 +88,21 @@ template <typename T>
 #ifdef ORT_API_MANUAL_INIT
 const OrtApi* Global<T>::api_{};
 inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+
+// Used by custom operator libraries that are not linked to onnxruntime. Sets the global API object, which is
+// required by C++ APIs.
+//
+// Example mycustomop.cc:
+//
+// #define ORT_API_MANUAL_INIT
+// #include <onnxruntime_cxx_api.h>
+// #undef ORT_API_MANUAL_INIT
+//
+// OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api_base) {
+//   Ort::InitApi(api_base->GetApi(ORT_API_VERSION));
+//   // ...
+// }
+//
 inline void InitApi(const OrtApi* api) { Global<void>::api_ = api; }
 #else
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -433,13 +448,15 @@ struct ConstSessionOptionsImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
-  Ort::SessionOptions Clone() const;  ///< Creates and returns a copy of this SessionOptions object. Wraps OrtApi::CloneSessionOptions
+  SessionOptions Clone() const;  ///< Creates and returns a copy of this SessionOptions object. Wraps OrtApi::CloneSessionOptions
 
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def);
 
-  static const char* const custom_op_config_entry_prefix;
+  // Utility function that returns a SessionOption config entry key for a specific custom operator.
+  // Ex: custom_op.[custom_op_name].[config]
+  static std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config);
 };
 
 template <typename T>
@@ -474,7 +491,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                        ///< Wraps OrtApi::AddSessionConfigEntry
-  SessionOptionsImpl& AddCustomOpConfigEntry(const char* op_name, const char* key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
+
+  ///< Adds a config entry for a specific custom operator. Calls OrtApi::AddSessionConfigEntry with a key format defined in onnxruntime_session_options_config_key.h.
+  SessionOptionsImpl& AddCustomOpConfigEntry(const char* op_name, const char* key, const char* config_value);
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
@@ -500,13 +519,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 };
 }  // namespace detail
 
+using UnownedSessionOptions = detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>;
 using ConstSessionOptions = detail::ConstSessionOptionsImpl<detail::Unowned<const OrtSessionOptions>>;
-
-struct UnownedSessionOptions : detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>> {
-  explicit UnownedSessionOptions(std::nullptr_t) {}  ///< Create an empty UnownedSessionOptions object, must be assigned a valid one to be used
-  explicit UnownedSessionOptions(OrtSessionOptions* p) : SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>{p} {}  ///< Used for interop with the C API
-  ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
-};
 
 /** \brief Wrapper around ::OrtSessionOptions
  *
@@ -824,6 +838,10 @@ struct TypeInfoImpl : detail::Base<T> {
 };
 }  // namespace detail
 
+/// <summary>
+/// Contains a constant, unowned OrtTypeInfo that can be copied and passed around by value.
+/// Provides access to const OrtTypeInfo APIs.
+/// </summary>
 using ConstTypeInfo = detail::TypeInfoImpl<detail::Unowned<const OrtTypeInfo>>;
 
 /// <summary>
@@ -1734,6 +1752,7 @@ struct CustomOpBase : OrtCustomOp {
   }
 
   // Declare list of session config entries used by this Custom Op.
+  // Implement this function in order to get configs from CustomOpBase::GetSessionConfigs().
   // This default implementation returns an empty vector of config entries.
   std::vector<std::string> GetSessionConfigKeys() const {
     return std::vector<std::string>{};

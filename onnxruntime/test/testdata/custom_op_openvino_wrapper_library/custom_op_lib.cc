@@ -23,7 +23,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   Ort::InitApi(api_base->GetApi(ORT_API_VERSION));
   Ort::UnownedSessionOptions session_options(options);
 
-  static CustomOpOpenVINO c_CustomOpOpenVINO(session_options.GetConst());
+  static CustomOpOpenVINO c_CustomOpOpenVINO(Ort::ConstSessionOptions{options});
 
   OrtStatus* result = nullptr;
 

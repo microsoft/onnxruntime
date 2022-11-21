@@ -3620,6 +3620,9 @@ struct OrtApi {
 
   /** \brief Get the number of inputs from ::OrtKernelInfo.
   *
+  * Can be used in the CreateKernel callback of a OrtCustomOp to query the number of inputs
+  * during kernel/session creation.
+  *
   * \param[in]  info Instance of ::OrtKernelInfo.
   * \param[out] out  Pointer to variable assigned with the result on success.
   *
@@ -3630,6 +3633,9 @@ struct OrtApi {
 
   /** \brief Get the number of outputs from ::OrtKernelInfo.
   *
+  * Can be used in the CreateKernel callback of a OrtCustomOp to query the number of outputs
+  * during kernel/session creation.
+  *
   * \param[in]  info Instance of ::OrtKernelInfo.
   * \param[out] out  Pointer to variable assigned with the result on success.
   *
@@ -3639,6 +3645,9 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
   /** \brief Get the name of a ::OrtKernelInfo's input.
+  *
+  * Can be used in the CreateKernel callback of a OrtCustomOp to query the input names
+  * during kernel/session creation.
   *
   * If `out` is nullptr, the value of `size` is set to the size of the name
   * string (including null-terminator), and a success status is returned.
@@ -3665,6 +3674,9 @@ struct OrtApi {
 
   /** \brief Get the name of a ::OrtKernelInfo's output.
   *
+  * Can be used in the CreateKernel callback of a OrtCustomOp to query the output names
+  * during kernel/session creation.
+  *
   * If `out` is nullptr, the value of `size` is set to the size of the name
   * string (including null-terminator), and a success status is returned.
   *
@@ -3690,6 +3702,9 @@ struct OrtApi {
 
   /** \brief Get the type information for a ::OrtKernelInfo's input.
   *
+  * Can be used in the CreateKernel callback of a OrtCustomOp to query the shape and type information
+  * of all inputs during kernel/session creation.
+  *
   * \param[in] info  An instance of ::OrtKernelInfo.
   * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo.
   *                       Must be freed with OrtApi::ReleaseTypeInfo
@@ -3701,6 +3716,9 @@ struct OrtApi {
                   _Outptr_ OrtTypeInfo** type_info);
 
   /** \brief Get the type information for a ::OrtKernelInfo's output.
+  *
+  * Can be used in the CreateKernel callback of a OrtCustomOp to query the shape and type information
+  * of all outputs during kernel/session creation.
   *
   * \param[in] info  An instance of ::OrtKernelInfo.
   * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo.
@@ -3718,6 +3736,8 @@ struct OrtApi {
 
   /** \brief Checks if the given session configuration entry exists.
   *
+  * The config_key formats are defined in onnxruntime_session_options_config_keys.h
+  *
   * \param[in] options The session options.
   * \param[in] config_key A null-terminated UTF-8 string representation of the configuration key.
   * \param[out] out Pointer set to 1 if the entry exists and 0 otherwise.
@@ -3729,6 +3749,9 @@ struct OrtApi {
                   _In_z_ const char* config_key, _Out_ int* out);
 
   /** \brief Get a session configuration value.
+  *
+  * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h.
+  * This API can be used to get configuration values for custom operators.
   *
   * Returns a failure status if the configuration key does not exist.
   * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h

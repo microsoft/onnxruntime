@@ -488,7 +488,15 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 namespace detail {
 
 template <typename T>
-const char* const ConstSessionOptionsImpl<T>::custom_op_config_entry_prefix = "custom_op.";
+std::string ConstSessionOptionsImpl<T>::MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config) {
+  std::string config_key = "custom_op.";
+
+  config_key += custom_op_name;
+  config_key += ".";
+  config_key += config;
+
+  return config_key;
+}
 
 template <typename T>
 inline Ort::SessionOptions ConstSessionOptionsImpl<T>::Clone() const {
@@ -626,10 +634,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 template <typename T>
 SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddCustomOpConfigEntry(const char* op_name, const char* key,
                                                                      const char* config_value) {
-  std::string config_key = SessionOptionsImpl<T>::custom_op_config_entry_prefix;
-  config_key += op_name;
-  config_key += ".";
-  config_key += key;
+  std::string config_key = SessionOptionsImpl<T>::MakeCustomOpConfigEntryKey(op_name, key);
 
   ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key.c_str(), config_value));
   return *this;
@@ -1797,10 +1802,7 @@ void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::strin
 
   out.reserve(keys.size());
 
-  std::string config_entry_key = ConstSessionOptions::custom_op_config_entry_prefix;
-  config_entry_key += derived->GetName();
-  config_entry_key += ".";
-
+  std::string config_entry_key = ConstSessionOptions::MakeCustomOpConfigEntryKey(derived->GetName(), "");
   const size_t prefix_size = config_entry_key.length();
 
   for (const auto& key : keys) {
