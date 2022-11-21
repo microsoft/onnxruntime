@@ -60,7 +60,7 @@ struct HasIsSupportedMethod {
 template <typename T, typename Arg>
 struct HasIsSupportedMethod<
     T, Arg, std::enable_if_t<std::is_same_v<decltype(std::declval<T>().IsSupported(std::declval<Arg>())), Status>>> {
-  static constexpr bool value = true;
+  constexpr static bool value = true;
 };
 
 // A type erased Callable wrapper. We could have used std::function<Status<const ParamsT*>> here. However, std::function
