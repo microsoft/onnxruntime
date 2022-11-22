@@ -166,8 +166,17 @@ export class Tensor implements TensorInterface {
     this.size = size;
   }
   // #endregion
-  static bufferToTensor(buffer: Uint8ClampedArray, height: number, width: number, format = 'rgba', norm = false):
-      Tensor {
+  /**
+   * Create a new tensor object from image object
+   * @param buffer - Extracted image buffer data - assuming RGBA format
+   * @param imgH - image height
+   * @param imgW - image width
+   * @param format - String - image buffer format
+   * @param norm - Boolean value for if to normalizing the buffer values between 1:-1 - default behavior is normalizing
+   *     it by 255.
+   */
+  private static bufferToTensor(
+      buffer: Uint8ClampedArray, height: number, width: number, format = 'rgba', norm = false): Tensor {
     const offset = height * width;
     const float32Data = new Float32Array(offset * 3);
     let step = 4;
@@ -216,21 +225,21 @@ export class Tensor implements TensorInterface {
   }
 
   // #region factory
-  static fromImage(image: ImageData): Tensor;
-  static fromImage(image: HTMLImageElement): Tensor;
-  static fromImage(image: ImageBitmap, format?: string): Tensor;
-  static fromImage(image: string): Tensor;
+  static async fromImage(image: ImageData): Promise<Tensor>;
+  static async fromImage(image: HTMLImageElement): Promise<Tensor>;
+  static async fromImage(image: ImageBitmap, format?: string): Promise<Tensor>;
+  static async fromImage(image: string): Promise<Tensor>;
 
-  static fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, format?: 'rgb'|'rbg'|'rgba'): Tensor {
+  static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, format?: 'rgb'|'rbg'|'rgba'):
+      Promise<Tensor> {
     const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
     const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
     const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
     const isURL = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
 
-    let height: number;
-    let width: number;
-
-    let data: Uint8ClampedArray;
+    let height: number|undefined;
+    let width: number|undefined;
+    let data: Uint8ClampedArray|undefined;
 
     if (isHTMLImageEle) {
       const pixels2DContext = document.createElement('canvas').getContext('2d');
@@ -263,27 +272,34 @@ export class Tensor implements TensorInterface {
         throw new Error('Can not access image data');
       }
     } else if (isURL) {
-      const img = new Image();
-      img.src = image as string;
-      document.body.appendChild(img);
-      const pixels2DContext = document.createElement('canvas').getContext('2d');
-
-      if (pixels2DContext != null) {
-        height = img.height;
-        width = img.width;
-        pixels2DContext.drawImage(img, 0, 0, width, height);
-        data = pixels2DContext.getImageData(0, 0, width, height).data;
-      } else {
-        throw new Error('Can not access image data');
-      }
+      return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!image || !context) {
+          return reject();
+        }
+        const newImage = new Image();
+        newImage.crossOrigin = 'Anonymous';
+        newImage.src = image as string;
+        newImage.onload = () => {
+          canvas.width = newImage.width;
+          canvas.height = newImage.height;
+          context.drawImage(newImage, 0, 0, canvas.width, canvas.height);
+          const img = context.getImageData(0, 0, canvas.width, canvas.height);
+          resolve(Tensor.bufferToTensor(img.data, img.height, img.width, 'rgba'));
+        };
+      });
     } else {
       throw new Error('Input data provided is not supported - aborted tensor creation');
     }
 
-    return Tensor.bufferToTensor(data, height, width);
+    if (data !== undefined || height !== undefined || width !== undefined) {
+      return Tensor.bufferToTensor(data, height, width, 'rgba');
+    } else {
+      throw new Error('Input data provided is not supported - aborted tensor creation');
+    }
   }
 
-  toImage(): ImageData;
   toImage(): ImageData {
     const pixels2DContext = document.createElement('canvas').getContext('2d');
     let image: ImageData;
