@@ -107,8 +107,8 @@ TEST(TunableOp, OpWrapsFunction) {
 }
 
 TEST(TunableOp, OpWrapsLambda) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr int a = 7500000;
+  constexpr int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -187,6 +187,7 @@ class VecAddMoveOnlyFunctor {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddMoveOnlyFunctor);
 
   Status operator()(const VecAddParams* params) {
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->c == nullptr, "output buffer cannot be nullptr");
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
     return Status::OK();
   }
@@ -203,6 +204,61 @@ TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(c, 7500042);
+}
+
+
+class VecAddWithIsSupportedMethod {
+ public:
+  VecAddWithIsSupportedMethod(VecAddWithIsSupportedMethod&&) = default;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddWithIsSupportedMethod);
+
+  Status operator()(const VecAddParams* params) {
+    LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
+    return Status::OK();
+  }
+
+  Status IsSupported(const VecAddParams* params) {
+    // Purely for testing purpose. In real world, this methods must be crafted with excessive carefulness.
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->num_elem != 4, "only support num_elem == 4");
+    return Status::OK();
+  }
+};
+
+TEST(TunableOp, OpWrapsFunctorWithExtendedIsSupported) {
+  constexpr const int a[] = {0, 1, 2, 3};
+  constexpr const int b[] = {42, 42, 42, 42};
+  int c[4] = {};
+
+  Status status;
+
+  // Test Op::IsSupported will have correct fallback if user does not implement it in its functor.
+  {
+    tunable::Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
+    VecAddParams params(a, b, nullptr, 1, 0);
+    status = vec_add.IsSupported(&params);
+    ASSERT_EQ(status.Category(), common::StatusCategory::NONE);
+    ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+    ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr("output buffer cannot be nullptr"));
+
+    params.c = c;
+    status = vec_add.IsSupported(&params);
+    ASSERT_TRUE(status.IsOK());
+  }
+
+  // Test Op::IsSupported will use user provided one if they implemented it.
+  {
+    tunable::Op<VecAddParams> vec_add(VecAddWithIsSupportedMethod{});
+
+    VecAddParams params(a, b, c, 4, 0);
+    status = vec_add.IsSupported(&params);
+    ASSERT_TRUE(status.IsOK());
+
+    params.num_elem = 1;
+    status = vec_add.IsSupported(&params);
+    ASSERT_EQ(status.Category(), common::StatusCategory::NONE);
+    ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+    ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr("only support num_elem == 4"));
+  }
 }
 
 }  // namespace wrapper
@@ -370,6 +426,7 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
   const VecAddParams* PreTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
       is_proxy_params_used = true;
+      GSL_SUPPRESS(i .11)
       VecAddParams* proxy = new VecAddParams(*params);
       proxy->c = new int[params->num_elem];
       return proxy;
@@ -380,6 +437,7 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 
   void PostTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
+      GSL_SUPPRESS(i .11)
       delete[] params->c;
       delete params;
     }
