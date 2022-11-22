@@ -137,6 +137,24 @@ def get_session_over_time(session_table):
     return over_time
 
 
+def status_to_int(status):
+    """
+    Converts a status string to an integer.
+
+    :param status: A status string indicating if an EP successfully inferenced a model (i.e., "Pass", "Fail", "nan")
+
+    :return: 1 for "Pass", 0 for "Fail", and -1 otherwise.
+    """
+
+    if status == "Pass":
+        return 1
+
+    if status == "Fail":
+        return 0
+
+    return -1
+
+
 def get_status_over_time(status_table):
     """
     Returns a new Pandas table with data that tracks the compatibility of model/EP combinations over time.
@@ -154,7 +172,8 @@ def get_status_over_time(status_table):
     """
 
     over_time = status_table.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Pass")
-    over_time["Pass"] = over_time["Pass"].map(lambda s: 1 if s == "Pass" else 0)
+    over_time["Pass"] = over_time["Pass"].map(status_to_int)
+    over_time = over_time.loc[over_time["Pass"] != -1]
     over_time = over_time[
         [
             model_title,
@@ -224,6 +243,24 @@ def get_session(session, model_group):
     return session
 
 
+def get_inference_latency(latency_table, model_group):
+    latency_table = latency_table.assign(Group=model_group)
+    latency_table = latency_table[
+        [
+            model_title,
+            group_title,
+            "Ep",
+            "AvgLatency",
+            "Latency90Pt",
+            "SampleStd",
+            "SampleSize",
+            "UseIOBinding",
+        ]
+    ]
+
+    return latency_table
+
+
 def write_table(
     ingest_client, database_name, table, table_name, upload_time, identifier, branch, commit_id, commit_date
 ):
@@ -247,6 +284,7 @@ def write_table(
     table = table.assign(Branch=branch)
     table = table.assign(CommitId=commit_id)
     table = table.assign(CommitDate=str(commit_date))
+
     ingestion_props = IngestionProperties(
         database=database_name,
         table=table_name,
@@ -330,7 +368,7 @@ def main():
                     )
                 elif latency_name in csv:
                     table_results[latency_name] = pd.concat(
-                        [table_results[latency_name], table.assign(Group=model_group)],
+                        [table_results[latency_name], get_inference_latency(table, model_group)],
                         ignore_index=True,
                     )
                 elif status_name in csv:

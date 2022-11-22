@@ -1,3 +1,2 @@
 onnxmltools
 pandas
-coloredlogs

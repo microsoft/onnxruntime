@@ -2,17 +2,16 @@ import argparse
 import copy
 import csv
 import json
-import logging
 import os
 import pprint
 import re
 import subprocess
 import sys
 import tempfile
+import time
 import timeit
 from datetime import datetime
 
-import coloredlogs
 import numpy as np
 from perf_utils import (
     acl,
@@ -58,9 +57,7 @@ import onnx  # isort:skip
 from onnx import numpy_helper  # isort:skip
 import pandas as pd  # isort:skip
 
-debug = False
 sys.path.append(".")
-logger = logging.getLogger("")
 
 ep_to_provider_list = {
     cpu: [cpu_ep],
@@ -121,8 +118,7 @@ def get_graph_opt_level(enablement):
     return opt_level
 
 
-def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_inputs_shape, fp16):
-    logger.info("running standalone trt")
+def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, tmp_work_dir, inputs, fp16):
     onnx_model_path = "--onnx=" + model_path
 
     # load inputs
@@ -130,17 +126,21 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
     loaded_inputs = []
 
     model = onnx.load(model_path)
-    ort_inputs = get_model_inputs(model)
+    input_names = get_model_inputs(model)
 
-    output = get_output(["find", "-L", test_data_dir, "-name", "test_data*", "-type", "d"])
-    test_data_dir_0 = split_and_sort_output(output)[0]
+    for i in range(len(input_names)):
+        name = input_names[i]
+        ort_input = inputs[i]
 
-    for i in range(len(ort_inputs)):
-        name = ort_inputs[i]
-        loaded_input = name + ":" + test_data_dir_0 + "/" + str(i) + ".bin"
-        logger.info(loaded_input)
+        # Save input to .bin file
+        input_bin_path = os.path.normpath(os.path.join(tmp_work_dir, f"{i}.bin"))
+        ort_input.tofile(str(input_bin_path))
+
+        # Create cmd-line arg for input's file path.
+        loaded_input = f"{name}:{str(input_bin_path)}"
+
         shape = []
-        for j in all_inputs_shape[i]:
+        for j in ort_input.shape:
             shape.append(str(j))
         shape = "x".join(shape)
         shape = name + ":" + shape
@@ -154,8 +154,8 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
         trtexec,
         onnx_model_path,
         "--warmUp=100",  # Minimum duration of warm-up runs (ms)
-        "--duration=5",  # Minimum duration of inference runs (seconds)
-        "--iterations=5",  # Minimum number of inference iterations
+        "--duration=3",  # Minimum duration of inference runs (seconds)
+        "--iterations=3",  # Minimum number of inference iterations
         "--percentile=90",
         "--memPoolSize=workspace:4096",
     ]
@@ -171,14 +171,10 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
     engine_suffix = "_trtexec_fp16.engine" if fp16 else "_trtexec.engine"
     engine_name = model_name + engine_suffix
     save_command = command + ["--saveEngine=" + engine_name]
-    logger.info(save_command)
-    print(save_command)
     out = get_output(save_command)
 
     # load engine and inference
     load_command = command + ["--loadEngine=" + engine_name]
-    logger.info(load_command)
-    print(load_command)
 
     out = get_output(load_command)
 
@@ -199,13 +195,9 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
     percentile_match = re.search("percentile\(90%\) = (.*?) ms", target)
     if percentile_match:
         result["latency_90_percentile"] = percentile_match.group(1)  # extract number
-
-    # TODO: Get from output
-    result["sample_size"] = 5
+    result["sample_size"] = 3
     result["latency_std"] = 0
 
-    print(result)
-    logger.info(result)
     return result
 
 
@@ -295,47 +287,39 @@ def inference_ort(
     name,
     session,
     ep,
-    ort_inputs,
+    ort_input,
     repeat_times,
+    warmup = True,
 ):
     runtimes = []
-    if args.input_data == "random":
-        repeat_times = 1  # warn-up run is included in ort_inputs
-    else:
+
+    if warmup:
         repeat_times += 1  # add warn-up run
 
-    # get and load inputs and outputs
-    for ort_input in ort_inputs:
-        io_binding = session.io_binding()
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
-        if debug:
-            logger.info("ORT session inputs:")
-            logger.info(sess_inputs)
-            logger.info("ORT session outputs:")
-            logger.info(sess_outputs)
-        if args.io_binding:
-            for name, inp in sess_inputs.items():
-                io_binding.bind_cpu_input(name, inp)
-            for out in sess_outputs:
-                io_binding.bind_output(out)
+    io_binding = session.io_binding()
+    sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
+    if args.io_binding:
+        for name, inp in sess_inputs.items():
+            io_binding.bind_cpu_input(name, inp)
+        for out in sess_outputs:
+            io_binding.bind_output(out)
 
-        try:
-            runtime = inference_ort_with_ep(
-                ep,
-                session,
-                repeat_times,
-                sess_outputs,
-                sess_inputs,
-                args.io_binding,
-                io_binding,
-            )
-            if args.input_data == "fix":
-                runtime = runtime[1:]  # remove warmup
-            runtimes += runtime
+    try:
+        runtimes = inference_ort_with_ep(
+            ep,
+            session,
+            repeat_times,
+            sess_outputs,
+            sess_inputs,
+            args.io_binding,
+            io_binding,
+        )
 
-        except Exception as e:
-            logger.error(e)
-            raise (e)
+        if warmup:
+            runtimes = runtimes[1:]  # remove warmup
+
+    except Exception as e:
+        raise (e)
 
     return get_latency_result(runtimes)
 
@@ -345,17 +329,7 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
     ort_outputs = []
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
-        if debug:
-            logger.info("ORT session inputs:")
-            logger.info(sess_inputs)
-            logger.info("ORT session outputs:")
-            logger.info(sess_outputs)
-
         result = session.run(sess_outputs, sess_inputs)
-
-        if debug:
-            logger.info("ORT session output results:")
-            logger.info(result)
 
         # handle shape of output differently
         if "bert_squad" in name.lower():
@@ -390,19 +364,12 @@ def get_acl_version():
 # inputs: [[test_data_0_input_0.pb, test_data_0_input_1.pb ...], [test_data_1_input_0.pb, test_data_1_input_1.pb ...] ...]
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
-def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
-    logger.info("Parsing test data in {} ...".format(path))
+def load_onnx_model_zoo_test_data(path, fp16):
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
-    logger.info(test_data_set_dir)
 
     inputs = []
     outputs = []
-
-    shape_flag = False
-    # if not empty means input shape has been parsed before.
-    if len(all_inputs_shape) > 0:
-        shape_flag = True
 
     # find test data path
     for test_data_dir in test_data_set_dir:
@@ -412,7 +379,6 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
         # load inputs and create bindings
         output = get_output(["find", ".", "-name", "input*"])
         input_data = split_and_sort_output(output)
-        logger.info(input_data)
 
         input_data_pb = []
         i = 0
@@ -423,20 +389,14 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                 tensor_to_array = numpy_helper.to_array(tensor)
                 if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
-                tensor_to_array.tofile(str(i) + ".bin")
                 input_data_pb.append(tensor_to_array)
-                if not shape_flag:
-                    all_inputs_shape.append(input_data_pb[-1].shape)
-                logger.info(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.info("Loaded {} inputs successfully.".format(len(inputs)))
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
         output_data = split_and_sort_output(output)
 
         if len(output_data) > 0 and output_data[0] != "":
-            logger.info(output_data)
             output_data_pb = []
             for data in output_data:
                 tensor = onnx.TensorProto()
@@ -449,9 +409,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                         tensor_to_array = tensor_to_array.astype(np.float16)
                     output_data_pb.append(tensor_to_array)
 
-                    logger.info(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.info("Loaded {} outputs successfully.".format(len(outputs)))
 
         os.chdir(pwd)
     return inputs, outputs
@@ -480,13 +438,6 @@ def generate_onnx_model_random_input(test_times, ref_input):
             else:
                 new_tensor = np.random.random_sample(shape).astype(dtype)
 
-            if debug:
-                logger.info("original tensor:")
-                logger.info(tensor)
-                logger.info("new random tensor:")
-                logger.info(new_tensor)
-                logger.info("\n")
-
             input_data.append(new_tensor)
         inputs.append(input_data)
 
@@ -504,12 +455,8 @@ def percentage_in_allowed_threshold(e, percent_mismatch):
 
 def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     if len(all_ref_outputs) == 0:
-        logger.info("No reference output provided.")
+        print("[INFO] No reference output provided.")
         return True, None
-
-    logger.info("Reference {} results.".format(len(all_ref_outputs)))
-    logger.info("Predicted {} results.".format(len(all_outputs)))
-    logger.info("rtol: {}, atol: {}".format(rtol, atol))
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -527,10 +474,8 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
                 except Exception as e:
                     if percentage_in_allowed_threshold(e, percent_mismatch):
                         continue
-                    logger.error(e)
                     return False, e
 
-    logger.info("ONNX Runtime outputs are similar to reference outputs!")
     return True, None
 
 
@@ -638,17 +583,6 @@ def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
             model_to_metrics[name_]["total_ops"] = total_ops
             model_to_metrics[name_]["ratio_of_ops_in_trt"] = ratio_of_ops_in_trt
 
-    if debug:
-        pp = pprint.PrettyPrinter(indent=4)
-        logger.info("CUDA operator map:")
-        pp.pprint(cuda_op_map)
-        logger.info("TRT operator map:")
-        pp.pprint(trt_op_map)
-        logger.info("CUDA FP16 operator map:")
-        pp.pprint(cuda_fp16_op_map)
-        logger.info("TRT FP16 operator map:")
-        pp.pprint(trt_fp16_op_map)
-
 
 ###################################################################################################
 #
@@ -704,9 +638,8 @@ def skip_ep(model_name, ep, model_to_fail_ep):
 
     fail_ep_list = model_to_fail_ep[model_name]
 
-    # if ep in fail_ep_list and fail_ep_list[ep] == "runtime error":
     if ep in fail_ep_list:
-        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
+        print(f"[INFO] Skip testing {model_name} using {ep} since it has some issues.")
         return True
 
     return False
@@ -828,7 +761,6 @@ def get_system_info(args):
 def find_model_path(path):
     output = get_output(["find", "-L", path, "-name", "*.onnx"])
     model_path = split_and_sort_output(output)
-    logger.info(model_path)
 
     if model_path == [""]:
         return None
@@ -839,10 +771,8 @@ def find_model_path(path):
             continue
         target_model_path.append(m)
 
-    logger.info(target_model_path)
     if len(target_model_path) > 1:
-        logger.error("We expect to find only one model in " + path)
-        raise
+        raise Exception("We expect to find only one model in " + path)
 
     return target_model_path[0]
 
@@ -873,7 +803,6 @@ def find_model_directory(path):
 def find_test_data_directory(path):
     output = get_output(["find", "-L", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
     test_data_dir = split_and_sort_output(output)
-    logger.info(test_data_dir)
 
     if test_data_dir == [""]:
         return None
@@ -898,7 +827,6 @@ def parse_models_info_from_directory(path, models):
 
         models[model_name] = model
 
-        logger.info(model)
         return
 
     model_dir = find_model_directory(path)
@@ -925,8 +853,7 @@ def parse_models_info_from_file(root_dir, path, models):
             if "model_name" in row:
                 models[row["model_name"]] = {}
             else:
-                logger.error("Model name must be provided in models_info.json")
-                raise
+                raise Exception("Model name must be provided in models_info.json")
 
             model = models[row["model_name"]]
 
@@ -936,20 +863,17 @@ def parse_models_info_from_file(root_dir, path, models):
                 else:
                     model["working_directory"] = os.path.join(root_working_directory, row["working_directory"])
             else:
-                logger.error("Model path must be provided in models_info.json")
-                raise
+                raise Exception("Model path must be provided in models_info.json")
 
             if "model_path" in row:
                 model["model_path"] = row["model_path"]
             else:
-                logger.error("Model path must be provided in models_info.json")
-                raise
+                raise Exception("Model path must be provided in models_info.json")
 
             if "test_data_path" in row:
                 model["test_data_path"] = row["test_data_path"]
             else:
-                logger.error("Test data path must be provided in models_info.json")
-                raise
+                raise Exception("Test data path must be provided in models_info.json")
 
             if "model_path_fp16" in row:
                 model["model_path_fp16"] = row["model_path_fp16"]
@@ -972,23 +896,21 @@ def convert_model_from_float_to_float16(model_path, new_model_dir):
     return new_model_path
 
 
-def get_test_data(fp16, test_data_dir, all_inputs_shape):
+def get_test_data(fp16, test_data_dir):
     inputs = []
     ref_outputs = []
-    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape, fp16)
+    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, fp16)
     return inputs, ref_outputs
 
 
 def run_symbolic_shape_inference(model_path, new_model_path):
     import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer
 
-    logger.info("run symbolic shape inference")
     try:
         out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
         onnx.save(out, new_model_path)
         return True, None
     except Exception as e:
-        logger.error(e)
         return False, "Symbolic shape inference error"
 
 
@@ -1020,14 +942,13 @@ def time_and_create_session(model_path, providers, provider_options, session_opt
 
 
 def create_session(model_path, providers, provider_options, session_options):
-    logger.info(model_path)
 
     try:
         return time_and_create_session(model_path, providers, provider_options, session_options)
     except Exception as e:
         # shape inference required on model
         if "shape inference" in str(e):
-            logger.info("Using model from symbolic_shape_infer.py")
+            print("[INFO] Using model from symbolic_shape_infer.py")
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
             if not os.path.exists(new_model_path):
                 status = run_symbolic_shape_inference(model_path, new_model_path)
@@ -1037,29 +958,6 @@ def create_session(model_path, providers, provider_options, session_options):
             return time_and_create_session(new_model_path, providers, provider_options, session_options)
         else:
             raise Exception(e)
-
-
-def calculate_gain(value, ep1, ep2):
-    ep1_latency = float(value[ep1]["average_latency_ms"])
-    ep2_latency = float(value[ep2]["average_latency_ms"])
-    gain = (ep2_latency - ep1_latency) * 100 / ep2_latency
-    return gain
-
-
-def add_improvement_information(model_to_latency):
-    for key, value in model_to_latency.items():
-        if trt in value and cuda in value:
-            gain = calculate_gain(value, trt, cuda)
-            value[trt_cuda_gain] = "{:.2f} %".format(gain)
-        if trt_fp16 in value and cuda_fp16 in value:
-            gain = calculate_gain(value, trt_fp16, cuda_fp16)
-            value[trt_cuda_fp16_gain] = "{:.2f} %".format(gain)
-        if trt in value and standalone_trt in value:
-            gain = calculate_gain(value, trt, standalone_trt)
-            value[trt_native_gain] = "{:.2f} %".format(gain)
-        if trt_fp16 in value and standalone_trt_fp16 in value:
-            gain = calculate_gain(value, trt_fp16, standalone_trt_fp16)
-            value[trt_native_fp16_gain] = "{:.2f} %".format(gain)
 
 
 def output_fail(model_to_fail_ep, csv_filename):
@@ -1260,7 +1158,7 @@ def write_inference_latency_csv(model_ep_results, csv_filename, use_io_binding):
     need_write_header = not os.path.exists(csv_filename)
 
     with open(csv_filename, mode="a", newline="") as csv_file:
-        column_names = ["Model", "Ep", "AvgLatency", "Latency90Pt", "SampleStdv", "SampleSize", "UseIOBinding"]
+        column_names = ["Model", "Ep", "AvgLatency", "Latency90Pt", "SampleStd", "SampleSize", "UseIOBinding"]
         csv_writer = csv.writer(csv_file)
 
         if need_write_header:
@@ -1368,7 +1266,7 @@ def output_metrics(model_to_metrics, csv_filename):
             ]
             csv_writer.writerow(row)
 
-    logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
+    print(f"[INFO] Tensorrt ratio metrics are saved to csv file: {csv_filename}")
 
 
 def output_system_info(result, csv_filename):
@@ -1379,7 +1277,7 @@ def output_system_info(result, csv_filename):
         csv_writer.writeheader()
         csv_writer.writerow(result)
 
-    logger.info(f"System information are saved to csv file: {csv_filename}")
+    print(f"[INFO] System information are saved to csv file: {csv_filename}")
 
 
 def str2bool(v):
@@ -1440,7 +1338,7 @@ def test_models_eps(args, models):
             if not is_standalone(exec_provider):
                 ep_ = ep_to_provider_list[exec_provider][0]
                 if ep_ not in onnxruntime.get_available_providers():
-                    logger.error("No %s support", ep_)
+                    print(f"[INFO] No {ep_} support")
                     continue
 
             # Create a temporary directory for this run, which may create profiles, subgraph dumps, and TRT engines.
@@ -1491,14 +1389,11 @@ def run_model_on_ep(
     :param tmp_work_dir: Temporary directory in which to run the model + EP.
     """
 
-    all_inputs_shape = []  # used for standalone trt
     model_work_dir = os.path.abspath(model_info["working_directory"])
     model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path"]))
     test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path"]))
 
     os.chdir(tmp_work_dir)
-
-    logger.info("Starting mode '%s' for %s on %s ...", args.running_mode, model_name, exec_provider)
 
     # Set environment variables for ort-trt benchmarking
     trt_ep_options = copy.deepcopy(args.trt_ep_options)
@@ -1526,7 +1421,7 @@ def run_model_on_ep(
                 model_path = convert_model_from_float_to_float16(model_path, tmp_work_dir)
                 convert_input_fp16 = True
             except Exception as excpt:
-                logger.error(excpt)
+                print(f"[ERROR] {excpt}", file=sys.stderr)
                 update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "script error", excpt)
                 return
 
@@ -1535,7 +1430,7 @@ def run_model_on_ep(
             test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path_fp16"]))
             convert_input_fp16 = False
 
-    inputs, ref_outputs = get_test_data(convert_input_fp16, test_data_dir, all_inputs_shape)
+    inputs, ref_outputs = get_test_data(convert_input_fp16, test_data_dir)
     # generate random input data
     if args.input_data == "random":
         inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
@@ -1549,6 +1444,8 @@ def run_model_on_ep(
     # Validation
     #######################################
     if do_validate:
+        validation_start = time.perf_counter()
+
         validation_passed = validate_model_on_ep(
             args,
             model_name,
@@ -1562,10 +1459,14 @@ def run_model_on_ep(
             tmp_work_dir,
         )
 
+        validation_secs = time.perf_counter() - validation_start
+        print(f"[INFO] Validation of {model_name} on {exec_provider} done in {validation_secs} seconds...")
+
     #######################################
     # Benchmark
     #######################################
     if do_benchmark and (validation_passed or not do_validate):
+        bench_start = time.perf_counter()
         benchmark_model_on_ep(
             args,
             model_name,
@@ -1573,12 +1474,14 @@ def run_model_on_ep(
             trt_ep_options,
             model_path,
             inputs,
-            all_inputs_shape,
             model_to_fail_ep,
             ep_results,
             test_data_dir,
+            tmp_work_dir,
             convert_input_fp16,
         )
+        bench_secs = time.perf_counter() - bench_start
+        print(f"[INFO] Benchmarking of {model_name} on {exec_provider} done in {bench_secs} seconds...")
 
 
 def benchmark_model_on_ep(
@@ -1588,10 +1491,10 @@ def benchmark_model_on_ep(
     trt_ep_options,
     model_path,
     inputs,
-    all_inputs_shape,
     model_to_fail_ep,
     ep_results,
     test_data_dir,
+    tmp_work_dir,
     convert_input_fp16,
 ):
     """
@@ -1603,10 +1506,10 @@ def benchmark_model_on_ep(
     :param trt_ep_options: Additional TensorRT EP session options to apply.
     :param model_path: The path to the model file.
     :param inputs: Inputs to the model.
-    :param all_inputs_shape: Input shapes. Needed by trtexec.
     :param model_to_fail_ep: Dictionary that tracks failing model and EP combinations. Updated by this function.
     :param ep_results: Dictionary that maps an EP to latency and operator partition results. Updated by this function.
     :param test_data_dir: Directory containing input .pb files. Needed by trtexec.
+    :param tmp_work_dir: Directory to dump temp files.
     :param convert_input_fp16: True if the inputs were converted to FP16.
     """
 
@@ -1621,11 +1524,12 @@ def benchmark_model_on_ep(
                 model_name,
                 model_path,
                 test_data_dir,
-                all_inputs_shape,
+                tmp_work_dir,
+                inputs[0],
                 exec_provider == standalone_trt_fp16,
             )
         except Exception as excpt:
-            logger.error(excpt)
+            print(f"[ERROR] {excpt}", file=sys.stderr)
             update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
             return
 
@@ -1643,24 +1547,12 @@ def benchmark_model_on_ep(
             sess, second_creation_time = create_session(model_path, providers, provider_options, options)
 
         except Exception as excpt:
-            logger.error(excpt)
+            print("f[ERROR] {excpt}", file=sys.stderr)
             update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
             return
 
         if second_creation_time:
             ep_results["session"][exec_provider + second] = second_creation_time
-
-        logger.info("Start to inference %s with %s ...", model_name, exec_provider)
-        logger.info(sess.get_providers())
-        logger.info(sess.get_provider_options())
-
-        if sess:
-            logger.info("Model inputs nodes:")
-            for input_meta in sess.get_inputs():
-                logger.info(input_meta)
-            logger.info("Model outputs nodes:")
-            for output_meta in sess.get_outputs():
-                logger.info(output_meta)
 
         # run cpu fewer times
         repeat_times = 100 if exec_provider == cpu else args.test_times
@@ -1672,11 +1564,12 @@ def benchmark_model_on_ep(
                 model_name,
                 sess,
                 exec_provider,
-                inputs,
+                inputs[0],
                 repeat_times,
+                True,
             )
         except Exception as excpt:
-            logger.error(excpt)
+            print("f[ERROR] {excpt}", file=sys.stderr)
             update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
             return
 
@@ -1728,7 +1621,7 @@ def validate_model_on_ep(
         sess, creation_time = create_session(model_path, providers, provider_options, options)
 
     except Exception as excpt:
-        logger.error(excpt)
+        print("f[ERROR] {excpt}", file=sys.stderr)
         update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
         return False
 
@@ -1736,18 +1629,6 @@ def validate_model_on_ep(
         ep_results["session"][exec_provider] = creation_time
 
     sess.disable_fallback()
-
-    logger.info("Start to inference %s with %s ...", model_name, exec_provider)
-    logger.info(sess.get_providers())
-    logger.info(sess.get_provider_options())
-
-    if sess:
-        logger.info("Model inputs nodes:")
-        for input_meta in sess.get_inputs():
-            logger.info(input_meta)
-        logger.info("Model outputs nodes:")
-        for output_meta in sess.get_outputs():
-            logger.info(output_meta)
 
     # run inference and validate the result
     #
@@ -1773,7 +1654,7 @@ def validate_model_on_ep(
                 )
                 return False
         except Exception as excpt:
-            logger.error(excpt)
+            print("f[ERROR] {excpt}", file=sys.stderr)
             update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
             return False
 
@@ -1788,7 +1669,7 @@ def validate_model_on_ep(
     sess.end_profiling()
 
     # get metrics from profiling file
-    metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
+    metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix)
     if metrics:
         ep_results["metrics"][exec_provider] = metrics
 
@@ -1965,40 +1846,25 @@ def parse_arguments():
     return args
 
 
-def setup_logger(verbose):
-    if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
-        )
-    else:
-        coloredlogs.install(fmt="%(message)s")
-        logging.getLogger("transformers").setLevel(logging.WARNING)
-
-
 def parse_models_helper(args, models):
     model_source = os.path.join(args.workspace, args.model_source)
     if ".json" in model_source:
-        logger.info("Parsing model information from file ...")
+        print(f"[INFO] Parsing model information from file {model_source}")
         parse_models_info_from_file(args.workspace, model_source, models)
     else:
-        logger.info("Parsing model information from directory ...")
+        print(f"[INFO] Parsing model information from directory {model_source}")
         parse_models_info_from_directory(model_source, models)
 
 
 def main():
     args = parse_arguments()
-    setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
-
-    logger.info("\n\nStart perf run ...\n")
 
     models = {}
     parse_models_helper(args, models)
 
     perf_start_time = datetime.now()
     (
-        success_results,
         model_to_latency,
         model_to_fail_ep,
         model_to_metrics,
@@ -2006,18 +1872,13 @@ def main():
     ) = test_models_eps(args, models)
     perf_end_time = datetime.now()
 
-    logger.info("Done running the perf.")
-    logger.info("\nTotal time for benchmarking all models: {}".format(perf_end_time - perf_start_time))
-    logger.info(list(models.keys()))
+    print(f"[INFO] Total time for test_models_eps() call: {perf_end_time - perf_start_time}")
 
-    logger.info("\nTotal models: {}".format(len(models)))
 
     fail_model_cnt = 0
     for key, value in models.items():
         if key in model_to_fail_ep:
             fail_model_cnt += 1
-    logger.info("Fail models: {}".format(fail_model_cnt))
-    logger.info("Success models: {}".format(len(models) - fail_model_cnt))
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
@@ -2028,10 +1889,8 @@ def main():
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if len(model_to_fail_ep) > 0:
-        logger.info("\n============================================")
-        logger.info("========== Failing Models/EPs ==============")
-        logger.info("============================================")
-        logger.info(model_to_fail_ep)
+        print("[INFO] Failing Models/EPs:")
+        print(model_to_fail_ep)
         write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
 
         if args.write_test_result:
@@ -2040,10 +1899,7 @@ def main():
             output_fail(model_to_fail_ep, csv_filename)
 
     if len(model_to_latency) > 0:
-        logger.info("\n==========================================")
-        logger.info("=========== Models/EPs latency ===========")
-        logger.info("==========================================")
-        add_improvement_information(model_to_latency)
+        print("[INFO] Models/EPs latency:")
         pretty_print(pp, model_to_latency)
         write_map_to_file(model_to_latency, LATENCY_FILE)
         if args.write_test_result:
@@ -2054,9 +1910,7 @@ def main():
             write_inference_latency_csv(model_to_latency, csv_filename, args.io_binding)
 
     if len(model_to_metrics) > 0:
-        logger.info("\n=========================================")
-        logger.info("========== Models/EPs metrics  ==========")
-        logger.info("=========================================")
+        print("[INFO] Models/EPs metrics:")
         pretty_print(pp, model_to_metrics)
         write_map_to_file(model_to_metrics, METRICS_FILE)
 

@@ -298,18 +298,15 @@ def calculate_trt_latency_percentage(trt_op_map):
     return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
 
 
-def get_profile_metrics(path, profile_file_prefix, logger):
+def get_profile_metrics(path, profile_file_prefix):
     """
     Parses a session profile file to obtain information on operator usage per EP.
 
     :param path: The path containing the session profile file.
     :param profile_file_prefix: Custom prefix for session profile names. Refer to ORT SessionOptions.
-    :param logger: The logger object to use for debug/info logging.
 
     :return: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
     """
-
-    logger.debug("Parsing/Analyzing profiling files in %s ...", path)
 
     find_proc = subprocess.Popen(
         ["find", path, "-name", f"{profile_file_prefix}*", "-printf", "%T+\t%p\n"],
@@ -319,20 +316,17 @@ def get_profile_metrics(path, profile_file_prefix, logger):
     stdout, sterr = sort_proc.communicate()
     stdout = stdout.decode("ascii").strip()
     profiling_files = stdout.split("\n")
-    logger.info(profiling_files)
 
     data = []
     for profile in profiling_files:
         profile = profile.split("\t")[1]
 
-        logger.debug("Parsing profile %s ...", profile)
         with open(profile, encoding="utf-8") as fd:
             op_map = parse_single_file(fd)
             if op_map:
                 data.append(op_map)
 
     if len(data) == 0:
-        logger.debug("No profile metrics found.")
         return None
 
     return data[-1]
