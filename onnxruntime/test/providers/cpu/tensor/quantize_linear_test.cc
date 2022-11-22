@@ -228,7 +228,7 @@ TEST(QuantizeLinearOpTest, Uint8) {
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with scalar zero point and scale
@@ -366,7 +366,7 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 }  // namespace test
