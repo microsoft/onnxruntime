@@ -830,6 +830,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     if (value.Fence())
       value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (output[i] == nullptr) {
+      GSL_SUPPRESS(r .11)
       output[i] = new OrtValue(value);
     }
   }
@@ -870,6 +871,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
+  GSL_SUPPRESS(r .11)
   *out = new OrtIoBinding(std::move(binding));
   return nullptr;
   API_IMPL_END
@@ -985,6 +987,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
 
   OrtValue** out_ptr = ortvalues_alloc.get();
   for (const auto& out_value : outputs) {
+    GSL_SUPPRESS(r .11)
     *out_ptr = new OrtValue(out_value);
     ++out_ptr;
     ++created;
@@ -1325,6 +1328,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* ses
   auto p = session->GetModelMetadata();
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
+  GSL_SUPPRESS(r .11)
   *out = reinterpret_cast<OrtModelMetadata*>(new ModelMetadata(*p.second));
   return nullptr;
   API_IMPL_END
@@ -1985,6 +1989,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, _In_z_ const char* domain_name, 
               "Specified domain and type names combination does not refer to a registered opaque type");
   const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
+  GSL_SUPPRESS(r .11)
   std::unique_ptr<OrtValue> ort_val(new OrtValue);
   non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
   *out = ort_val.release();
@@ -2016,9 +2021,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = narrow<int>(available_providers.size());
+  GSL_SUPPRESS(r .11)
   char** const out = new char*[available_count];
   if (out) {
     for (int i = 0; i < available_count; i++) {
+      GSL_SUPPRESS(r .11)
       out[i] = new char[MAX_LEN + 1];
 #ifdef _MSC_VER
       strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
@@ -2043,8 +2050,10 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   API_IMPL_BEGIN
   if (ptr) {
     for (int i = 0; i < providers_length; i++) {
+      GSL_SUPPRESS(r .11)
       delete[] ptr[i];
     }
+    GSL_SUPPRESS(r .11)
     delete[] ptr;
   }
   API_IMPL_END
@@ -2139,6 +2148,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
+  GSL_SUPPRESS(r .11)
   *out = new OrtArenaCfg();
   (*out)->max_mem = max_mem;
   (*out)->arena_extend_strategy = arena_extend_strategy;
@@ -2185,6 +2195,7 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
 
 ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out) {
   API_IMPL_BEGIN
+  GSL_SUPPRESS(r .11)
   std::unique_ptr<PrepackedWeightsContainer> container(new PrepackedWeightsContainer());
   *out = reinterpret_cast<OrtPrepackedWeightsContainer*>(container.release());
   return nullptr;

@@ -6,7 +6,11 @@
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 using namespace ::ONNX_NAMESPACE;
 
 namespace ONNX_NAMESPACE {
@@ -56,6 +60,71 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
     }
   }
 }
+
+void RemovePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Input 0: (batch_size, sequence_length, hidden_size)
+  // Output 0: (total_tokens, hidden_size)
+  // Output 1: (batch_size, sequence_length)
+  // Output 2: (batch_size + 1)
+  // Output 3: (1)
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 1, 1);
+
+  if (hasInputShape(ctx, 0)) {
+    auto& input_shape = getInputShape(ctx, 0);
+    if (input_shape.dim().size() != 3) {
+      fail_shape_inference("input shall be 3 dimensions");
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    output_shape.add_dim();
+    *output_shape.add_dim() = input_shape.dim(2);
+    updateOutputShape(ctx, 0, output_shape);
+
+    ONNX_NAMESPACE::TensorShapeProto token_offset_shape;
+    *token_offset_shape.add_dim() = input_shape.dim(0);
+    *token_offset_shape.add_dim() = input_shape.dim(1);
+    updateOutputShape(ctx, 1, token_offset_shape);
+
+    ONNX_NAMESPACE::TensorShapeProto cumulated_seq_len_shape;
+    auto dim = cumulated_seq_len_shape.add_dim();
+    if (input_shape.dim(0).has_dim_value()) {
+      dim->set_dim_value(1 + input_shape.dim(0).dim_value());
+    }
+    updateOutputShape(ctx, 2, cumulated_seq_len_shape);
+
+    ONNX_NAMESPACE::TensorShapeProto max_seq_len_shape;
+    max_seq_len_shape.add_dim()->set_dim_value(1);
+    updateOutputShape(ctx, 3, max_seq_len_shape);
+  }
+}
+
+void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Input 0:  (total_tokens, hidden_size)
+  // Input 1:  (batch_size, sequence_length)
+  // Output 0: (batch_size, sequence_length, hidden_size)
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+    auto& input_shape = getInputShape(ctx, 0);
+    auto& token_offset_shape = getInputShape(ctx, 1);
+
+    if (input_shape.dim().size() != 2) {
+        fail_shape_inference("input shall be 2 dimensions");
+      }
+
+    if (token_offset_shape.dim().size() != 2) {
+        fail_shape_inference("token_offset shall be 2 dimensions");
+      }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    *output_shape.add_dim() = token_offset_shape.dim(0);
+    *output_shape.add_dim() = token_offset_shape.dim(1);
+    *output_shape.add_dim() = input_shape.dim(1);
+    updateOutputShape(ctx, 0, output_shape);
+  }
+}
+
 
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -375,6 +444,88 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFastGelu, 1,
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
                                   ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
                                 }));
+
+constexpr const char* RemovePadding_ver1_doc = R"DOC(
+Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
+
+The input has padding with shape (batch_size, sequence_length, hidden_size). This will generate two outputs:
+output has shape (total_tokens, hidden_size); token_offset with shape (batch_size, sequence_length).
+
+token_offset has offsets of all non-padding tokens first, then offset of all padding tokens. It is
+a list of batch_size * sequence_length elements, which is reshaped to 2D for convenience of shape inference.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RemovePadding, 1,
+    OpSchema()
+        .SetDoc(RemovePadding_ver1_doc)
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1,
+               "sequence_token_count",
+               "Number of non-padding tokens in each sequence with shape (batch_size).",
+               "M")
+        .Output(0,
+                "output",
+                "output tensor with shape (total_tokens, hidden_size)",
+                "T")
+        .Output(1,
+                "token_offset",
+                "Offset of non-padding tokens, and those of padding tokens. Its shape is (batch_size, sequence_length)",
+                "M")
+        .Output(2,
+                "cumulated_seq_len",
+                "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+                "M")
+        .Output(3,
+                "max_seq_len",
+                "Max sequence length without padding. Its shape is (1)",
+                "M")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain sequence_token_count and token_offset to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          RemovePaddingTypeAndShapeInference(ctx);
+        }));
+
+
+constexpr const char* RestorePadding_ver1_doc = R"DOC(
+Restore paddings and fill padding with zeros.
+
+The input has padding with shape (total_tokens, hidden_size) and token_offset with shape (batch_size, sequence_length).
+The output has shape (batch_size, sequence_length, hidden_size).
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RestorePadding, 1,
+    OpSchema()
+        .SetDoc(RestorePadding_ver1_doc)
+        .Input(0,
+               "input",
+               "Input tensor with shape (total_tokens, hidden_size)",
+               "T")
+        .Input(1,
+               "token_offset",
+               "Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)",
+               "M")
+        .Output(0,
+                "output",
+                "output tensor with shape (batch_size, sequence_length, hidden_size)",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain token_offset to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          RestorePaddingTypeAndShapeInference(ctx);
+        }));
 
 }  // namespace contrib
 }  // namespace onnxruntime
