@@ -729,62 +729,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
 endif()
 
-#Dependencies begin
-message("Loading Dependencies URLs ...")
-
-file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
-foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
-  # Lines start with "#" are comments
-  if(NOT ONNXRUNTIME_DEP MATCHES "^#")     
-    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
-    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_URL)
-    set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
-    set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
-    message("${DEP_URL_${ONNXRUNTIME_DEP_NAME}}")
-  endif()
-endforeach()
-
-message("Loading Dependencies ...")
-
-if (onnxruntime_BUILD_UNIT_TESTS)
-  if (onnxruntime_PREFER_SYSTEM_LIB)
-    find_package(GTest CONFIG)
-  endif()
-  if (TARGET GTest::gtest)
-    message("Use gtest from preinstalled system lib")
-  else()
-    # WebAssembly threading support in Node.js is still an experimental feature and
-    # not working properly with googletest suite.
-    if (onnxruntime_BUILD_WEBASSEMBLY)
-      set(gtest_disable_pthreads ON)
-    endif()
-
-    # gtest and gmock
-
-    FetchContent_Declare(
-      googletest
-      URL ${DEP_URL_googletest}
-      FIND_PACKAGE_ARGS NAMES GTest
-      URL_HASH SHA1=${DEP_SHA1_googletest}
-    )
-    FetchContent_MakeAvailable(googletest)
-
-    set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
-    if (NOT MSVC)
-      # disable treating all warnings as errors for gmock
-      target_compile_options(gmock PRIVATE "-w")
-      target_compile_options(gtest PRIVATE "-w")
-    endif()
-    set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
-    set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
-    set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
-  endif()
-endif()
-
-set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
-set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
-set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-
 if (CMAKE_CROSSCOMPILING)
   message("Doing crosscompiling")
 endif()
@@ -802,6 +746,8 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   endif()
 endif()
 
+
+#Dependencies begin
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
@@ -1014,21 +960,21 @@ endif()
 
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
-	if (onnxruntime_DISABLE_CONTRIB_OPS)
-	  target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
-	endif()
+    if (onnxruntime_DISABLE_CONTRIB_OPS)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
+    endif()
 
-	if (onnxruntime_DISABLE_ML_OPS)
-	  target_compile_definitions(${target_name} PRIVATE DISABLE_ML_OPS)
-	endif()
+    if (onnxruntime_DISABLE_ML_OPS)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_ML_OPS)
+    endif()
 
-	if (onnxruntime_DISABLE_SPARSE_TENSORS)
-	  target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
-	endif()
+    if (onnxruntime_DISABLE_SPARSE_TENSORS)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
+    endif()
 
-	if (onnxruntime_DISABLE_OPTIONAL_TYPE)
-	  target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
-	endif()
+    if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
+    endif()
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()

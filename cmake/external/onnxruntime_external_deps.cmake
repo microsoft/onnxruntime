@@ -1,3 +1,48 @@
+message("Loading Dependencies URLs ...")
+file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
+foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
+  # Lines start with "#" are comments
+  if(NOT ONNXRUNTIME_DEP MATCHES "^#")
+    # The first column is name
+    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
+    # The second column is URL
+    # The URL below may be a local file path or an HTTPS URL
+    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_URL)
+    set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
+    # The third column is SHA1 hash value
+    set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
+  endif()
+endforeach()
+
+message("Loading Dependencies ...")
+if (onnxruntime_BUILD_UNIT_TESTS)
+  # WebAssembly threading support in Node.js is still an experimental feature and
+  # not working properly with googletest suite.
+  if (onnxruntime_BUILD_WEBASSEMBLY)
+    set(gtest_disable_pthreads ON)
+  endif()
+
+  # gtest and gmock
+  FetchContent_Declare(
+    googletest
+    URL ${DEP_URL_googletest}
+    FIND_PACKAGE_ARGS NAMES GTest
+    URL_HASH SHA1=${DEP_SHA1_googletest}
+  )
+  FetchContent_MakeAvailable(googletest)
+  if(NOT GTest_FOUND)
+    set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
+    if (NOT MSVC)
+      # disable treating all warnings as errors for gmock
+      target_compile_options(gmock PRIVATE "-w")
+      target_compile_options(gtest PRIVATE "-w")
+    endif()
+    set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
+    set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
+    set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
+  endif()
+endif()
+
 # External dependencies
 if (onnxruntime_BUILD_BENCHMARKS)
   # We will not need to test benchmark lib itself.
@@ -78,6 +123,9 @@ endif()
 include(protobuf_function)
 #protobuf end
 
+set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
+set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
+set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
       date
