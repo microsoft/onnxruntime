@@ -74,7 +74,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                     reinterpret_cast<T*>(Y->MutableData<T>()),
                     left_X->Shape(), right_X->Shape(),
                     transa, transb, trans_batch_a_, trans_batch_b_, alpha_, 0.0f) != Status::OK()) {
-    return Status(common::ONNXRUNTIME, common::FAIL);
+    return Status(common::ONNXRUNTIME, common::FAIL, "MatMulImpl failed");
   }
   return Status::OK();
 }
