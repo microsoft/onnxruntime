@@ -98,7 +98,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   size_t total_bytes = 0;
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
-      total_bytes += input.Get<Tensor>().Shape().Size() * input.Type()->Size();
+      total_bytes += input.Get<Tensor>().SizeInBytes();
     }
   }
 
@@ -114,7 +114,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
-      const size_t bytes = input.Type()->Size() * tensor.Shape().Size();
+      const size_t bytes = tensor.SizeInBytes();
       MLDataType dataType = tensor.DataType();
       if (dataType == DataTypeImpl::GetType<int32_t>()) {
         memcpy(destination, input.Get<Tensor>().Data<int32_t>(), bytes);
@@ -151,7 +151,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
       const TensorShape& shape = tensor.Shape();
-      const size_t bytes = input.Type()->Size() * shape.Size();
+      const size_t bytes = tensor.SizeInBytes();
       MLDataType dataType = tensor.DataType();
 
       OrtValue device_input;
