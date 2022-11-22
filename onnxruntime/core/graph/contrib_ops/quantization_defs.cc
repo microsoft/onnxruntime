@@ -29,12 +29,9 @@ using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
-/*
- * expectedScalar could be -1, 0, 1
- * -1 means we allow both scalar and non-scalar
- */
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
-                                       ::google::protobuf::int32 expectedType, int expectedScalar, int expectedTensorSize) {
+                                       ::google::protobuf::int32 expectedType,
+                                       ScaleTensorType expectedScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
     if (nullptr == data_type) {
@@ -47,9 +44,9 @@ void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, in
     }
   }
 
-  if ((expectedScalar >= 0) && hasInputShape(ctx, index)) {
+  if ((expectedScalar != ScaleTensorType::Both) && hasInputShape(ctx, index)) {
     ONNX_NAMESPACE::TensorShapeProto shape = ctx.getInputType(index)->tensor_type().shape();
-    if (expectedScalar) {
+    if (expectedScalar == ScaleTensorType::Scalar) {
       if (shape.dim_size() != 0) {
         fail_type_inference("Scale and Zero-point must be a scalar");
       }
@@ -112,12 +109,12 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
       }
 
       // validate scale and zero points
-      ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
 
       if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3))
         bidirectionalBroadcastShapeInference(ctx.getInputType(0)->tensor_type().shape(),
@@ -361,8 +358,8 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
             fail_type_inference("inputs are expected to have tensor type.");
           }
 
-          ValidateTypeAndShapeForScaleAndZP(ctx, 1, a_type->tensor_type().elem_type(), true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 3, b_type->tensor_type().elem_type(), true);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, a_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 3, b_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
 
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
             bidirectionalBroadcastShapeInference(ctx.getInputType(0)->tensor_type().shape(),
@@ -496,10 +493,10 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
           }
 
           // validate scale and zero points
-          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
 
           int64_t keep_dims = 1;
           auto attr_proto = ctx.getAttribute("keepdims");
@@ -1455,12 +1452,12 @@ output_shape can also be explicitly specified in which case pads values are auto
 
           // validate scale and zero points
           // scale and zero points could be scalar or 1-D tensor which depends on quanization per-channel or per-tensor
-          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, -1);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), -1);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, -1);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), -1);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, -1);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), -1);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Both);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Both);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, ScaleTensorType::Both);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), ScaleTensorType::Scalar);
 
           propagateElemTypeFromInputToOutput(ctx, 7, 0);
 
