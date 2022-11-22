@@ -327,6 +327,40 @@ inline OrtEnv& OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
   return *this;
 }
 
+inline std::unique_ptr<OrtThreadingOptions> OrtThreadingOptions::Create() {
+  OrtThreadingOptions* p;
+  Ort::ThrowOnError(Ort::api->CreateThreadingOptions(&p));
+  return std::unique_ptr<OrtThreadingOptions>{p};
+}
+
+inline void OrtThreadingOptions::SetGlobalIntraOpNumThreads(int intra_op_num_threads) {
+  Ort::ThrowOnError(Ort::api->SetGlobalIntraOpNumThreads(this, intra_op_num_threads));
+}
+
+inline void OrtThreadingOptions::SetGlobalInterOpNumThreads(int inter_op_num_threads) {
+  Ort::ThrowOnError(Ort::api->SetGlobalInterOpNumThreads(this, inter_op_num_threads));
+}
+
+inline void OrtThreadingOptions::SetGlobalSpinControl(int allow_spinning) {
+  Ort::ThrowOnError(Ort::api->SetGlobalSpinControl(this, allow_spinning));
+}
+
+inline void OrtThreadingOptions::SetGlobalDenormalAsZero() {
+  Ort::ThrowOnError(Ort::api->SetGlobalDenormalAsZero(this));
+}
+
+inline void OrtThreadingOptions::SetGlobalCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
+  Ort::ThrowOnError(Ort::api->SetGlobalCustomCreateThreadFn(this, ort_custom_create_thread_fn));
+}
+
+inline void OrtThreadingOptions::SetGlobalCustomThreadCreationOptions(void* ort_custom_thread_creation_options) {
+  Ort::ThrowOnError(Ort::api->SetGlobalCustomThreadCreationOptions(this, ort_custom_thread_creation_options));
+}
+
+inline void OrtThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
+  Ort::ThrowOnError(Ort::api->SetGlobalCustomJoinThreadFn(this, ort_custom_join_thread_fn));
+}
+
 inline std::unique_ptr<OrtCustomOpDomain> OrtCustomOpDomain::Create(const char* domain) {
   OrtCustomOpDomain *p;
   Ort::ThrowOnError(Ort::api->CreateCustomOpDomain(domain, &p));

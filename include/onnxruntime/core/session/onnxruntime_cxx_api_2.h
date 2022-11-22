@@ -240,6 +240,26 @@ struct OrtEnv {
 /** \brief Custom Op Domain
  *
  */
+struct OrtThreadingOptions {
+  /// \brief Wraps OrtApi::CreateThreadingOptions
+  static std::unique_ptr<OrtThreadingOptions> Create();
+
+  void SetGlobalIntraOpNumThreads(int intra_op_num_threads = 0 /* 0 = default thread count */);
+  void SetGlobalInterOpNumThreads(int inter_op_num_threads = 0 /* 0 = default thread count */);
+  void SetGlobalSpinControl(bool allow_spinning);
+  void SetGlobalDenormalAsZero();
+
+  void SetGlobalCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);
+  void SetGlobalCustomThreadCreationOptions(void* ort_custom_thread_creation_options);
+  void SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
+
+  static void operator delete(void* p) { Ort::api->ReleaseThreadingOptions(reinterpret_cast<OrtThreadingOptions*>(p)); }
+  Ort::Abstract make_abstract;
+};
+
+/** \brief Custom Op Domain
+ *
+ */
 struct OrtCustomOpDomain {
 
   /// \brief Wraps OrtApi::CreateCustomOpDomain
