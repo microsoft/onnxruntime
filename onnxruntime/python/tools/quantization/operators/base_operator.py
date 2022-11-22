@@ -18,7 +18,7 @@ class QuantOperatorBase:
             return: List of new nodes created
         """
         for _, node_input in enumerate(self.node.input):
-            dequantize_node = self.quantizer._dequantize_value(node_input)
+            dequantize_node = self.quantizer.dequantize_value(node_input)
             if dequantize_node is not None:
                 self.quantizer.new_nodes.append(dequantize_node)
 

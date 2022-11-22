@@ -27,7 +27,7 @@ from .quant_utils import (
     add_quant_output_suffix,
     add_quant_suffix,
     find_by_name,
-    get_qmin_qmax_for_qType,
+    get_qmin_qmax_for_qtype,
     get_qrange_for_qType,
 )
 from .registry import CreateQDQQuantizer
@@ -87,7 +87,7 @@ class QDQQuantizer(ONNXQuantizer):
         # because those ops may be followed by nodes that require high resolution inputs.
         # Adding QDQ for those ops' output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        if extra_options != None and "OpTypesToExcludeOutputQuantization" in extra_options.keys():
+        if extra_options is not None and "OpTypesToExcludeOutputQuantization" in extra_options.keys():
             self.op_types_to_exclude_output_quantization = extra_options["OpTypesToExcludeOutputQuantization"]
         else:
             self.op_types_to_exclude_output_quantization = (
@@ -278,10 +278,10 @@ class QDQQuantizer(ONNXQuantizer):
         )
         return input_scale_name, input_zp_name, [], [], compute_quant_param_node
 
-    def create_dynamic_symmetric_subgraph_function(self, qType):
+    def create_dynamic_symmetric_subgraph_function(self, qtype):
         """
         Create nodes for dynamic symmetric quantization of input and add them to nodes_list
-            parameter qType: UInt8 or Int8.
+            parameter qtype: UInt8 or Int8.
             parameter symmetric: is scale and zp calculation symmetric?
             return: compute quantization parameters function.
 
@@ -290,7 +290,7 @@ class QDQQuantizer(ONNXQuantizer):
         """
         input_name = "compute_quantization_parameters"
         qrange_name = (
-            self.fixed_qrange_int8_name if qType == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
+            self.fixed_qrange_int8_name if qtype == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
         )
         input_scale_name = input_name + "_scale"
         input_zp_name = input_name + "_zp"
@@ -306,23 +306,23 @@ class QDQQuantizer(ONNXQuantizer):
                 name=input_name + "_init_" + qrange_name,
                 data_type=onnx.TensorProto.FLOAT,
                 dims=[],
-                vals=[get_qrange_for_qType(qType, reduce_range=self.reduce_range, symmetric=True) / 2.0],
+                vals=[get_qrange_for_qType(qtype, reduce_range=self.reduce_range, symmetric=True) / 2.0],
             ),
             name=qrange_name,
         )
         nodes_list.append(qrange_node)
         fixed_zero_zp_name = input_name + "_" + self.fixed_zero_zp_name
-        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=self.reduce_range, symmetric=True)
-        zp = int((qmin + qmax) / 2)
+        qmin, qmax = get_qmin_qmax_for_qtype(qtype, reduce_range=self.reduce_range, symmetric=True)
+        zero_point = int((qmin + qmax) / 2)
         fixed_zero_zp_node = onnx.helper.make_node(
             "Constant",
             inputs=[],
             outputs=[fixed_zero_zp_name],
             value=onnx.helper.make_tensor(
                 name=input_name + "_init_" + self.fixed_zero_zp_name,
-                data_type=qType,
+                data_type=qtype,
                 dims=[],
-                vals=[zp],
+                vals=[zero_point],
             ),
             name=fixed_zero_zp_name,
         )
@@ -390,7 +390,7 @@ class QDQQuantizer(ONNXQuantizer):
         # # Zero point Cast to integer 8
         zp_cast_name = input_name + "_zero_point_Cast"
         zp_cast_node = onnx.helper.make_node(
-            "Cast", [fixed_zero_zp_name], [input_zp_name], zp_cast_name, to=qType
+            "Cast", [fixed_zero_zp_name], [input_zp_name], zp_cast_name, to=qtype
         )  # TODO recast zp as int32 to avoid underflow...
         nodes_list.append(zp_cast_node)
 
@@ -409,7 +409,7 @@ class QDQQuantizer(ONNXQuantizer):
             func_opset_imports,
         )
 
-    def create_dynamic_asymmetric_subgraph_function(self, qType):
+    def create_dynamic_asymmetric_subgraph_function(self, qtype):
         """
         Create nodes for dynamic asymmetric quantization of input and add them to nodes_list
             parameter qType: UInt8 or Int8.
@@ -424,7 +424,7 @@ class QDQQuantizer(ONNXQuantizer):
         input_scale_name = input_name + "_scale"
         input_zp_name = input_name + "_zero_point"
         qrange_name = (
-            self.fixed_qrange_int8_name if qType == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
+            self.fixed_qrange_int8_name if qtype == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
         )
         nodes_list = []
 
@@ -438,7 +438,7 @@ class QDQQuantizer(ONNXQuantizer):
                 name=input_name + "_init_" + qrange_name,
                 data_type=onnx.TensorProto.FLOAT,
                 dims=[],
-                vals=[get_qrange_for_qType(qType, reduce_range=self.reduce_range, symmetric=False)],
+                vals=[get_qrange_for_qType(qtype, reduce_range=self.reduce_range, symmetric=False)],
             ),
             name=qrange_name,
         )
@@ -457,7 +457,7 @@ class QDQQuantizer(ONNXQuantizer):
             name=fixed_zero_name,
         )
         nodes_list.append(fixed_zero_node)
-        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=self.reduce_range, symmetric=False)
+        qmin, _ = get_qmin_qmax_for_qtype(qtype, reduce_range=self.reduce_range, symmetric=False)
         fixed_qmin_name = input_name + "_" + qrange_name
         fixed_qmin_node = onnx.helper.make_node(
             "Constant",
@@ -553,7 +553,7 @@ class QDQQuantizer(ONNXQuantizer):
         # Cast to integer
         zp_cast_name = input_name + "_zero_point_Cast"
         zp_cast_node = onnx.helper.make_node(
-            "Cast", zp_round_node.output, [input_zp_name], zp_cast_name, to=qType
+            "Cast", zp_round_node.output, [input_zp_name], zp_cast_name, to=qtype
         )  # TODO recast zp as int32 to avoid underflow...
         nodes_list.append(zp_cast_node)
         # Create function op
@@ -710,13 +710,11 @@ class QDQQuantizer(ONNXQuantizer):
                         tensor_name, used_scale, used_zp
                     )
                     cqp_node = None
-                    if data_found == False:
+                    if data_found is False:
                         if self.static:
                             raise ValueError(
-                                "Quantization parameters are not specified for param {}."
-                                "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
-                                    tensor_name
-                                )
+                                f"Quantization parameters are not specified for param {tensor_name}."
+                                "In static mode quantization params for inputs and outputs of nodes to be quantized are required."
                             )
                         # Here we add dynamic subgraph, if we found no static params
                         # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
@@ -724,8 +722,8 @@ class QDQQuantizer(ONNXQuantizer):
                             (
                                 scale_name,
                                 zp_name,
-                                scale_shape,
-                                zp_shape,
+                                _,
+                                _,
                                 cqp_node,
                             ) = self.create_dynamic_subgraph(add_quant_input_suffix(tensor_name))
                         else:
@@ -738,7 +736,7 @@ class QDQQuantizer(ONNXQuantizer):
                             ) = self.create_dynamic_subgraph(tensor_name)
 
                     self._add_qdq_pair_for_activation(tensor_name, scale_name, zp_name)
-                    if cqp_node != None:
+                    if cqp_node is not None:
                         self.model.add_node(cqp_node)
 
                 del self.tensors_to_quantize[tensor_name]
@@ -758,7 +756,7 @@ class QDQQuantizer(ONNXQuantizer):
 
     def _quantize_bias_tensors(self):
         for bias_name, input_name, weight_name, beta in self.bias_to_quantize:
-            if bias_name in self.quantized_value_map.keys():
+            if bias_name in self.quantized_value_map:
                 continue
             # Quantize the input
             # TODO: check if we have an input_scale initializer and decide whether to quantize bias static based off of that

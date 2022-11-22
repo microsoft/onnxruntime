@@ -34,7 +34,7 @@ class ConvInteger(QuantOperatorBase):
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], model.initializer())
         if weight is None:
-            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+            raise ValueError(f"Expected {node.input[1]} to be an initializer")
 
         # Add reshape for correct broadcast
         output = node.output[0]

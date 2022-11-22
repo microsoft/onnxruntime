@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
+from op_test_utils import TestCaseTempDir, check_model_correctness, check_op_type_count
 
 from onnxruntime.quantization import QuantFormat, quantize_dynamic
 from onnxruntime.tools import symbolic_shape_infer

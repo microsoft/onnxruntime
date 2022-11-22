@@ -100,7 +100,7 @@ Params<T> QuantizeLinear(const float* data,
   //       ints.
   // TODO(kreeger): Consider adjusting this clamping to enable more precision
   //                for signed 8 bit ints.
-  //                See quant_utils.py - get_qmin_qmax_for_qType() for impl.
+  //                See quant_utils.py - get_qmin_qmax_for_qtype() for impl.
   if constexpr (std::is_same<T, int8_t>::value) {
     T_min = -127;
   }

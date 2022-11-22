@@ -23,7 +23,7 @@ from .quant_utils import (
     attribute_to_kwarg,
     compute_scale_zp,
     find_by_name,
-    get_qmin_qmax_for_qType,
+    get_qmin_qmax_for_qtype,
     get_qrange_for_qType,
     model_has_infer_metadata,
     quantize_data,
@@ -690,7 +690,7 @@ class ONNXQuantizer:
         elif input_name in self.quantization_params:
             _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
         else:
-            raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
+            raise ValueError(f"Expected {input_name} to be in quantized value map for static quantization")
 
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
 
@@ -1018,7 +1018,7 @@ class ONNXQuantizer:
 
         return q_weight_name, zp_name, scale_name
 
-    def _dequantize_value(self, value_name):
+    def dequantize_value(self, value_name):
         """
         Given a value (input/output) which is quantized, add a DequantizeLinear node to dequantize
         it back to float32
@@ -1055,7 +1055,7 @@ class ONNXQuantizer:
         """
 
         for output in self.model.graph().output:
-            dequantize_node = self._dequantize_value(output.name)
+            dequantize_node = self.dequantize_value(output.name)
             if dequantize_node is not None:
                 self.new_nodes.append(dequantize_node)
 
@@ -1080,7 +1080,7 @@ class ONNXQuantizer:
         quantization_params = {}
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
+            qmin, qmax = get_qmin_qmax_for_qtype(self.activation_qType, symmetric=self.is_activation_symmetric)
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
 

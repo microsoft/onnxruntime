@@ -1,14 +1,14 @@
+"""
+    Quantize LSTM
+"""
+
 import numpy
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantType, attribute_to_kwarg, ms_domain
+from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
-
-"""
-    Quantize LSTM
-"""
 
 
 class LSTMQuant(QuantOperatorBase):
@@ -111,15 +111,12 @@ class LSTMQuant(QuantOperatorBase):
         quant_lstm_node = onnx.helper.make_node("DynamicQuantizeLSTM", inputs, node.output, quant_lstm_name, **kwargs)
         self.quantizer.new_nodes.append(quant_lstm_node)
 
-        dequantize_node = self.quantizer._dequantize_value(node.input[0])
+        dequantize_node = self.quantizer.dequantize_value(node.input[0])
         if dequantize_node is not None:
             self.quantizer.new_nodes.append(dequantize_node)
 
 
 class QDQLSTM(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
-
     # TODO: Add support for options
     def quantize(self):
         node = self.node
