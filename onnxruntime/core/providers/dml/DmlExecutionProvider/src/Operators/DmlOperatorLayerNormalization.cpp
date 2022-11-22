@@ -2,10 +2,6 @@
 // Licensed under the MIT License.
 
 #include "precomp.h"
-#include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
-#include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
-
-using Windows::AI::MachineLearning::Adapter::TensorWrapper;
 
 namespace Dml
 {
