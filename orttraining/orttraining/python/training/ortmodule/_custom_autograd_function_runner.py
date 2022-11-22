@@ -30,7 +30,13 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
     if tensor_flag:
         # Got a tensor. Assume it's a DLPack tensor
         # and convert it to Pytorch tensor.
-        wrapped_arg = from_dlpack(arg)
+        if training_mode_flag:
+            wrapped_arg = from_dlpack(arg).detach().clone()
+            # TODO: This clone is just a workround to fix the bug that
+            # input saved for backward may be "released" by ORT.
+            # we need a follow up fix to avoid the copy overhead.
+        else:
+            wrapped_arg = from_dlpack(arg)
 
         # Only requires gradient when running under training mode
         # and the associated tensor has grad_flag=True (i.e.,
@@ -38,9 +44,9 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
         wrapped_arg.requires_grad = training_mode_flag and grad_flag
 
         return wrapped_arg
-    else:
-        # Use non-tensor as is. It's a PyObject*.
-        return arg
+
+    # Use non-tensor as is. It's a PyObject*.
+    return arg
 
 
 def call_python_forward_function(
