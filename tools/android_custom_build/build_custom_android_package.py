@@ -27,15 +27,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--disable_docker_pseudo_tty",
-        action="store_false",
-        help="The docker run flag specifying whether to disable using a pseudo TTY when running docker in interactive mode. "
-             "If unspecified, docker would run in interactive mode using a Pseudo TTY. "
-             "Specify 'False' for this argument if want to run in non-interactive mode without a TTY. ",
-    )
-
-
-    parser.add_argument(
         "--onnxruntime_branch_or_tag",
         help="The ONNX Runtime branch or tag to build. "
         "Supports branches and tags starting from 1.11 (branch rel-1.11.0 or tag v1.11.0). "
@@ -141,17 +132,10 @@ def main():
         else f"/workspace/onnxruntime/{DEFAULT_BUILD_SETTINGS_RELATIVE_PATH}"
     )
 
-    docker_pseudo_tty_flag = (
-        "-it"
-        if args.disable_docker_pseudo_tty is True
-        else "-i"
-    )
-
     docker_run_cmd = [
         args.docker_path,
         "run",
         "--rm",
-        docker_pseudo_tty_flag,
         f"--volume={str(working_dir)}:/workspace/shared",
         args.docker_image_tag,
         "/usr/bin/env",
