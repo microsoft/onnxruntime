@@ -27,6 +27,20 @@ namespace onnxruntime {
 namespace contrib {
 namespace GenerationCudaDeviceHelper {
 
+size_t GetTensorSizeInBytes(const Tensor& tensor) {
+  MLDataType dataType = tensor.DataType();
+  if (dataType == DataTypeImpl::GetType<int32_t>()) {
+    return tensor.Shape().Size() * sizeof(int32_t);
+  } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
+    return tensor.Shape().Size() * sizeof(int64_t);
+  } else {
+    ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "AddToFeeds: An implementation for the input type ",
+                               dataType, " is not supported yet");
+    return 0;
+  }
+}
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             void* stream,
@@ -99,16 +113,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
-      MLDataType dataType = tensor.DataType();
-      if (dataType == DataTypeImpl::GetType<int32_t>()) {
-        total_bytes += tensor.Shape().Size() * sizeof(int32_t);
-      } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
-        total_bytes += tensor.Shape().Size() * sizeof(int64_t);
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "AddToFeeds: An implementation for the input type ",
-                               dataType, " is not supported yet");
-      }
+      total_bytes += GetTensorSizeInBytes(tensor);
     }
   }
 
@@ -124,15 +129,12 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
-      const size_t counts = tensor.Shape().Size();
       MLDataType dataType = tensor.DataType();
-      size_t offset = 0;
+      const size_t bytes = GetTensorSizeInBytes(tensor);
       if (dataType == DataTypeImpl::GetType<int32_t>()) {
-        offset = counts * sizeof(int32_t);
-        memcpy(destination, input.Get<Tensor>().Data<int32_t>(), offset);
+        memcpy(destination, input.Get<Tensor>().Data<int32_t>(), bytes);
       } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
-        offset = counts * sizeof(int64_t);
-        memcpy(destination, input.Get<Tensor>().Data<int64_t>(), offset);
+        memcpy(destination, input.Get<Tensor>().Data<int64_t>(), bytes);
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                "AddToFeeds: An implementation for the input type ",
@@ -140,7 +142,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
       }
 
       // Do not need alignment because GPT has int32 inputs (past is empty) and T5 encoder has int64 inputs.
-      destination += offset;
+      destination += bytes;
     }
   }
 
@@ -164,8 +166,8 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
       const TensorShape& shape = tensor.Shape();
-      const size_t bytes = input.Type()->Size() * shape.Size();
       MLDataType dataType = tensor.DataType();
+      const size_t bytes = GetTensorSizeInBytes(tensor);
 
       OrtValue device_input;
       Tensor::InitOrtValue(dataType, shape, gpu_data, location, device_input);
