@@ -49,12 +49,3 @@ cmake ./cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX -DCMAKE_POSITION_INDEPENDEN
 make -j$(getconf _NPROCESSORS_ONLN)
 make install
 cd ..
-echo "Installing Microsoft GSL ..."
-# The deps.txt doesn't have GSL
-curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o gsl_src.tar.gz https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.tar.gz
-mkdir gsl
-cd gsl
-tar -xf ../gsl_src.tar.gz --strip=1
-cmake . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
-make -j$(getconf _NPROCESSORS_ONLN)
-make install
