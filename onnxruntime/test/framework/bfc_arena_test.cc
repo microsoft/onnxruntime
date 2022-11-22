@@ -397,11 +397,15 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
 
   void* p1 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream1, nullptr);
   a.Free(p1);
-  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2, nullptr);
+
+  bool waitFunctionInvoked = false;
+  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2, 
+      [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
 
   std::unordered_map<Stream*, uint64_t> syncTable;
   stream2.CloneCurrentStreamSyncTable(syncTable);
   EXPECT_EQ(syncTable.size(), 1) << "stream2 has been updated with stream1's nofitication on the clock";
+  EXPECT_TRUE(waitFunctionInvoked) << "wait function should be invoked";
   a.Free(p2);
 }
 
