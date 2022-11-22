@@ -173,6 +173,9 @@ with open(os.path.join(SCRIPT_DIR, "..", "cmake", "deps.txt")) as f:
         if len(row) < 3:
             continue
         name = row[0]
+        # Lines start with "#" are comments
+        if name.startswith("#"):
+            continue
         url = row[1]
         parsed_url = urlparse(url)
         if parsed_url.hostname == "github.com":

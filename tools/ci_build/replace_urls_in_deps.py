@@ -37,6 +37,9 @@ with open(os.path.join(REPO_DIR, "cmake", "deps.txt")) as f:
     for row in depfile_reader:
         if len(row) != 3:
             continue
+        # Lines start with "#" are comments
+        if row[0].startswith("#"):
+            continue
         deps.append(Dep(row[0], row[1], row[2]))
 
 with open(os.path.join(REPO_DIR, "cmake", "deps.txt"), "w", newline="") as f:

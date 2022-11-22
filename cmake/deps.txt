@@ -1,3 +1,4 @@
+#Name;Url;SHA1
 abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.zip;ce61532df974d00025b1220408ce1c900d81baf2
 cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v2.4.1.zip;ea99f021262b1d804a872735c658860a6a13cc98
