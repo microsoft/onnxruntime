@@ -48,7 +48,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_uint8) {
   test.AddInput<MLFloat16>("x_scale", {}, ToFloat16({2.0f}));
   test.AddInput<uint8_t>("x_zero_point", {}, {128});
   test.AddOutput<MLFloat16>("y", dims, ToFloat16({-256.0f, -250.0f, 0.0f, 254.0f}));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // scalar zero & scale with int8
@@ -270,7 +270,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
                            255, 0,
                            255, 0,
                            255, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
@@ -317,7 +317,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with broadcasting and negative axis (-2 resolves to axis 0)
@@ -335,7 +335,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel_negative_axis) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 }  // namespace test
 }  // namespace onnxruntime

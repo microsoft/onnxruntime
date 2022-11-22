@@ -2338,7 +2338,7 @@ TEST(ModOpTest, Int8_mixed_sign) {
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, -2, 5, 0, 2, 3});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
 }
 
 TEST(ModOpTest, Int8_mixed_sign_fmod) {
@@ -2349,7 +2349,7 @@ TEST(ModOpTest, Int8_mixed_sign_fmod) {
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
 }
 
 TEST(ModOpTest, UInt8_mod) {
