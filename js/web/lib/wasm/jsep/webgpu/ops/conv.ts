@@ -121,13 +121,12 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
   const activationAttributes = parseInternalActivationAttributes(attributes);
   // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
   const format = attributes.format as 'NHWC' | 'NCHW';
-  const autoPad = ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.autopad as number];
-  const dilations = [attributes.dilation0 as number, attributes.dilation1 as number];
+  const autoPad = ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number];
+  const dilations = attributes.dilations as [number, number];
   const group = attributes.group as number;
-  const kernelShape = [attributes.kernelshape0 as number, attributes.kernelshape1 as number];
-  const pads =
-      [attributes.pad0 as number, attributes.pad1 as number, attributes.pad2 as number, attributes.pad3 as number];
-  const strides = [attributes.stride0 as number, attributes.stride1 as number];
+  const kernelShape = attributes.kernel_shape as [number, number];
+  const pads = attributes.pads as [number, number, number, number];
+  const strides = attributes.strides as [number, number];
 
   return createAttributeWithCacheKey(
       {autoPad, format, dilations, group, kernelShape, pads, strides, ...activationAttributes});
