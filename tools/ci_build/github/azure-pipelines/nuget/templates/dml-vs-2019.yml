@@ -48,9 +48,10 @@ jobs:
       build_py_lto_flag: --enable_lto
 
   steps:
+    # Windows_CI_GPU_DML_Dev_arm64 build job still needs protobuf submodule
     - checkout: self
       clean: true
-      submodules: none
+      submodules: recursive
 
     - powershell: |
         if($env:TELEMETRYGUID)
