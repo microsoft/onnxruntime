@@ -36,6 +36,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cuda/bert/bert_padding.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;

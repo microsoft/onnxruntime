@@ -69,6 +69,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
+  * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
@@ -3592,6 +3594,89 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input type to 8-bit integer tensor.</dd>
 <dt><tt>T2</tt> : tensor(int32), tensor(uint32)</dt>
 <dd>Constrain output data type to 32-bit integer tensor.T2 must be tensor(uint32) when T1 is tensor(uint8),or must be tensor(int32) when T1 is tensor(int8).</dd>
+</dl>
+
+
+### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
+
+  Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
+  
+  The input has padding with shape (batch_size, sequence_length, hidden_size). This will generate two outputs:
+  output has shape (total_tokens, hidden_size); token_offset with shape (batch_size, sequence_length).
+  
+  token_offset has offsets of all non-padding tokens first, then offset of all padding tokens. It is
+  a list of batch_size * sequence_length elements, which is reshaped to 2D for convenience of shape inference.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>sequence_token_count</tt> : M</dt>
+<dd>Number of non-padding tokens in each sequence with shape (batch_size).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (total_tokens, hidden_size)</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of non-padding tokens, and those of padding tokens. Its shape is (batch_size, sequence_length)</dd>
+<dt><tt>cumulated_seq_len</tt> : M</dt>
+<dd>Cumulated sequence lengths. Its shape is (batch_size + 1)</dd>
+<dt><tt>max_seq_len</tt> : M</dt>
+<dd>Max sequence length without padding. Its shape is (1)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain sequence_token_count and token_offset to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.RestorePadding"></a><a name="com.microsoft.restorepadding">**com.microsoft.RestorePadding**</a>
+
+  Restore paddings and fill padding with zeros.
+  
+  The input has padding with shape (total_tokens, hidden_size) and token_offset with shape (batch_size, sequence_length).
+  The output has shape (batch_size, sequence_length, hidden_size).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (total_tokens, hidden_size)</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 
