@@ -281,7 +281,7 @@ constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
-constexpr static std::array<const char*, 3> typeNameListLayerNormContrib = { "T", "U", "V" };
+constexpr static std::array<const char*, 2> typeNameListLayerNormContrib = { "T", "V" };
 constexpr static std::array<const char*, 3> typeNameListThree = { "T1", "T2", "T3" };
 constexpr static std::array<const char*, 4> typeNameListFour = { "T1", "T2", "T3", "T4" };
 constexpr static std::array<const char*, 2> typeNameListTopK = { "T", "I" };
@@ -339,7 +339,7 @@ constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListInteger8 = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
-constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListLayerNormalizationContrib = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalizationContrib = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};

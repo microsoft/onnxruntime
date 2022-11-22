@@ -37,17 +37,19 @@ public:
         std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
-        auto inputDataType = m_inputTensorDescs[0].GetDmlDataType();
-        assert(inputDataType == DML_TENSOR_DATA_TYPE_FLOAT16 || inputDataType == DML_TENSOR_DATA_TYPE_FLOAT32);
-
-        auto scaleDataType = m_inputTensorDescs[1].GetDmlDataType();
-        assert(scaleDataType == DML_TENSOR_DATA_TYPE_FLOAT16 || scaleDataType == DML_TENSOR_DATA_TYPE_FLOAT32);
-
-        // Scale and Bias always have the same data type
-        assert(m_inputTensorDescs[2].GetDmlDataType() == DML_TENSOR_TYPE_INVALID || m_inputTensorDescs[2].GetDmlDataType() == scaleDataType);
-
         assert(m_inputTensorDescs.size() == 3);
         assert(m_outputTensorDescs.size() == 1);
+
+        auto inputDataType = m_inputTensorDescs[0].GetDmlDataType();
+        ORT_THROW_HR_IF(E_INVALIDARG, inputDataType != DML_TENSOR_DATA_TYPE_FLOAT16 && inputDataType != DML_TENSOR_DATA_TYPE_FLOAT32);
+
+        auto scaleDataType = m_inputTensorDescs[1].GetDmlDataType();
+        ORT_THROW_HR_IF(E_INVALIDARG, scaleDataType != DML_TENSOR_DATA_TYPE_FLOAT16 && scaleDataType != DML_TENSOR_DATA_TYPE_FLOAT32);
+
+        // Scale, Bias and Output always have the same data type
+        ORT_THROW_HR_IF(E_INVALIDARG, m_inputTensorDescs[2].GetDmlDataType() != DML_TENSOR_TYPE_INVALID && m_inputTensorDescs[2].GetDmlDataType() != scaleDataType);
+        ORT_THROW_HR_IF(E_INVALIDARG, m_outputTensorDescs[0].GetDmlDataType() != scaleDataType);
+
         auto inputDesc = m_inputTensorDescs[0].GetDmlDesc();
         auto scaleDesc = m_inputTensorDescs[1].GetDmlDesc();
         auto biasDesc = m_inputTensorDescs[2].GetDmlDesc();
@@ -199,7 +201,7 @@ public:
 
         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
         outputEdge.GraphOutputIndex = 0;
-        outputEdge.FromNodeIndex = 0;
+        outputEdge.FromNodeIndex = outputCastOpDesc.Desc ? currentNodeIndex : 0;
         outputEdge.FromNodeOutputIndex = 0;
         outputEdges.push_back(std::move(outputEdge));
 
