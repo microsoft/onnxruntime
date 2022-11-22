@@ -224,13 +224,17 @@ void TopKLauncherMaxK(
   if (batch_size * num_beams < 256) {
     // volta has 80 SMs, so we aim for three waves
     voc_parts = (240 + batch_size * num_beams - 1) / (batch_size * num_beams);
-    voc_parts = std::min(128, voc_parts);  // we implment up to 128
+    voc_parts = std::min(128, voc_parts);  // we implement up to 128
   }
 
   dim3 grid(batch_size * num_beams, voc_parts);
+
+#ifndef USE_ROCM
   cudaFuncSetAttribute(BeamSearchOnlineTopKStage1Kernel<T, max_k, kThreadBlockSize>,
                        cudaFuncAttributePreferredSharedMemoryCarveout,
                        cudaSharedmemCarveoutMaxL1);
+#endif  // !USE_ROCM
+
   BeamSearchOnlineTopKStage1Kernel<T, max_k, kThreadBlockSize>
       <<<grid, kThreadBlockSize, 0, stream>>>(input, K, vocab_size, (vocab_size + voc_parts - 1) / voc_parts, output_values_tmp, output_indices_tmp);
 
@@ -278,7 +282,7 @@ __launch_bounds__(thread_block_size) __global__ void BatchTopKKernel(
 }
 
 template <typename T, typename I>
-void LanuchBatchTopKKernel(const T* topk_scores,
+void LaunchBatchTopKKernel(const T* topk_scores,
                            const I* topk_tokens,
                            int32_t* next_indices,
                            int32_t* next_tokens,
@@ -287,7 +291,7 @@ void LanuchBatchTopKKernel(const T* topk_scores,
                            int32_t num_beams,
                            int32_t k,
                            cudaStream_t stream) {
-  ORT_ENFORCE(k <= 256, "LanuchBatchTopKKernel doesn't support k >= 256");
+  ORT_ENFORCE(k <= 256, "LaunchBatchTopKKernel doesn't support k >= 256");
 
 #define BatchTopKKernelLauncher(K)                                          \
   BatchTopKKernel<T, I, K, 32><<<batch_size, 32, 0, stream>>>(topk_scores,  \
@@ -316,7 +320,7 @@ void LanuchBatchTopKKernel(const T* topk_scores,
   }
 }
 
-template void LanuchBatchTopKKernel(const float* topk_scores,
+template void LaunchBatchTopKKernel(const float* topk_scores,
                                     const int32_t* topk_tokens,
                                     int32_t* next_indices,
                                     int32_t* next_tokens,
@@ -326,7 +330,7 @@ template void LanuchBatchTopKKernel(const float* topk_scores,
                                     int32_t k,
                                     cudaStream_t stream);
 
-template void LanuchBatchTopKKernel(const float* topk_scores,
+template void LaunchBatchTopKKernel(const float* topk_scores,
                                     const int64_t* topk_tokens,
                                     int32_t* next_indices,
                                     int32_t* next_tokens,
@@ -336,7 +340,7 @@ template void LanuchBatchTopKKernel(const float* topk_scores,
                                     int32_t k,
                                     cudaStream_t stream);
 
-template void LanuchBatchTopKKernel(const half* topk_scores,
+template void LaunchBatchTopKKernel(const half* topk_scores,
                                     const int32_t* topk_tokens,
                                     int32_t* next_indices,
                                     int32_t* next_tokens,
@@ -346,7 +350,7 @@ template void LanuchBatchTopKKernel(const half* topk_scores,
                                     int32_t k,
                                     cudaStream_t stream);
 
-template void LanuchBatchTopKKernel(const half* topk_scores,
+template void LaunchBatchTopKKernel(const half* topk_scores,
                                     const int64_t* topk_tokens,
                                     int32_t* next_indices,
                                     int32_t* next_tokens,
@@ -396,7 +400,7 @@ void BeamSearchTopK(
     TopKLauncher(64)
   }
 
-  LanuchBatchTopKKernel(tmp_values_2nd_stage,
+  LaunchBatchTopKKernel(tmp_values_2nd_stage,
                         tmp_indices_2nd_stage,
                         output_indices,
                         output_tokens,

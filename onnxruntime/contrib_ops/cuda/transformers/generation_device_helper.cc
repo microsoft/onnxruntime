@@ -394,7 +394,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     dumper->Print("topk_tokens", *(topk_tokens.get()));
 #endif
 
-    cuda::LanuchBatchTopKKernel(topk_scores->Data<float>(),
+    cuda::LaunchBatchTopKKernel(topk_scores->Data<float>(),
                                 topk_tokens->Data<int64_t>(),
                                 beam_state->next_indices.data(),
                                 beam_state->next_tokens.data(),

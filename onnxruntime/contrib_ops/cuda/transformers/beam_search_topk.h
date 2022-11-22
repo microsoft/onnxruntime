@@ -10,7 +10,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T, typename I>
-void LanuchBatchTopKKernel(
+void LaunchBatchTopKKernel(
     const T* topk_scores,
     const I* topk_indices,
     int32_t* next_indices,
