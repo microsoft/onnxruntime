@@ -272,6 +272,36 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
+          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
+        },
+        "comments": "git submodule at cmake/external/protobuf"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/protobuf/third_party/benchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081",
+          "repositoryUrl": "https://github.com/google/googletest.git"
+        },
+        "comments": "git submodule at cmake/external/protobuf/third_party/googletest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
@@ -396,16 +426,6 @@
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
-          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
-        },
-        "comments": "protobuf"
       }
     },
     {
