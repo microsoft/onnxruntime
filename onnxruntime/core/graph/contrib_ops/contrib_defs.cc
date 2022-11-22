@@ -18,7 +18,11 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/defs/function.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
@@ -451,11 +455,20 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     updateOutputShape(ctx, 1, sequences_scores_shape);
 
     if (ctx.getNumOutputs() > 2) {
+      auto vocab_size_attr = ctx.getAttribute("vocab_size");
+      int64_t vocab_size = vocab_size_attr ? static_cast<int64_t>(vocab_size_attr->i()) : -1;
+
       ONNX_NAMESPACE::TensorShapeProto scores_shape;
       scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
       scores_shape.add_dim()->set_dim_value(batch_size);
       scores_shape.add_dim()->set_dim_value(num_beams_value);
-      scores_shape.add_dim();  // vocab_size is unknown
+      if (vocab_size != -1) {
+        // vocab_size is provided by the user - use that
+        scores_shape.add_dim()->set_dim_value(vocab_size);
+      } else {
+        // vocab_size is unknown
+        scores_shape.add_dim();
+      }
       updateOutputShape(ctx, 2, scores_shape);
     }
   }
@@ -792,7 +805,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Y = softmax(scores + bias)) with simple broadcast on bias. "
                                     "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
                                 .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("is_inner_broadcast", "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+                                .Attr("is_inner_broadcast",
+                                      "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
                                       "otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1",
                                       AttributeProto::INT)
                                 .Input(0, "data", "The input data as Tensor.", "T")
@@ -1031,6 +1045,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)

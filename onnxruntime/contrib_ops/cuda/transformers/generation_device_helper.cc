@@ -234,12 +234,17 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   typedef typename ToCudaType<T>::MappedType CudaT;
   const CudaT* logits_data = reinterpret_cast<const CudaT*>(logits.Get<Tensor>().Data<T>());
 
-  // Logits has shape (batch_size * num_beams, input_length, vocab_size),
+  // Logits has shape (batch_size * num_beams, input_length, padded_vocab_size),
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
+
+  // NOTE: `padded_vocab_size` MAY be different from `vocab_size`.
+  // But the following implementation should work correctly if they are the same
+  // or different.
+  int padded_vocab_size = static_cast<int>(logits_shape[2]);
 
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
 
@@ -247,19 +252,23 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
-
   // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
   if (input_length > 1 || logits_batch_size == batch_size) {
-    const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
+    // Move the pointer in increments of padded_vocab_size to account for any padding
+    // if any in the logits weight of the MatMul.
+    const CudaT* current_logits = logits_data + (input_length - 1) * padded_vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
+      // We only copy what is relevant (i.e.) vocab_size as padded_vocab_size will contain
+      // some logits corresponding to the "padded" vocab size which we will ignore
+      // for token generation.
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
       if (logits_batch_size == batch_beam_size) {
-        current_logits += input_length * vocab_size;
+        current_logits += input_length * padded_vocab_size;
       } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
-        current_logits += input_length * vocab_size;
+        current_logits += input_length * padded_vocab_size;
       }
     }
   }
@@ -276,11 +285,15 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // The output will be float for consideration of precision and easy integration with remaining parts.
   float* Y_data = next_token_scores.data();
-  bool is_single_token = (input_length == 1 && logits_batch_size == batch_beam_size);
-  const CudaT* X_data = is_single_token ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
+  bool is_reuse_logits_buffer = (input_length == 1 && logits_batch_size == batch_beam_size);
+
+  const CudaT* X_data = is_reuse_logits_buffer ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
-      cuda_stream, Y_data, X_data, vocab_size, vocab_size, batch_size * num_beams);
+      cuda_stream, Y_data, X_data, vocab_size,
+      is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
+      vocab_size,
+      batch_size * num_beams);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include "core/providers/cpu/nn/lp_norm.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
@@ -32,8 +33,8 @@ void DoNormalizeP2(
     const int64_t sf) {
   for (int i = 0; i < n; ++i) {
     auto base = (i / sf) * sf * m + (i % sf);
-    ConstStridedVec<T> xVec(xData + base, 1, m, InnerStride(sf));
-    StridedVec<T> yVec(yData + base, 1, m, InnerStride(sf));
+    ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
+    StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
     auto norm = xVec.template lpNorm<2>();
     if (norm != 0) {
@@ -54,8 +55,8 @@ void DoNormalizeP1(
     const int64_t sf) {
   for (int i = 0; i < n; ++i) {
     auto base = (i / sf) * sf * m + (i % sf);
-    ConstStridedVec<T> xVec(xData + base, 1, m, InnerStride(sf));
-    StridedVec<T> yVec(yData + base, 1, m, InnerStride(sf));
+    ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
+    StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
     auto norm = xVec.template lpNorm<1>();
     if (norm != 0) {
@@ -74,9 +75,9 @@ Status LpNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   Tensor* output = p_op_kernel_context->Output(0, input_shape);
 
   const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
-  const int64_t m = input_shape.GetDims()[canonical_axis];
+  const int64_t m = input_shape.GetDims()[onnxruntime::narrow<size_t>(canonical_axis)];
   const int64_t n = input_shape.Size() / m;
-  const int64_t sf = input_shape.SizeFromDimension(canonical_axis + 1);
+  const int64_t sf = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);
 
   if (p_ == 1) {
     DoNormalizeP1(input->Data<T>(), output->MutableData<T>(), m, n, sf);

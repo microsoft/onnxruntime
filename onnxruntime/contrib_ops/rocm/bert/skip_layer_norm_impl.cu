@@ -46,15 +46,15 @@ Status LaunchSkipLayerNormKernel(
   // this must be true because element_count is the total size of the tensor
   assert(element_count % ld == 0);
 
-  SkipLayerNormParams<T> op_params(stream, output, input, skip, gamma, beta, bias, epsilon, ld, element_count);
-  static SkipLayerNormTunableOp<T> op;
+  SkipLayerNormParams<T> params(stream, output, input, skip, gamma, beta, bias, epsilon, ld, element_count);
 
-  // If disable tuning, the default implementation is SkipLayerNormStaticSelection.
   if (tuning) {
+    static SkipLayerNormTunableOp<T> op;
     op.EnableTuning();
+    return op(&params);
   }
 
-  return op(&op_params);
+  return SkipLayerNormStaticSelection<T>(&params);
 }
 
 template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
