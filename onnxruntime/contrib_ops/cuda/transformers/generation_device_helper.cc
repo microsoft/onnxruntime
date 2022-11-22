@@ -98,7 +98,17 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   size_t total_bytes = 0;
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
-      total_bytes += input.Get<Tensor>().Shape().Size() * input.Type()->Size();
+      const Tensor& tensor = input.Get<Tensor>();
+      MLDataType dataType = tensor.DataType();
+      if (dataType == DataTypeImpl::GetType<int32_t>()) {
+        total_bytes += tensor.Shape().Size() * sizeof(int32_t);
+      } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
+        total_bytes += tensor.Shape().Size() * sizeof(int64_t);
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "AddToFeeds: An implementation for the input type ",
+                               dataType, " is not supported yet");
+      }
     }
   }
 
@@ -114,12 +124,15 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
-      const size_t bytes = input.Type()->Size() * tensor.Shape().Size();
+      const size_t counts = tensor.Shape().Size();
       MLDataType dataType = tensor.DataType();
+      size_t offset = 0;
       if (dataType == DataTypeImpl::GetType<int32_t>()) {
-        memcpy(destination, input.Get<Tensor>().Data<int32_t>(), bytes);
+        offset = counts * sizeof(int32_t);
+        memcpy(destination, input.Get<Tensor>().Data<int32_t>(), offset);
       } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
-        memcpy(destination, input.Get<Tensor>().Data<int64_t>(), bytes);
+        offset = counts * sizeof(int64_t);
+        memcpy(destination, input.Get<Tensor>().Data<int64_t>(), offset);
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                "AddToFeeds: An implementation for the input type ",
@@ -127,7 +140,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
       }
 
       // Do not need alignment because GPT has int32 inputs (past is empty) and T5 encoder has int64 inputs.
-      destination += bytes;
+      destination += offset;
     }
   }
 
