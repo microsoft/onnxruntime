@@ -37,10 +37,6 @@ public:
         std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
-        m_castedInputDescs.insert(m_castedInputDescs.end(), m_inputTensorDescs.begin(), m_inputTensorDescs.end());
-        m_inputCastOps.resize(m_inputTensorDescs.size());
-        m_castedOutputTensorDesc = m_outputTensorDescs[0];
-
         auto inputDataType = m_inputTensorDescs[0].GetDmlDataType();
         assert(inputDataType == DML_TENSOR_DATA_TYPE_FLOAT16 || inputDataType == DML_TENSOR_DATA_TYPE_FLOAT32);
 
@@ -50,145 +46,189 @@ public:
         // Scale and Bias always have the same data type
         assert(m_inputTensorDescs[2].GetDmlDataType() == DML_TENSOR_TYPE_INVALID || m_inputTensorDescs[2].GetDmlDataType() == scaleDataType);
 
+        assert(m_inputTensorDescs.size() == 3);
+        assert(m_outputTensorDescs.size() == 1);
+        auto inputDesc = m_inputTensorDescs[0].GetDmlDesc();
+        auto scaleDesc = m_inputTensorDescs[1].GetDmlDesc();
+        auto biasDesc = m_inputTensorDescs[2].GetDmlDesc();
+        auto outputDesc = m_outputTensorDescs[0].GetDmlDesc();
+
+        DML_CAST_OPERATOR_DESC inputCastDesc = {};
+        DML_OPERATOR_DESC inputCastOpDesc = { DML_OPERATOR_CAST, nullptr };
+
+        DML_CAST_OPERATOR_DESC scaleCastDesc = {};
+        DML_OPERATOR_DESC scaleCastOpDesc = { DML_OPERATOR_CAST, nullptr };
+
+        DML_CAST_OPERATOR_DESC biasCastDesc = {};
+        DML_OPERATOR_DESC biasCastOpDesc = { DML_OPERATOR_CAST, nullptr };
+
+        // When data types mismatch, we cast to the highest precision to respect DML's requirement that all datatypes must match
+        TensorDesc inputCastOutputTensorDesc(DML_TENSOR_DATA_TYPE_FLOAT32, m_inputTensorDescs[0].GetSizes());
+        DML_TENSOR_DESC inputCastOutputDmlTensorDesc = inputCastOutputTensorDesc.GetDmlDesc();
+
+        TensorDesc scaleCastOutputTensorDesc(DML_TENSOR_DATA_TYPE_FLOAT32, m_inputTensorDescs[1].GetSizes());
+        DML_TENSOR_DESC scaleCastOutputDmlTensorDesc = scaleCastOutputTensorDesc.GetDmlDesc();
+
+        TensorDesc biasCastOutputTensorDesc(DML_TENSOR_DATA_TYPE_FLOAT32, m_inputTensorDescs[2].GetSizes());
+        DML_TENSOR_DESC biasCastOutputDmlTensorDesc = biasCastOutputTensorDesc.GetDmlDesc();
+
         // Cast all tensors to the highest common precision
         if (inputDataType == DML_TENSOR_DATA_TYPE_FLOAT16 && scaleDataType == DML_TENSOR_DATA_TYPE_FLOAT32)
         {
-            m_castedInputDescs[0] = TensorDesc(DML_TENSOR_DATA_TYPE_FLOAT32, m_inputTensorDescs[0].GetSizes());
-            m_inputCastOps[0] = InitializeCast(m_inputTensorDescs[0], m_castedInputDescs[0]);
+            inputCastDesc.InputTensor = &inputDesc;
+            inputCastDesc.OutputTensor = &inputCastOutputDmlTensorDesc;
+            inputCastOpDesc.Desc = &inputCastDesc;
         }
         else if (inputDataType == DML_TENSOR_DATA_TYPE_FLOAT32 && scaleDataType == DML_TENSOR_DATA_TYPE_FLOAT16)
         {
-            m_castedInputDescs[1] = TensorDesc(DML_TENSOR_DATA_TYPE_FLOAT32, m_inputTensorDescs[1].GetSizes());
-            m_inputCastOps[1] = InitializeCast(m_inputTensorDescs[1], m_castedInputDescs[1]);
+            scaleCastDesc.InputTensor = &scaleDesc;
+            scaleCastDesc.OutputTensor = &scaleCastOutputDmlTensorDesc;
+            scaleCastOpDesc.Desc = &scaleCastDesc;
 
             if (m_inputTensorDescs[2].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
             {
-                m_castedInputDescs[2] = TensorDesc(DML_TENSOR_DATA_TYPE_FLOAT32, m_inputTensorDescs[2].GetSizes());
-                m_inputCastOps[2] = InitializeCast(m_inputTensorDescs[2], m_castedInputDescs[2]);
+                biasCastDesc.InputTensor = &biasDesc;
+                biasCastDesc.OutputTensor = &biasCastOutputDmlTensorDesc;
+                biasCastOpDesc.Desc = &biasCastDesc;
             }
         }
 
-        if (m_castedInputDescs[0].GetDmlDataType() != m_outputTensorDescs[0].GetDmlDataType())
+        // Make sure that the output is the same type as the input
+        DML_CAST_OPERATOR_DESC outputCastDesc = {};
+        DML_OPERATOR_DESC outputCastOpDesc = { DML_OPERATOR_CAST, nullptr };
+
+        auto realInputDataType = inputCastOpDesc.Desc ? inputCastOutputTensorDesc.GetDmlDataType() : m_inputTensorDescs[0].GetDmlDataType();
+        TensorDesc outputCastOutputTensorDesc(realInputDataType, m_outputTensorDescs[0].GetSizes());
+        DML_TENSOR_DESC outputCastOutputDmlTensorDesc = outputCastOutputTensorDesc.GetDmlDesc();
+
+        if (realInputDataType != m_outputTensorDescs[0].GetDmlDataType())
         {
             // After the operator has been executed, we need to cast the "casted" output tensor to the original output tensor that TF expects
-            m_castedOutputTensorDesc = TensorDesc(m_castedInputDescs[0].GetDmlDataType(), m_outputTensorDescs[0].GetSizes());
-            m_outputCast = InitializeCast(m_castedOutputTensorDesc, m_outputTensorDescs[0]);
+            outputCastDesc.InputTensor = &outputCastOutputDmlTensorDesc;
+            outputCastDesc.OutputTensor = &outputDesc;
+            outputCastOpDesc.Desc = &outputCastDesc;
         }
 
-        auto inputDesc = m_castedInputDescs[0].GetDmlDesc();
-        auto scaleDesc = m_castedInputDescs[1].GetDmlDesc();
-        auto biasDesc = m_castedInputDescs[2].GetDmlDesc();
-        auto outputDesc = m_castedOutputTensorDesc.GetDmlDesc();
-
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC operatorDesc = {};
-        operatorDesc.InputTensor = &inputDesc;
-        operatorDesc.ScaleTensor = &scaleDesc;
-        operatorDesc.BiasTensor = biasDesc.Desc != nullptr ? &biasDesc : nullptr;
-        operatorDesc.OutputTensor = &outputDesc;
+        operatorDesc.InputTensor = inputCastOpDesc.Desc ? &inputCastOutputDmlTensorDesc : &inputDesc;
+        operatorDesc.ScaleTensor = scaleCastOpDesc.Desc ? &scaleCastOutputDmlTensorDesc : &scaleDesc;
+        operatorDesc.BiasTensor = biasCastOpDesc.Desc ? &biasCastOutputDmlTensorDesc : (biasDesc.Desc ? &biasDesc : nullptr);
+        operatorDesc.OutputTensor = outputCastOpDesc.Desc ? &outputCastOutputDmlTensorDesc : &outputDesc;
         operatorDesc.Axes = onnxAxes.data();
         operatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
         operatorDesc.NormalizeVariance = true;
         operatorDesc.Epsilon = epsilon;
         operatorDesc.FusedActivation = nullptr;
-
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1, &operatorDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext);
+
+        // Construct the graph
+        std::vector<const DML_OPERATOR_DESC*> opDescs;
+        opDescs.reserve(5);
+
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+        inputEdges.reserve(3);
+
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+        intermediateEdges.reserve(4);
+
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+        outputEdges.reserve(1);
+
+        opDescs.push_back(&opDesc);
+        uint32_t currentNodeIndex = 1;
+
+        DML_INPUT_GRAPH_EDGE_DESC dataInputEdge = {};
+        dataInputEdge.GraphInputIndex = 0;
+        dataInputEdge.ToNodeIndex = inputCastOpDesc.Desc ? currentNodeIndex : 0;
+        dataInputEdge.ToNodeInputIndex = 0;
+        inputEdges.push_back(std::move(dataInputEdge));
+
+        if (inputCastOpDesc.Desc)
+        {
+            opDescs.push_back(&inputCastOpDesc);
+
+            // Link the cast op to the MVN op
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
+            intermediateEdge.FromNodeIndex = currentNodeIndex;
+            intermediateEdge.FromNodeOutputIndex = 0;
+            intermediateEdge.ToNodeIndex = 0;
+            intermediateEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(std::move(intermediateEdge));
+            ++currentNodeIndex;
+        }
+
+        DML_INPUT_GRAPH_EDGE_DESC scaleInputEdge = {};
+        scaleInputEdge.GraphInputIndex = 1;
+        scaleInputEdge.ToNodeIndex = scaleCastOpDesc.Desc ? currentNodeIndex : 0;
+        scaleInputEdge.ToNodeInputIndex = scaleCastOpDesc.Desc ? 0 : 1;
+        inputEdges.push_back(std::move(scaleInputEdge));
+
+        if (scaleCastOpDesc.Desc)
+        {
+            opDescs.push_back(&scaleCastOpDesc);
+
+            // Link the cast op to the MVN op
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
+            intermediateEdge.FromNodeIndex = currentNodeIndex;
+            intermediateEdge.FromNodeOutputIndex = 0;
+            intermediateEdge.ToNodeIndex = 0;
+            intermediateEdge.ToNodeInputIndex = 1;
+            intermediateEdges.push_back(std::move(intermediateEdge));
+            ++currentNodeIndex;
+        }
+
+        DML_INPUT_GRAPH_EDGE_DESC biasInputEdge = {};
+        biasInputEdge.GraphInputIndex = 2;
+        biasInputEdge.ToNodeIndex = biasCastOpDesc.Desc ? currentNodeIndex : 0;
+        biasInputEdge.ToNodeInputIndex = biasCastOpDesc.Desc ? 0 : 2;
+        inputEdges.push_back(std::move(biasInputEdge));
+
+        if (biasCastOpDesc.Desc)
+        {
+            opDescs.push_back(&biasCastOpDesc);
+
+            // Link the cast op to the MVN op
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
+            intermediateEdge.FromNodeIndex = currentNodeIndex;
+            intermediateEdge.FromNodeOutputIndex = 0;
+            intermediateEdge.ToNodeIndex = 0;
+            intermediateEdge.ToNodeInputIndex = 2;
+            intermediateEdges.push_back(std::move(intermediateEdge));
+            ++currentNodeIndex;
+        }
+
+        DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
+        outputEdge.GraphOutputIndex = 0;
+        outputEdge.FromNodeIndex = 0;
+        outputEdge.FromNodeOutputIndex = 0;
+        outputEdges.push_back(std::move(outputEdge));
+
+        if (outputCastOpDesc.Desc)
+        {
+            opDescs.push_back(&outputCastOpDesc);
+
+            // Link the MVN op to the cast op
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
+            intermediateEdge.FromNodeIndex = 0;
+            intermediateEdge.FromNodeOutputIndex = 0;
+            intermediateEdge.ToNodeIndex = currentNodeIndex;
+            intermediateEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(std::move(intermediateEdge));
+            ++currentNodeIndex;
+        }
+
+        MLOperatorGraphDesc operatorGraphDesc = {};
+        operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+        operatorGraphDesc.inputEdges = inputEdges.data();
+        operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
+        operatorGraphDesc.intermediateEdges = intermediateEdges.data();
+        operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
+        operatorGraphDesc.outputEdges = outputEdges.data();
+        operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
+        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+
+        SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
-
-    void Compute(const MLOperatorKernelContext& kernelContext) override
-    {
-        ExecutionProviderImpl* executionProvider = static_cast<ExecutionProviderImpl*>(m_executionProvider.Get());
-        std::vector<IMLOperatorTensor*> originalInputTensors = GetInputTensorsForExecute(kernelContext);
-        std::vector<IMLOperatorTensor*> originalOutputTensors = GetOutputTensorsForExecute(kernelContext);
-
-        std::array<onnxruntime::Tensor, 3> inputOrtTensors;
-        std::array<onnxruntime::Tensor, 1> outputOrtTensors;
-        std::array<ComPtr<IMLOperatorTensor>, 3> castedInputTensorWrappers;
-        std::array<ComPtr<IMLOperatorTensor>, 1> castedOutputTensorWrappers;
-        std::array<IMLOperatorTensor*, 3> castedInputTensors;
-        std::array<IMLOperatorTensor*, 1> castedOutputTensors;
-
-        assert(m_castedInputDescs.size() == m_inputCastOps.size());
-        for (size_t i = 0; i < m_castedInputDescs.size(); ++i)
-        {
-            const TensorDesc& inputDesc = m_castedInputDescs[i];
-
-            if (m_inputCastOps[i])
-            {
-                std::vector<int64_t> inputSizes(inputDesc.GetSizes().size());
-                for (size_t i = 0; i < inputSizes.size(); ++i)
-                {
-                    inputSizes[i] = inputDesc.GetSizes()[i];
-                }
-
-                auto dataType = Windows::AI::MachineLearning::Adapter::ToTensorDataType(GetMlDataTypeFromDmlDataType(inputDesc.GetDmlDataType()));
-                inputOrtTensors[i] = onnxruntime::Tensor(dataType, onnxruntime::TensorShape(inputSizes), executionProvider->GetGpuAllocator());
-                castedInputTensorWrappers[i] = wil::MakeOrThrow<TensorWrapper>(
-                    &inputOrtTensors[i],
-                    true,
-                    executionProvider,
-                    true);
-
-                castedInputTensors[i] = castedInputTensorWrappers[i].Get();
-
-                IMLOperatorTensor* inputTensors[] = {originalInputTensors[i]};
-                IMLOperatorTensor* outputTensors[] = {castedInputTensorWrappers[i].Get()};
-                ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
-                    m_inputCastOps[i].Get(),
-                    nullptr,
-                    inputTensors,
-                    outputTensors));
-            }
-            else
-            {
-                castedInputTensors[i] = originalInputTensors[i];
-            }
-        }
-
-        if (m_outputCast)
-        {
-            std::vector<int64_t> outputSizes(m_castedOutputTensorDesc.GetSizes().size());
-            for (size_t i = 0; i < outputSizes.size(); ++i)
-            {
-                outputSizes[i] = m_castedOutputTensorDesc.GetSizes()[i];
-            }
-
-            auto dataType = Windows::AI::MachineLearning::Adapter::ToTensorDataType(GetMlDataTypeFromDmlDataType(m_castedOutputTensorDesc.GetDmlDataType()));
-            outputOrtTensors[0] = onnxruntime::Tensor(dataType, onnxruntime::TensorShape(outputSizes), executionProvider->GetGpuAllocator());
-            castedOutputTensorWrappers[0] = wil::MakeOrThrow<TensorWrapper>(
-                &outputOrtTensors[0],
-                true,
-                executionProvider,
-                true);
-            castedOutputTensors[0] = castedOutputTensorWrappers[0].Get();
-        }
-        else
-        {
-            castedOutputTensors[0] = originalOutputTensors[0];
-        }
-
-        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
-            m_compiledOperator.Get(),
-            m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-            castedInputTensors,
-            castedOutputTensors));
-
-        // Finally, we can cast the tensor back to the original desired data type
-        if (m_outputCast)
-        {
-            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
-                m_outputCast.Get(),
-                nullptr,
-                castedOutputTensors,
-                originalOutputTensors));
-        }
-    }
-
-private:
-    std::vector<TensorDesc> m_castedInputDescs;
-    std::vector<ComPtr<IDMLCompiledOperator>> m_inputCastOps;
-    TensorDesc m_castedOutputTensorDesc;
-    ComPtr<IDMLCompiledOperator> m_outputCast;
 };
 
 void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)

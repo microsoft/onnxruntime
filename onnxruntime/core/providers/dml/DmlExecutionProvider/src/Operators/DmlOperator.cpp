@@ -607,27 +607,6 @@ namespace Dml
             ));
     }
 
-    ComPtr<IDMLCompiledOperator> DmlOperator::InitializeCast(TensorDesc& inputDesc, TensorDesc& outputDesc)
-    {
-        assert(inputDesc.GetSizes() == outputDesc.GetSizes());
-        const auto dmlInputDesc = inputDesc.GetDmlDesc();
-        const auto dmlOutputDesc = outputDesc.GetDmlDesc();
-
-        DML_CAST_OPERATOR_DESC castDesc = {};
-        castDesc.InputTensor = &dmlInputDesc;
-        castDesc.OutputTensor = &dmlOutputDesc;
-
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_CAST, &castDesc };
-
-        ComPtr<IDMLOperator> dmlOperator;
-        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&opDesc, IID_PPV_ARGS(&dmlOperator)));
-
-        ComPtr<IDMLCompiledOperator> dmlCompiledOperator;
-        ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&dmlCompiledOperator)));
-
-        return dmlCompiledOperator;
-    }
-
     TensorDesc DmlOperator::CreateTensorDescFromInput(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
