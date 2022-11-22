@@ -8,7 +8,10 @@
 
 @interface OnnxruntimeModule : NSObject<RCTBridgeModule>
 
--(NSDictionary*)loadModel:(NSString*)modelPath
+/* -(NSDictionary*)loadModel:(NSString*)modelPath
+                  options:(NSDictionary*)options; */
+
+-(NSDictionary*)loadModelFromBytes:(NSArray*)modelData
                   options:(NSDictionary*)options;
 
 -(NSDictionary*)run:(NSString*)url
