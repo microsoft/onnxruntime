@@ -19,9 +19,6 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    const auto alpha = node.GetAttributes().find("alpha");
-    if ((*alpha).second.f() != 1.0) break;
-
     auto input_defs = node.InputDefs();
 
     if (input_defs.size() != 2) {
@@ -41,7 +38,8 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
       break;
     }
 
-    if (A_shape->dim_size() >= 2 || A_shape->dim(1).dim_value() == 0 || A_shape->dim(0).dim_value() == 0) {
+    if (A_shape == nullptr || A_shape->dim_size() >= 2 ||
+        A_shape->dim(1).dim_value() == 0 || A_shape->dim(0).dim_value() == 0) {
       break;
     }
 
