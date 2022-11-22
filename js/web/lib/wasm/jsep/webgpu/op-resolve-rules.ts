@@ -7,8 +7,8 @@ import {conv, parseConvAttributes} from './ops/conv';
 // import {gather, parseGatherAttributes} from './ops/gather';
 // import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 // import {matMul, parseMatMulAttributes} from './ops/matmul';
-// import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes,
-// parseGlobalAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool'; import {sum} from
+import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
+//  import {sum} from
 // './ops/reduce-tensors'; import {reshape} from './ops/reshape'; import {shape} from './ops/shape';
 // import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
 // import {parseSqueezeAttributes, squeeze, squeezeV13} from './ops/squeeze';
@@ -27,7 +27,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['And', '', '7+', binaryOps.and],
   ['Asin', [unaryOps.asin]], ['Asinh', [unaryOps.asinh]], ['Atan', [unaryOps.atan]], ['Atanh', [unaryOps.atanh]],
   // TODO: support new attributes for AveragePool-10
-  //['AveragePool', '', '7+', averagePool, parseAveragePoolAttributes],
+  ['AveragePool', [averagePool, parseAveragePoolAttributes]],
   // ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   // ['Cast', '', '6+', cast, parseCastAttributes],
   ['Ceil', [unaryOps.ceil]], ['ClipV10', [unaryOps.clip]],
@@ -42,8 +42,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
   //['Gather', '', '1+', gather, parseGatherAttributes], ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   //['Gemm', '', '11+', gemm, parseGemmAttributesV11],
-  //['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
-  //['GlobalMaxPool', '', '1+', globalMaxPool],
+  ['GlobalAveragePool', [globalAveragePool]], ['GlobalMaxPool', [globalMaxPool]],
   // ['Greater', '', '7+', binaryOps.greater],
   // ['Identity', '', '1+', unaryOps.identity],
   // ['ImageScaler', '', '1+', imageScaler, parseImageScalerAttributes],
@@ -52,8 +51,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['Less', '', '7+', binaryOps.less],
   //['Log', '', '6+', unaryOps.log], ['MatMul', '', '1+', matMul, parseMatMulAttributes],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
-  //['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes],
-  ['Mul', [binaryOps.mul]], ['Neg', [unaryOps.neg]],
+  ['MaxPool', [maxPool, parseMaxPoolAttributes]], ['Mul', [binaryOps.mul]], ['Neg', [unaryOps.neg]],
   // ['Not', '', '1+', unaryOps.not],
   // ['Or', '', '7+', binaryOps.or],
   // ['Pad', '', '2-10', padV2, parsePadAttributesV2],
