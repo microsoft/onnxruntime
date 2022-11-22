@@ -6,7 +6,11 @@
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 using namespace ::ONNX_NAMESPACE;
 
 namespace ONNX_NAMESPACE {
@@ -242,7 +246,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(EmbedLayerNormalization, 1,
                                 .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
                                 .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
                                 .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
-                                .Input(8, "position_ids", "2D position ids with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+                                .Input(8, "position_ids", "2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)", "T1", OpSchema::Optional)
                                 .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
                                 .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
                                 .Output(2, "embedding_sum", "sum of word_embedding and position_embedding without layer normalization", "T", OpSchema::Optional)

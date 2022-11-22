@@ -40,7 +40,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
 
   int64_t positive_condition_count = 0;
   // if has axis, we need to compress on dimension[axis], otherwise compress on the flattened input data
-  int64_t compress_input_length = has_axis_ ? input_dimensions[axis] : input_tensor->Shape().Size();
+  int64_t compress_input_length = has_axis_ ? input_dimensions[onnxruntime::narrow<size_t>(axis)] : input_tensor->Shape().Size();
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
   // Figure out output shape
@@ -52,7 +52,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
 
   std::vector<int64_t> output_dims(input_dimensions.begin(), input_dimensions.end());
   if (has_axis_) {
-    output_dims[axis] = positive_condition_count;
+    output_dims[onnxruntime::narrow<size_t>(axis)] = positive_condition_count;
   } else {
     output_dims.resize(1);
     output_dims[0] = positive_condition_count;
@@ -80,7 +80,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
     for (auto i = static_cast<size_t>(axis + 1); i < rank; ++i) {
       axes_right_stride *= input_dimensions[i];
     }
-    int64_t axes_included_right_stride = axes_right_stride * input_dimensions[axis];
+    int64_t axes_included_right_stride = axes_right_stride * input_dimensions[onnxruntime::narrow<size_t>(axis)];
     int64_t axes_included_right_stride_bytes = axes_included_right_stride * element_bytes;
     ORT_ENFORCE(axes_right_stride >= 0 &&
                 static_cast<uint64_t>(axes_right_stride) < std::numeric_limits<size_t>::max());

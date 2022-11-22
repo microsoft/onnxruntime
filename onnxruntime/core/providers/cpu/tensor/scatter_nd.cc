@@ -83,7 +83,7 @@ Status ScatterND::ValidateShapes(
 
     // Part 2: The shape of the update tensor after indices rank - 1 (inclusive)
     // should match the shape of the input tensor after `last_indice_dimension`
-    if (input_shape.Slice(last_indice_dimension) != update_shape.Slice(indice_rank - 1)) {
+    if (input_shape.Slice(onnxruntime::narrow<size_t>(last_indice_dimension)) != update_shape.Slice(indice_rank - 1)) {
       return true;
     }
 
@@ -144,17 +144,17 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
     }
   }
 
-  std::vector<int64_t> element_counts(last_indice_dimension, 0LL);  // Number of elements for each input dimension
+  std::vector<int64_t> element_counts(onnxruntime::narrow<size_t>(last_indice_dimension), 0LL);  // Number of elements for each input dimension
 
   TensorPitches input_strides(input_shape);
   for (int64_t i = 0; i < last_indice_dimension; ++i) {
-    element_counts[i] = input_strides[i];
+    element_counts[onnxruntime::narrow<size_t>(i)] = input_strides[onnxruntime::narrow<size_t>(i)];
   }
 
-  p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
+  p.element_to_copy = input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(last_indice_dimension));
   const int64_t* indice_offset = indice_tensor->Data<int64_t>();
   auto offset_count = indice_shape.Size() / last_indice_dimension;  // Times to copy
-  p.element_offsets.assign(offset_count, 0LL);
+  p.element_offsets.assign(onnxruntime::narrow<size_t>(offset_count), 0LL);
 
   p.input_base = update_tensor->Data<TData>();
   p.output_base = output_tensor->MutableData<TData>();
@@ -164,18 +164,18 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
       auto indice = *(indice_offset + i * last_indice_dimension + j);
 
       if (indice >= 0) {
-        if (indice >= input_shape[j]) {
+        if (indice >= input_shape[onnxruntime::narrow<size_t>(j)]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
         }
       } else {
-        if (indice < -input_shape[j]) {
+        if (indice < -input_shape[onnxruntime::narrow<size_t>(j)]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
         } else {
-          indice += input_shape[j];
+          indice += input_shape[onnxruntime::narrow<size_t>(j)];
         }
       }
 
-      p.element_offsets[i] += indice * element_counts[j];
+      p.element_offsets[onnxruntime::narrow<size_t>(i)] += indice * element_counts[onnxruntime::narrow<size_t>(j)];
     }
   }
   return Status::OK();
@@ -184,7 +184,7 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
 template <class T>
 struct Func_Copy_ND {
   void operator()(T* a, const T* b, uint64_t element_to_copy) const {
-    memcpy(a, b, element_to_copy * sizeof(T));
+    memcpy(a, b, SafeInt<size_t>(element_to_copy) * sizeof(T));
   }
 };
 
@@ -274,14 +274,14 @@ struct ScatterNDDispatchTarget {
         case ScatterND::Reduction::Add: {
           auto func = Func_Add_ND<TData>();
           func(
-              prepare.output_base + prepare.element_offsets[i],
+              prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
               prepare.input_base + i * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Mul: {
           auto func = Func_Mul_ND<TData>();
           func(
-              prepare.output_base + prepare.element_offsets[i],
+              prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
               prepare.input_base + i * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
@@ -289,7 +289,7 @@ struct ScatterNDDispatchTarget {
         case ScatterND::Reduction::None: {
           auto func = Func_Copy_ND<TData>();
           func(
-              prepare.output_base + prepare.element_offsets[i],
+              prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
               prepare.input_base + i * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;

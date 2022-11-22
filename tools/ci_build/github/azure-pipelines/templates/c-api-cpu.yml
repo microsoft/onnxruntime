@@ -70,6 +70,12 @@ jobs:
   steps:
     - template: set-version-number-variables-step.yml
 
+    - task: UsePythonVersion@0
+      # Use python 3.8 to avoid build some of the required packages
+      displayName: Use Python 3.8
+      inputs:
+        versionSpec: 3.8
+
     - script: |
         set -e
         pushd .
@@ -861,8 +867,8 @@ jobs:
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -OutFile protobuf-java-3.20.1.jar"
-        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.20.1.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
+        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
   - template: component-governance-component-detection-steps.yml
@@ -901,9 +907,9 @@ jobs:
         jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
         popd
         wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-        wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -P ./
+        wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
         LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
-        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.20.1.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
   - template: component-governance-component-detection-steps.yml
@@ -944,10 +950,10 @@ jobs:
           jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
           popd
           wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-          wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -P ./
+          wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
-          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.20.1.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
   - template: component-governance-component-detection-steps.yml

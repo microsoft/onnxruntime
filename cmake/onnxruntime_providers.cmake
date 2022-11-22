@@ -242,9 +242,9 @@ endif()
 
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
-   if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-      target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
-   endif()
+#   if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+#      target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
+#   endif()
 endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
