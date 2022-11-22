@@ -107,8 +107,8 @@ TEST(TunableOp, OpWrapsFunction) {
 }
 
 TEST(TunableOp, OpWrapsLambda) {
-  const int a = 7500000;
-  const int b = 42;
+  constexpr int a = 7500000;
+  constexpr int b = 42;
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
@@ -426,6 +426,7 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
   const VecAddParams* PreTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
       is_proxy_params_used = true;
+      GSL_SUPPRESS(i .11)
       VecAddParams* proxy = new VecAddParams(*params);
       proxy->c = new int[params->num_elem];
       return proxy;
@@ -436,6 +437,7 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 
   void PostTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
+      GSL_SUPPRESS(i .11)
       delete[] params->c;
       delete params;
     }
