@@ -1113,11 +1113,10 @@ inline std::unique_ptr<OrtValue> OrtValue::CreateMap(OrtValue& keys, OrtValue& v
   return std::unique_ptr<OrtValue>{out};
 }
 
-inline std::unique_ptr<OrtValue> OrtValue::CreateSequence(std::vector<std::unique_ptr<OrtValue>>& values) {
+inline std::unique_ptr<OrtValue> OrtValue::CreateSequence(const OrtValue* const* values, size_t count) {
   OrtValue* out;
 
-  auto raw_values = reinterpret_cast<OrtValue**>(values.data());
-  Ort::ThrowOnError(Ort::api->CreateValue(raw_values, values.size(), ONNX_TYPE_SEQUENCE, &out));
+  Ort::ThrowOnError(Ort::api->CreateValue(values, count, ONNX_TYPE_SEQUENCE, &out));
   return std::unique_ptr<OrtValue>{out};
 }
 

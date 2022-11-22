@@ -137,8 +137,8 @@ std::vector<std::string> GetAvailableProviders();
  *  \endcode
  */
 struct Float16_t {
-  uint16_t value;
-  constexpr Float16_t() noexcept : value(0) {}
+  uint16_t value{};
+  constexpr Float16_t() = default;
   constexpr Float16_t(uint16_t v) noexcept : value(v) {}
   constexpr operator uint16_t() const noexcept { return value; }
   constexpr bool operator==(const Float16_t& rhs) const noexcept { return value == rhs.value; };
@@ -156,8 +156,8 @@ static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
  * See also code examples for Float16_t above.
  */
 struct BFloat16_t {
-  uint16_t value;
-  constexpr BFloat16_t() noexcept : value(0) {}
+  uint16_t value{};
+  constexpr BFloat16_t() = default;
   constexpr BFloat16_t(uint16_t v) noexcept : value(v) {}
   constexpr operator uint16_t() const noexcept { return value; }
   constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return value == rhs.value; };
@@ -618,8 +618,8 @@ struct OrtValue
    */
   static std::unique_ptr<OrtValue> CreateTensor(OrtAllocator& allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
-  static std::unique_ptr<OrtValue> CreateMap(OrtValue& keys, OrtValue& values);       ///< Wraps OrtApi::CreateValue
-  static std::unique_ptr<OrtValue> CreateSequence(std::vector<std::unique_ptr<OrtValue>>& values);  ///< Wraps OrtApi::CreateValue
+  static std::unique_ptr<OrtValue> CreateMap(OrtValue& keys, OrtValue& values);      ///< Wraps OrtApi::CreateValue
+  static std::unique_ptr<OrtValue> CreateSequence(const OrtValue* const* values, size_t count);  ///< Wraps OrtApi::CreateValue
 
   template <typename T>
   static std::unique_ptr<OrtValue> CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
@@ -1065,6 +1065,8 @@ struct OrtOp {
 
 namespace Ort {
 
+// This C++ helper will set all of the OrtCustomOp function pointers. It should be inherited from by the user's custom op.
+// TOp is the user's custom op class (needs to be passed in to static_cast properly). TKernel is the type to do the actual Compute(...) method on.
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
