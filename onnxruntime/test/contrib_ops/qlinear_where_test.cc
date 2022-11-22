@@ -6,12 +6,6 @@
 
 namespace onnxruntime {
 namespace test {
-enum QLinearWhereFailCause {
-  NoFail,
-  FailByWrongTensorType,
-  FailByWrongZeroPointType,
-  FailByWrongScaleType
-};
 
 template <typename T>
 void RunQLinearWhere(
@@ -27,8 +21,7 @@ void RunQLinearWhere(
     T z_zero_point,
     const std::vector<int64_t> &x_shape,
     const std::vector<int64_t> &y_shape,
-    const std::vector<int64_t> &z_shape,
-    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+    const std::vector<int64_t> &z_shape) {
 
   test.AddInput<T>("X", x_shape, x);
   test.AddInput<float>("x_scale", {}, {x_scale}, true);
@@ -39,28 +32,85 @@ void RunQLinearWhere(
   test.AddInput<float>("z_scale", {}, {z_scale});
   test.AddInput<T>("z_zero_point", {}, {z_zero_point});
   test.AddOutput<T>("Z", z_shape, z);
-  test.Run(expect_result);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 template <typename T>
-void QLinearWhereScalarCondition() {
+void QLinearWhereScalarAll() {
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
-  test.AddInput<bool>("condition", {2,1}, {true,false}, true  );
+  test.AddInput<bool>("condition", {1}, {true}, true  );
   RunQLinearWhere<T>(
       test,
-      {1}, {2}, {2, 1},// x ,y ,z
+      {1}, {2}, {1},// x ,y ,z
       1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
-      {1}, {1}, {1,2},
-      OpTester::ExpectResult::kExpectSuccess);
+      {1}, {1}, {1});
+}
+
+TEST(QLinearWhereTest, QLinearWhereScalarAll) {
+  QLinearWhereScalarAll<int8_t>();
+  QLinearWhereScalarAll<uint8_t>();
+}
+
+template <typename T>
+void QLinearWhereVectorAll() {
+  OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
+  test.AddInput<bool>("condition", {4}, {true,false,false,true}, true  );
+  RunQLinearWhere<T>(
+      test,
+      {1,1,1,1}, {2,2,2,2}, {1,2,2,1},// x ,y ,z
+      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {4}, {4}, {4});
+}
+
+TEST(QLinearWhereTest,QLinearWhereVectorAll){
+  QLinearWhereVectorAll<int8_t>();
+  QLinearWhereVectorAll<uint8_t>();
 }
 template <typename T>
-void populate_Z(const std::vector<T> &x, const std::vector<T> &y, std::vector<T> &z, float x_scale, T x_zero_point, float y_scale, T y_zero_point, float z_scale, T z_zero_point) {
-  for (size_t i = 0; i < x.size(); i++) {
-    z[i] = (x[i] - x_zero_point) * x_scale < (y[i] - y_zero_point) * y_scale ? x[i] : y[i];
-  }
+void QLinearWhereMatrixAll() {
+  OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
+  test.AddInput<bool>("condition", {2,2}, {true,false,false,true}, true  );
+  RunQLinearWhere<T>(
+      test,
+      {1,1,1,1}, {2,2,2,2}, {1,2,2,1},// x ,y ,z
+      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {2,2}, {2,2}, {2,2});
 }
-TEST(QLinearWhereTest, QLinearWhereScalarCondition) {
-  QLinearWhereScalarCondition<int8_t>();
-  QLinearWhereScalarCondition<uint8_t>();
+
+TEST(QLinearWhereTest,QLinearWhereMatrixAll){
+  QLinearWhereMatrixAll<int8_t>();
+  QLinearWhereMatrixAll<uint8_t>();
 }
+template <typename T>
+void QLinearWhereScalarX_VectorY_MatrixCondition() {
+  OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
+  test.AddInput<bool>("condition", {2,2}, {true,false,false,true}, true  );
+  RunQLinearWhere<T>(
+      test,
+      {1}, {2,2}, {1,2,2,1},// x ,y ,z
+      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {1}, {2}, {2,2});
+}
+
+TEST(QLinearWhereTest,QLinearWhereScalarX_VectorY_MatrixCondition){
+  QLinearWhereScalarX_VectorY_MatrixCondition<int8_t>();
+  QLinearWhereScalarX_VectorY_MatrixCondition<uint8_t>();
+}
+
+template <typename T>
+void QLinearWhereVectorX_VectorY_MatrixCondition() {
+  OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
+  test.AddInput<bool>("condition", {2,2}, {true,false,false,true}, true  );
+  RunQLinearWhere<T>(
+      test,
+      {1,1}, {2,2}, {1,2,2,1},// x ,y ,z
+      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {2}, {2}, {2,2});
+}
+
+TEST(QLinearWhereTest,QLinearWhereVectorX_VectorY_MatrixCondition){
+  QLinearWhereVectorX_VectorY_MatrixCondition<int8_t>();
+  QLinearWhereVectorX_VectorY_MatrixCondition<uint8_t>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
