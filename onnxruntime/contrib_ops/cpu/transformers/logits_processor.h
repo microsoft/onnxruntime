@@ -135,8 +135,10 @@ class LogitsProcessorList : public ILogitsProcessorList {
     }
 
     if (parameters.min_length > 0) {
-      min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
-                                                                                parameters.eos_token_id);
+      min_length_processor_ = std::make_unique<
+                                MinLengthLogitsProcessor<float>
+                              >(parameters.min_length + parameters.sequence_length,
+                                parameters.eos_token_id);
       processor_list_.push_back(min_length_processor_.get());
     }
 
