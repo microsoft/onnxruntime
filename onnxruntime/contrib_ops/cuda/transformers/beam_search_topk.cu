@@ -46,7 +46,7 @@ struct TopK {
     for (int k = max_k - 2; k >= 0; --k) {
       if (value[k + 1] > value[k] ||
           key[k] == -1 ||
-          (value[k + 1] == value[k]) && (key[k + 1] < key[k])) {
+          ((value[k + 1] == value[k]) && (key[k + 1] < key[k]))) {
         T u2 = value[k];
         int p2 = key[k];
         value[k] = value[k + 1];
