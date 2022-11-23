@@ -38,12 +38,15 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
       break;
     }
 
-    if (A_shape == nullptr || A_shape->dim_size() >= 2 ||
-        A_shape->dim(1).dim_value() == 0 || A_shape->dim(0).dim_value() == 0) {
+    if (A_shape == nullptr || A_shape->dim_size() > 2 ||
+        (A_shape->dim_size() == 2 && A_shape->dim(1).dim_value() == 0) ||
+        A_shape->dim(0).dim_value() == 0) {
       break;
     }
 
-    if (B_shape->dim_size() >= 2 || B_shape->dim(1).dim_value() == 0 || B_shape->dim(0).dim_value() == 0) {
+    if (B_shape == nullptr || B_shape->dim_size() > 2 ||
+        (B_shape->dim_size() == 2 && B_shape->dim(1).dim_value() == 0) ||
+        B_shape->dim(0).dim_value() == 0) {
       break;
     }
 
@@ -81,11 +84,15 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
   struct xnn_operator* p = nullptr;
   b_shape_ = tensor.Shape();
+  auto shape_broadcast = b_shape_.AsShapeVector();
+  if (b_shape_.NumDimensions() == 1) {
+    shape_broadcast.push_back(1);
+  }
   status = xnn_create_fully_connected_nc_f32(
-      tensor.Shape()[0],  // size_t input_channels,
-      tensor.Shape()[1],  // size_t output_channels,
-      tensor.Shape()[0],  // size_t input_stride,
-      tensor.Shape()[1],  // size_t output_stride,
+      shape_broadcast[0],    // size_t input_channels,
+      shape_broadcast[1],    // size_t output_channels,
+      shape_broadcast[0],    // size_t input_stride,
+      shape_broadcast[1],    // size_t output_stride,
       tensor.Data<float>(),  // const float* kernel,
       nullptr,               // const float* bias,
       output_min,
