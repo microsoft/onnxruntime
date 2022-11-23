@@ -14,6 +14,7 @@
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
+#include "contrib_ops/cuda/transformers/beam_search_topk.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -98,7 +99,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   size_t total_bytes = 0;
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
-      total_bytes += input.Get<Tensor>().Shape().Size() * input.Type()->Size();
+      total_bytes += input.Get<Tensor>().SizeInBytes();
     }
   }
 
@@ -114,7 +115,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
-      const size_t bytes = input.Type()->Size() * tensor.Shape().Size();
+      const size_t bytes = tensor.SizeInBytes();
       MLDataType dataType = tensor.DataType();
       if (dataType == DataTypeImpl::GetType<int32_t>()) {
         memcpy(destination, input.Get<Tensor>().Data<int32_t>(), bytes);
@@ -151,7 +152,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
       const TensorShape& shape = tensor.Shape();
-      const size_t bytes = input.Type()->Size() * shape.Size();
+      const size_t bytes = tensor.SizeInBytes();
       MLDataType dataType = tensor.DataType();
 
       OrtValue device_input;
@@ -176,6 +177,8 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   cudaMemsetAsync(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_tokens.data(), 0, beam_state->next_tokens.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_indices.data(), 0, beam_state->next_indices.size_bytes(), cuda_stream);
+  cudaMemsetAsync(beam_state->next_scores.data(), 0, beam_state->next_scores.size_bytes(), cuda_stream);
+  cudaMemsetAsync(beam_state->topk_buffer.data(), 0, beam_state->topk_buffer.size_bytes(), cuda_stream);
 
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
   cuda::LaunchInitKernel(beam_state->beam_scores.data(), batch_size, num_beams, reinterpret_cast<cudaStream_t>(stream));
@@ -215,6 +218,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
 
   ORT_UNUSED_PARAMETER(logits_processors);
+  ORT_UNUSED_PARAMETER(thread_pool);
 
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
@@ -327,7 +331,6 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
-
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
@@ -347,50 +350,77 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     beam_state->remaining_scores = beam_state->remaining_scores.subspan(next_token_scores.size());
   }
 
-  // Apply top-k selection like the following:
-  //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
-  //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
-  int64_t next_token_scores_dims[] = {batch_size, num_beams * vocab_size};
-  TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
-  auto element_type = DataTypeImpl::GetType<float>();
-  OrtValue next_token_scores_value;
-  Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(),
-                       next_token_scores_value);
-  const Tensor& input = next_token_scores_value.Get<Tensor>();
+  if (num_beams <= 32) {
+    constexpr size_t max_parts_of_vocab = 128;
+    float* topk_tmp_buffer = beam_state->topk_buffer.data();
+    float* topk_scores_1st_stage = topk_tmp_buffer;
+    int32_t* topk_tokens_1st_stage = reinterpret_cast<int32_t*>(topk_scores_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
+    float* topk_scores_2nd_stage = reinterpret_cast<float*>(topk_tokens_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
+    int32_t* topk_tokens_2nd_stage = reinterpret_cast<int32_t*>(topk_scores_2nd_stage + batch_beam_size * 2 * num_beams);
 
-  constexpr int axis = 1;
-  const unsigned top_k = static_cast<unsigned>(2 * num_beams);
-  constexpr bool largest = true;
-  constexpr bool sorted = true;  // results returned in sorted order.
+    cuda::BeamSearchTopK(next_token_scores.data(),
+                         batch_size,
+                         num_beams,
+                         vocab_size,
+                         2 * num_beams,
+                         topk_scores_1st_stage,
+                         topk_tokens_1st_stage,
+                         topk_scores_2nd_stage,
+                         topk_tokens_2nd_stage,
+                         beam_state->next_scores.data(),
+                         beam_state->next_tokens.data(),
+                         beam_state->next_indices.data(),
+                         cuda_stream);
 
-  std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
-  std::unique_ptr<Tensor> topk_indices = Tensor::CreateDefault();
-  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           *topk_scores, *topk_indices));
+    // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
+#ifdef DEBUG_GENERATION
+    dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
+    dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
+    dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
+#endif
+  } else {
+    // Apply top-k selection like the following:
+    //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
+    //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
+    // int64_t next_token_scores_dims[] = {batch_size, num_beams * vocab_size};
+    int64_t next_token_scores_dims[] = {batch_size * num_beams, vocab_size};
+
+    TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
+    auto element_type = DataTypeImpl::GetType<float>();
+    OrtValue next_token_scores_value;
+    Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(),
+                         next_token_scores_value);
+    const Tensor& input = next_token_scores_value.Get<Tensor>();
+
+    constexpr int axis = 1;
+    const unsigned top_k = static_cast<unsigned>(2 * num_beams);
+    constexpr bool largest = true;
+    constexpr bool sorted = true;  // results returned in sorted order.
+
+    std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
+    std::unique_ptr<Tensor> topk_tokens = Tensor::CreateDefault();
+    ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
+                             *topk_scores, *topk_tokens));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", *(topk_scores.get()));
-  dumper->Print("topk_indices", *(topk_indices.get()));
+    dumper->Print("topk_scores", *(topk_scores.get()));
+    dumper->Print("topk_tokens", *(topk_tokens.get()));
 #endif
 
-  // Convert indices in range [0, num_beams * vocab_size) to token ID of range [0, vocab_size) like the following:
-  //   next_indices = (next_tokens / vocab_size).long()
-  //   next_tokens = next_tokens % vocab_size
-  const int64_t* next_token_indices = topk_indices->Data<int64_t>();
-  cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
-                              batch_size, top_k, vocab_size, cuda_stream);
-
-  const float* data = topk_scores->Data<float>();
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("next_scores before scorer", data, batch_size, top_k);
-  dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, top_k);
-  dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
-#endif
+    cuda::LaunchBatchTopKKernel(topk_scores->Data<float>(),
+                                topk_tokens->Data<int64_t>(),
+                                beam_state->next_indices.data(),
+                                beam_state->next_tokens.data(),
+                                beam_state->next_scores.data(),
+                                batch_size,
+                                num_beams,
+                                2 * num_beams,
+                                cuda_stream);
+  }
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
-                                       data,
-                                       topk_scores->Shape().Size() * sizeof(float),
+                                       beam_state->next_scores.data(),
+                                       beam_state->next_scores.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_tokens.data(),
@@ -405,9 +435,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                        cuda_stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
-  gsl::span<const float> next_scores = gsl::make_span(
-      cpu_state->topk_scores.data(),
-      static_cast<typename gsl::span<float>::size_type>(topk_scores->Shape().Size()));
+  gsl::span<const float> next_scores(cpu_state->topk_scores.data(), beam_state->next_scores.size());
   gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
   gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
 

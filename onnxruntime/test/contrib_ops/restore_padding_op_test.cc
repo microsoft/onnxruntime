@@ -77,9 +77,9 @@ static void RunRestorePaddingTests(
     int hidden_size,
     int total_tokens) {
   bool use_float16 = false;
-  const bool disable_cpu = true;
-  const bool disable_cuda = false;
-  const bool disable_rocm = true;
+  constexpr bool disable_cpu = true;
+  constexpr bool disable_cuda = false;
+  constexpr bool disable_rocm = true;
   RunRestorePadding(input_data, output_data, token_offset_data, batch_size, sequence_length, hidden_size, total_tokens,
                     use_float16, disable_cpu, disable_cuda, disable_rocm);
 

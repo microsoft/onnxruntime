@@ -39,7 +39,7 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -117,7 +117,7 @@ stages:
         isX86: true
         job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
@@ -174,7 +174,7 @@ stages:
         isX86: false
         job_name_suffix: training_on_device_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
         EnablePython: false
         isTraining: true
         ORT_EP_NAME: CPU

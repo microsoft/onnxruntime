@@ -66,6 +66,8 @@ class MHARunner {
 
   virtual bool isValid(int32_t s) const = 0;
 
+  virtual int getSFromMaxSeqLen(const int max_seq_len) const = 0;
+
  protected:
   int32_t mS;
   int32_t mB;
@@ -95,6 +97,8 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   size_t getWorkspaceSize() const override;
 
   bool isValid(int32_t s) const override;
+
+  virtual int getSFromMaxSeqLen(const int max_seq_len) const override;
 
  private:
   int32_t mSm;
