@@ -6,16 +6,21 @@
 # This script evaluates accuracy of ONNX models for question-answering task on SQuAD data set.
 # Example to evaluate raw and optimized model for CUDA in Linux:
 #   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
-#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu
+#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad
 #   python3 -m onnxruntime.transformers.optimizer --output optimized_fp16.onnx --num_heads 12 --hidden_size 768 \
 #           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx \
 #           --use_mask_index --float16
-#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu --onnx optimized_fp16.onnx -b 16
+#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --onnx optimized_fp16.onnx
 
 import argparse
 import csv
 import os
-from importlib.metadata import PackageNotFoundError, version
+
+try:
+    from importlib.metadata import PackageNotFoundError, version
+except ImportError:
+    from importlib_metadata import PackageNotFoundError, version
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,14 +45,13 @@ def get_package_version(package_name: str):
         return None
 
 
-def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: bool = True):
+def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, provider="CUDAExecutionProvider"):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
 
     Args:
         model_id (str): pretrained model name or checkpoint path
         onnx_path (Optional[str], optional): path of onnx model to evaluate. Defaults to None.
-        use_gpu (bool, optional): use CUDA execution provider or not. Defaults to True.
 
     Returns:
         model: ORTModel for the onnx model
@@ -58,14 +62,14 @@ def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: boo
     if onnx_path is not None:
         model.latest_model_name = Path(onnx_path).name
 
-        if use_gpu:
-            model.device = torch.device("cuda")
-            model.model = ORTModel.load_model(onnx_path, "CUDAExecutionProvider")
+        if provider != "CPUExecutionProvider":
+            model.device = torch.device("cuda:0")
+            model.model = ORTModel.load_model(onnx_path, provider)
         else:
             model.model = ORTModel.load_model(onnx_path)
     else:
         onnx_path = os.path.join(model.model_save_dir.as_posix(), model.latest_model_name)
-        if use_gpu:
+        if provider != "CPUExecutionProvider":
             model.to("cuda")
 
     return model, onnx_path
@@ -191,7 +195,7 @@ def main():
         tokenizer.model_max_length = sequence_length
         tokenizer.doc_stride = min(sequence_length // 2, 128)
 
-        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.use_gpu)
+        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider)
         print(ort_model.config)
         if sequence_length > ort_model.config.max_position_embeddings:
             raise RuntimeError("sequence length should not be larger than {ort_model.config.max_position_embeddings}")
@@ -208,7 +212,7 @@ def main():
             squad_v2_format=True,
         )
 
-        result["provider"] = "CUDAExecutionProvider" if args.use_gpu else "CPUExecutionProvider"
+        result["provider"] = args.provider
         result["disable_fused_attention"] = disable_fused_attention
         result["pretrained_model_name"] = pretrained_model_name
         result["onnx_path"] = onnx_path
@@ -255,8 +259,12 @@ def parse_arguments(argv=None):
         help="Optional onnx model path. If not specified, optimum will be used to export onnx model for testing.",
     )
 
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="Use CUDA execution provider.")
-    parser.set_defaults(use_gpu=False)
+    parser.add_argument(
+        "--provider",
+        required=False,
+        default="CUDAExecutionProvider",
+        help="Select which Execution Provider to use for runs. Default is CUDAExecutionProvider.",
+    )
 
     args = parser.parse_args(argv)
 
