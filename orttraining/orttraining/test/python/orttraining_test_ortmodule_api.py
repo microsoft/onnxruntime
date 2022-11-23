@@ -1003,6 +1003,64 @@ def test_gradient_correctness_embedding(device, padding_idx):
 
 
 @pytest.mark.parametrize("use_fp16", [False, True])
+def test_gradient_correctness_cross_entropy_loss_fp16_boundary_set(use_fp16):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_class, hidden_size):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(num_class, hidden_size, bias=False)
+            with torch.no_grad():
+                self.fc1.weight.fill_(1.0)
+            self._loss_fct = torch.nn.CrossEntropyLoss()
+
+        def forward(self, input, target):
+            output = self.fc1(input)
+            return self._loss_fct(output, target)
+
+    device = "cuda"
+    num_class, hidden_size = 3, 3
+    pt_model = NeuralNetCrossEntropyLoss(num_class, hidden_size).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    loss_scale = 65536
+
+    def _run_step(model, input, target):
+        with amp.autocast(use_fp16):
+            loss = model(input, target)
+            scaled_loss = loss * loss_scale
+        scaled_loss.backward()
+        return scaled_loss
+
+    for _ in range(10):
+        input = torch.tensor(
+            [
+                [-1.1481e-01, 2.0187e-02, -4.9744e-03],
+                [-2.4548e-01, 8.8867e-02, 5.4932e-02],
+                [-2.0911e-01, 3.6011e-02, 5.2979e-02],
+                [-1.6394e-01, 4.8584e-02, 3.5217e-02],
+                [-2.1106e-01, 5.2124e-02, 4.4189e-02],
+                [-2.2375e-01, 3.1433e-02, 4.5807e-02],
+                [-1.1255e-01, 5.9128e-03, 1.9455e-04],
+                [-2.1362e-01, 8.1726e-02, 4.2450e-02],
+                [-2.3169e-01, 7.3486e-02, 7.7942e-02],
+                [-1.2085e-01, 2.8839e-03, -4.9286e-03],
+                [-2.4756e-01, 6.0974e-02, 5.8105e-02],
+                [-2.3950e-01, 9.2651e-02, 4.5135e-02],
+                [-3.0176e-01, 6.1584e-02, 6.2988e-02],
+                [-2.5415e-01, 1.0242e-01, 2.8641e-02],
+                [-2.4084e-01, 3.6682e-02, 2.5314e-02],
+                [-1.9067e-01, 5.9753e-02, 2.5909e-02],
+            ],
+            device=device,
+            dtype=torch.float,
+        )
+        target = torch.tensor([1, 2, 0, 2, 2, 2, 2, 1, 2, 1, 2, 2, 2, 0, 1, 0], device=device)
+        pt_prediction = _run_step(pt_model, input, target)
+        ort_prediction = _run_step(ort_model, input, target)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, rtol=1e-04, atol=1.0)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
+
+
+@pytest.mark.parametrize("use_fp16", [False, True])
 def test_gradient_correctness_cross_entropy_loss(use_fp16):
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
