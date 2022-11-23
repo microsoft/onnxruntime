@@ -40,8 +40,6 @@ struct OrtRunOptions {
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
-
-  //bool cloud_inference_enabled = false;
 };
 
 namespace onnxruntime {

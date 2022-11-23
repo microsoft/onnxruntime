@@ -775,9 +775,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kCloudExecutionProvider) {
 #ifdef USE_CLOUD
-    ORT_ENFORCE(provider_options_map.count(type), "Failed to locate provider info for ", kCloudExecutionProvider);
-    //todo - do we need a creator for cloud EP?
-    return onnxruntime::CloudProviderFactoryCreator::Create(provider_options_map.at(type))->CreateProvider();
+    return onnxruntime::CloudProviderFactoryCreator::Create({})->CreateProvider();
 #endif
   } else {
     // check whether it is a dynamic load EP:

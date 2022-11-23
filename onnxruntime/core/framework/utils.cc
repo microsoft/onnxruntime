@@ -20,7 +20,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
 //todo - find a better place for cloud exector
-#include "core/providers/cloud/cloud_executor.h"
+#include "core/framework/cloud_executor.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
 #endif

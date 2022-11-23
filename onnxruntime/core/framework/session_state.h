@@ -37,6 +37,8 @@
 #include "core/framework/memory_info.h"
 #endif
 
+#include "core/framework/cloud_invoker.h"
+
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -339,6 +341,14 @@ class SessionState {
   }
 #endif
 
+  CloudEndPointInvoker* GetCloudInvoker() const {
+    return cloud_invoker_.get();
+  }
+
+  void SetCloudInvoker(const CloudEndPointConfig& config) {
+    cloud_invoker_ = CloudEndPointInvoker::CreateInvoker(config);
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -542,6 +552,8 @@ class SessionState {
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
 #endif
+
+  std::unique_ptr<CloudEndPointInvoker> cloud_invoker_;
 };
 
 }  // namespace onnxruntime

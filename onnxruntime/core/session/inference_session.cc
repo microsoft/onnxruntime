@@ -1334,6 +1334,8 @@ common::Status InferenceSession::Initialize() {
         session_options_.enable_mem_reuse,
         prepacked_weights_container_);
 
+    session_state_->SetCloudInvoker(session_options_.config_options.configurations);
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
     session_state_->SetMemoryProfiler(&memory_profiler_);
@@ -1974,7 +1976,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   run_options.config_options.configurations.count("use_cloud") ? ExecutionMode::ORT_CLOUD : session_options_.execution_mode,
+                                                   GetExecutionMode(run_options),
                                                    run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));
     }
@@ -2037,6 +2039,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
   return retval;
 }
+
 
 common::Status InferenceSession::Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
                                      std::vector<OrtValue>* p_fetches) {

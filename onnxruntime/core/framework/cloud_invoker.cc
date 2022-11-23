@@ -3,19 +3,18 @@
 
 #include "http_client.h"
 #include "core/common/common.h"
-#include "core/providers/cloud/endpoint_invoker.h"
+#include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
 
 namespace onnxruntime {
-namespace cloud {
 
-EndPointInvoker::~EndPointInvoker() {}
+CloudEndPointInvoker::~CloudEndPointInvoker() {}
 
 namespace tc = triton::client;
 
-class TritonInvokder : public EndPointInvoker {
+class TritonInvokder : public CloudEndPointInvoker {
  public:
-  TritonInvokder(const EndPointConfig& config);
+  TritonInvokder(const CloudEndPointConfig& config);
   void Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const override;
 
  private:
@@ -34,7 +33,7 @@ class TritonInvokder : public EndPointInvoker {
   std::unique_ptr<triton::client::InferenceServerHttpClient> triton_client_;
 };
 
-TritonInvokder::TritonInvokder(const EndPointConfig& config) : EndPointInvoker(config) {
+TritonInvokder::TritonInvokder(const CloudEndPointConfig& config) : CloudEndPointInvoker(config) {
   if (ReadConfig("uri", uri_) &&
       ReadConfig("key", key_) &&
       ReadConfig("model_name", model_name_) &&
@@ -199,7 +198,7 @@ bool TritonInvokder::ReadConfig(const char* config_name, onnxruntime::InlinedVec
   return status_.IsOK();
 }
 
-std::unique_ptr<EndPointInvoker> EndPointInvoker::CreateInvoker(const EndPointConfig& config) {
+std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config) {
   static const std::string endpoint_type = "endpoint_type";
   static const std::string triton_type = "triton";
   if (config.count(endpoint_type)) {
@@ -210,5 +209,4 @@ std::unique_ptr<EndPointInvoker> EndPointInvoker::CreateInvoker(const EndPointCo
   return {};
 }
 
-}  // namespace cloud
 }  // namespace onnxruntime
