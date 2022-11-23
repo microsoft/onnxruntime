@@ -67,14 +67,14 @@ class TestONNXModel(TestCaseTempDir):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def dyn_qop_conv_bias_test(self, weight_type, extra_options={}, use_quant_config=False):
+    def dyn_qop_conv_bias_test(self, weight_type, extra_options=None, use_quant_config=False):
         activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         conf_type_str = ".conf" if (use_quant_config) else ""
         model_qop_path = (
             Path(self._tmp_model_dir.name)
-            .joinpath("conv_bias.qop.{}{}{}.onnx".format(activation_type_str, weight_type_str, conf_type_str))
+            .joinpath(f"conv_bias.qop.{activation_type_str}{weight_type_str}{conf_type_str}.onnx")
             .as_posix()
         )
 
@@ -99,13 +99,13 @@ class TestONNXModel(TestCaseTempDir):
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 
-    def dyn_qdq_conv_bias_test(self, activation_type, weight_type, extra_options={}):
+    def dyn_qdq_conv_bias_test(self, activation_type, weight_type, extra_options=None):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_qdq_path = (
             Path(self._tmp_model_dir.name)
-            .joinpath("conv_bias.qdq.{}{}.onnx".format(activation_type_str, weight_type_str))
+            .joinpath(f"conv_bias.qdq.{activation_type_str}{weight_type_str}.onnx")
             .as_posix()
         )
 

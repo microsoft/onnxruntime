@@ -30,7 +30,7 @@ from .quant_utils import (
     get_qmin_qmax_for_qtype,
     get_qrange_for_qType,
 )
-from .registry import CreateQDQQuantizer
+from .registry import create_qdq_quantizer
 
 
 class QDQQuantTensorType(Enum):
@@ -224,7 +224,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_model(self):
         for node in self.model.nodes():
             if self.should_quantize_node(node):
-                op_quantizer = CreateQDQQuantizer(self, node)
+                op_quantizer = create_qdq_quantizer(self, node)
                 if op_quantizer is None:
                     continue  # Skip quantize if no quantizer returned
                 op_quantizer.quantize()
@@ -730,8 +730,8 @@ class QDQQuantizer(ONNXQuantizer):
                             (
                                 scale_name,
                                 zp_name,
-                                scale_shape,
-                                zp_shape,
+                                _,
+                                _,
                                 cqp_node,
                             ) = self.create_dynamic_subgraph(tensor_name)
 

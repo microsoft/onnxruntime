@@ -10,11 +10,11 @@ from pathlib import Path
 import numpy as np
 import onnx
 from op_test_utils import (
-    InputFeedsNegOneZeroOne,
     TestCaseTempDir,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
@@ -94,7 +94,7 @@ class TestConcatModel(TestCaseTempDir):
         model_fp32_path = "concat_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model(model_fp32_path)
-        data_reader = InputFeedsNegOneZeroOne(1, {"input": [1, 3, 15, 15]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 3, 15, 15]})
 
         activation_proto_qtype = (
             onnx.TensorProto.UINT8 if activation_type == QuantType.QUInt8 else onnx.TensorProto.INT8

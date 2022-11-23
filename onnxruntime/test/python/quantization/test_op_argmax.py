@@ -50,15 +50,14 @@ def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inp
 class TestOpArgMax(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _ in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 # TODO: Use nonrandom linear input
                 rand_arr = np.random.normal(0.0, 0.1, shape).astype(np.float32)
                 inputs.update({name: rand_arr})
             input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
+        return TestDataFeeds(input_data_list)
 
     def construct_model_argmax(self, output_model_path, input_shape, output_shape):
         #     (input)
@@ -123,7 +122,7 @@ class TestOpArgMax(TestCaseTempDir):
 
         onnx.save(model, output_model_path)
 
-    def quantize_argmax_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_argmax_test(self, activation_type, weight_type, extra_options=None):
         np.random.seed(1)
         model_fp32_path = "argmax_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
@@ -133,18 +132,34 @@ class TestOpArgMax(TestCaseTempDir):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "argmax_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_path).as_posix()
-        model_uint8_qdq_path = "argmax_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
-        model_uint8_qdq_trt_path = "argmax_{}{}_qdq_trt.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_trt_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_trt_path).as_posix()
-        model_uint8_qdq_dyn_path = "argmax_{}{}_qdq_dyn.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_dyn_path).as_posix()
-        model_t_uint8_qdq_dyn_path = "t_u_argmax_{}{}_qdq_dyn.onnx".format(activation_type_str, weight_type_str)
-        model_t_uint8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_t_uint8_qdq_dyn_path).as_posix()
-        model_t_int8_qdq_dyn_path = "t_i_argmax_{}{}_qdq_dyn.onnx".format(activation_type_str, weight_type_str)
-        model_t_int8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_t_int8_qdq_dyn_path).as_posix()
+        model_uint8_path = (
+            Path(self._tmp_model_dir.name).joinpath(f"argmax_{activation_type_str}{weight_type_str}.onnx").as_posix()
+        )
+        model_uint8_qdq_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"argmax_{activation_type_str}{weight_type_str}_qdq.onnx")
+            .as_posix()
+        )
+        model_uint8_qdq_trt_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"argmax_{activation_type_str}{weight_type_str}_qdq_trt.onnx")
+            .as_posix()
+        )
+        model_uint8_qdq_dyn_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"argmax_{activation_type_str}{weight_type_str}_qdq_dyn.onnx")
+            .as_posix()
+        )
+        model_t_uint8_qdq_dyn_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"t_u_argmax_{activation_type_str}{weight_type_str}_qdq_dyn.onnx")
+            .as_posix()
+        )
+        model_t_int8_qdq_dyn_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"t_i_argmax_{activation_type_str}{weight_type_str}_qdq_dyn.onnx")
+            .as_posix()
+        )
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {"input": [1, 256, 128, 128]})

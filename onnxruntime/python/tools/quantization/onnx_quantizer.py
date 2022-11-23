@@ -30,7 +30,7 @@ from .quant_utils import (
     save_and_reload_model,
     tensor_proto_to_array,
 )
-from .registry import CreateOpQuantizer
+from .registry import create_op_quantizer
 
 
 class ONNXQuantizer:
@@ -266,7 +266,7 @@ class ONNXQuantizer:
                 node = self.quantize_node_with_sub_graph(node)
 
             number_of_existing_new_nodes = len(self.new_nodes)
-            op_quantizer = CreateOpQuantizer(self, node)
+            op_quantizer = create_op_quantizer(self, node)
             op_quantizer.quantize()
             for i in range(number_of_existing_new_nodes, len(self.new_nodes)):
                 for output_name in self.new_nodes[i].output:

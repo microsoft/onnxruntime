@@ -3,7 +3,6 @@
 """
 
 import onnx
-from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
@@ -72,9 +71,6 @@ class AttentionQuant(QuantOperatorBase):
 
 
 class QDQAttention(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
-
     def quantize(self):
         node = self.node
         assert node.op_type == "Attention"

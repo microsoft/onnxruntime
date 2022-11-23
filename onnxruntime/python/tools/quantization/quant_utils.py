@@ -204,24 +204,24 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     return rmin, rmax, zero_point, scale, quantized_data
 
 
-def get_qmin_qmax_for_qtype(qType, reduce_range=False, symmetric=False):
+def get_qmin_qmax_for_qtype(qtype, reduce_range=False, symmetric=False):
     """
-    Return qmin and qmax, the minimum and maximum value representable by the given qType
-    :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
+    Return qmin and qmax, the minimum and maximum value representable by the given qtype
+    :parameter qtype: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
     :return: qmin, qmax
     """
-    if qType == onnx_proto.TensorProto.UINT8:
+    if qtype == onnx_proto.TensorProto.UINT8:
         if symmetric:
             (qmin, qmax) = (0, 128) if reduce_range else (0, 254)
         else:
             (qmin, qmax) = (0, 128) if reduce_range else (0, 255)
-    elif qType == onnx_proto.TensorProto.INT8:
+    elif qtype == onnx_proto.TensorProto.INT8:
         if symmetric:
             (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
     else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qtype))
     return qmin, qmax
 
 

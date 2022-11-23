@@ -31,6 +31,12 @@ class TempModelDir:
         Path(path).mkdir(parents=True, exist_ok=True)
         self.name = path
 
+    def cleanup(self):
+        """
+        leave tmp models for debugging
+        """
+        return
+
 
 class TestCaseTempDir(unittest.TestCase):
     @classmethod
@@ -43,11 +49,10 @@ class TestCaseTempDir(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if os.getenv("TMP_MODEL_DIR") is None:
-            cls._tmp_model_dir.cleanup()
+        cls._tmp_model_dir.cleanup()
 
 
-def InputFeedsNegOneZeroOne(n, name2shape):
+def input_feeds_negone_zero_one(n, name2shape):
     """
     randomize n feed according to shape, its values are from -1, 0, and 1
     """
