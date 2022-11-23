@@ -207,22 +207,22 @@ class AttentionCPUBase : public AttentionBase {
                                T* present,                // present state
                                ThreadPool* tp) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
-    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * v_head_size);  // P x H_v
-    const size_t input_chunk_length = static_cast<size_t>(kv_sequence_length * v_head_size);   // L x H_v
-    const size_t present_chunk_length = past_chunk_length + input_chunk_length;                // T x H_v
+    const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;  // P x H_v
+    const ptrdiff_t input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;   // L x H_v
+    const ptrdiff_t present_chunk_length = past_chunk_length + input_chunk_length;               // T x H_v
 
     // Move the pointer of past and present to start of v values.
     if (nullptr != past) {
-      past += batch_size * num_heads_ * past_sequence_length * v_head_size;
+      past += SafeInt<ptrdiff_t>(batch_size) * num_heads_ * past_sequence_length * v_head_size;
     }
     if (nullptr != present) {
-      present += batch_size * num_heads_ * total_sequence_length * v_head_size;
+      present += SafeInt<ptrdiff_t>(batch_size) * num_heads_ * total_sequence_length * v_head_size;
     }
 
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(v_head_size) * static_cast<double>(sequence_length);
 
-    ThreadPool::TryParallelFor(tp, batch_size * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const T* v = V + input_chunk_length * i;
         if (nullptr != present) {
@@ -231,15 +231,17 @@ class AttentionCPUBase : public AttentionBase {
         }
 
         T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + input_chunk_length * i;
+        ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
         math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                        attention_probs + sequence_length * total_sequence_length * i,
+                        attention_probs + attention_probs_offset,
                         v, current_tmp_data, nullptr);
 
         // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
         const int batch_index = static_cast<int>(i / num_heads_);
         const int head_index = static_cast<int>(i % num_heads_);
         T* src = current_tmp_data;
-        T* dest = output + (batch_index * sequence_length * num_heads_ + head_index) * v_head_size;
+        ptrdiff_t dest_offset = (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads_ + head_index) * v_head_size;
+        T* dest = output + dest_offset;
         const auto bytes_to_copy = SafeInt<size_t>(v_head_size) * sizeof(T);
         for (int j = 0; j < sequence_length; j++) {
           memcpy(dest, src, bytes_to_copy);

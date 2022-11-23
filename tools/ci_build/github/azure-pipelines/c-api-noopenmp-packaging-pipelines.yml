@@ -221,8 +221,8 @@ jobs:
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -OutFile protobuf-java-3.20.1.jar"
-        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.20.1.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
+        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
   - template: templates/component-governance-component-detection-steps.yml
@@ -662,7 +662,7 @@ jobs:
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     ArtifactName: 'drop-nuget-dml'
@@ -685,7 +685,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     ArtifactName: 'drop-win-dml-x86-zip'
@@ -707,7 +707,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
     ArtifactName: 'drop-win-dml-arm64-zip'
@@ -729,7 +729,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/win-ci-2019.yml
+- template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
     ArtifactName: 'drop-win-dml-arm-zip'

@@ -40,7 +40,7 @@ static bool is_complex_valued_signal(const onnxruntime::TensorShape& shape) {
   return shape.NumDimensions() > 2 && shape[shape.NumDimensions() - 1] == 2;
 }
 
-static bool is_power_of_2(size_t size) {
+constexpr static bool is_power_of_2(size_t size) {
   unsigned n_bits = 0;
   while (size != 0) {
     n_bits += size & 1;
@@ -79,8 +79,8 @@ static inline T bit_reverse(T num, unsigned significant_bits) {
 template <typename T>
 static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
   // Calculate fundamental angular velocity
-  static const T pi = static_cast<T>(3.14159265);
-  static const T tau = 2 * pi;
+  static constexpr T pi = static_cast<T>(3.14159265);
+  static constexpr T tau = 2 * pi;
   T inverse_switch = inverse ? 1.f : -1.f;
   T angular_velocity = inverse_switch * tau / number_of_samples;
   return angular_velocity;
@@ -412,7 +412,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 
   // Calculate the number of dfts to run
   const auto n_dfts =
-      static_cast<int64_t>(std::floor((signal_size - window_size) / static_cast<float>(frame_step)) + 1);
+      static_cast<int64_t>(std::floor((signal_size - window_size) / static_cast<float>(frame_step))) + 1;
 
   // Calculate the output spectra length (onesided will return only the unique values)
   // note: x >> 1 === std::floor(x / 2.f)
@@ -427,7 +427,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   auto* signal_data = const_cast<U*>(reinterpret_cast<const U*>(signal->DataRaw()));
 
   // Define tensor shapes for each dft run
-  const int64_t output_components = 2;
+  constexpr int64_t output_components = 2;
   auto dft_input_shape = onnxruntime::TensorShape({1, window_size, signal_components});
   auto dft_output_shape = onnxruntime::TensorShape({1, dft_output_size, output_components});
 
