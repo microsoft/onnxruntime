@@ -1,11 +1,13 @@
 #ifndef NDEBUG
 
-#include <random>
+#include "contrib_ops/cuda/transformers/beam_search_topk.h"
+
+#include <algorithm>
 #include <numeric>
 #include <queue>
-#include <algorithm>
+#include <random>
+
 #include <cuda_runtime.h>
-#include "contrib_ops/cuda/transformers/beam_search_topk.h"
 
 namespace onnxruntime {
 namespace cuda {
