@@ -69,10 +69,11 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       if (typeof this.#pathOrBuffer === 'string') {
         results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
       } else {
-        if (!this.#inferenceSession.loadModelFromBytes) {
-          throw new Error('Native module method "loadModelFromBytes" is not defined');
+        if (!this.#inferenceSession.loadModelFromBase64EncodedBuffer) {
+          throw new Error('Native module method "loadModelFromBase64EncodedBuffer" is not defined');
         }
-        results = await this.#inferenceSession.loadModelFromBytes(this.#pathOrBuffer, options);
+        const modelInBase64String = Buffer.from(this.#pathOrBuffer).toString('base64');
+        results = await this.#inferenceSession.loadModelFromBase64EncodedBuffer(modelInBase64String, options);
       }
       // resolve promise if onnxruntime session is successfully created
       this.#key = results.key;

@@ -94,13 +94,10 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
-  public void loadModelFromBytes(ReadableArray modelData, ReadableMap options, Promise promise) {
+  public void loadModelFromBase64EncodedBuffer(String data, ReadableMap options, Promise promise) {
     try {
-      byte[] modelDataBytes = new byte[modelData.size()];
-      for (int i = 0; i < modelDataBytes.length; i++) {
-        modelDataBytes[i] = (byte)(modelData.getInt(i));
-      }
-      WritableMap resultMap = loadModel(modelDataBytes, options);
+      byte[] modelData = Base64.decode(data, Base64.DEFAULT);
+      WritableMap resultMap = loadModel(modelData, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Can't load model from buffer: " + e.getMessage(), e);
@@ -134,15 +131,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @return model loading information, such as key, input names, and output names
    */
   public WritableMap loadModel(String uri, ReadableMap options) throws Exception {
-    InputStream modelStream = reactContext.getApplicationContext().getContentResolver().openInputStream(Uri.parse(uri));
-
-    byte[] modelData = null;
-    Reader reader = new BufferedReader(new InputStreamReader(modelStream));
-    modelData = new byte[modelStream.available()];
-    modelStream.read(modelData);
-    modelStream.close();
-    WritableMap resultMap = loadModel(modelData, options);
-    return resultMap;
+    return loadModelImpl(uri, null, options);
   }
 
   /**
@@ -153,8 +142,33 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @return model loading information, such as key, input names, and output names
    */
   public WritableMap loadModel(byte[] modelData, ReadableMap options) throws Exception {
+    return loadModelImpl("", modelData, options);
+  }
+
+  /**
+   * Load model implementation method for either from model path or model data buffer.
+   *
+   * @param uri uri parameter from react native loadModel()
+   * @param modelData model data buffer
+   * @param options onnxruntime session options
+   * @return model loading information map, such as key, input names, and output names
+   */
+  public WritableMap loadModelImpl(String uri, byte[] modelData, ReadableMap options) throws Exception {
+    OrtSession ortSession;
     SessionOptions sessionOptions = parseSessionOptions(options);
-    OrtSession ortSession = ortEnvironment.createSession(modelData, sessionOptions);
+
+    if (modelData != null && modelData.length > 0) { // load model via model data array
+      ortSession = ortEnvironment.createSession(modelData, sessionOptions);
+    } else { // load model via model path string uri
+      InputStream modelStream =
+          reactContext.getApplicationContext().getContentResolver().openInputStream(Uri.parse(uri));
+      Reader reader = new BufferedReader(new InputStreamReader(modelStream));
+      byte[] modelArray = new byte[modelStream.available()];
+      modelStream.read(modelArray);
+      modelStream.close();
+      ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
+    }
+
     String key = getNextSessionKey();
     sessionMap.put(key, ortSession);
 
