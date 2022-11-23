@@ -127,7 +127,7 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     end = std::min(end, range->stream_pc_range[stream_idx].second);
 #endif
 
-  if (since > end && since < logic_stream->steps_.size()) {
+  if (since >= end && since < logic_stream->steps_.size()) {
 #ifdef ENABLE_TRAINING
     // this is a special handle for training
     // with ORTModule, we are partially execute the graph with a shared context.
