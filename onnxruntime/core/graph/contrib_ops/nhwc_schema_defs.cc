@@ -5,7 +5,11 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 #include "core/graph/contrib_ops/quantization_defs.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(InferenceContext& ctx, bool use_dilation, bool require_kernel_shape, int input1Idx,
                             int input2Idx);
