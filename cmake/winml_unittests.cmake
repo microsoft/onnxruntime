@@ -8,8 +8,7 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
   ${REPO_ROOT}/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/D3DX12
-  ${REPO_ROOT}/cmake/external/googletest/googletest/include
-  ${REPO_ROOT}/cmake/external/protobuf/src
+  ${REPO_ROOT}/cmake/external/googletest/googletest/include  
   ${REPO_ROOT}/cmake/external/wil/include
   ${REPO_ROOT}/cmake/external/SafeInt
   ${CMAKE_CURRENT_BINARY_DIR}
@@ -27,6 +26,7 @@ function(set_winml_target_properties target)
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
   )
+  onnxruntime_add_include_to_target(${target} ${PROTOBUF_LIB})
   target_include_directories(${target} PRIVATE ${WINML_TEST_INC_DIR})
   target_compile_definitions(${target} PRIVATE WINML_ROOT_NS=${winml_root_ns})
   target_compile_definitions(${target} PRIVATE BINARY_NAME=\"${BINARY_NAME}\")
