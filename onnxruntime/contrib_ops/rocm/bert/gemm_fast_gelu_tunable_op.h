@@ -57,13 +57,13 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   int64_t bias_length = (params->bias != nullptr) ? params->n : 0;
 
   // inplace computation
-  return LaunchFastGeluKernel<T>(params->stream,
+  return LaunchFastGeluKernel<T>(params->tuning,
+                                 params->stream,
                                  static_cast<int>(fast_gelu_input_length),
                                  static_cast<int>(bias_length),
                                  params->c,
                                  params->bias,
-                                 params->c,
-                                 params->tuning);
+                                 params->c);
 }
 
 template <typename T>
