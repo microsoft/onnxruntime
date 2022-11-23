@@ -81,7 +81,9 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
  */
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {
   /**
-   * Create an Image from tensor data - output is Imagedata object
+   * construct an image from tensor
+   *
+   * @returns An ImageData type object which can be used to draw on canvas
    */
   toImage(): ImageData;
 }
@@ -240,35 +242,37 @@ export interface TensorConstructor {
 }
 export interface TensorFactory {
   /**
-   * Create a new tensor object from image object
-   * @param image - Image object holding the image data
+   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   *
+   * @param image - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
+   * @returns A promise that resolves to a tensor object
    */
   fromImage(image: ImageData): Promise<Tensor>;
 
   /**
-   * Create a new tensor object from image object
-   * @param image - Image object holding the image data
+   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   *
+   * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
+   * @returns A promise that resolves to a tensor object
    */
   fromImage(image: HTMLImageElement): Promise<Tensor>;
 
   /**
-   * Create a new tensor object from image object
-   * @param image - Image object holding the image data
+   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   *
+   * @param image - string - Asumming the string is a URL to an image
+   * @returns A promise that resolves to a tensor object
    */
   fromImage(image: string): Promise<Tensor>;
 
   /**
-   * Create a new tensor object from image object
-   * @param image - Image object holding the image data
-   * @param format - specifies the pixel format
+   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   *
+   * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
+   * @param format - string Type - since Imagebitmap doesn't have a standard format, this parameter is required
+   * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageBitmap, format?: string): Promise<Tensor>;
-
-  /**
-   * Create a new tensor object from image object
-   * @param image - Image object holding the image data
-   */
-  fromImage(image: string): Promise<Tensor>;
+  fromImage(image: ImageBitmap, format?: 'rgb'|'rbg'|'rgba'): Promise<Tensor>;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

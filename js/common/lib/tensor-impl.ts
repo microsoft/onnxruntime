@@ -227,7 +227,7 @@ export class Tensor implements TensorInterface {
   // #region factory
   static async fromImage(image: ImageData): Promise<Tensor>;
   static async fromImage(image: HTMLImageElement): Promise<Tensor>;
-  static async fromImage(image: ImageBitmap, format?: string): Promise<Tensor>;
+  static async fromImage(image: ImageBitmap, format?: 'rgb'|'rbg'|'rgba'): Promise<Tensor>;
   static async fromImage(image: string): Promise<Tensor>;
 
   static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, format?: 'rgb'|'rbg'|'rgba'):
