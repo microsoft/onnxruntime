@@ -41,8 +41,8 @@ namespace rocm {
 
 template <typename T>
 Status LaunchSkipLayerNormKernel(
-    hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
-    const T* beta, const T* bias, float epsilon, int ld, int element_count, bool tuning) {
+    bool tuning, hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
+    const T* beta, const T* bias, float epsilon, int ld, int element_count) {
   // this must be true because element_count is the total size of the tensor
   assert(element_count % ld == 0);
 
@@ -57,15 +57,15 @@ Status LaunchSkipLayerNormKernel(
   return SkipLayerNormStaticSelection<T>(&params);
 }
 
-template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
+template Status LaunchSkipLayerNormKernel<float>(bool tuning, hipStream_t stream, float* output, const float* input,
                                                  const float* skip, const float* gamma, const float* beta,
                                                  const float* bias, float epsilon, int ld,
-                                                 int element_count, bool tuning);
+                                                 int element_count);
 
-template Status LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, const half* input,
+template Status LaunchSkipLayerNormKernel<half>(bool tuning, hipStream_t stream, half* output, const half* input,
                                                 const half* skip, const half* gamma, const half* beta,
                                                 const half* bias, float epsilon, int ld,
-                                                int element_count, bool tuning);
+                                                int element_count);
 
 }  // namespace rocm
 }  // namespace contrib
