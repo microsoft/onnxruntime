@@ -38,8 +38,6 @@ void ComputeTopKReference(const std::vector<float>& values,
                           int32_t beam_size,
                           int32_t vocab_size,
                           int32_t k) {
-  // auto value_compare = [&values](const int32_t idx_1, const int32_t idx_2) { return values[idx_1] > values[idx_2]; };
-
   using VK = std::pair<float, int32_t>;
 
   for (int32_t b = 0; b < batch_size; b++) {
