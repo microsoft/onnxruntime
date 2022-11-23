@@ -67,14 +67,16 @@ void FakeQuantPerTensor(cudaStream_t stream, const int64_t num_elements, const T
       quant_min, quant_max, fake_quantized_data, quantization_mask_data);
 }
 
-#define SPECIALIZED_FAKEQUANT_IMPL(T)                                                                         \
-  template void FakeQuantPerTensor<T>(cudaStream_t stream, const int64_t num_elements, const T* input_data,   \
-                                      const T quant_scale, const T quant_zero_point, const int64_t quant_min, \
-                                      const int64_t quant_max, T* fake_quantized_data, bool* quantization_mask_data);
+#define SPECIALIZED_FAKEQUANT_IMPL(T)                                                    \
+  template void FakeQuantPerTensor<T>(cudaStream_t stream, const int64_t num_elements,   \
+                                      const T* input_data, const T quant_scale,          \
+                                      const T quant_zero_point, const int64_t quant_min, \
+                                      const int64_t quant_max, T* fake_quantized_data,   \
+                                      bool* quantization_mask_data);
 
 SPECIALIZED_FAKEQUANT_IMPL(float)
 
-#undef SPECIALIZED_DROPOUT_GRAD_IMPL
+#undef SPECIALIZED_FAKEQUANT_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime
