@@ -94,6 +94,20 @@ TEST(LayerNormTest, LayerNorm_Scale) {
   test.Run();
 }
 
+TEST(LayerNormTest, LayerNorm_Scale_Bias) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 3, 2};
+  test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f});
+  test.AddInput<float>("gamma", {2}, {-0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
+  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
+  test.Run();
+}
+
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+
 TEST(LayerNormTest, LayerNorm_Scale_Float16Input) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -142,18 +156,6 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16InputScaleOutput) {
   test.Run();
 }
 
-TEST(LayerNormTest, LayerNorm_Scale_Bias) {
-  OpTester test("LayerNormalization");
-  test.AddAttribute<float>("epsilon", 1e-05f);
-
-  std::vector<int64_t> dims{1, 3, 2};
-  test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f});
-  test.AddInput<float>("gamma", {2}, {-0.6953f, 5.1824f});
-  test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
-  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
-  test.Run();
-}
-
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16Input) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
@@ -189,6 +191,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
   test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
   test.Run();
 }
+
+#endif
 
 // LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.
 TEST(LayerNormTest, LayerNorm17_float) {
