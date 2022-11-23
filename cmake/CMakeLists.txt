@@ -615,6 +615,9 @@ if (MSVC)
       string(APPEND CMAKE_CXX_FLAGS " /wd4805")
     endif()
   endif()
+  # We do not treat 3rd-party libraries' warnings as errors. In order to do that, we need to add their header files locations to /external:I.
+  # However, if a 3rd-party library was installed to a non-standard location and cmake find it and use it from there, you may see build errors
+  # like: "error C2220: the following warning is treated as an error"
   string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
   if (onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
@@ -630,10 +633,10 @@ if (MSVC)
   if (NOT GDK_PLATFORM)
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
     if (onnxruntime_USE_WINML OR NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message("Build for Windows 8 and newer")
+        message("Building ONNX Runtime for Windows 8 and newer")
         add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 8 and newer
     else()
-        message("Build for Windows 7 and newer")
+        message("Building ONNX Runtime for Windows 7 and newer")
         # For people who build ONNX Runtime from source, the result binary may still support Windows 7
         # Windows 7 doesn't have OneCore. So if CMAKE_CXX_STANDARD_LIBRARIES is for OneCore, the build won't come here
         add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
@@ -752,14 +755,15 @@ get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
-
-include(external/onnxruntime_external_deps.cmake)
-
-set(ORT_WARNING_FLAGS)
 if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
+endif()
+include(external/onnxruntime_external_deps.cmake)
+
+set(ORT_WARNING_FLAGS)
+if (WIN32)    
     # class needs to have dll-interface to be used by clients
     list(APPEND ORT_WARNING_FLAGS "/wd4251")
     # issued by thrust nonstandard extension used: nameless struct/union

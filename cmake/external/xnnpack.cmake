@@ -17,28 +17,24 @@ ENDIF()
 
 # fp16 depends on psimd
 FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
-FetchContent_MakeAvailable(psimd)
+onnxruntime_fetchcontent_makeavailable(psimd)
 set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
 FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
-FetchContent_MakeAvailable(fp16)
+onnxruntime_fetchcontent_makeavailable(fp16)
 
 # pthreadpool depends on fxdiv
 FetchContent_Declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv})
-FetchContent_MakeAvailable(fxdiv)
+onnxruntime_fetchcontent_makeavailable(fxdiv)
 set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 
 FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
-FetchContent_MakeAvailable(pthreadpool)
+onnxruntime_fetchcontent_makeavailable(pthreadpool)
 FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack}  URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
 PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch)
 
-FetchContent_MakeAvailable(googlexnnpack)
+onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
 set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
-
-set_target_properties(fp16 PROPERTIES FOLDER "External/Xnnpack")
-set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")
-set_target_properties(XNNPACK PROPERTIES FOLDER "External/Xnnpack")
 
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
 

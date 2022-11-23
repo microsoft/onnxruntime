@@ -18,35 +18,39 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
 endforeach()
 
 message("Loading Dependencies ...")
+# ABSL should be included before protobuf because protobuf may use absl
+if(NOT onnxruntime_DISABLE_ABSEIL)
+  include(external/abseil-cpp.cmake)
+endif()
+
+set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    re2
+    URL ${DEP_URL_re2}
+    URL_HASH SHA1=${DEP_SHA1_re2}
+    FIND_PACKAGE_ARGS NAMES re2
+)
+
 if (onnxruntime_BUILD_UNIT_TESTS)
   # WebAssembly threading support in Node.js is still an experimental feature and
   # not working properly with googletest suite.
   if (onnxruntime_BUILD_WEBASSEMBLY)
     set(gtest_disable_pthreads ON)
   endif()
-
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  if(NOT onnxruntime_DISABLE_ABSEIL)
+    # It uses both ABSL and re2
+    set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
+  endif()
   # gtest and gmock
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
     FIND_PACKAGE_ARGS NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
-  )
-  onnxruntime_fetchcontent_makeavailable(googletest)
-  if(NOT GTest_FOUND)
-    set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
-    if (NOT MSVC)
-      # disable treating all warnings as errors for gmock
-      target_compile_options(gmock PRIVATE "-w")
-      target_compile_options(gtest PRIVATE "-w")
-    endif()
-    set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
-    set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
-    set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
-  endif()
+  )  
 endif()
 
-# External dependencies
 if (onnxruntime_BUILD_BENCHMARKS)
   # We will not need to test benchmark lib itself.
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable benchmark testing as we don't need it.")
@@ -76,10 +80,7 @@ FetchContent_Declare(
       URL_HASH SHA1=${DEP_SHA1_mimalloc}
 )
 
-# ABSL should be included before protobuf because protobuf may use absl
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(abseil-cpp)
-endif()
+
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
@@ -128,7 +129,6 @@ include(protobuf_function)
 
 set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
-set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
       date
@@ -150,12 +150,12 @@ endif()
 if (TARGET Boost::mp11)
   message("Use mp11 from preinstalled system lib")
 else()
-    FetchContent_Declare(
-      mp11
-      URL ${DEP_URL_mp11}
-      URL_HASH SHA1=${DEP_SHA1_mp11}
-    )
-    onnxruntime_fetchcontent_makeavailable(mp11)
+  FetchContent_Declare(
+    mp11
+    URL ${DEP_URL_mp11}
+    URL_HASH SHA1=${DEP_SHA1_mp11}
+  )
+  onnxruntime_fetchcontent_makeavailable(mp11)
 endif()
 
 
@@ -171,16 +171,7 @@ FetchContent_Declare(
     FIND_PACKAGE_ARGS 3.10 NAMES nlohmann_json
 )
 
-
-FetchContent_Declare(
-    re2
-    URL ${DEP_URL_re2}
-    URL_HASH SHA1=${DEP_SHA1_re2}
-    FIND_PACKAGE_ARGS NAMES re2
-)
-
-
-
+#TODO: include clog first
 if (onnxruntime_ENABLE_CPUINFO)
   # Adding pytorch CPU info library
   # TODO!! need a better way to find out the supported architectures
@@ -283,12 +274,15 @@ FetchContent_Declare(
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
 onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json re2 safeint GSL flatbuffers)
+if (onnxruntime_BUILD_UNIT_TESTS) 
+  onnxruntime_fetchcontent_makeavailable(googletest)  
+endif()
+
 if(Protobuf_FOUND)
   message("Protobuf version: ${Protobuf_VERSION}")
 else()
   # Adjust warning flags
   if (TARGET libprotoc)
-    set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
     if (NOT MSVC)
       target_compile_options(libprotoc PRIVATE "-w")
     endif()
@@ -298,7 +292,6 @@ else()
     if (NOT MSVC)
       target_compile_options(protoc PRIVATE "-w")
     endif()
-    set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
     get_target_property(PROTOC_OSX_ARCH protoc OSX_ARCHITECTURES)
     if (PROTOC_OSX_ARCH)
       if (${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST PROTOC_OSX_ARCH)
@@ -388,16 +381,10 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
 
-
-
-
-
 target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
 if (NOT onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
 endif()
-set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
-set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)

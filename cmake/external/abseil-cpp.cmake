@@ -26,7 +26,7 @@ FetchContent_Declare(
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
 )
 
-FetchContent_MakeAvailable(abseil_cpp)
+onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
 set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
 message(STATUS "Abseil source dir:" ${ABSEIL_SOURCE_DIR})

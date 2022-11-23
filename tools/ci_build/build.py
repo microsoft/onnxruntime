@@ -940,6 +940,10 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
+    # By default cmake does not check TLS/SSL certificates. Here we turn it on.
+    # But, in some cases you may also need to supply a CA file.
+    add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
+    add_default_definition(cmake_extra_defines, "FETCHCONTENT_QUIET", "OFF")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     if args.use_winml:
