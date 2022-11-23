@@ -21,7 +21,9 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
-
+#ifdef ENABLE_TRAINING
+  bool IsBarrier() const override;
+#endif
  private:
   size_t barrier_id_{0};
 };
