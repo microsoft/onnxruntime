@@ -71,6 +71,46 @@ __global__ void _SliceKernel(const TArray<int64_t> starts, const TArray<int64_t>
   }
 }
 
+template <bool is_grad>
+Status SliceImplEx(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
+                   const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
+                   const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data,
+                   const size_t N) {
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, kNumThreadsPerBlock * kNumElementsPerThread));
+  switch (element_size) {
+#define HANDLE_DIMS(ELEMENT_TYPE, DIMS)                                                           \
+  case DIMS: {                                                                                    \
+    _SliceKernel<is_grad, DIMS, ELEMENT_TYPE><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>( \
+        starts, steps, input_strides, output_strides,                                             \
+        reinterpret_cast<const ToCudaType<ELEMENT_TYPE>::MappedType*>(input_data),                \
+        reinterpret_cast<ToCudaType<ELEMENT_TYPE>::MappedType*>(output_data), (CUDA_LONG)N);      \
+  } break
+#define HANDLE_ELEMENT_TYPE(ELEMENT_TYPE) \
+  case sizeof(ELEMENT_TYPE): {            \
+    switch (dimension_count) {            \
+      HANDLE_DIMS(ELEMENT_TYPE, 1);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 2);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 3);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 4);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 5);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 6);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 7);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 8);       \
+    }                                     \
+  } break
+    HANDLE_ELEMENT_TYPE(int8_t);
+    HANDLE_ELEMENT_TYPE(int16_t);
+    HANDLE_ELEMENT_TYPE(int32_t);
+    HANDLE_ELEMENT_TYPE(int64_t);
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Slice operator");
+#undef HANDLE_ELEMENT_TYPE
+#undef HANDLE_DIMS
+  }
+
+  return Status::OK();
+}
+
 Status SliceImpl(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
                  const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
                  const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data, const size_t N) {
@@ -87,46 +127,6 @@ Status SliceImplGrad(cudaStream_t stream, const size_t element_size, const int32
                            input_data, output_data, N);
 }
 #endif  // ENABLE_TRAINING
-
-#define HANDLE_DIMS(ELEMENT_TYPE, DIMS)                                                           \
-  case DIMS: {                                                                                    \
-    _SliceKernel<is_grad, DIMS, ELEMENT_TYPE><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>( \
-        starts, steps, input_strides, output_strides,                                             \
-        reinterpret_cast<const ToCudaType<ELEMENT_TYPE>::MappedType*>(input_data),                \
-        reinterpret_cast<ToCudaType<ELEMENT_TYPE>::MappedType*>(output_data), (CUDA_LONG)N);      \
-  } break
-
-#define HANDLE_ELEMENT_TYPE(ELEMENT_TYPE) \
-  case sizeof(ELEMENT_TYPE): {            \
-    switch (dimension_count) {            \
-      HANDLE_DIMS(ELEMENT_TYPE, 1);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 2);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 3);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 4);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 5);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 6);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 7);       \
-      HANDLE_DIMS(ELEMENT_TYPE, 8);       \
-    }                                     \
-  } break
-
-template <bool is_grad>
-Status SliceImplEx(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
-                   const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
-                   const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data,
-                   const size_t N) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(N, kNumThreadsPerBlock * kNumElementsPerThread));
-  switch (element_size) {
-    HANDLE_ELEMENT_TYPE(int8_t);
-    HANDLE_ELEMENT_TYPE(int16_t);
-    HANDLE_ELEMENT_TYPE(int32_t);
-    HANDLE_ELEMENT_TYPE(int64_t);
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Slice operator");
-  }
-
-  return Status::OK();
-}
 
 }  // namespace cuda
 }  // namespace onnxruntime
