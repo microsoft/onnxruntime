@@ -3778,6 +3778,23 @@ struct OrtApi {
   ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                   _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
 
+  /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
+  *
+  * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
+  * are logged.
+  *
+  * \param[in] log_severity_level The message's severity level.
+  * \param[in] message The message to log.
+  * \param[in] file_path The filepath of the file in which this message is logged. Usually the value of __FILE__.
+  * \param[in] line_number The file line number in which this message is logged. Usually the value of __LINE__.
+  * \param[in] func_name The name of the function in which this message is logged. Usually the value of __FUNCTION__.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
+                  int line_number, _In_z_ const char* func_name);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif

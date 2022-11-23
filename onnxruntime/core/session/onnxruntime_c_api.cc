@@ -148,6 +148,29 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message,
+                    _In_z_ const char* file_path, int line_number, _In_z_ const char* func_name) {
+  API_IMPL_BEGIN
+  const auto& logger = onnxruntime::logging::LoggingManager::DefaultLogger();  // Throws if no default logger exists.
+  const Severity severity = static_cast<Severity>(log_severity_level);
+  const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
+
+  if (logger.OutputIsEnabled(severity, log_data_type)) {
+    onnxruntime::CodeLocation location(file_path, line_number, func_name);
+
+    onnxruntime::logging::Capture(
+        logger,
+        severity,
+        onnxruntime::logging::Category::onnxruntime,
+        log_data_type,
+        location
+    ).Stream() << message;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 // enable platform telemetry
 ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
@@ -2332,7 +2355,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_12 = {
+static constexpr OrtApi ort_api_1_to_13 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2614,6 +2637,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::KernelInfo_GetOutputTypeInfo,
     &OrtApis::HasSessionConfigEntry,
     &OrtApis::GetSessionConfigEntry,
+    &OrtApis::Log,
 };
 
 
@@ -2648,7 +2672,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.14.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_12;
+    return &ort_api_1_to_13;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

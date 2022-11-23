@@ -141,7 +141,13 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
 
   // Get OpenVINO device type from provider options.
   auto device_type_it = session_configs.find("device_type");
-  this->device_type_ = device_type_it != session_configs.end() ? device_type_it->second : "CPU";
+
+  if (device_type_it == session_configs.end()) {
+    this->device_type_ = "CPU";
+    ORT_CXX_LOG(ORT_LOGGING_LEVEL_WARNING, "Did not provide an OpenVINO device type. Using 'CPU'.");
+  } else {
+    this->device_type_ = device_type_it->second;
+  }
 
   // Compile OpenVINO model.
   this->compiled_model_ = core.compile_model(model, this->device_type_);

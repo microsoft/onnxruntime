@@ -1278,8 +1278,7 @@ if (onnxruntime_USE_OPENVINO)
   onnxruntime_add_shared_library_module(custom_op_openvino_wrapper_library ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.cc
                                                                            ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/openvino_wrapper.cc)
   target_include_directories(custom_op_openvino_wrapper_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(custom_op_openvino_wrapper_library PRIVATE openvino::runtime)
-  target_link_libraries(custom_op_openvino_wrapper_library PRIVATE ${GSL_TARGET})
+  target_link_libraries(custom_op_openvino_wrapper_library PRIVATE openvino::runtime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
