@@ -20,12 +20,14 @@ from transformers import is_tf_available
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
+    from fusion_options import FusionOptions
     from huggingface_models import MODELS
     from onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnx_model import OnnxModel
     from optimizer import optimize_model
 else:
     from onnxruntime.transformers.benchmark_helper import ConfigModifier, OptimizerInfo, Precision
+    from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.huggingface_models import MODELS
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnxruntime.transformers.onnx_model import OnnxModel
@@ -74,8 +76,10 @@ class TestModelOptimization(unittest.TestCase):
         validate_model=True,
     ):
         # Remove cached model so that CI machine will have space
-        shutil.rmtree("./cache_models", ignore_errors=True)
+        if not find_transformers_source():
+            shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
+
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
@@ -106,12 +110,26 @@ class TestModelOptimization(unittest.TestCase):
                 fusion_options,
             )
 
-        onnx_model = list(model_fusion_statistics.keys())[0]
-        fusion_result_list = list(model_fusion_statistics[onnx_model].values())
-
         if validate_model:
             self.assertEqual(is_valid_onnx_model, True)
-        self.assertEqual(fusion_result_list, expected_fusion_result_list)
+
+        expected_node_count = {
+            "EmbedLayerNormalization": expected_fusion_result_list[0],
+            "Attention": expected_fusion_result_list[1],
+            "Gelu": expected_fusion_result_list[2],
+            "FastGelu": expected_fusion_result_list[3],
+            "BiasGelu": expected_fusion_result_list[4],
+            "LayerNormalization": expected_fusion_result_list[5],
+            "SkipLayerNormalization": expected_fusion_result_list[6],
+        }
+
+        for _onnx_path, value in model_fusion_statistics.items():
+            actual_node_count = value
+
+        for op_type, count in expected_node_count.items():
+            if op_type not in actual_node_count or actual_node_count[op_type] != count:
+                print(f"expected: {expected_node_count} got {actual_node_count}")
+                self.assertTrue(False)
 
     def test_gpt2_past(self):
         input = _get_test_model_path("gpt2_past")
@@ -173,9 +191,12 @@ class TestModelOptimization(unittest.TestCase):
         onnx_files.append("embed_layer_norm_format3_no_cast.onnx")
         onnx_files.append("embed_layer_norm_format3_no_cast_opset13.onnx")
 
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(False)
+
         for file in onnx_files:
             input_model_path = get_fusion_test_model(file)
-            model = optimize_model(input_model_path, "bert")
+            model = optimize_model(input_model_path, "bert", optimization_options=options)
             expected_node_count = {
                 "EmbedLayerNormalization": 1,
                 "Attention": 1,
@@ -270,8 +291,9 @@ class TestTensorflowModelOptimization(unittest.TestCase):
             self.skipTest("skip TestBertOptimizationTF since tf2onnx not installed")
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
-        # Remove cached model so that CI machine will have space
-        shutil.rmtree("./cache_models", ignore_errors=True)
+        # Remove cached model so that CI mach0ne will have space
+        if not find_transformers_source():
+            shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
 
         # expect fusion result list have the following keys

@@ -14,7 +14,7 @@ from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
 from fusion_gemmfastgelu import FusionGemmFastGelu
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
-from fusion_options import FusionOptions
+from fusion_options import AttentionMaskFormat, FusionOptions
 from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
@@ -97,8 +97,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionShape(self)
         fusion.apply()
 
-    def fuse_embed_layer(self):
-        fusion = FusionEmbedLayerNormalization(self)
+    def fuse_embed_layer(self, use_mask_index):
+        fusion = FusionEmbedLayerNormalization(self, use_mask_index)
         fusion.apply()
 
     def fuse_layer_norm(self):
@@ -398,7 +398,8 @@ class BertOnnxModel(OnnxModel):
         self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
-            self.fuse_embed_layer()
+            use_mask_index = options.attention_mask_format == AttentionMaskFormat.MaskIndexEnd
+            self.fuse_embed_layer(use_mask_index)
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()

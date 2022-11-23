@@ -7,9 +7,10 @@
 # Example to evaluate raw and optimized model for CUDA in Linux:
 #   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
 #   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu
-#   python3 -m onnxruntime.transformers.optimizer --output optimized.onnx --num_heads 12 --hidden_size 768 \
-#           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx
-#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu --onnx optimized.onnx
+#   python3 -m onnxruntime.transformers.optimizer --output optimized_fp16.onnx --num_heads 12 --hidden_size 768 \
+#           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx \
+#           --use_mask_index --float16
+#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu --onnx optimized_fp16.onnx -b 16
 
 import argparse
 import csv
