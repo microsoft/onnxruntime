@@ -165,9 +165,9 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
         else:
             assert any(
-                set(onnxruntime.get_available_providers()).isdisjoint(["CUDAExecutionProvider",
-                                                                       "ROCMExecutionProvider",
-                                                                       "MIGraphXExecutionProvider"])
+                set(onnxruntime.get_available_providers()).isdisjoint(
+                    ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+                )
             ), "Please install onnxruntime-gpu package, or install ROCm support, to test GPU inference."
 
     logger.info(f"PyTorch Version:{torch.__version__}")
