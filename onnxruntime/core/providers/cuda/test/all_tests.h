@@ -8,6 +8,7 @@ namespace test {
 // Test header provides function declarations in EP-side bridge.
 bool TestDeferredRelease();
 bool TestDeferredReleaseWithoutArena();
+bool TestBeamSearchTopK();
 
 }  // namespace test
 }  // namespace cuda
