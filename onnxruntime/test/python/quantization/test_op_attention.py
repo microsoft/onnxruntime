@@ -79,19 +79,19 @@ class TestOpAttention(TestCaseTempDir):
         model.ir_version = onnx.IR_VERSION
 
         model_inferenced = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(model)
-        onnx.save(model_inferenced, output_model_path)
+        onnx.save_model(model_inferenced, output_model_path)
 
     def dyn_attention_test(self, per_channel, reduce_range):
         per_channel_type_str = ".per_channel" if (per_channel) else ""
         reduce_range_type_str = ".reduce_range" if (reduce_range) else ""
         model_qop_path = (
             Path(self._tmp_model_dir.name)
-            .joinpath("attention.qop{}{}.onnx".format(per_channel_type_str, reduce_range_type_str))
+            .joinpath(f"attention.qop{per_channel_type_str}{reduce_range_type_str}.onnx")
             .as_posix()
         )
         model_qdp_path = (
             Path(self._tmp_model_dir.name)
-            .joinpath("attention.qdq{}{}.onnx".format(per_channel_type_str, reduce_range_type_str))
+            .joinpath(f"attention.qdq{per_channel_type_str}{reduce_range_type_str}.onnx")
             .as_posix()
         )
 

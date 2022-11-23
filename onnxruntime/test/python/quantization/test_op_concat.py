@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
+from onnx import TensorProto, helper, numpy_helper, save
 from op_test_utils import (
     TestCaseTempDir,
     check_model_correctness,
@@ -39,31 +39,31 @@ class TestConcatModel(TestCaseTempDir):
         #              |
         #           (output)
         initializers = []
-        input = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 3, 15, 15])
-        output = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 13, 13, 13])
+        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 15, 15])
+        output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 13, 13, 13])
 
         # Conv1 output [1, 2, 13, 13]
-        conv1_weight_initializer = onnx.numpy_helper.from_array(
+        conv1_weight_initializer = numpy_helper.from_array(
             np.random.normal(0, 0.1, [2, 3, 3, 3]).astype(np.float32),
             name="conv1_weight",
         )
-        conv1_node = onnx.helper.make_node("Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node")
+        conv1_node = helper.make_node("Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node")
 
         # Conv2 output [1, 5, 13, 13]
-        conv2_weight_initializer = onnx.numpy_helper.from_array(
+        conv2_weight_initializer = numpy_helper.from_array(
             np.random.normal(0, 0.1, [5, 3, 3, 3]).astype(np.float32),
             name="conv2_weight",
         )
-        conv2_node = onnx.helper.make_node("Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node")
+        conv2_node = helper.make_node("Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node")
 
         # Conv3 output [1, 6, 13, 13]
-        conv3_weight_initializer = onnx.numpy_helper.from_array(
+        conv3_weight_initializer = numpy_helper.from_array(
             np.random.normal(0, 0.1, [6, 3, 3, 3]).astype(np.float32),
             name="conv3_weight",
         )
-        conv3_node = onnx.helper.make_node("Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node")
+        conv3_node = helper.make_node("Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node")
 
-        concat_node = onnx.helper.make_node(
+        concat_node = helper.make_node(
             "Concat",
             ["conv1_output", "conv2_output", "conv3_output"],
             ["concat_output"],
@@ -71,44 +71,52 @@ class TestConcatModel(TestCaseTempDir):
             axis=1,
         )
 
-        relu_node = onnx.helper.make_node("Relu", ["concat_output"], ["relu_output"], name="relu_node")
-        identity_node = onnx.helper.make_node("Identity", ["relu_output"], ["output"], name="identity_node")
+        relu_node = helper.make_node("Relu", ["concat_output"], ["relu_output"], name="relu_node")
+        identity_node = helper.make_node("Identity", ["relu_output"], ["output"], name="identity_node")
 
         initializers = [
             conv1_weight_initializer,
             conv2_weight_initializer,
             conv3_weight_initializer,
         ]
-        graph = onnx.helper.make_graph(
+        graph = helper.make_graph(
             [conv1_node, conv2_node, conv3_node, concat_node, relu_node, identity_node],
             "qlinear_concat_op_test",
             [input],
             [output],
             initializer=initializers,
         )
-        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
-        onnx.save_model(model, model_path)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        save(model, model_path)
 
-    def quantize_concat_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_concat_test(self, activation_type, weight_type, extra_options=None):
         np.random.seed(1)
         model_fp32_path = "concat_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model(model_fp32_path)
         data_reader = input_feeds_negone_zero_one(1, {"input": [1, 3, 15, 15]})
 
-        activation_proto_qtype = (
-            onnx.TensorProto.UINT8 if activation_type == QuantType.QUInt8 else onnx.TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "concat_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_path = Path(self._tmp_model_dir.name).joinpath(model_q8_path).as_posix()
-        model_q8_qop_path = "concat_{}{}_qop_dyn.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qop_path).as_posix()
-        model_q8_qdq_path = "concat_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_path).as_posix()
-        model_q8_qdq_dyn_path = "concat_{}{}_qdq_dyn.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_dyn_path).as_posix()
+        model_q8_path = (
+            Path(self._tmp_model_dir.name).joinpath(f"concat_{activation_type_str}{weight_type_str}.onnx").as_posix()
+        )
+        model_q8_qop_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"concat_{activation_type_str}{weight_type_str}_qop_dyn.onnx")
+            .as_posix()
+        )
+        model_q8_qdq_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"concat_{activation_type_str}{weight_type_str}_qdq.onnx")
+            .as_posix()
+        )
+        model_q8_qdq_dyn_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"concat_{activation_type_str}{weight_type_str}_qdq_dyn.onnx")
+            .as_posix()
+        )
 
         # Verify QOperator mode
         data_reader.rewind()

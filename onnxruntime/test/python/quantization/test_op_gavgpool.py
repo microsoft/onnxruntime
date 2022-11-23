@@ -26,13 +26,12 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, q
 class TestOpGlobalAveragePool(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _ in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.normal(-1.0, 1.0, shape).astype(np.float32)})
             input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
+        return TestDataFeeds(input_data_list)
 
     def construct_model_gavgpool(self, output_model_path, input_shape, weight_shape, output_shape):
         #      (input)
@@ -87,7 +86,7 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
 
         onnx.save(model, output_model_path)
 
-    def quantize_gavgpool_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_gavgpool_test(self, activation_type, weight_type, extra_options=None):
         np.random.seed(1)
         model_fp32_path = "gavg_pool_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
@@ -97,10 +96,14 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "gavg_pool_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_path = Path(self._tmp_model_dir.name).joinpath(model_q8_path).as_posix()
-        model_q8_qdq_dyn_path = "gavg_pool_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_dyn_path).as_posix()
+        model_q8_path = (
+            Path(self._tmp_model_dir.name).joinpath(f"gavg_pool_{activation_type_str}{weight_type_str}.onnx").as_posix()
+        )
+        model_q8_qdq_dyn_path = (
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"gavg_pool_{activation_type_str}{weight_type_str}_qdq.onnx")
+            .as_posix()
+        )
 
         # Test Static
         data_reader.rewind()

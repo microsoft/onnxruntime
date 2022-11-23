@@ -20,7 +20,7 @@ from onnxruntime.quantization import QuantFormat, quantize_dynamic
 class TestOpEmbedLayerNormalization(TestCaseTempDir):
     def input_feeds_int32(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _ in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.ones(shape).astype(np.int32)})
