@@ -227,7 +227,10 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              this->expand_buffer_float_func_,
                                                              this->expand_buffer_float16_func_,
                                                              parameters->num_beams,
-                                                             this->ort_stream_));
+                                                             this->ort_stream_,
+                                                             decoder_subgraph_.UseSequenceAsInputIds(),
+                                                             current_length,
+                                                             cpu_state.sequences));
   }
 
   // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.

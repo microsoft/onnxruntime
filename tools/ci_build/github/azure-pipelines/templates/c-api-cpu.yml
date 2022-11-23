@@ -80,7 +80,7 @@ jobs:
         set -e
         pushd .
         cd $(Build.SourcesDirectory)/cmake/external/protobuf
-        cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
+        cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64'
         make -j$(getconf _NPROCESSORS_ONLN)
         make install
         popd
