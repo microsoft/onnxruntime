@@ -1,4 +1,7 @@
 message("Loading Dependencies URLs ...")
+
+include(external/helper_functions.cmake)
+
 file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
 foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
   # Lines start with "#" are comments
@@ -29,7 +32,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     FIND_PACKAGE_ARGS NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
   )
-  FetchContent_MakeAvailable(googletest)
+  onnxruntime_fetchcontent_makeavailable(googletest)
   if(NOT GTest_FOUND)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
     if (NOT MSVC)
@@ -152,7 +155,7 @@ else()
       URL ${DEP_URL_mp11}
       URL_HASH SHA1=${DEP_SHA1_mp11}
     )
-    FetchContent_MakeAvailable(mp11)
+    onnxruntime_fetchcontent_makeavailable(mp11)
 endif()
 
 
@@ -248,11 +251,11 @@ endif()
 
 
 if (onnxruntime_BUILD_BENCHMARKS)
-  FetchContent_MakeAvailable(google_benchmark)
+  onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
 
 if (NOT WIN32)
-    FetchContent_MakeAvailable(google_nsync)
+    onnxruntime_fetchcontent_makeavailable(google_nsync)
     set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
 endif()
 
@@ -279,7 +282,7 @@ FetchContent_Declare(
 )
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-FetchContent_MakeAvailable(Protobuf nlohmann_json re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json re2 safeint GSL flatbuffers)
 if(Protobuf_FOUND)
   message("Protobuf version: ${Protobuf_VERSION}")
 else()
@@ -344,7 +347,7 @@ FetchContent_Declare(
 
 
 if (CPUINFO_SUPPORTED)
-  FetchContent_MakeAvailable(pytorch_cpuinfo)
+  onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
 endif()
 
 
@@ -353,7 +356,7 @@ include(eigen)
 include(wil)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-    FetchContent_MakeAvailable(onnx)
+    onnxruntime_fetchcontent_makeavailable(onnx)
 else()
   include(onnx_minimal)
 endif()
@@ -408,7 +411,7 @@ if(onnxruntime_ENABLE_ATEN)
     URL ${DEP_URL_dlpack}
     URL_HASH SHA1=${DEP_SHA1_dlpack}
   )
-  # We can't use FetchContent_MakeAvailable since some part of the the dlpack code is Linux only.
+  # We can't use onnxruntime_fetchcontent_makeavailable since some part of the the dlpack code is Linux only.
   # For example, dlpackcpp.h uses posix_memalign.
   FetchContent_Populate(dlpack)
 endif()
@@ -419,7 +422,7 @@ if(onnxruntime_ENABLE_TRAINING)
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
   )
-  FetchContent_MakeAvailable(cxxopts)
+  onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
 message("Finished fetching external dependencies")
