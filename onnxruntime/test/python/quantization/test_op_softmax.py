@@ -17,10 +17,10 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -30,16 +30,6 @@ class TestOpSoftmax(TestCaseTempDir):
     """_summary_
     unittest (softmax): quantization of QDQ and Qop with u8 and s8
     """
-
-    def input_feeds(self, n_repeat, name2shape):
-        input_data_list = []
-        for _ in range(n_repeat):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        data_r = TestDataFeeds(input_data_list)
-        return data_r
 
     def construct_model_conv_softmax(
         self,
@@ -96,7 +86,7 @@ class TestOpSoftmax(TestCaseTempDir):
             {"axis": -2},
             [1, 3, 24, 40],
         )
-        data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 2, 26, 42]})
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"

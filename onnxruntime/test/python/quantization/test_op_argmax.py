@@ -12,7 +12,14 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_op_nodes, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import (
+    TestCaseTempDir,
+    check_model_correctness,
+    check_op_nodes,
+    check_op_type_count,
+    check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
+)
 
 import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
@@ -48,17 +55,6 @@ def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inp
 
 
 class TestOpArgMax(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for _ in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                # TODO: Use nonrandom linear input
-                rand_arr = np.random.normal(0.0, 0.1, shape).astype(np.float32)
-                inputs.update({name: rand_arr})
-            input_data_list.extend([inputs])
-        return TestDataFeeds(input_data_list)
-
     def construct_model_argmax(self, output_model_path, input_shape, output_shape):
         #     (input)
         #        |
@@ -162,7 +158,7 @@ class TestOpArgMax(TestCaseTempDir):
         )
 
         # Verify QOperator mode
-        data_reader = self.input_feeds(1, {"input": [1, 256, 128, 128]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 256, 128, 128]})
         quantize_static(
             model_fp32_path,
             model_uint8_path,

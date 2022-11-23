@@ -14,25 +14,16 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpGlobalAveragePool(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for _ in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(-1.0, 1.0, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        return TestDataFeeds(input_data_list)
-
     def construct_model_gavgpool(self, output_model_path, input_shape, weight_shape, output_shape):
         #      (input)
         #         |
@@ -90,7 +81,7 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
         np.random.seed(1)
         model_fp32_path = "gavg_pool_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
-        data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 8, 33, 33]})
         self.construct_model_gavgpool(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 1, 1])
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8

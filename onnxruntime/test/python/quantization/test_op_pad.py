@@ -14,26 +14,16 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpQuatizerPad(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for i in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
-
     def construct_model_pad(
         self,
         output_model_path,
@@ -166,7 +156,7 @@ class TestOpQuatizerPad(TestCaseTempDir):
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         model_i8_path = "qop_pad_notrigger_i8_{}.onnx".format(quantize_mode)
         model_i8_path = Path(self._tmp_model_dir.name).joinpath(model_i8_path).as_posix()
-        data_reader = self.input_feeds(1, {"input": [1, 16, 31, 31]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 16, 31, 31]})
         self.construct_model_pad(model_fp32_path, "constant", [1, 16, 31, 31], [0, 0, 1, 2, 0, 0, 3, 4])
         self.quantize_model(
             model_fp32_path,
@@ -207,7 +197,7 @@ class TestOpQuatizerPad(TestCaseTempDir):
         tag_constant_value = "" if constant_value is None else "_value"
         model_fp32_path = "qop_pad_{}_fp32_{}{}.onnx".format(quantize_mode, tag_pad_mode, tag_constant_value)
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
-        data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_pad(
             model_fp32_path,
             [1, 8, 33, 33],

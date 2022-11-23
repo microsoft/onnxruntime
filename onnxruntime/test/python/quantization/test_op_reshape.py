@@ -14,27 +14,17 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
     check_model_correctness,
     check_op_nodes,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpReshape(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for i in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(1, 2, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
-
     def construct_model_matmul_reshape(self, output_model_path, input_shape, weight_shape, output_shape):
         #    (input)
         #      |
@@ -100,7 +90,7 @@ class TestOpReshape(TestCaseTempDir):
         model_uint8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_dyn_path).as_posix()
 
         # Verify QOperator mode
-        data_reader = self.input_feeds(1, {"input": [3, 7]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [3, 7]})
         quantize_static(
             model_fp32_path,
             model_uint8_path,

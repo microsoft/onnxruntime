@@ -14,26 +14,16 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpRelu(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for i in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(0, 2, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
-
     def construct_model_gemm(self, output_model_path):
         #      (input)
         #         |
@@ -230,7 +220,7 @@ class TestOpRelu(TestCaseTempDir):
         model_fp32_path = "relu_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_gemm(model_fp32_path)
-        data_reader = self.input_feeds(1, {"input": [5, 10]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [5, 10]})
 
         self.static_quant_test(
             model_fp32_path,
@@ -250,7 +240,7 @@ class TestOpRelu(TestCaseTempDir):
         model_fp32_path = "relu_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_gemm(model_fp32_path)
-        data_reader = self.input_feeds(1, {"input": [5, 10]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [5, 10]})
 
         self.static_quant_test(
             model_fp32_path,

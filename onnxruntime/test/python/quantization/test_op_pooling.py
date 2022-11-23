@@ -14,26 +14,16 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_negone_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpAveragePool(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for i in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(-0.1, 0.2, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
-
     def construct_model_conv_avgpool(
         self,
         output_model_path,
@@ -89,7 +79,7 @@ class TestOpAveragePool(TestCaseTempDir):
             {"kernel_shape": [3, 3]},
             [1, 3, 22, 38],
         )
-        data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
+        data_reader = input_feeds_negone_zero_one(1, {"input": [1, 2, 26, 42]})
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"

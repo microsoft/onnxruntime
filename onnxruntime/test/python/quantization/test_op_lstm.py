@@ -11,23 +11,13 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
+from op_test_utils import TestCaseTempDir, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
 from onnxruntime.tools import symbolic_shape_infer
 
 
 class TestOpLSTM(TestCaseTempDir):
-    def input_feeds(self, n, name2shape):
-        input_data_list = []
-        for i in range(n):
-            inputs = {}
-            for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(0, 2, shape).astype(np.float32)})
-            input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
-
     def construct_model_lstm(self, output_model_path):
         #      (input)
         #         |
