@@ -45,7 +45,7 @@ def get_package_version(package_name: str):
 
 
 def load_onnx_model(
-    model_id: str, onnx_path: Optional[str] = None, use_gpu: bool = True, provider="CUDAExecutionProvider"
+    model_id: str, onnx_path: Optional[str] = None, provider="CUDAExecutionProvider"
 ):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
