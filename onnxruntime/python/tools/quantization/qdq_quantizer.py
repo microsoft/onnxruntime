@@ -95,7 +95,6 @@ class QDQQuantizer(ONNXQuantizer):
                 if static
                 else [
                     "Conv",
-                    "Matmul",
                     "MatMul",
                     "Gemm",
                     "Attention",
@@ -262,9 +261,7 @@ class QDQQuantizer(ONNXQuantizer):
         """
         Create nodes for dynamic quantization of input and add them to nodes_list.
             parameter input_name: Name of the input.
-            parameter nodes_list: new nodes are appended to this list.
-            parameter qType: type to quantize to.
-            return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+            return: scale_name, zero_point_name, compute_quant_param function node.
         """
         input_scale_name = input_name + "_scale"
         input_zp_name = input_name + "_zp"
@@ -276,7 +273,7 @@ class QDQQuantizer(ONNXQuantizer):
             input_name + "_ComputeQuantizationParameters",
             domain=self.compute_quantization_parameters_function.domain,
         )
-        return input_scale_name, input_zp_name, [], [], compute_quant_param_node
+        return input_scale_name, input_zp_name, compute_quant_param_node
 
     def create_dynamic_symmetric_subgraph_function(self, qtype):
         """
@@ -387,7 +384,7 @@ class QDQQuantizer(ONNXQuantizer):
         )
         nodes_list.append(scale_div_node)
 
-        # # Zero point Cast to integer 8
+        # Zero point Cast to integer 8
         zp_cast_name = input_name + "_zero_point_Cast"
         zp_cast_node = onnx.helper.make_node(
             "Cast", [fixed_zero_zp_name], [input_zp_name], zp_cast_name, to=qtype
@@ -397,11 +394,8 @@ class QDQQuantizer(ONNXQuantizer):
         # Create function op
         func_domain = "com.microsoft"
         func_opset_imports = [onnx.helper.make_opsetid("", self.opset_version)]
-        self.model.model.opset_import.extend(
-            [onnx.helper.make_opsetid("", self.opset_version)]
-        )  # , onnx.helper.make_opsetid(func_domain, 1)])
         return make_function(
-            func_domain,  # TODO: What domain
+            func_domain,
             "ComputeQuantizationParameters",
             [input_name],
             [input_scale_name, input_zp_name],
@@ -559,11 +553,8 @@ class QDQQuantizer(ONNXQuantizer):
         # Create function op
         func_domain = "com.microsoft"
         func_opset_imports = [onnx.helper.make_opsetid("", self.opset_version)]
-        self.model.model.opset_import.extend(
-            [onnx.helper.make_opsetid("", self.opset_version)]
-        )  # , onnx.helper.make_opsetid(func_domain, 1)])
         return make_function(
-            func_domain,  # TODO: What domain
+            func_domain,
             "ComputeQuantizationParameters",
             [input_name],
             [input_scale_name, input_zp_name],
@@ -722,16 +713,12 @@ class QDQQuantizer(ONNXQuantizer):
                             (
                                 scale_name,
                                 zp_name,
-                                _,
-                                _,
                                 cqp_node,
                             ) = self.create_dynamic_subgraph(add_quant_input_suffix(tensor_name))
                         else:
                             (
                                 scale_name,
                                 zp_name,
-                                _,
-                                _,
                                 cqp_node,
                             ) = self.create_dynamic_subgraph(tensor_name)
 

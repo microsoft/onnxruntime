@@ -85,7 +85,7 @@ QDQDynamicRegistry = {
     "Attention": QDQAttention,
     "LSTM": QDQLSTM,
 }
-QDQDynamicRegistry.update(CommonOpsRegistry)  # Is this ok?
+QDQDynamicRegistry.update(CommonOpsRegistry)
 
 
 def create_op_quantizer(onnx_quantizer, node):
