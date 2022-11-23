@@ -45,7 +45,9 @@ def get_package_version(package_name: str):
         return None
 
 
-def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, provider="CUDAExecutionProvider"):
+def load_onnx_model(
+    model_id: str, onnx_path: Optional[str] = None, provider="CUDAExecutionProvider", use_io_binding: bool = False
+):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
 
@@ -66,11 +68,14 @@ def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, provider="CU
             model.device = torch.device("cuda:0")
             model.model = ORTModel.load_model(onnx_path, provider)
         else:
+            model.device = torch.device("cpu")
             model.model = ORTModel.load_model(onnx_path)
     else:
         onnx_path = os.path.join(model.model_save_dir.as_posix(), model.latest_model_name)
         if provider != "CPUExecutionProvider":
             model.to("cuda")
+
+    model.use_io_binding = use_io_binding
 
     return model, onnx_path
 
@@ -90,6 +95,7 @@ def output_details(results: List[Dict[str, Any]], csv_filename: str):
             "disable_fused_attention",
             "batch_size",
             "sequence_length",
+            "use_io_binding",
             "exact",
             "f1",
             "total",
@@ -124,7 +130,13 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name
         metric_name (str): the metric to summarize
     """
     with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
-        header_names = ["pretrained_model_name", "onnx_path", "provider", "disable_fused_attention"]
+        header_names = [
+            "pretrained_model_name",
+            "onnx_path",
+            "provider",
+            "disable_fused_attention",
+            "use_io_binding",
+        ]
 
         model_list = list(set([result["onnx_path"] for result in results]))
         model_list.sort()
@@ -194,20 +206,22 @@ def main():
     for sequence_length in args.sequence_lengths:
         tokenizer.model_max_length = sequence_length
         tokenizer.doc_stride = min(sequence_length // 2, 128)
+        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider, args.use_io_binding)
 
-        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider)
         print(ort_model.config)
         if sequence_length > ort_model.config.max_position_embeddings:
             raise RuntimeError("sequence length should not be larger than {ort_model.config.max_position_embeddings}")
 
-        qa_pipeline = pipeline("question-answering", model=ort_model, tokenizer=tokenizer, question_first=True)
+        qa_pipeline = pipeline(
+            "question-answering", model=ort_model, tokenizer=tokenizer, question_first=True, batch_size=args.batch_size
+        )
 
         task_evaluator = evaluator("question-answering")
-        data = load_dataset("squad", split=f"validation[:{args.total}]" if args.total > 0 else "validation")
+        squad_dataset = load_dataset("squad", split=f"validation[:{args.total}]" if args.total > 0 else "validation")
 
         result = task_evaluator.compute(
             model_or_pipeline=qa_pipeline,
-            data=data,
+            data=squad_dataset,
             metric="squad_v2",
             squad_v2_format=True,
         )
@@ -216,8 +230,9 @@ def main():
         result["disable_fused_attention"] = disable_fused_attention
         result["pretrained_model_name"] = pretrained_model_name
         result["onnx_path"] = onnx_path
-        result["batch_size"] = 1
+        result["batch_size"] = args.batch_size
         result["sequence_length"] = sequence_length
+        result["use_io_binding"] = args.use_io_binding
         print(result)
 
         all_results.append(result)
@@ -249,6 +264,14 @@ def parse_arguments(argv=None):
         help="Sequence lengths for onnx model inputs. It could have multiple values.",
     )
 
+    parser.add_argument(
+        "-b",
+        "--batch_size",
+        type=int,
+        default=1,
+        help="batch size for inference.",
+    )
+
     parser.add_argument("-t", "--total", type=int, default=0, help="Total samples to test. 0 means all samples.")
 
     parser.add_argument(
@@ -265,6 +288,9 @@ def parse_arguments(argv=None):
         default="CUDAExecutionProvider",
         help="Select which Execution Provider to use for runs. Default is CUDAExecutionProvider.",
     )
+
+    parser.add_argument("--use_io_binding", required=False, action="store_true", help="Use IO Binding for GPU.")
+    parser.set_defaults(use_io_binding=False)
 
     args = parser.parse_args(argv)
 

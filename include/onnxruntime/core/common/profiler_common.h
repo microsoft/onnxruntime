@@ -59,7 +59,7 @@ struct EventRecord {
         args(event_args) {}
 
   EventRecord(const EventRecord& other) = default;
-  EventRecord(EventRecord&& other) = default;
+  EventRecord(EventRecord&& other) noexcept = default;
   EventRecord& operator=(const EventRecord& other) = default;
   EventRecord& operator=(EventRecord&& other) = default;
 
