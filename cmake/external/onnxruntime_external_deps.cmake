@@ -422,6 +422,8 @@ if(onnxruntime_ENABLE_TRAINING)
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
   )
+  set(CXXOPTS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(CXXOPTS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
