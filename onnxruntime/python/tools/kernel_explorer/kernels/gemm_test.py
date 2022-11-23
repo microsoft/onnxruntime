@@ -9,14 +9,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
-
-
-def dtype_to_suffix(dtype):
-    return {
-        "float32": "float",
-        "float16": "half",
-    }[dtype]
+from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
 def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):

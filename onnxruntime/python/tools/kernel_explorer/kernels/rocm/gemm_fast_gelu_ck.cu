@@ -3,6 +3,7 @@
 
 #include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.h"
 
+#include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
 #include <memory>

@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import re
 import sys
 from itertools import product
 
@@ -20,9 +21,9 @@ def get_bert_sizes():
 
 def dtype_to_funcs(dtype):
     type_map = {
-        "float16": list(filter(lambda x: "FastGelu_half" in x, dir(ke))),
-        "float32": list(filter(lambda x: "FastGelu_float" in x, dir(ke))),
-        "float64": list(filter(lambda x: "FastGelu_double" in x, dir(ke))),
+        "float16": list(filter(lambda x: re.match("FastGelu_half.*", x), dir(ke))),
+        "float32": list(filter(lambda x: re.match("FastGelu_float.*", x), dir(ke))),
+        "float64": list(filter(lambda x: re.match("FastGelu_double.*", x), dir(ke))),
     }
     return type_map[dtype]
 

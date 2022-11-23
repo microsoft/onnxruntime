@@ -9,6 +9,6 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-void InitGemmFastGeluTunable(py::module mod);
+void InitGemmFastGelu(py::module mod);
 
 }  // namespace onnxruntime

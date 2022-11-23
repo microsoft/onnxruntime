@@ -65,7 +65,8 @@ elseif (onnxruntime_USE_ROCM)
     # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
     # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
     device_gemm_instance
-    device_gemm_add_add_fastgelu_instance)
+    device_gemm_add_fastgelu_instance
+    device_gemm_fastgelu_instance)
 endif()
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)

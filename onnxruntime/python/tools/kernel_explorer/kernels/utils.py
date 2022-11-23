@@ -17,6 +17,12 @@ def transab_to_suffix(transab):
     }[tuple(transab)]
 
 
+def dtype_to_suffix(dtype):
+    return {
+        "float32": "float",
+        "float16": "half",
+    }[dtype]
+
 def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, transa: bool, transb: bool):
     k = b.shape[1] if transb else b.shape[0]
     # The machine epsilon, unit roundoff, the smallest positive floating point number n such that the floating point
