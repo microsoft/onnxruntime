@@ -426,10 +426,9 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
   const VecAddParams* PreTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
       is_proxy_params_used = true;
-      GSL_SUPPRESS(i .11)
-      VecAddParams* proxy = new VecAddParams(*params);
+      std::unique_ptr<VecAddParams> proxy = std::make_unique<VecAddParams>(*params);
       proxy->c = new int[params->num_elem];
-      return proxy;
+      return proxy.release();
     }
     is_proxy_params_used = false;
     return params;
