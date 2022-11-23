@@ -214,7 +214,7 @@ TEST(QuickGeluGradTest, Basic) {
     constexpr float alpha = 1.702f;
     TestElementwiseGradientOp(
         "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
-        [](const std::vector<float>& params) {
+        [alpha](const std::vector<float>& params) {
           ORT_ENFORCE(params.size() == 2);
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
@@ -227,7 +227,7 @@ TEST(QuickGeluGradTest, Basic) {
     constexpr float alpha = 1.0f;
     TestElementwiseGradientOp(
         "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
-        [](const std::vector<float>& params) {
+        [alpha](const std::vector<float>& params) {
           ORT_ENFORCE(params.size() == 2);
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
@@ -240,7 +240,7 @@ TEST(QuickGeluGradTest, Basic) {
     constexpr float alpha = -1.702f;
     TestElementwiseGradientOp(
         "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
-        [](const std::vector<float>& params) {
+        [alpha](const std::vector<float>& params) {
           ORT_ENFORCE(params.size() == 2);
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
