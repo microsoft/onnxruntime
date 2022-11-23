@@ -127,15 +127,15 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     end = std::min(end, range->stream_pc_range[stream_idx].second);
 #endif
 
-  if (since > end && since < logic_stream->steps_.size()) {
 #ifdef ENABLE_TRAINING
-    // this is a special handle for training
-    // with ORTModule, we are partially execute the graph with a shared context.
-    // there is a case that in forward pass we want to trigger downstream which
-    // not in current range. We need to execute one step to consume the Barrier
-    // counter otherwise later in backward the downstream won't execute correctly.
-    // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
-    // by Torch Dynamo.
+  // this is a special handle for training
+  // with ORTModule, we are partially execute the graph with a shared context.
+  // there is a case that in forward pass we want to trigger downstream which
+  // not in current range. We need to execute one step to consume the Barrier
+  // counter otherwise later in backward the downstream won't execute correctly.
+  // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
+  // by Torch Dynamo.
+  if (since >= end && since < logic_stream->steps_.size() && logic_stream->steps_[since]->IsBarrier()) {
     if (!ctx.TaskStatus().IsOK()) {
       ctx.CompleteTask();
       return;
@@ -167,10 +167,8 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     }
     ctx.CompleteTask();
     return;
-#else
-    ORT_THROW("Trigger execution beyond current range is not expected in inference build");
-#endif
   }
+#endif
 
   while (since < end) {
     if (!ctx.TaskStatus().IsOK()) {

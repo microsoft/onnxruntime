@@ -283,9 +283,9 @@ static Status PadImpl(OpKernelContext* ctx,
   // Reshape padding
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
-  size_t inner_no_pad_size = output_dims[inner_axis] > 0
+  size_t inner_no_pad_size = onnxruntime::narrow<size_t>(output_dims[inner_axis] > 0
                                  ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
-                                 : 0;
+                                 : 0);
   PadsVector reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
@@ -327,7 +327,7 @@ static Status PadImpl(OpKernelContext* ctx,
 
   // Initial skip, sum up the begin padding on each axis
   for (size_t i = 0; i < new_dims_count; i++)
-    alignSkip += reshaped_pad[i] * output_pitches[i];
+    alignSkip += SafeInt<size_t>(reshaped_pad[i] )* output_pitches[i];
 
   ExtentAxisCounters input_counters(input_extents);
 
@@ -344,21 +344,21 @@ static Status PadImpl(OpKernelContext* ctx,
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, value, prePad);
-          PadAxisConstant(output, value, postPad);
+          PadAxisConstant(axisStart - prePad, value, onnxruntime::narrow<size_t>(prePad));
+          PadAxisConstant(output, value, onnxruntime::narrow<size_t>(postPad));
           output += postPad;
-          alignSkip = prePad;
+          alignSkip = onnxruntime::narrow<size_t>(prePad);
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
-          ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
+          ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axisStart - prePad * inner_pitch, value, prePad * inner_pitch);
-          PadAxisConstant(output, value, postPad * inner_pitch);
+          PadAxisConstant(axisStart - prePad * inner_pitch, value, SafeInt<std::ptrdiff_t>(prePad) * inner_pitch);
+          PadAxisConstant(output, value, SafeInt<ptrdiff_t>(postPad) * inner_pitch);
           output += inner_pitch * postPad;
-          alignSkip += inner_pitch * prePad;
+          alignSkip += inner_pitch * SafeInt<size_t>(prePad);
         }
       }
       break;
@@ -376,27 +376,27 @@ static Status PadImpl(OpKernelContext* ctx,
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
           if (inner_no_pad_size == 1) {
-            PadAxisConstant(axisStart - prePad, *axisStart, prePad);
-            PadAxisConstant(output, *(output - 1), postPad);
+            PadAxisConstant(axisStart - prePad, *axisStart, onnxruntime::narrow<size_t>(prePad));
+            PadAxisConstant(output, *(output - 1), onnxruntime::narrow<size_t>(postPad));
           } else {
             // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
             // Also general loop below after handling first pad axis with non-pad axis works fine.
-            PadAxis(axisStart - prePad, axisStart, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis]);
-            PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis + data_rank]);
+            PadAxis(axisStart - prePad, axisStart, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis]));
+            PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
           }
           output += postPad;
-          alignSkip = prePad;
+          alignSkip = onnxruntime::narrow<size_t>(prePad);
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
-          ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
+          ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxis(axisStart - prePad * inner_pitch, axisStart, 1, -inner_pitch, inner_pitch, prePad);
-          PadAxis(output, output - inner_pitch, 1, -inner_pitch, inner_pitch, postPad);
+          PadAxis(axisStart - prePad * inner_pitch, axisStart, 1, -inner_pitch, inner_pitch, onnxruntime::narrow<size_t>(prePad));
+          PadAxis(output, output - inner_pitch, 1, -inner_pitch, inner_pitch, onnxruntime::narrow<size_t>(postPad));
           output += inner_pitch * postPad;
-          alignSkip += inner_pitch * prePad;
+          alignSkip += inner_pitch * SafeInt<size_t>(prePad);
         }
       }
       break;
@@ -414,27 +414,27 @@ static Status PadImpl(OpKernelContext* ctx,
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
           if (inner_no_pad_size == 1) {
-            PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, prePad);
-            PadInnermostAxis(output, output - 2, -1 /* inputDelta */, postPad);
+            PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, onnxruntime::narrow<size_t>(prePad));
+            PadInnermostAxis(output, output - 2, -1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));
           } else {
             // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
-            PadAxis(axisStart - prePad, axisStart + prePad, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis]);
-            PadAxis(output, output - 2 * inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis + data_rank]);
+            PadAxis(axisStart - prePad, axisStart + prePad, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis]));
+            PadAxis(output, output - 2 * inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
           }
           output += postPad;
-          alignSkip = prePad;
+          alignSkip = onnxruntime::narrow<size_t>(prePad);
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
-          ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
+          ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
           PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2,
-                  inner_pitch, prePad);
-          PadAxis(output, output - 2 * inner_pitch, 1, -inner_pitch * 2, inner_pitch, postPad);
+                  inner_pitch, onnxruntime::narrow<size_t>(prePad));
+          PadAxis(output, output - 2 * inner_pitch, 1, -inner_pitch * 2, inner_pitch, onnxruntime::narrow<size_t>(postPad));
           output += inner_pitch * postPad;
-          alignSkip += inner_pitch * prePad;
+          alignSkip += inner_pitch * SafeInt<size_t>(prePad);
         }
       }
       break;

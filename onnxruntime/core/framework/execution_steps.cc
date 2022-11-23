@@ -19,7 +19,9 @@ std::string BarrierStep::ToString() const {
   return ::onnxruntime::MakeString("Set a barrier with id: ",
                                    barrier_id_, ", count: ", 2, ".");
 }
-
+#ifdef ENABLE_TRAINING
+bool BarrierStep::IsBarrier() const { return true; }
+#endif
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
                            NotificationIndex idx) : SequentialExecutionPlan::ExecutionStep(),
                                                     wait_handle_(handle),

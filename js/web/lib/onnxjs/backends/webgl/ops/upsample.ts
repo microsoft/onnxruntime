@@ -99,9 +99,15 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
   let sizesInputIdx = 0;
 
   if (opset > 10) {
-    roiInputIdx = 1;
-    scalesInputIdx = 2;
-    sizesInputIdx = 3;
+    // handle when roiInput is not given
+    if (node.inputs.length > 2) {
+      roiInputIdx = 1;
+      scalesInputIdx = 2;
+      sizesInputIdx = 3;
+    } else {
+      scalesInputIdx = 1;
+      sizesInputIdx = 2;
+    }
   } else if (opset === 9) {
     scalesInputIdx = 1;
   }
@@ -307,7 +313,7 @@ const createUpsampleProgramInfo =
 export const validateInputs = (inputs: Tensor[], attribute: UpsampleAttributes): void => {
   if (!inputs || (attribute.opset < 9 && inputs.length !== 1) ||
       (attribute.opset >= 9 && attribute.opset < 11 && inputs.length !== 2) ||
-      (attribute.opset >= 11 && inputs.length !== 3 && inputs.length !== 4)) {
+      (attribute.opset >= 11 && inputs.length < 2)) {
     throw new Error('invalid inputs.');
   }
 

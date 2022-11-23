@@ -27,16 +27,17 @@ Status SoftMaxComputeHelper(
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
     dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D),  gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   } else {
     dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+        gsl::narrow_cast<int>(N));
   }
 
   return Status::OK();
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                                                 \
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                           \
   template Status SoftMaxComputeHelper<T, false>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis); \
   template Status SoftMaxComputeHelper<T, true>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis);
 

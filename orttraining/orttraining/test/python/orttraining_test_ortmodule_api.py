@@ -811,13 +811,11 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_se
         ort_model._is_training()
     )._execution_agent._inference_session._provider_options
 
-    expected_conv_algo_search = "HEURISTIC" if conv_algo_search is None else conv_algo_search
-    actual_conv_algo_search = None
+    # cudnn_conv_algo_search is for CUDA only, so setting the system env will not affect the compute on ROCm.
     if "CUDAExecutionProvider" in provider_options:
+        expected_conv_algo_search = "HEURISTIC" if conv_algo_search is None else conv_algo_search
         actual_conv_algo_search = provider_options["CUDAExecutionProvider"]["cudnn_conv_algo_search"]
-    elif "ROCMExecutionProvider" in provider_options:
-        actual_conv_algo_search = provider_options["ROCMExecutionProvider"]["cudnn_conv_algo_search"]
-    assert actual_conv_algo_search == expected_conv_algo_search
+        assert actual_conv_algo_search == expected_conv_algo_search
 
     if conv_algo_search is not None:
         del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]

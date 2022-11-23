@@ -1,10 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Remove cudaDeviceProp in LaunchFastGeluKernel.
-// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
-// Licensed under the MIT License.
-
 #pragma once
 
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
