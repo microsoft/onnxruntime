@@ -7,12 +7,13 @@
 
 namespace onnxruntime {
 
+#ifdef USE_CLOUD
+
 common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::span<const int>,
                                       gsl::span<const OrtValue> feeds, gsl::span<const int>,
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, CustomAllocator>&,
                                       const logging::Logger&) {
-
   CloudEndPointInvoker* invoker = session_state.GetCloudInvoker();
   if (invoker) {
     if (invoker->GetStaus().IsOK()) {
@@ -26,5 +27,17 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
   if (!invoker_status.IsOK()) return invoker_status;
   return onnxruntime::Status::OK();
 }
+
+#else
+
+common::Status CloudExecutor::Execute(const SessionState&, gsl::span<const int>,
+                                      gsl::span<const OrtValue>, gsl::span<const int>,
+                                      std::vector<OrtValue>&,
+                                      const std::unordered_map<size_t, CustomAllocator>&,
+                                      const logging::Logger&) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CloudExecutor::Execute not implemented");
+}
+
+#endif
 
 }  // namespace onnxruntime

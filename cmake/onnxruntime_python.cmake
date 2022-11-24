@@ -836,16 +836,6 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_CLOUD)
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          $<TARGET_FILE:onnxruntime_providers_cloud>
-          # $<TARGET_FILE:onnxruntime_providers_shared>
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-    )
-endif()
-
 if (onnxruntime_USE_TVM)
   file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"

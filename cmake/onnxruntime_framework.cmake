@@ -35,15 +35,9 @@ endif()
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
-
 onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 
 if (onnxruntime_USE_CLOUD)
-
-  list(APPEND onnxruntime_framework_srcs
-	"${ONNXRUNTIME_ROOT}/core/framework/cloud_executor.*"
-    "${ONNXRUNTIME_ROOT}/core/framework/cloud_invoker.*"
-  )
 
   include(ExternalProject)
 
@@ -89,21 +83,25 @@ if (onnxruntime_USE_CLOUD)
     vcpkg_install(pthread)
     vcpkg_install(b64)
 
+	#todo - replace url with the official one
     ExternalProject_Add(triton
                         GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
                         GIT_TAG buildfree
                         PREFIX triton
                         CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=x64-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
-                        INSTALL_COMMAND "")
+                        INSTALL_COMMAND ""
+						UPDATE_COMMAND "")
 
   else()
 
+    #todo - replace url with the official one
     ExternalProject_Add(triton
                         GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
                         GIT_TAG buildfree
                         PREFIX triton
                         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
-                        INSTALL_COMMAND "")
+                        INSTALL_COMMAND ""
+						UPDATE_COMMAND "")
 
   endif() #if (WIN32)
 

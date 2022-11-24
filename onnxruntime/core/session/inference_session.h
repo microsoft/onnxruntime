@@ -650,7 +650,7 @@ class InferenceSession {
       //override session execution mode with run option
       return ExecutionMode::ORT_CLOUD;
     } else {
-      return this->session_options_.execution_mode;
+      return session_options_.execution_mode;
     }
   }
 

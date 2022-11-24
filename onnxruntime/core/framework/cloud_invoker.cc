@@ -2,31 +2,22 @@
 // Licensed under the MIT License.
 
 #ifdef USE_CLOUD
-#include "http_client.h"
-#endif
 
+#include "http_client.h"
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
 
 namespace onnxruntime {
 
-CloudEndPointInvoker::~CloudEndPointInvoker() {}
-
-#ifdef USE_CLOUD
-
 namespace tc = triton::client;
 
 class TritonInvokder : public CloudEndPointInvoker {
  public:
   TritonInvokder(const CloudEndPointConfig& config);
-  void Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const override;
+  void Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const noexcept override;
 
  private:
-  bool ReadConfig(const char* config_name, bool& config_val, bool required = true);
-  bool ReadConfig(const char* config_name, std::string& config_val, bool required = true);
-  bool ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required = true);
-
   std::string uri_;
   std::string key_;  // access token for bearer authentication
   std::string model_name_;
@@ -54,7 +45,7 @@ TritonInvokder::TritonInvokder(const CloudEndPointConfig& config) : CloudEndPoin
   }
 }
 
-void TritonInvokder::Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const {
+void TritonInvokder::Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const noexcept {
   if (!status_.IsOK()) return;
 
   if (ort_inputs.size() != input_names_.size()) {
@@ -164,7 +155,7 @@ void TritonInvokder::Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtV
   }
 }
 
-bool TritonInvokder::ReadConfig(const char* config_name, bool& config_val, bool required) {
+bool CloudEndPointInvoker::ReadConfig(const char* config_name, bool& config_val, bool required) {
   if (config_.count(config_name)) {
     config_val = config_[config_name] == "true" || config_[config_name] == "True" || config_[config_name] == "TRUE" || config_[config_name] == "1";
   } else if (required) {
@@ -173,7 +164,7 @@ bool TritonInvokder::ReadConfig(const char* config_name, bool& config_val, bool 
   return status_.IsOK();
 }
 
-bool TritonInvokder::ReadConfig(const char* config_name, std::string& config_val, bool required) {
+bool CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
   if (config_.count(config_name)) {
     config_val = config_[config_name];
   } else if (required) {
@@ -182,7 +173,7 @@ bool TritonInvokder::ReadConfig(const char* config_name, std::string& config_val
   return status_.IsOK();
 }
 
-bool TritonInvokder::ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required) {
+bool CloudEndPointInvoker::ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required) {
   if (config_.count(config_name)) {
     std::stringstream ss;
     ss << config_[config_name];
@@ -207,12 +198,6 @@ std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const 
   return {};
 }
 
-#else
-
-std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig&) {
-  return {};
-}
-
-#endif  //USE_CLOUD
-
 }  // namespace onnxruntime
+
+#endif

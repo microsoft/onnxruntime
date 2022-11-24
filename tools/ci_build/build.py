@@ -663,7 +663,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
-    parser.add_argument("--use_cloud", action="store_true", help="Enable Hybrid-inferencing.")
+    parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
 
     args = parser.parse_args()
     if args.android_sdk_path:

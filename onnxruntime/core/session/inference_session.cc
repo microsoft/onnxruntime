@@ -1334,7 +1334,10 @@ common::Status InferenceSession::Initialize() {
         session_options_.enable_mem_reuse,
         prepacked_weights_container_);
 
-    session_state_->SetCloudInvoker(session_options_.config_options.configurations);
+    const auto* cloud_ep = execution_providers_.Get(onnxruntime::kCloudExecutionProvider);
+    if (cloud_ep) {
+      session_state_->SetCloudInvoker(session_options_.config_options.configurations);
+    }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -2039,7 +2042,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
   return retval;
 }
-
 
 common::Status InferenceSession::Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
                                      std::vector<OrtValue>* p_fetches) {

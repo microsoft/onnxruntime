@@ -7,7 +7,7 @@
 namespace onnxruntime {
 
 struct CloudProviderFactory : public IExecutionProviderFactory {
-  CloudProviderFactory(const std::unordered_map<std::string, std::string>& config) : config_(config){}
+  CloudProviderFactory(const std::unordered_map<std::string, std::string>& config) : config_(config) {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<CloudExecutionProvider>(config_);

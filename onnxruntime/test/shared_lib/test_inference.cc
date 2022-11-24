@@ -2162,4 +2162,3 @@ TEST(CApiTest, GH_11717) {
   EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
 }
 #endif
-

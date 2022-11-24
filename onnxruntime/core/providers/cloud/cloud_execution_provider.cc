@@ -10,6 +10,4 @@ CloudExecutionProvider::CloudExecutionProvider(const std::unordered_map<std::str
                                                                                                              config_(config) {
 }
 
-CloudExecutionProvider::~CloudExecutionProvider() {}
-
 }  // namespace onnxruntime
