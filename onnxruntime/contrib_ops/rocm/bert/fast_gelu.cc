@@ -49,7 +49,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   return LaunchFastGeluKernel<HipT>(IsTunableOpEnabled(),
-                                    Stream(),
+                                    Stream(context),
                                     static_cast<int>(input_length),
                                     static_cast<int>(bias_length),
                                     reinterpret_cast<const HipT*>(input->Data<T>()),

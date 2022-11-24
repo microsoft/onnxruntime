@@ -77,14 +77,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int past_sequence_length = 0;
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
 
-  rocblas_handle rocblas = RocblasHandle();
+  rocblas_handle rocblas = GetRocblasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
+  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size, context->GetComputeStream());
 
   typedef typename ToHipType<T>::MappedType HipT;
   HipT one = ToHipType<T>::FromFloat(1.0f);
@@ -95,7 +95,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
       rocblas, rocblas_operation_none, rocblas_operation_none, n, m, 1, &one,
       reinterpret_cast<const HipT*>(bias->Data<T>()), n,
-      GetConstOnes<HipT>(m), 1,
+      GetConstOnes<HipT>(m, Stream(context)), 1,
       &zero, reinterpret_cast<HipT*>(gemm_buffer.get()), n));
 
   // Gemm, note that ROCM assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
@@ -108,10 +108,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size,
                                                    sequence_length, past_sequence_length);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
       device_prop,
-      Stream(),
+      Stream(context),
       rocblas,
       element_size,
       batch_size,
