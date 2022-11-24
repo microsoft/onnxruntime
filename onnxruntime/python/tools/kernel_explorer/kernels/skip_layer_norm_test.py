@@ -10,6 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
+from utils import sort_profile_results
 
 
 def get_bert_sizes_test():
@@ -61,8 +62,8 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     gamma_d = ke.DeviceArray(gamma)
     beta_d = ke.DeviceArray(beta)
     y_d = ke.DeviceArray(output_y)
-    my_func = getattr(ke, func)
-    my_op = my_func(
+    f = getattr(ke, func)
+    my_op = f(
         y_d, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size
     )
     if my_op.IsSupported():
@@ -100,26 +101,45 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     beta_d = ke.DeviceArray(beta)
     bias_d = ke.DeviceArray(bias)
     y_d = ke.DeviceArray(output_y)
-    my_func = getattr(ke, func)
-    my_op = my_func(
+    f = getattr(ke, func)
+    my_op = f(
         y_d, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size
     )
     if my_op.IsSupported():
         duration = my_op.Profile()
-        print(
-            dtype,
-            batch_size,
-            seq_len,
-            hidden_size,
-            my_func,
-            f"{duration * 1000:.2f} us",
-            f"{(input_x.size * 3 + bias.size * 3) * input_x.itemsize * 1e3 / duration / 1e9:.2f} GB/s",
-        )
+        gbytes_per_seconds = (input_x.size * 3 + bias.size * 3) * input_x.itemsize * 1e3 / duration / 1e9
+        duration = duration * 1000
+        return {"func": func, "duration": duration, "GBps": gbytes_per_seconds}
+
+    return {"func": func, "duration": -1, "GBps": -1}
 
 
-def profile_with_args(batch_size, seq_len, hidden_size, dtype):
-    for func in dtype_to_funcs(dtype):
-        profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func)
+def print_results(batch_size, seq_len, hidden_size, dtype, profile_results):
+    for result in profile_results:
+        if result["GBps"] > 0:
+            print(
+                f"{result['func']:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4}",
+                f"{result['duration']:.2f} us",
+                f"{result['GBps']:.2f} GB/s",
+            )
+        else:
+            print(
+                f"{result['func']:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4} not supported or redundant"
+            )
+
+
+def profile_with_args(batch_size, seq_len, hidden_size, dtype, enable_sort=True):
+    if enable_sort:
+        profile_results = []
+        for func in dtype_to_funcs(dtype):
+            profile_result = profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func)
+            profile_results.append(profile_result)
+        sorted_profile_results = sort_profile_results(profile_results, sort_item="GBps", reverse=True)
+        print_results(batch_size, seq_len, hidden_size, dtype, sorted_profile_results)
+    else:
+        for func in dtype_to_funcs(dtype):
+            profile_result = profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func)
+            print_results(batch_size, seq_len, hidden_size, dtype, [profile_result])
     print()
 
 
@@ -138,8 +158,10 @@ if __name__ == "__main__":
     group.add_argument("seq_len", type=int)
     group.add_argument("hidden_size", type=int)
     group.add_argument("dtype", choices=dtypes)
+    group.add_argument("--enable_sort", action="store_true")
+
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype)
+        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype, args.enable_sort)

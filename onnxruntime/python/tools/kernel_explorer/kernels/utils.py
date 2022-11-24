@@ -66,3 +66,14 @@ def get_gemm_basic_sizes(full=True):
     # ck has various impls to be tested, use the full basic cases will result too many cases to test.
     # So we use a reduced combination here.
     return list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
+
+
+def sort_profile_results(profile_results, sort_item, reverse=False):
+    sorted_profile_result = sorted(profile_results, key=lambda x: x[sort_item], reverse=reverse)
+    tunable_id = 0
+    for impl_id, result in enumerate(sorted_profile_result):
+        if "Tunable" in result["func"]:
+            tunable_id = impl_id
+            break
+    sorted_profile_result.insert(0, sorted_profile_result.pop(tunable_id))
+    return sorted_profile_result
