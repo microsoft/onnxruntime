@@ -67,7 +67,7 @@ class TestModelOptimization(unittest.TestCase):
 
                 self.assertEqual(len(onnx_model.get_nodes_by_op_type(op_type)), count)
 
-    # add test function for huggingface pytorch model
+    # test huggingface pytorch model
     def _test_optimizer_on_huggingface_model(
         self,
         model_name,
@@ -75,7 +75,7 @@ class TestModelOptimization(unittest.TestCase):
         inputs_count=1,
         validate_model=True,
     ):
-        # Remove cached model so that CI machine will have space
+        # Remove cached model so that CI machine has enough space. Do not remove cache models in dev machine.
         if not find_transformers_source():
             shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
@@ -291,7 +291,7 @@ class TestTensorflowModelOptimization(unittest.TestCase):
             self.skipTest("skip TestBertOptimizationTF since tf2onnx not installed")
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
-        # Remove cached model so that CI mach0ne will have space
+        # Remove cached model so that CI machine has enough space. Do not remove cache models in dev machine.
         if not find_transformers_source():
             shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
