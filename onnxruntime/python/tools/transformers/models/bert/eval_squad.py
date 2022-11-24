@@ -258,20 +258,12 @@ def parse_arguments(argv=None):
         help="Optional onnx model path. If not specified, optimum will be used to export onnx model for testing.",
     )
 
-<<<<<<< HEAD
-=======
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="Allow GPU RUN.")
->>>>>>> 5488d4e72f... Fix formatting
     parser.add_argument(
         "--provider",
         required=False,
         default="CUDAExcecutionProvider",
         help="Select which Execution Provider to use for runs.",
     )
-<<<<<<< HEAD
-=======
-
->>>>>>> 5488d4e72f... Fix formatting
 
     args = parser.parse_args(argv)
 

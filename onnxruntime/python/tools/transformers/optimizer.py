@@ -74,10 +74,8 @@ def optimize_by_onnxruntime(
 
     import onnxruntime
 
-    if use_gpu and not any(
-        set(onnxruntime.get_available_providers()).isdisjoint(
-            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
-        )
+    if use_gpu and not set(onnxruntime.get_available_providers()).isdisjoint(
+        ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
     ):
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
@@ -114,11 +112,9 @@ def optimize_by_onnxruntime(
             gpu_ep.append("ROCMExecutionProvider")
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
-        assert any(
-            set(onnxruntime.get_available_providers()).isdisjoint(
-                ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
-            )
-        )  # Make sure there is GPU
+        assert set(onnxruntime.get_available_providers()).isdisjoint(
+            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+        )
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
