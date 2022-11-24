@@ -5,10 +5,11 @@
 
 #include <hip/hip_fp16.h>
 
-#include "contrib_ops/rocm/bert/gemm_fast_gelu_tunable_op.h"
-#include "core/providers/rocm/tunable/gemm_common.h"
+#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
+#include "core/providers/rocm/tunable/gemm_fast_gelu_tunable.cuh"
 
-using onnxruntime::rocm::tunable::blas::BlasOp;
+using namespace onnxruntime::rocm::tunable::blas;
+using namespace onnxruntime::rocm::tunable::blas::internal;
 
 namespace onnxruntime {
 namespace contrib {

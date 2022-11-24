@@ -3,22 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import re
 import sys
 from itertools import product
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
-
-
-def dtype_to_funcs(dtype):
-    type_map = {
-        "float16": list(filter(lambda x: re.search("GemmFastGelu.*_half", x), dir(ke))),
-        "float32": list(filter(lambda x: re.search("GemmFastGelu.*_float", x), dir(ke))),
-    }
-    return type_map[dtype]
+from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
 def fast_gelu(x, bias):
@@ -28,7 +19,8 @@ def fast_gelu(x, bias):
 
 
 # TODO The test method needs update.
-def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
+def _test_gemmfastgelu(my_func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
+    print(my_func)
     assert dtype in ["float16", "float32"]
 
     a_shape = (k, m) if transa else (m, k)
@@ -60,16 +52,16 @@ def _test_gemmfastgelu(func, dtype: str, m: int, n: int, k: int, transa=False, t
     ldb = b_shape[1]
     alpha = 1.0
     beta = 0.0
-    my_func = getattr(ke, func)
     my_op = my_func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, dev_bias, beta, dev_c, n)
 
-    if my_op.IsSupported():
+    print(f"dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {bound}")
+
+    for impl in my_op.ListOps():
+        if not my_op.SelectOp(impl):
+            continue
+
         my_op.Run()
         dev_c.UpdateHostNumpyArray()
-
-        print(
-            f"{func:<50} : dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {bound}"
-        )
 
         np.testing.assert_allclose(my_c, ref_c, rtol=max(bound, 1e-2))
 
@@ -81,12 +73,19 @@ all_transabs = list(product([True, False], repeat=2))
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
-def test_gemmfastgelu_bert_cases(dtype, size, transab):
-    for func in dtype_to_funcs(dtype):
-        _test_gemmfastgelu(func, dtype, *size, *transab)
+def test_gemmfastgelu_unfused_bert_cases(dtype, size, transab):
+    _test_gemmfastgelu(getattr(ke, "GemmFastGeluUnfused_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
 
 
-def profile_gemmfastgelu_func(func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("transab", all_transabs)
+def test_gemmfastgelu_tunable_bert_cases(dtype, size, transab):
+    wrapper_name = "GemmFastGeluTunable_{}".format(dtype_to_suffix(dtype))
+    _test_gemmfastgelu(getattr(ke, wrapper_name), dtype, *size, *transab)
+
+
+def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
 
@@ -107,26 +106,28 @@ def profile_gemmfastgelu_func(func, dtype: str, m: int, n: int, k: int, transa: 
     ldb = b_shape[1]
     alpha = 1.0
     beta = 0.0
-    my_func = getattr(ke, func)
     my_op = my_func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, dev_bias, beta, dev_c, n)
 
-    if my_op.IsSupported():
-        my_op.Run()
-        dev_c.UpdateHostNumpyArray()
+    for impl in my_op.ListOps():
+        if not my_op.SelectOp(impl):
+            print(f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))} m={m:<4} n={n:<4} k={k:<4} not supported")
+            sys.stdout.flush()
+            continue
 
         time_ms = my_op.Profile()
         time_us = time_ms * 1000
         # only counts gemm tflops because fastgelu is low order term (7 * n).
         tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
         print(
-            f"{func:<50} {dtype} {transab_to_suffix((transa, transb))}",
+            f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))}",
             f"m={m:<4} n={n:<4} k={k:<4} {time_us:>8.4f} us {tflops:>5.2f} tflops",
         )
 
 
 def profile_with_args(transa, transb, dtype, m, n, k):
-    for func in dtype_to_funcs(dtype):
-        profile_gemmfastgelu_func(func, dtype, m, n, k, transa, transb)
+    dtype_suffix = "_" + dtype_to_suffix(dtype)
+    profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluUnfused" + dtype_suffix), dtype, m, n, k, transa, transb)
+    profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluTunable" + dtype_suffix), dtype, m, n, k, transa, transb)
 
 
 def profile():

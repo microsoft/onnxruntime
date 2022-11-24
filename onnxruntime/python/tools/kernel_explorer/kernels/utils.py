@@ -25,6 +25,11 @@ def transab_to_suffix(transab):
         (False, False): "NN",
     }[tuple(transab)]
 
+def dtype_to_suffix(dtype):
+    return {
+        "float32": "float",
+        "float16": "half",
+    }[dtype]
 
 def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, transa: bool, transb: bool):
     k = b.shape[1] if transb else b.shape[0]
