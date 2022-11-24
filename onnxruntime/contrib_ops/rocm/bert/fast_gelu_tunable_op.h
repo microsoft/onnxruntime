@@ -11,6 +11,9 @@
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 
+using onnxruntime::rocm::CeilDiv;
+using onnxruntime::rocm::GPU_WARP_SIZE;
+
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
@@ -36,11 +39,12 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 Status FastGeluOp(const FastGeluParams<T>* params) {
   // TODO(anyone): Add tail handling for FastGelu
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-      !((params->bias_length > 0 && params->bias_length % VecSize == 0 && params->input_length % VecSize == 0) ||
-        (params->bias_length == 0 && params->input_length % VecSize == 0)));
+      !(((params->bias_length > 0 && params->bias_length % VecSize == 0 && params->input_length % VecSize == 0) ||
+         (params->bias_length == 0 && params->input_length % VecSize == 0)) &&
+        params->input_length > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize));
 
   FastGeluKernelVec<T, ThreadsPerBlock, VecSize>
-      <<<dim3(onnxruntime::rocm::CeilDiv(params->input_length, ThreadsPerBlock * VecSize)),
+      <<<dim3(CeilDiv(params->input_length, ThreadsPerBlock * VecSize)),
          dim3(ThreadsPerBlock),
          0, params->stream>>>(
           params->input_length, params->bias_length, params->input, params->bias, params->output);
