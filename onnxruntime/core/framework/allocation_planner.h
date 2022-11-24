@@ -92,7 +92,8 @@ class IGraphPartitioner {
                                                                    const std::string& configuration_file = {});
   virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                 const ExecutionProviders& execution_providers,
-                                std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
+                                std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                                ExecutionOrder execution_order) = 0;
   virtual const std::string& Name() const = 0;
   int Devices() const { return devices_; };
 

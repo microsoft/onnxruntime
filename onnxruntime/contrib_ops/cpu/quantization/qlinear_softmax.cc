@@ -93,7 +93,7 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
     int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
     // reduce_size could be negative if input-shape has a dynamic axis
     if (reduce_size > 0) {
-      BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
+      BuildLookupTableIfFixed(info, fixed_lookup_table_, onnxruntime::narrow<size_t>(reduce_size), is_signed_);
     }
   }
 }
@@ -112,7 +112,7 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
   auto* Y = ctx->Output(0, X_shape);
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis) : X_shape[axis];
+  const size_t D = onnxruntime::narrow<size_t>(opset_ < OPSET13 ? X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)) : X_shape[onnxruntime::narrow<size_t>(axis)]);
   EXP_OUT_DTYPE tmp_lookup_table[256];
   gsl::span<const EXP_OUT_DTYPE> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 

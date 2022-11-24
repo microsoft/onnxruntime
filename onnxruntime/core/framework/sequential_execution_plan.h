@@ -116,6 +116,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            const bool& terminate_flag,
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
+#ifdef ENABLE_TRAINING
+    // the partial execution mode for training need special handle for barrier
+    virtual bool IsBarrier() const { return false; }
+#endif
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
   // The steps within a sequence are executed in order, and happened on the same device.

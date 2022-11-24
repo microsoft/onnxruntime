@@ -66,7 +66,7 @@ static std::vector<int64_t> UpsampleNearestSetupRank1InputMapping(
     bool extrapolation_enabled,
     const GetOriginalCoordinateFunc& get_original_coordinate,
     const GetNearestPixelFunc& get_nearest_pixel) {
-  std::vector<int64_t> input_mapping(length_resized);
+  std::vector<int64_t> input_mapping(onnxruntime::narrow<size_t>(length_resized));
 
   for (int64_t output_dim0_idx = 0; output_dim0_idx < length_resized; ++output_dim0_idx) {
     float original_0_idx = get_original_coordinate(static_cast<float>(output_dim0_idx),
@@ -234,7 +234,7 @@ static Status UpsampleNearestImpl(const T* input,
     return Status::OK();
   }
 
-  std::vector<int64_t> output_dim_counter(n_dim);
+  std::vector<int64_t> output_dim_counter(onnxruntime::narrow<size_t>(n_dim));
   for (int64_t dim_idx = 0; dim_idx < n_dim; dim_idx++) {
     input_idx += input_mappings[narrow<size_t>(dim_idx)][0 /* output_dim_counter[narrow<size_t>(dim_idx)] */];
   }

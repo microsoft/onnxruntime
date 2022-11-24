@@ -122,8 +122,16 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   }
 
   // Execute the kernel and fetch outputs.
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
+#endif
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
   OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, DefaultLoggingManager().DefaultLogger());
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+
   ASSERT_STATUS_OK(kernel->Compute(&op_kernel_context));
   ASSERT_STATUS_OK(frame.GetOutputs(outputs));
 
