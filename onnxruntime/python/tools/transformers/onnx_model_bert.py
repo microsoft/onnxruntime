@@ -438,20 +438,18 @@ class BertOnnxModel(OnnxModel):
         ops = [
             "EmbedLayerNormalization",
             "Attention",
-            "QOrderedAttention",
             "Gelu",
-            "QOrderedGelu",
             "FastGelu",
             "BiasGelu",
             "GemmFastGelu",
             "LayerNormalization",
-            "QOrderedLayerNormalization",
             "SkipLayerNormalization",
-            "QOrderedMatMul",
         ]
-        for op in ops:
+        q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
+        for op in ops + q_ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
+
         logger.info(f"Optimized operators:{op_count}")
         return op_count
 
