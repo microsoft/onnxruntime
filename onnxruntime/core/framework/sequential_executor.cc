@@ -584,7 +584,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());
 
-  ctx.SetOrtValueCache(std::move(cache));
+  ctx.SetOrtValueCache(cache);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
