@@ -1291,7 +1291,7 @@ def generate_build_tree(
                 + os.pathsep
                 + os.environ["PATH"]
             )
-        preinstalled_dir = Path(build_dir)/config
+        preinstalled_dir = Path(build_dir) / config
         run_subprocess(
             cmake_args
             + [

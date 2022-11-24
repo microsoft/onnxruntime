@@ -19,27 +19,15 @@
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-[submodule "cmake/external/cxxopts"]
-	path = cmake/external/cxxopts
-	url = https://github.com/jarro2783/cxxopts.git
 [submodule "cmake/external/tensorboard"]
 	path = cmake/external/tensorboard
 	url = https://github.com/tensorflow/tensorboard.git
-[submodule "cmake/external/mimalloc"]
-	path = cmake/external/mimalloc
-	url = https://github.com/microsoft/mimalloc.git
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
 	url = https://github.com/microsoft/wil.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
-[submodule "cmake/external/flatbuffers"]
-	path = cmake/external/flatbuffers
-	url = https://github.com/google/flatbuffers.git
-[submodule "cmake/external/dlpack"]
-	path = cmake/external/dlpack
-	url = https://github.com/dmlc/dlpack.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
