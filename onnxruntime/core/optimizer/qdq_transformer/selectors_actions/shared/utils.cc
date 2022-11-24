@@ -99,7 +99,8 @@ void RegisterConvSelector(Selectors& qdq_selectors) {
 }
 
 void RegisterConvTransposeSelector(Selectors& qdq_selectors) {
-  /* register selector for conv op */
+  // register selector for ConvTranspose op
+  // it shares selector with Conv op, they have the same input/output def.
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetConvTransposeOpVersionsMap(),
                                  std::move(selector));
