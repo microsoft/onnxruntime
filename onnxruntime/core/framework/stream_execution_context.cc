@@ -39,8 +39,15 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
     else
       notifications_.push_back(nullptr);
   }
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26409 26400)
+#endif
   std::atomic_int* p_release_plan_buffer = new std::atomic_int[sess_state.GetExecutionPlan()->release_actions.size()];
   release_plan_ = std::unique_ptr<std::atomic_int[]>(p_release_plan_buffer);
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
   // init barreris
   for (size_t i = 0; i < num_barriers; ++i) {

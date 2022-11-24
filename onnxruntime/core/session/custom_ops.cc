@@ -74,6 +74,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
   auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
   if (stream)
     *out = stream->GetHandle();
+  else
+    *out = nullptr;
   return nullptr;
 };
 

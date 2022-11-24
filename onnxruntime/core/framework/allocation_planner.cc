@@ -9,6 +9,7 @@
 #include <iomanip>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/safeint.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_steps.h"
@@ -1272,7 +1273,7 @@ class PlannerImpl {
             // if not getting reused, add to waiting
             waiting_list[location][size_in_bytes][node_output] = &dependents_map[node_index];
           }
-         }
+        }
       }
     };  // TryReuseOutput
 
@@ -1670,7 +1671,7 @@ class PlannerImpl {
       plan_.release_actions[release_action_idx].ref_count++;
       plan_.node_release_list[node_index].push_back(release_action_idx);
     };
-    plan_.node_release_list.resize(graph_viewer_.MaxNodeIndex() + 1);
+    plan_.node_release_list.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < value_consumers.size(); ++i) {
       if (!value_consumers[i].empty()) {
         plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{i, 0});
@@ -1706,7 +1707,7 @@ class PlannerImpl {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
+    node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
         node_stream_map_[node_index] = i;
@@ -2364,7 +2365,7 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
   }  // else means configuration will not be written to a file
   std::unique_ptr<IGraphPartitioner> graph_partitioner;
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
-    graph_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
+    graph_partitioner = std::make_unique<DeviceBasedPartitioner>(logger, cfg_file);
   }
 
   return graph_partitioner;
