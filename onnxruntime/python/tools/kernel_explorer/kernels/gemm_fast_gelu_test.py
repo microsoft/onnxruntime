@@ -20,7 +20,6 @@ def fast_gelu(x, bias):
 
 # TODO The test method needs update.
 def _test_gemmfastgelu(my_func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
-    print(my_func)
     assert dtype in ["float16", "float32"]
 
     a_shape = (k, m) if transa else (m, k)
@@ -54,7 +53,7 @@ def _test_gemmfastgelu(my_func, dtype: str, m: int, n: int, k: int, transa=False
     beta = 0.0
     my_op = my_func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, dev_bias, beta, dev_c, n)
 
-    print(f"dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {bound}")
+    print(f"dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {max(bound, 1e-2)}")
 
     for impl in my_op.ListOps():
         if not my_op.SelectOp(impl):
@@ -84,6 +83,12 @@ def test_gemmfastgelu_tunable_bert_cases(dtype, size, transab):
     wrapper_name = "GemmFastGeluTunable_{}".format(dtype_to_suffix(dtype))
     _test_gemmfastgelu(getattr(ke, wrapper_name), dtype, *size, *transab)
 
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("transab", all_transabs)
+def test_gemmfastgelu_ck_bert_cases(dtype, size, transab):
+    wrapper_name = "CKGemmFastGelu_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
+    _test_gemmfastgelu(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
     a_shape = (k, m) if transa else (m, k)
@@ -128,7 +133,8 @@ def profile_with_args(transa, transb, dtype, m, n, k):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluUnfused" + dtype_suffix), dtype, m, n, k, transa, transb)
     profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluTunable" + dtype_suffix), dtype, m, n, k, transa, transb)
-
+    transab_suffix = "_" + transab_to_suffix((transa, transb))
+    profile_gemmfastgelu_func(getattr(ke, "CKGemmFastGelu" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb)
 
 def profile():
     for dtype in dtypes:
