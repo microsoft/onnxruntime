@@ -81,11 +81,13 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
  */
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {
   /**
-   * construct an image from tensor
-   *
-   * @returns An ImageData type object which can be used to draw on canvas
+   * creates an ImageData instance from tensor
+   * 
+   * @param inputOptions - Optional - Interface decribing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC 
+   * @param outputOptions - Optional - Interface decribing output image - Defaults: RGBA (A is set to NAN), 3 channels, 0-255, NHWC
+   * @returns An ImageData instance which can be used to draw on canvas
    */
-  toImage(): ImageData;
+  toImage(inputOptions?: TensorFromImageConfig, outputOptions?: ImageFromTensorConfig): ImageData;
 }
 
 export interface TensorConstructor {
@@ -240,39 +242,62 @@ export interface TensorConstructor {
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
   // #endregion
 }
+interface TensorFromImageConfig{
+  format?: 'RGB'|'RGBA'|'BGR';
+  dataType?: 'float32'|'uint8';
+  dimpalcment?: 'NHWC'|'NCHW';
+  numberOfChannels?: 3|4;
+  normBias?: number|[number,number,number]|[number,number,number,number];
+  normMean?: number|[number,number,number]|[number,number,number,number];
+}
+interface ImageFromTensorConfig{
+  format?: 'RGB'|'RGBA'|'BGR';
+  dataType?: 'float32'|'uint8';
+  dimpalcment?: 'NHWC'|'NCHW';
+  numberOfChannels?: 3|4;
+  normBias?: number|[number,number,number]|[number,number,number,number];
+  normMean?: number|[number,number,number]|[number,number,number,number];
+}
 export interface TensorFactory {
   /**
-   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
+   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGBA, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageData): Promise<Tensor>;
+  fromImage(image: ImageData, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
 
   /**
-   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
+   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGBA, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: HTMLImageElement): Promise<Tensor>;
+  fromImage(image: HTMLImageElement, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
 
   /**
-   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - string - Asumming the string is a URL to an image
+   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: string): Promise<Tensor>;
+  fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
 
   /**
-   * construct a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
+   * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
-   * @param format - string Type - since Imagebitmap doesn't have a standard format, this parameter is required
+   * @param image - ImageBitmap Type - since the data is stored as ImageData no need for format parameter 
+   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageBitmap, format?: 'rgb'|'rbg'|'rgba'): Promise<Tensor>;
+  fromImage(image: ImageBitmap, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
