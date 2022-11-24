@@ -1291,7 +1291,7 @@ def generate_build_tree(
                 + os.pathsep
                 + os.environ["PATH"]
             )
-
+        preinstalled_dir = Path(build_dir)/config
         run_subprocess(
             cmake_args
             + [
@@ -1307,6 +1307,9 @@ def generate_build_tree(
                     else "OFF"
                 ),
                 "-DCMAKE_BUILD_TYPE={}".format(config),
+                "-DCMAKE_PREFIX_PATH={}/{}/installed".format(build_dir, config)
+                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                else "",
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,

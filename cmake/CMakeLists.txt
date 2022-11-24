@@ -14,7 +14,7 @@ cmake_policy(SET CMP0104 OLD)
 
 # Project
 project(onnxruntime C CXX ASM)
-
+message(${PROJECT_BINARY_DIR})
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 

@@ -13,7 +13,7 @@ stages:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --build_java --build_nodejs --build_wheel
+        additionalBuildFlags: --build_java --build_nodejs --build_wheel --disable_memleak_checker
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_debug
@@ -131,7 +131,7 @@ stages:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_training --build_wheel
+        additionalBuildFlags: --enable_training --build_wheel --disable_memleak_checker
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: training_x64_debug
