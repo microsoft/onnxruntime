@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CLOUD
 #include "http_client.h"
+#endif
+
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
@@ -9,6 +12,8 @@
 namespace onnxruntime {
 
 CloudEndPointInvoker::~CloudEndPointInvoker() {}
+
+#ifdef USE_CLOUD
 
 namespace tc = triton::client;
 
@@ -23,7 +28,7 @@ class TritonInvokder : public CloudEndPointInvoker {
   bool ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required = true);
 
   std::string uri_;
-  std::string key_; // access token for bearer authentication
+  std::string key_;  // access token for bearer authentication
   std::string model_name_;
   std::string model_ver_;
   bool verbose_ = false;
@@ -41,7 +46,6 @@ TritonInvokder::TritonInvokder(const CloudEndPointConfig& config) : CloudEndPoin
       ReadConfig("input_names", input_names_) &&
       ReadConfig("output_names", output_names_) &&
       ReadConfig("verbose", verbose_, false)) {
-
     if (tc::InferenceServerHttpClient::Create(&triton_client_, uri_, verbose_).IsOk()) {
       cpu_allocator_ = std::make_shared<CPUAllocator>();
     } else {
@@ -139,18 +143,12 @@ void TritonInvokder::Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtV
         return;
       }
 
-      //std::cout << "Got shape for " << *iter << ": ";
-      //for (auto d : dims) std::cout << d << " ";
-      //std::cout << std::endl;
-
       int32_t* output0_data;
       size_t output0_byte_size;
       if (!results_ptr->RawData(*iter, (const uint8_t**)&output0_data, &output0_byte_size).IsOk()) {
         status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get raw data for output", *iter);
         return;
       }
-
-      //std::cout << "Got raw data for " << std::endl;
 
       TensorShape tensor_shape(dims);
       auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), tensor_shape, cpu_allocator_);
@@ -208,5 +206,13 @@ std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const 
   }
   return {};
 }
+
+#else
+
+std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig&) {
+  return {};
+}
+
+#endif  //USE_CLOUD
 
 }  // namespace onnxruntime

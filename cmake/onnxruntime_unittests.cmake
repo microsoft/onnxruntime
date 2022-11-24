@@ -510,6 +510,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
+	${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -591,6 +592,12 @@ if(onnxruntime_USE_ROCM)
   list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
 endif()
 
+if(onnxruntime_USE_CLOUD)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
+endif()
 
 if(WIN32)
   if (onnxruntime_USE_TVM)
