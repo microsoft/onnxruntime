@@ -1,10 +1,12 @@
 #ifndef NDEBUG
 
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
-#include <random>
+
+#include <algorithm>
 #include <numeric>
 #include <queue>
-#include <algorithm>
+#include <random>
+
 #include <cuda_runtime.h>
 
 namespace onnxruntime {
@@ -38,8 +40,6 @@ void ComputeTopKReference(const std::vector<float>& values,
                           int32_t beam_size,
                           int32_t vocab_size,
                           int32_t k) {
-  auto value_compare = [&values](const int32_t idx_1, const int32_t idx_2) { return values[idx_1] > values[idx_2]; };
-
   using VK = std::pair<float, int32_t>;
 
   for (int32_t b = 0; b < batch_size; b++) {
