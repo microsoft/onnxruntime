@@ -3,15 +3,17 @@
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu.h"
 
-#include "contrib_ops/rocm/bert/gemm_fast_gelu_impl.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/tunable/gemm_fast_gelu.h"
+#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
+
+using onnxruntime::rocm::ToHipType;
+using onnxruntime::rocm::tunable::blas::BlasOp;
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
-
-using onnxruntime::rocm::ToHipType;
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -54,10 +56,11 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const HipT alpha = ToHipType<T>::FromFloat(1.0f);
   const HipT beta = ToHipType<T>::FromFloat(0.0f);
 
-  return LaunchGemmFastGeluKernel<HipT>(
+  return onnxruntime::rocm::tunable::blas::row_major::GemmFastGelu(
       IsTunableOpEnabled(),
       Stream(ctx), GetRocblasHandle(ctx),
-      transa, transb,
+      transa ? BlasOp::Trans : BlasOp::NonTrans,
+      transb ? BlasOp::Trans : BlasOp::NonTrans,
       static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.N()), static_cast<int64_t>(helper.K()),
       alpha,
       reinterpret_cast<const HipT*>(X->Data<T>()), static_cast<int64_t>(helper.Lda(transa)),

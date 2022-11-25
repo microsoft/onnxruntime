@@ -8,6 +8,7 @@
 
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 #include "core/providers/rocm/tunable/gemm.h"
+#include "core/providers/rocm/tunable/gemm_fast_gelu_ck.cuh"
 #include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
@@ -51,11 +52,19 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
                                                              params->c);
 }
 
-template <typename T>
+template <typename T, typename ALayout, typename BLayout>
 class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
     this->ops_.emplace_back(GemmFastGeluUnfused<T>);
+    for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->ops_.emplace_back(std::move(op));
+    }
+    for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->ops_.emplace_back(std::move(op));
+    }
   }
 };
 
