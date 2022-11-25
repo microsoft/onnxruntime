@@ -89,17 +89,17 @@ if (onnxruntime_USE_CLOUD)
                         PREFIX triton
                         CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=x64-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                         INSTALL_COMMAND ""
-						UPDATE_COMMAND "")
+                        UPDATE_COMMAND "")
 
   else()
 
     ExternalProject_Add(triton
-                        GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                        GIT_TAG main
+                        GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
+                        GIT_TAG buildfree
                         PREFIX triton
                         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                         INSTALL_COMMAND ""
-						UPDATE_COMMAND "")
+                        UPDATE_COMMAND "")
 
   endif() #if (WIN32)
 
@@ -122,7 +122,8 @@ if (onnxruntime_USE_CLOUD)
 
     find_package(ZLIB REQUIRED)
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB ssl crypto)
+    message(WARNING "SSL LIBS: " ${OPENSSL_LIBRARIES})
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB ${OPENSSL_LIBRARIES})
 
   endif() #if (WIN32)
 
