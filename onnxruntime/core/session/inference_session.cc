@@ -1353,6 +1353,11 @@ common::Status InferenceSession::Initialize() {
         session_options_.enable_mem_reuse,
         prepacked_weights_container_);
 
+    const auto* cloud_ep = execution_providers_.Get(onnxruntime::kCloudExecutionProvider);
+    if (cloud_ep) {
+      session_state_->SetCloudInvoker(session_options_.config_options.configurations);
+    }
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
     session_state_->SetMemoryProfiler(&memory_profiler_);
@@ -1993,7 +1998,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   session_options_.execution_mode, run_options.terminate, run_logger,
+                                                   GetExecutionMode(run_options),
+                                                   run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));
     }
     ORT_CATCH(const std::exception& e) {

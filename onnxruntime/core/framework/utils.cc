@@ -19,6 +19,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
+//todo - find a better place for cloud exector
+#include "core/framework/cloud_executor.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
 #endif
@@ -525,9 +527,10 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
   // avoid memory allocations
+  IExecutor* p_exec = nullptr;
   std::optional<SequentialExecutor> seq_executor;
   std::optional<ParallelExecutor> par_executor;
-  IExecutor* p_exec = nullptr;
+  std::optional<CloudExecutor> cloud_executor;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     seq_executor.emplace(terminate_flag, only_execute_path_to_fetches);
     p_exec = &seq_executor.value();
@@ -541,6 +544,9 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       par_executor.emplace(session_state, terminate_flag);
       p_exec = &par_executor.value();
     }
+  } else if (execution_mode == ExecutionMode::ORT_CLOUD) {
+    cloud_executor.emplace();
+    p_exec = &cloud_executor.value();
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();

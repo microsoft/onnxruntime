@@ -665,6 +665,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
+    parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
 
     args = parser.parse_args()
     if args.android_sdk_path:
@@ -1234,6 +1235,9 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
+    if args.use_cloud:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
+        
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
