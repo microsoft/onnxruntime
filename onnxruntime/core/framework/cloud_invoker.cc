@@ -120,7 +120,7 @@ void TritonInvokder::Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtV
     //assemble triton inputs
     auto iter = input_names_.begin();
     for (int i = 0; i < static_cast<int>(ort_inputs.size()); i++) {
-      const OrtValue& ort_input = ort_inputs.at(i);
+      const OrtValue& ort_input = ort_inputs[i];
       if (!ort_input.IsTensor()) {
         //todo - do we need to support tensor sequence and sparse tensor?
         status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton client only accept tensor(s) as input");
