@@ -644,6 +644,16 @@ class InferenceSession {
                                 SessionState& session_state,
                                 bool saving_model_in_ort_format) ORT_MUST_USE_RESULT;
 
+  ExecutionMode GetExecutionMode(const RunOptions& run_options) const {
+    if (run_options.config_options.configurations.count("use_cloud") &&
+        run_options.config_options.configurations.at("use_cloud") != "0") {
+      //override session execution mode with run option
+      return ExecutionMode::ORT_CLOUD;
+    } else {
+      return session_options_.execution_mode;
+    }
+  }
+
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
   InsertCastTransformer insert_cast_transformer_;
