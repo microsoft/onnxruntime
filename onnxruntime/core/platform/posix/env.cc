@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
 
-#include "core/platform/env.h"
+#include "core/platform/posix/env.h"
 
 
 #include <assert.h>
@@ -48,8 +48,6 @@ limitations under the License.
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
 namespace onnxruntime {
-
-namespace {
 
 constexpr int OneMillion = 1000000;
 
@@ -258,26 +256,22 @@ class PosixThread : public EnvThread {
   pthread_t hThread;
 };
 
-class PosixEnv : public Env {
- public:
-  static PosixEnv& Instance() {
+ PosixEnv& PosixEnv::Instance() {
     static PosixEnv default_env;
     return default_env;
   }
 
-  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
+  EnvThread* PosixEnv::CreateThread(const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
+                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
 
-  // we are guessing the number of phys cores based on a popular HT case.
-  static int DefaultNumCores() {
+ int PosixEnv::DefaultNumCores() {
     return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
   }
 
-  // Return the number of physical cores
-  int GetNumPhysicalCpuCores() const override {
+  int PosixEnv::GetNumPhysicalCpuCores() const { 
 #ifdef CPUINFO_SUPPORTED
     if(cpuinfo_available_) {
       return narrow<int>(cpuinfo_get_cores_count());
@@ -287,7 +281,7 @@ class PosixEnv : public Env {
     return DefaultNumCores();
   }
 
-  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
+  std::vector<LogicalProcessors> PosixEnv::GetDefaultThreadAffinities() const {
 
     std::vector<LogicalProcessors> ret;
 #ifdef CPUINFO_SUPPORTED
@@ -319,7 +313,7 @@ class PosixEnv : public Env {
     return ret;
   }
 
-  void SleepForMicroseconds(int64_t micros) const override {
+  void PosixEnv::SleepForMicroseconds(int64_t micros) const {
     while (micros > 0) {
       timespec sleep_time;
       sleep_time.tv_sec = 0;
@@ -339,16 +333,16 @@ class PosixEnv : public Env {
     }
   }
 
-  PIDType GetSelfPid() const override {
+  PIDType PosixEnv::GetSelfPid() const {
     return getpid();
   }
 
-  Status GetFileLength(const PathChar* file_path, size_t& length) const override {
+  Status PosixEnv::GetFileLength(const PathChar* file_path, size_t& length) const {
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     return GetFileLength(file_descriptor.Get(), length);
   }
 
-  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+  common::Status PosixEnv::GetFileLength(int fd, /*out*/ size_t& file_size) const {
     using namespace common;
     if (fd < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
@@ -372,8 +366,8 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                            gsl::span<char> buffer) const override {
+  Status PosixEnv::ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                            gsl::span<char> buffer) const {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
     ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
@@ -417,8 +411,8 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                           MappedMemoryPtr& mapped_memory) const override {
+  Status PosixEnv::MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                           MappedMemoryPtr& mapped_memory) const {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
 
@@ -450,14 +444,14 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
+  common::Status PosixEnv::ReportSystemError(const char* operation_name, const std::string& path) {
     auto [err_no, err_msg] = GetSystemError();
     std::ostringstream oss;
     oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
     return common::Status(common::SYSTEM, err_no, oss.str());
   }
 
-  bool FolderExists(const std::string& path) const override {
+  bool PosixEnv::FolderExists(const std::string& path) const {
     struct stat sb;
     if (stat(path.c_str(), &sb)) {
       return false;
@@ -465,7 +459,7 @@ class PosixEnv : public Env {
     return S_ISDIR(sb.st_mode);
   }
 
-  common::Status CreateFolder(const std::string& path) const override {
+  common::Status PosixEnv::CreateFolder(const std::string& path) const {
     size_t pos = 0;
     do {
       pos = path.find_first_of("\\/", pos + 1);
@@ -480,14 +474,14 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status DeleteFolder(const PathString& path) const override {
+  common::Status PosixEnv::DeleteFolder(const PathString& path) const {
     const auto result = nftw(
         path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
     ORT_RETURN_IF_NOT(result == 0, "DeleteFolder(): nftw() failed with error: ", result);
     return Status::OK();
   }
 
-  common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override {
+  common::Status PosixEnv::FileOpenRd(const std::string& path, /*out*/ int& fd) const {
     fd = open(path.c_str(), O_RDONLY);
     if (0 > fd) {
       return ReportSystemError("open", path);
@@ -495,7 +489,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const override {
+  common::Status PosixEnv::FileOpenWr(const std::string& path, /*out*/ int& fd) const {
     fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (0 > fd) {
       return ReportSystemError("open", path);
@@ -503,7 +497,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status FileClose(int fd) const override {
+  common::Status PosixEnv::FileClose(int fd) const {
     int ret = close(fd);
     if (0 != ret) {
       return ReportSystemError("close", "");
@@ -511,9 +505,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status GetCanonicalPath(
-      const PathString& path,
-      PathString& canonical_path) const override {
+  common::Status PosixEnv::GetCanonicalPath(const PathString& path, PathString& canonical_path) const {
     MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Freer<char>()};
     if (!canonical_path_cstr) {
       return ReportSystemError("realpath", path);
@@ -522,7 +514,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const override {
+  common::Status PosixEnv::LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const {
     dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
     char* error_str = dlerror();
@@ -533,7 +525,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  common::Status UnloadDynamicLibrary(void* handle) const override {
+  common::Status PosixEnv::UnloadDynamicLibrary(void* handle) const {
     if (!handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
     }
@@ -547,7 +539,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
+  common::Status PosixEnv::GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const {
     dlerror();  // clear any old error str
     *symbol = dlsym(handle, symbol_name.c_str());
     char* error_str = dlerror();
@@ -559,7 +551,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
+  std::string PosixEnv::FormatLibraryFileName(const std::string& name, const std::string& version) const {
     std::string filename;
     if (version.empty()) {
       filename = "lib" + name + ".so";
@@ -569,33 +561,14 @@ class PosixEnv : public Env {
     return filename;
   }
 
-  // \brief returns a provider that will handle telemetry on the current platform
-  const Telemetry& GetTelemetryProvider() const override {
+  const Telemetry& PosixEnv::GetTelemetryProvider() const {
     return telemetry_provider_;
   }
 
-  // \brief returns a value for the queried variable name (var_name)
-  std::string GetEnvironmentVar(const std::string& var_name) const override {
+  std::string PosixEnv::GetEnvironmentVar(const std::string& var_name) const {
     char* val = getenv(var_name.c_str());
     return val == NULL ? std::string() : std::string(val);
   }
-
- private:
-  PosixEnv()  {
-#ifdef CPUINFO_SUPPORTED
-    cpuinfo_available_ = cpuinfo_initialize();
-    if(!cpuinfo_available_) {
-      LOGS_DEFAULT(INFO) << "cpuinfo_initialize failed";
-    }
-#endif
-  }
-  Telemetry telemetry_provider_;
-#ifdef CPUINFO_SUPPORTED
-  bool cpuinfo_available_{false};
-#endif
-};
-
-}  // namespace
 
 // REGISTER_FILE_SYSTEM("", PosixFileSystem);
 // REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
