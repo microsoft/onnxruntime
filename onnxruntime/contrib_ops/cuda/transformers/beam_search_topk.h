@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+#include <cuda_runtime.h>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
