@@ -180,7 +180,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(OrtStream(context),
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
                                              batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 

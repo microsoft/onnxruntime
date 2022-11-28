@@ -63,7 +63,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const int64_t alignment = size * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t padded_size = padded_count * element_size;
-  auto fusion_buffer = GetScratchBuffer<void>(padded_size, OrtStream(context));
+  auto fusion_buffer = GetScratchBuffer<void>(padded_size, context->GetComputeStream());
   void* fusion_data = fusion_buffer.get();
 
   // Calculate the range of inputs this rank will send.
@@ -153,7 +153,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   const int64_t alignment = size * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t padded_size = padded_count * element_size;
-  auto fusion_buffer = GetScratchBuffer<void>(padded_size, OrtStream(context));
+  auto fusion_buffer = GetScratchBuffer<void>(padded_size, context->GetComputeStream());
   void* fusion_data = fusion_buffer.get();
 
   // Calculate the range of outputs this rank will receive.

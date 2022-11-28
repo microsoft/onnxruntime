@@ -257,7 +257,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
                   has_key_padding_mask_));
 
   // calculate q
-  gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size, OrtStream(context));
+  gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size, context->GetComputeStream());
   m = sequence_length * batch_size;
   n = hidden_size;
   k = hidden_size;
@@ -282,7 +282,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   k = hidden_size;
   if (!has_layer_state_ || !use_past_) {
     if (!static_kv_) {
-      gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * sequence_length * hidden_size * element_size, OrtStream(context));
+      gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * sequence_length * hidden_size * element_size, context->GetComputeStream());
       m = sequence_length * batch_size;
       n = 2 * hidden_size;
       k = hidden_size;
@@ -301,7 +301,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
-      gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * key_sequence_length * hidden_size * element_size, OrtStream(context));
+      gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * key_sequence_length * hidden_size * element_size, context->GetComputeStream());
       m = key_sequence_length * batch_size;
       n = 2 * hidden_size;
       k = hidden_size;
@@ -326,7 +326,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // key and value cache have identical shape
     int cache_sequence_length = static_cast<int>(cache_shape[2]);
     if (!static_kv_) {
-      gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * sequence_length * hidden_size * element_size, OrtStream(context));
+      gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * sequence_length * hidden_size * element_size, context->GetComputeStream());
       m = sequence_length * batch_size;
       kv_sequence_length = cache_sequence_length + sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
@@ -348,10 +348,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   size_t bytes = element_size * batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size;
-  auto qkv_buffer_p = GetScratchBuffer<void>(bytes, OrtStream(context));
+  auto qkv_buffer_p = GetScratchBuffer<void>(bytes, context->GetComputeStream());
 
   bytes = element_size * 2 * batch_size * sequence_length * num_heads_ * (2 * head_size + kv_sequence_length);
-  auto workspace_p = GetScratchBuffer<void>(bytes, OrtStream(context));
+  auto workspace_p = GetScratchBuffer<void>(bytes, context->GetComputeStream());
 
   Tensor* output(context->Output(0, query_shape));
   TensorShape new_cache_shape({batch_size, num_heads_, kv_sequence_length, head_size});

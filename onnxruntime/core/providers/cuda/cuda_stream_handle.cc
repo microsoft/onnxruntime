@@ -158,10 +158,6 @@ void WaitCudaNotificationOnHost(Stream& /*stream*/, synchronize::Notification& n
   static_cast<CudaNotification*>(&notification)->wait_on_host();
 }
 
-void ReleaseCUdaNotification(void* handle) {
-  delete static_cast<CudaNotification*>(handle);
-}
-
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
                                const OrtDevice::DeviceType device_type,
                                AllocatorPtr cpu_allocator,

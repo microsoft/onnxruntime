@@ -98,10 +98,10 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
 
     // Convert the scale, B, mean, var to float
     const int64_t C = x_shape.GetDims()[1];
-    auto f_scale = GetScratchBuffer<float>(C, OrtStream(p_op_kernel_context));
-    auto f_B = GetScratchBuffer<float>(C, OrtStream(p_op_kernel_context));
-    auto f_mean = GetScratchBuffer<float>(C, OrtStream(p_op_kernel_context));
-    auto f_var = GetScratchBuffer<float>(C, OrtStream(p_op_kernel_context));
+    auto f_scale = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    auto f_B = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    auto f_mean = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    auto f_var = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), scale_data, f_scale.get(), C);
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), b_data, f_B.get(), C);
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), mean_data, f_mean.get(), C);

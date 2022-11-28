@@ -114,10 +114,10 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
       }
     }
 
-    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(OrtStream(ctx)));
-    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(OrtStream(ctx)));
-    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(OrtStream(ctx)));
-    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(OrtStream(ctx)));
+    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
 
     ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx),
                                    sizeof(int64_t),

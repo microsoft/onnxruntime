@@ -139,10 +139,6 @@ void WaitRocmNotificationOnHost(Stream& /*stream*/, synchronize::Notification& n
   static_cast<RocmNotification*>(&notification)->wait_on_host();
 }
 
-void ReleaseCUdaNotification(void* handle) {
-  delete static_cast<RocmNotification*>(handle);
-}
-
 void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
                                const OrtDevice::DeviceType device_type,
                                AllocatorPtr cpu_allocator,

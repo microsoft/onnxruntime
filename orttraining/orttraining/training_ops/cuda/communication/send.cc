@@ -53,7 +53,7 @@ void Send::SendData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, OrtStream(ctx));
+  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, ctx->GetComputeStream());
 #else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       aggregated_aligned_tensor_bytes);

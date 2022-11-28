@@ -150,13 +150,13 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
     num_batches = static_cast<size_t>(input_shape.SizeToDimension(num_dim - 2));
   }
 
-  IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches, OrtStream(ctx));
+  IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches, ctx->GetComputeStream());
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream(ctx)));
-  IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches, OrtStream(ctx));
+  IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches, ctx->GetComputeStream());
 
   utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(input->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(
-      OrtStream(ctx), GetCublasHandle(ctx), this, *input, *output, info, pivots, num_batches, rows);
+      ctx->GetComputeStream(), GetCublasHandle(ctx), this, *input, *output, info, pivots, num_batches, rows);
 }
 
 }  // namespace cuda

@@ -124,7 +124,7 @@ Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   }
 
   IAllocatorUniquePtr<void> temp_mask_buffer{};  // buffer to use if mask is not provided
-  auto* ort_stream = OrtStream(context);
+  auto* ort_stream = context->GetComputeStream();
   void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, ort_stream]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =

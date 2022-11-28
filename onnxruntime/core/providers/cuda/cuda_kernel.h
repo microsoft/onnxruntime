@@ -88,10 +88,6 @@ class CudaKernel : public OpKernel {
     return stream->cublas_handle_;
   }
 
-  inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
-    return ctx->GetComputeStream();
-  }
-
   bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
@@ -182,11 +178,6 @@ class CudaKernel : public OpKernel {
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
-
-  static cudaStream_t GetCudaStreamFromContext(OpKernelContext* context) {
-    auto* stream = context->GetComputeStream();
-    return stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
-  }
 
  private:
   CUDAExecutionProvider* provider_;

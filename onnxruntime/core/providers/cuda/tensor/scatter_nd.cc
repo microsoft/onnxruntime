@@ -69,7 +69,7 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
     element_counts_and_input_dims[i + last_index_dimension] = input_shape[i];
   }
   CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this, element_counts_and_input_dims);
-  ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(OrtStream(context)));
+  ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
 
   ORT_RETURN_IF_ERROR(ScatterNDImpl(
       Stream(context),

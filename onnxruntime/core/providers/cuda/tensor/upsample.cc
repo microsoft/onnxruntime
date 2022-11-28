@@ -85,7 +85,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     TArray<float> scales_vals(scales);
 
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
-    auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, OrtStream(context));
+    auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, context->GetComputeStream());
     void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
     ResizeImpl(Stream(context), mode_, (int)rank, input_shape, output_shape,
                input_strides, output_div_pitches, scales_vals, roi_vals,

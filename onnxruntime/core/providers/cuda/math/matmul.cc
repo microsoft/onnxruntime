@@ -176,9 +176,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(OrtStream(ctx)));
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(OrtStream(ctx)));
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(OrtStream(ctx)));
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
