@@ -34,6 +34,7 @@
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/lr_scheduler.h"
 
 #endif
 
@@ -133,6 +134,30 @@ struct TrainingParameters {
 
 struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
+};
+
+// Thin wrapper over internal C++ Optimizer
+struct PyOptimizer {
+  PyOptimizer(const std::string optimizer_model_uri,
+              onnxruntime::training::api::Module* model) {
+    onnxruntime::SessionOptions session_option;
+    optimizer_ = std::make_unique<onnxruntime::training::api::Optimizer>(
+        optimizer_model_uri,
+        model->NamedParameters(), session_option,
+        GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+  }
+
+  Status Step() const { return optimizer_->Step(); }
+  std::shared_ptr<onnxruntime::training::api::Optimizer> GetOptimizer() { return optimizer_; }
+
+  virtual ~PyOptimizer() {}
+
+ protected:
+  PyOptimizer(std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer) {
+    optimizer_ = std::move(optimizer);
+  }
+
+  std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
 };
 
 struct PyGradientGraphBuilder {
@@ -886,21 +911,31 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
     return state;
   }));
 
-  py::class_<onnxruntime::training::api::Optimizer>
+  py::class_<PyOptimizer>
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
   training_optimizer.def(py::init([](
                                       const std::string optimizer_model_uri,
                                       onnxruntime::training::api::Module* model) {
                       onnxruntime::SessionOptions session_option;
-                      return std::make_unique<onnxruntime::training::api::Optimizer>(
+                      return std::make_unique<PyOptimizer>(
                           optimizer_model_uri,
-                          model->NamedParameters(), session_option,
-                          GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                          model);
                     }))
-      .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
+      .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
       });
-
+  py::class_<onnxruntime::training::api::LinearLRScheduler>
+      lr_scheduler(m, "LRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");
+  lr_scheduler.def(py::init([](PyOptimizer* optimizer,
+                               int64_t total_step_count,
+                               int64_t warmup_step_count) {
+                auto scheduler = std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+                    optimizer->GetOptimizer(), warmup_step_count, total_step_count);
+                return scheduler;
+              }))
+      .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
+        ORT_THROW_IF_ERROR(scheduler->Step());
+      });
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
