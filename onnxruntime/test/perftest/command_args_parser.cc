@@ -127,7 +127,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:AMPIvhsqzT"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -292,7 +292,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         test_config.run_config.ep_runtime_config_string = optarg;
         break;
       case 'T':
-        test_config.run_config.intra_op_thread_affinities = optarg;
+        test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
+        break;
       case '?':
       case 'h':
       default:
