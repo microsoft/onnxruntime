@@ -24,11 +24,15 @@ class NcclContext final {
   ncclComm_t Comm(training::WorkerGroupType group_type);
 
   int Rank(training::WorkerGroupType group_type) const {
-    return training::DistributedRunContext::RankInGroup(group_type);
+    //return training::DistributedRunContext::RankInGroup(group_type);
+    ORT_UNUSED_PARAMETER(group_type);
+    return rank_;
   }
 
   int Size(training::WorkerGroupType group_type) const {
-    return training::DistributedRunContext::GroupSize(group_type);
+    // return training::DistributedRunContext::GroupSize(group_type);
+    ORT_UNUSED_PARAMETER(group_type);
+    return world_size_;
   }
 
  private:
@@ -37,7 +41,8 @@ class NcclContext final {
   ncclComm_t node_local_comm_;
   ncclComm_t cross_node_comm_;
   ncclComm_t horizontal_group_comm_;
-
+  int world_size_;
+  int rank_;
 };
 
 // -----------------------------------------------------------------------

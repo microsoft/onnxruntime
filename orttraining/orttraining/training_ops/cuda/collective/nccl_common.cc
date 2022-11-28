@@ -29,6 +29,7 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
 }
 
 #ifdef USE_MPI
+#if 0
 static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      const training::WorkerGroupType worker_group_type,
                                      ncclComm_t* group_comm) {
@@ -57,6 +58,22 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
   return Status::OK();
 }
 #endif
+static Status CreateNcclComm(int world_size, int rank, ncclComm_t* group_comm) {
+
+  // Create new NCCL communicator
+  ncclUniqueId nccl_id;
+  if (rank == 0) {
+    NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
+  }
+  MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD));
+  NCCL_RETURN_IF_ERROR(ncclCommInitRank(group_comm, world_size, nccl_id, rank));
+
+  return Status::OK();
+}
+
+#endif
+
+
 
 NcclContext::NcclContext() {
 #ifdef USE_MPI
@@ -67,36 +84,29 @@ NcclContext::NcclContext() {
     MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
   }
 
-  // Get the group under MPI_COMM_WORLD
-  MPI_Group mpi_world_group;
-  MPI_Comm_group(MPI_COMM_WORLD, &mpi_world_group);
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
 
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
   // Initialize global Parallel Group NCCL Communicator
-  auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::GlobalParallel,
-                                    &global_group_comm_);
+  auto ret = CreateNcclComm(world_size_, rank_, &global_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize Data Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
-                               &data_group_comm_);
+  ret = CreateNcclComm(world_size_, rank_, &data_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize Horizontal Model Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel,
-                               &horizontal_group_comm_);
+  ret = CreateNcclComm(world_size_, rank_, &horizontal_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize node local Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalDataParallel,
-                               &node_local_comm_);
+  ret = CreateNcclComm(world_size_, rank_, &node_local_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize cross node Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeDataParallel,
-                               &cross_node_comm_);
+  ret = CreateNcclComm(world_size_, rank_, &cross_node_comm_);
   ORT_ENFORCE(ret.IsOK());
 
-  MPI_Group_free(&mpi_world_group);
 #else
   ORT_THROW("ORT must be built with MPI to use NCCL.");
 #endif

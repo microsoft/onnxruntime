@@ -1723,6 +1723,46 @@ Example 4:
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGatherV2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("group_type",
+            "0 - global parallel group, 1 - data parallel group, "
+            "2 - node local data parallel group, 3 - cross node data parallel group, "
+            "4 - horozontal parallel, 5 - model parallel.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("world_size",
+	    "total world size that need to be gathered.",
+	    AttributeProto::INT,
+	    static_cast<int64_t>(1))
+      .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
+      .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
+	auto world_size = getAttribute(ctx, "world_size", 1);
+        assert(world_size >= static_cast<int64_t>(1));
+	// propagate type for output
+	propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+	// propagate shape for output.
+	// output shape is [world_size * input_shape[0], ...]
+	auto output_type = ctx.getOutputType(0);
+	auto input_type = ctx.getInputType(0);
+	// all input/output should be tensor
+	assert(input_type->value_case() == output_type->value_case() && input_type->value_case() == TypeProto::kTensorType);
+	if (hasShape(*input_type)) {
+	  auto shape = input_type->tensor_type().shape();
+	  auto dim = shape.dim(0) * world_size;
+	  *shape.mutable_dim(0) = dim;
+	  *output_type->mutable_tensor_type()->mutable_shape() = shape;
+	}
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
