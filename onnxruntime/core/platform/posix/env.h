@@ -20,7 +20,7 @@ namespace onnxruntime {
 
 class PosixEnv : public Env {
  public:
-  static PosixEnv& Instance(); 
+  static PosixEnv& Instance();
   EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override;
@@ -40,7 +40,7 @@ class PosixEnv : public Env {
   static common::Status ReportSystemError(const char* operation_name, const std::string& path);
   bool FolderExists(const std::string& path) const override;
   common::Status CreateFolder(const std::string& path) const override;
-  common::Status DeleteFolder(const PathString& path) const override; 
+  common::Status DeleteFolder(const PathString& path) const override;
   common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override;
   common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const override;
   common::Status FileClose(int fd) const override;
@@ -56,7 +56,7 @@ class PosixEnv : public Env {
 
  protected:
   PosixEnv() = default;
- 
+
  private:
   Telemetry telemetry_provider_;
 #ifdef CPUINFO_SUPPORTED
@@ -64,5 +64,4 @@ class PosixEnv : public Env {
 #endif
 };
 
-} // namespace onnxruntime
-
+}  // namespace onnxruntime
