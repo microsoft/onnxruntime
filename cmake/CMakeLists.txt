@@ -1587,8 +1587,8 @@ endif()
 
 FetchContent_Declare(
   onnx
-  URL https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip
-  URL_HASH SHA1=edc8e1338c02f3ab222f3d803a24e17608c13895
+  URL https://github.com/onnx/onnx/archive/0c652fb495f45fc9879f186eb6a30adf0c6a7e68.zip
+  URL_HASH SHA1=7028329bf8ef7d05cd9c2bd26696038395af9368
   PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
 )
 
