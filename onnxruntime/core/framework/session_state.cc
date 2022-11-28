@@ -1239,8 +1239,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
 // Record the allocation plan
 
-// Uncomment the below to dump the allocation plan to std::cout
-// LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+// Dump the allocation plan to std::cout
+VLOGS(logger_, 1) << std::make_pair(&(p_seq_exec_plan_.value()), this);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
