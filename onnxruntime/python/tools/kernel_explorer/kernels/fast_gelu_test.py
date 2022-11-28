@@ -86,7 +86,7 @@ def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
         )
     else:
         print(
-            f"{func:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4} not supported"
+            f"{func:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4} not supported or redundant"
         )
         sys.stdout.flush()
 

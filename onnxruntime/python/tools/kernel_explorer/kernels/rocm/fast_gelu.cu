@@ -20,17 +20,18 @@ class FastGelu : public IKernelExplorer {
                 static_cast<T*>(output.ptr()), input_length, bias_length) {}
 
   bool IsSupported() {
-    Status status = contrib::rocm::FastGeluOp<T, ThreadsPerBlock, VecSize>(&params_);
+    Status status = op_.IsSupported(&params_);
     return status.IsOK();
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::FastGeluOp<T, ThreadsPerBlock, VecSize>(&params_)));
+    ORT_THROW_IF_ERROR(op_(&params_));
   }
 
  private:
   using ParamsT = contrib::rocm::FastGeluParams<T>;
   ParamsT params_{};
+  contrib::rocm::FastGeluOp<T, ThreadsPerBlock, VecSize> op_{};
 };
 
 template <typename T>
