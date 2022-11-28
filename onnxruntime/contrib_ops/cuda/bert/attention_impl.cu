@@ -36,6 +36,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cuda/bert/bert_padding.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -77,9 +78,9 @@ size_t GetAttentionWorkspaceSize(
                           ((sequence_length * kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
   if (fused_runner != nullptr) {
-    // Offsets without padding is B + 1. When we add padding, the size need to increase to 2B + 1.
-    size_t sequenceOffsetBytes = sizeof(int) * (batch_size + 1);
-    return qkv_size + reinterpret_cast<MHARunner*>(fused_runner)->getWorkspaceSize() + sequenceOffsetBytes;
+    // There are batch_size + 1 offsets Without padding (or padding removed), and 2 * batch_size + 1 with padding.
+    size_t sequenceOffsetBytes = sizeof(int) * (2 * batch_size + 1);
+    return qkv_size + reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner)->getWorkspaceSize() + sequenceOffsetBytes;
   }
 
   return qkv_size + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
@@ -179,11 +180,15 @@ Status QkvToContext(
   T* temp_output = scratch1;
   if (use_fused_kernel) {
     int* sequence_offset = reinterpret_cast<int*>(qkv + elements_q + elements_k + elements_v);
-    LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, stream);
+    LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-    fused_fp16_runner->setup(sequence_length, batch_size);
+
+    const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+    // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
+    const int B = 2 * batch_size;
+    fused_fp16_runner->setup(S, B);
 
     fused_fp16_runner->run(qkv, nullptr, sequence_offset, data.output, nullptr, stream);
 

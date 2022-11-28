@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#pragma once
 
 #include "topk_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "device_atomic_functions.h"
 #include "cub/cub.cuh"
 #include "cub/util_type.cuh"
@@ -22,46 +24,6 @@ template <typename T>
 struct KV {
   T key;
   int64_t val;
-};
-
-template <typename T>
-struct NumericLimits {
-  static T Min() {
-    return std::numeric_limits<T>::lowest();
-  }
-  static T Max() {
-    return std::numeric_limits<T>::max();
-  }
-};
-
-template <>
-struct NumericLimits<MLFloat16> {
-   static half Min() {
-     return -65504.0;
-   }
-   static half Max() {
-     return 65504.0;
-   }
-};
-
-template <>
-struct NumericLimits<float> {
-  static float Min() {
-    return -INFINITY;
-  }
-  static float Max() {
-    return INFINITY;
-  }
-};
-
-template <>
-struct NumericLimits<double> {
-  static double Min() {
-    return -HUGE_VAL;
-  }
-  static double Max() {
-    return HUGE_VAL;
-  }
 };
 
 #define BT GridDim::maxThreadsPerBlock

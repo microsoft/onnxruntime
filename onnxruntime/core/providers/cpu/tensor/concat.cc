@@ -110,7 +110,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                                                : reference_rank + 1)));
 
   // Ensure all of the non concatenated axes match each other
-  for (size_t index = reference_tensor_index + 1; index < input_count; index++) {
+  for (size_t index = static_cast<size_t>(reference_tensor_index) + 1; index < input_count; index++) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
     const auto& input_shape = input->Shape();

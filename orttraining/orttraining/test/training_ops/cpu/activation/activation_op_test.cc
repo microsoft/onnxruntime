@@ -211,10 +211,16 @@ TEST(QuickGeluGradTest, Basic) {
 
   // Positive alpha.
   {
-    const float alpha = 1.702f;
+    constexpr float alpha = 1.702f;
     TestElementwiseGradientOp(
         "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+    // The ifdef is to suppress a warning: "lambda capture 'alpha' is not required to be captured for this use."
+    // But on Windows it is required.
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
         [alpha](const std::vector<float>& params) {
+#endif
           ORT_ENFORCE(params.size() == 2);
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
@@ -224,10 +230,14 @@ TEST(QuickGeluGradTest, Basic) {
 
   // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
   {
-    const float alpha = 1.0f;
+    constexpr float alpha = 1.0f;
     TestElementwiseGradientOp(
         "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
         [alpha](const std::vector<float>& params) {
+#endif
           ORT_ENFORCE(params.size() == 2);
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
@@ -237,10 +247,14 @@ TEST(QuickGeluGradTest, Basic) {
 
   // Negative alpha.
   {
-    const float alpha = -1.702f;
+    constexpr float alpha = -1.702f;
     TestElementwiseGradientOp(
         "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
         [alpha](const std::vector<float>& params) {
+#endif
           ORT_ENFORCE(params.size() == 2);
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
