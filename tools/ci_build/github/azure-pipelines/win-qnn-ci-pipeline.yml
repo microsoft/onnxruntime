@@ -55,22 +55,22 @@ jobs:
     displayName: 'Run unit tests'
 
   - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "runtime|CPU backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run ONNX Tests'
 
   - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "runtime|CPU backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\facedetection\facedetection_op8
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\facedetection\facedetection_op8
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run FaceDetection model test'
 
   - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "runtime|CPU backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\MobileNet\mobilenetv2-1.0
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\MobileNet\mobilenetv2-1.0
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run MobileNetV2 model test'
 
   - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "runtime|CPU backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\StyleGAN\block_1024_simp
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\StyleGAN\block_1024_simp
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run StyleGAN model test'
     enabled: false

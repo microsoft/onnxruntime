@@ -63,7 +63,6 @@ class QNNExecutionProvider : public IExecutionProvider {
  private:
   ProviderOptions runtime_options_;
   std::string backend_path_;
-  bool is_quantized_model_;
   qnn::ProfilingLevel profiling_level_;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;

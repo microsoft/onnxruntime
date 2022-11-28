@@ -108,7 +108,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       model_output_index_map_,
                                                       initializer_inputs_, cpu_allocator);
   bool rt = true;
-  rt = qnn_model_wrapper.Initialize(qnn_backend_manager_->GetQnnContext(), graph_name);
+  rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }

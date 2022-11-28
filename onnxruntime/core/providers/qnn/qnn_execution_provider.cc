@@ -22,7 +22,7 @@ namespace onnxruntime {
 constexpr const char* QNN = "QNN";
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
-    : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true}, runtime_options_(provider_options_map), is_quantized_model_(true) {
+    : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true}, runtime_options_(provider_options_map) {
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
@@ -31,14 +31,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(INFO) << "Backend path: " << backend_path_;
   } else {
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
-  }
-
-  is_quantized_model_ = false;
-  static const std::string RUNTIME = "runtime";
-  auto runtime_pos = runtime_options_.find(RUNTIME);
-  if (runtime_pos != runtime_options_.end()) {
-    is_quantized_model_ = (runtime_pos->second == "DSP" || runtime_pos->second == "HTP") ? true : false;
-    LOGS_DEFAULT(INFO) << runtime_pos->second << " backend, is_quantized_model_: " << is_quantized_model_;
   }
 
   profiling_level_ = qnn::ProfilingLevel::OFF;
@@ -73,6 +65,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                            std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
                                            const logging::Logger& logger) const {
+  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
   // If we have visited one of the nodes in the node_unit, use the result directly
   const auto it = node_unit_supported_result.find(&node_unit);
   if (it != node_unit_supported_result.cend()) {
@@ -88,7 +81,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     };
 
     // Is quantized model, is Q/DQ singel node, Qnn support Quantize & Dequantize op
-    if (is_quantized_model_ && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
+    if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
       if (IsQdqNode(node_unit)) {
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported in QDQ model. Node name: " << node_unit.Name()
                               << " is supported in QDQ model.";
@@ -102,7 +95,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     }
 
     // Non-NPU backend, quantized model not supported, but a QDQ node encountered
-    if (!is_quantized_model_ && IsQdqNode(node_unit)) {
+    if (!is_npu_backend && IsQdqNode(node_unit)) {
       LOGS(logger, ERROR) << "There's no reason to run a QDQ model on non HTP/DSP backend!";
       return false;
     }
@@ -114,7 +107,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
                                               node_unit, logger,
-                                              is_quantized_model_);
+                                              is_npu_backend);
       if (Status::OK() != status) {
         LOGS(logger, VERBOSE) << "Op type: " << node_unit.OpType()
                               << ", not supported: " << status.ErrorMessage();
@@ -153,7 +146,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 model_input_index_map,
                                                 model_output_index_map,
                                                 initializer_input_lookup, cpu_allocator_);
-  bool rt = qnn_model_wrapper.Initialize(qnn_backend_manager_->GetQnnContext(), graph_viewer.Name());
+  bool rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_viewer.Name());
   if (!rt) {
     return supported_nodes;
   }
@@ -247,6 +240,7 @@ DataLayout QNNExecutionProvider::GetPreferredLayout() const {
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
+  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
 
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
@@ -255,7 +249,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get(),
                                                                                cpu_allocator_,
-                                                                               is_quantized_model_);
+                                                                               is_npu_backend);
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());

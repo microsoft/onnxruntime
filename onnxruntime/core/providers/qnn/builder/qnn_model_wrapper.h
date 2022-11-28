@@ -42,9 +42,9 @@ class QnnModelWrapper {
 
   ~QnnModelWrapper() = default;
 
-  bool Initialize(const Qnn_ContextHandle_t& context,
-                  const std::string& graph_name,
-                  const QnnGraph_Config_t** graph_configs = nullptr);
+  bool CreateQnnGraph(const Qnn_ContextHandle_t& context,
+                      const std::string& graph_name,
+                      const QnnGraph_Config_t** graph_configs = nullptr);
 
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);

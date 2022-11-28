@@ -53,7 +53,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
               cmake/external/onnx/onnx/backend/test/data/node
 
       - task: CmdLine@2
@@ -61,7 +61,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
               /data/qnn_test_data/add
 
       - task: CmdLine@2
@@ -69,7 +69,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
               /data/qnn_test_data/MobileNet/mobilenetv2-1.0
 
       - task: CmdLine@2
@@ -77,7 +77,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "runtime|HTP backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
               /data/qnn_test_data/MobileNet/mobilenetv2-1.0_add_transpose_quant
         enabled: false
 
@@ -86,7 +86,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
               /data/qnn_test_data/facedetection/facedetection_op8
 
       - task: CmdLine@2
@@ -94,7 +94,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "runtime|HTP backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
               /data/qnn_test_data/facedetection/facedetection_op8_qdq
 
       - task: CmdLine@2
@@ -102,7 +102,7 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -t -o 0 -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              -t -o 0 -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
               /data/qnn_test_data/StyleGAN/block_1024_simp
 
       - task: CmdLine@2
@@ -110,6 +110,6 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -o 0 -v -j 1 -c 1 -i "runtime|HTP backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              -o 0 -v -j 1 -c 1 -i "backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnHtp.so" \
               /data/qnn_test_data/StyleGAN/block_1024_simp
         enabled: false

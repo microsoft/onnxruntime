@@ -49,11 +49,10 @@ void usage() {
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
-      "\t    [QNN only] [runtime]: QNN runtime engine, options: 'CPU', 'GPU', 'DSP', HTP.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
-      "\t [Example] [For QNN EP] -e qnn -i \"runtime|CPU backend_path|/folderpath/libQnnCpu.so\" \n\n"
+      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
@@ -426,20 +425,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           } else {
             qnn_options[key] = value;
           }
-        } else if (key == "runtime") {
-          std::set<std::string> qnn_supported_runtime = {"CPU", "GPU", "DSP", "HTP"};
-          if (qnn_supported_runtime.find(value) != qnn_supported_runtime.end()) {
-            qnn_options[key] = value;
-          } else {
-            ORT_THROW("Wrong configuration value for the key 'runtime'. Select from CPU, GPU, DSP, HTP.");
-          }
         } else if (key == "profiling_level") {
           qnn_options[key] = value;
         } else if (key == "rpc_control_latency") {
           qnn_options[key] = value;
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options:
-['runtime', 'backend_path', 'profiling_level', 'rpc_control_latency'])");
+['backend_path', 'profiling_level', 'rpc_control_latency'])");
         }
       }
       sf.AppendExecutionProvider("QNN", qnn_options);

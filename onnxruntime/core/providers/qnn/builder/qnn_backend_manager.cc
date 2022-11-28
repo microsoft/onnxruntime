@@ -7,6 +7,8 @@
 #include "DSP/QnnDspPerfInfrastructure.h"
 #include "DSP/QnnDspBackend.h"
 #include "DSP/QnnDspDevice.h"
+#include "DSP/QnnDspCommon.h"
+#include "HTP/QnnHtpCommon.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -41,8 +43,10 @@ Status QnnBackendManager::LoadBackend() {
         QNN_API_VERSION_MINOR <= interface_providers[pIdx]->apiVersion.coreApiVersion.minor) {
       found_valid_interface = true;
       qnn_interface_ = interface_providers[pIdx]->QNN_INTERFACE_VER_NAME;
-      // TODO: use the backend id from API, remove EP provider option runtime
       auto backend_id = interface_providers[pIdx]->backendId;
+      if (QNN_BACKEND_ID_DSP == backend_id || QNN_BACKEND_ID_HTP == backend_id) {
+        is_npu_backend_ = true;
+      }
       LOGS_DEFAULT(INFO) << "Found valid interface, version: " << QNN_API_VERSION_MAJOR
                          << "." << QNN_API_VERSION_MINOR
                          << " backend provider name: " << interface_providers[pIdx]->providerName

@@ -120,6 +120,9 @@ class QnnBackendManager {
   Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id);
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id);
 
+  // NPU backend requires quantized model
+  bool IsNpuBackend() { return is_npu_backend_; }
+
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -152,6 +155,8 @@ class QnnBackendManager {
   bool backend_initialized_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
+  // NPU backend requires quantized model
+  bool is_npu_backend_ = false;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_;
