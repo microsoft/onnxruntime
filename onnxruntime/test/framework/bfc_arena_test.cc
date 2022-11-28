@@ -404,7 +404,7 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
 
   std::unordered_map<Stream*, uint64_t> syncTable;
   stream2.CloneCurrentStreamSyncTable(syncTable);
-  EXPECT_EQ(syncTable.size(), 1) << "stream2 has been updated with stream1's nofitication on the clock";
+  EXPECT_EQ(syncTable.size(), 1u) << "stream2 has been updated with stream1's nofitication on the clock";
   EXPECT_TRUE(waitFunctionInvoked) << "wait function should be invoked";
   a.Free(p2);
 }
