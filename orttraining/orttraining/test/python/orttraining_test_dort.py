@@ -54,6 +54,39 @@ class TestTorchDynamoOrt(unittest.TestCase):
         for _ in range(5):
             run_elementwise_model()
 
+    def test_to_copy(self):
+        """Test DORT with aten::_to_copy."""
+
+        def run_to_copy():
+            # A function to test.
+            def copy_copy_copy(tensor_x: torch.Tensor):
+                tensor_x1 = torch.ops.aten._to_copy(tensor_x, dtype=torch.int64)
+                tensor_x2 = torch.ops.aten._to_copy(tensor_x, dtype=torch.int64, device=tensor_x.device)
+                tensor_x3 = torch.ops.aten._to_copy(
+                    tensor_x, dtype=torch.int64, device=tensor_x.device, layout=torch.strided
+                )
+                return tensor_x1, tensor_x2, tensor_x3
+
+            @torch._dynamo.optimize(aot_ort)
+            def optimized_copy_copy_copy(tensor_x: torch.Tensor):
+                return copy_copy_copy(tensor_x)
+
+            def run(fun, list_x):
+                tensor_x = torch.tensor(list_x, dtype=torch.float32)
+                tensor_x1, tensor_x2, tensor_x3 = fun(tensor_x)
+                return tensor_x1, tensor_x2, tensor_x3
+
+            # Baseline.
+            tensor_x, tensor_y, tensor_z = run(copy_copy_copy, [-1.0, 2.0])
+            # ORT result.
+            tensor_x_new, tensor_y_new, tensor_z_new = run(optimized_copy_copy_copy, [-1.0, 2.0])
+
+            torch.testing.assert_close(tensor_x, tensor_x_new)
+            torch.testing.assert_close(tensor_y, tensor_y_new)
+            torch.testing.assert_close(tensor_z, tensor_z_new)
+
+        run_to_copy()
+
     def test_mnist_model(self):
         """Test DORT with a simple nn.Module."""
 

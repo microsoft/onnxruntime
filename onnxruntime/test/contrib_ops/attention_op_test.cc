@@ -321,7 +321,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr1) {
       3.1967618465423584f, 0.51903456449508667f, 0.63051539659500122f, 2.9394614696502686f,
       0.65332180261611938f, 1.000949501991272f, 0.74175024032592773f, 2.8231701850891113f};
 
-  const bool disable_rocm = true;
+  constexpr bool disable_rocm = true;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
@@ -359,7 +359,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr2) {
   std::vector<float> output_data = {
       0.64932525157928467f, 0.79390722513198853f, 0.64932847023010254f, 0.79375863075256348f};
 
-  const bool disable_rocm = true;
+  constexpr bool disable_rocm = true;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
@@ -397,9 +397,9 @@ TEST(AttentionTest, AttentionBatch1ExtraAdd) {
       4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
       -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f};
 
-  const bool disable_cpu = false;
-  const bool disable_cuda = false;
-  const bool disable_rocm = false;
+  constexpr bool disable_cpu = false;
+  constexpr bool disable_cuda = false;
+  constexpr bool disable_rocm = false;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
@@ -442,9 +442,9 @@ TEST(AttentionTest, AttentionBatch2ExtraAdd) {
       4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
       -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f};
 
-  const bool disable_cpu = false;
-  const bool disable_cuda = false;
-  const bool disable_rocm = false;
+  constexpr bool disable_cpu = false;
+  constexpr bool disable_cuda = false;
+  constexpr bool disable_rocm = false;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
@@ -2034,9 +2034,9 @@ TEST(AttentionTest, AttentionBatch1_No_Weights) {
   MaskIndexType mask_index_type = kMaskIndexEnd;
   int input_hidden_size = 0;
   int max_sequence_length = 0;
-  const bool disable_cpu = true;  // not supported in cpu right now.
-  const bool disable_cuda = false;
-  const bool disable_rocm = true;  // not supported in rocm right now.
+  constexpr bool disable_cpu = true;  // not supported in cpu right now.
+  constexpr bool disable_cuda = false;
+  constexpr bool disable_rocm = true;  // not supported in rocm right now.
   const std::vector<int32_t> qkv_sizes = {hidden_size, hidden_size, v_hidden_size};
   const std::vector<float>& extra_add_data = {};
 

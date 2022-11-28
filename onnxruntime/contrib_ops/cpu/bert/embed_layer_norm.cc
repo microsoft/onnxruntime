@@ -77,6 +77,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   const T* gamma_data = gamma->Data<T>();
   const T* beta_data = beta->Data<T>();
   const int32_t* position_ids_data = (nullptr == position_ids) ? nullptr : position_ids->Data<int32_t>();
+  const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1) ? true : false;
   T* output_data = output->MutableData<T>();
   T* embedding_sum_data = (embedding_sum != nullptr) ? embedding_sum->MutableData<T>() : nullptr;
 
@@ -92,7 +93,11 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             failed.store(true, std::memory_order_release);
             return;
           }
-          int position_col_index = (position_ids_data == nullptr) ? index % sequence_length : position_ids_data[index];
+          int position_col_index = (position_ids_data == nullptr) ?
+                                    index % sequence_length :
+                                    (broadcast_position_ids ?
+                                    position_ids_data[index % sequence_length] :
+                                    position_ids_data[index]);
           if (position_col_index >= position_embedding_length) {
             failed.store(true, std::memory_order_release);
             return;

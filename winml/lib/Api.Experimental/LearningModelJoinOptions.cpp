@@ -6,10 +6,10 @@ namespace WINML_EXPERIMENTALP {
 LearningModelJoinOptions::LearningModelJoinOptions()
 {
   GUID guid;
-  CoCreateGuid(&guid);
+  WINML_THROW_IF_FAILED(CoCreateGuid(&guid));
 
   OLECHAR* guidString;
-  StringFromCLSID(guid, &guidString);
+  WINML_THROW_IF_FAILED(StringFromCLSID(guid, &guidString));
 
   join_prefix_ = winrt::to_string(winrt::hstring(guidString));
   // ensure memory is freed
