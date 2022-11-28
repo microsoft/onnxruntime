@@ -10,40 +10,62 @@
 #endif
 #include <thread>
 #include "core/session/ort_apis.h"
+#include "core/common/string_utils.h"
 
 namespace onnxruntime {
 namespace concurrency {
+
+// extract affinity from affinity string
+// processor id in affinity string starts from 1
+std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affinity_str) {
+  std::vector<LogicalProcessors> logical_processors_vector;
+  auto affinities = utils::SplitString(affinity_str, ";");
+  for (const auto& affinity : affinities) {
+    LogicalProcessors logical_processors;
+    auto processor_interval = utils::SplitString(affinity, "-");
+    if (processor_interval.size() == 2) {
+      auto processor_from = std::stoi(processor_interval[0].data());
+      auto processor_to = std::stoi(processor_interval[1].data());
+      ORT_ENFORCE(processor_from > 0 && processor_to > 0,
+                  std::string{"Processor id must starts from 1: "} + affinity.data());
+      ORT_ENFORCE(processor_from <= processor_to,
+                  std::string{"Invalid processor interval: "} + affinity.data());
+      logical_processors.resize(static_cast<size_t>(1ULL + processor_to - processor_from));
+      std::iota(logical_processors.begin(), logical_processors.end(), processor_from - 1);
+    } else {
+      for (const auto& processor_str : utils::SplitString(affinity, ",")) {
+        auto processor_id = std::stoi(processor_str.data());
+        ORT_ENFORCE(processor_id > 0, std::string{"Processor id must starts from 1: "} + affinity.data());
+        logical_processors.push_back(processor_id - 1);
+      }
+    }
+    logical_processors_vector.push_back(std::move(logical_processors));
+  }
+  return logical_processors_vector;
+}
+
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
-  if (options.thread_pool_size == 1)
+  if (options.thread_pool_size == 1) {
     return nullptr;
-  ThreadOptions to;
-
-  if (options.affinity_vec_len != 0) {
-    // Currently, the affinities are passed in as bit masks and they need to be converted to integers.
-    // We when create a public API, bit-masks must be done away with because of the following reasons:
-    // 1) integers have a limited number of bits
-    // 2) bit-masks of integers can only represent numbers 0 -63, but on VMs the actual logical processor numbering
-    //    may not start with zero for a given core and may be way beyond 63.
-    // 3) Customers would be forced to concoct bit-masks which is far less convenient than simply an array of processor integers. 
-    to.affinity.reserve(options.affinity_vec_len);
-    std::transform(options.affinity_vec, options.affinity_vec + options.affinity_vec_len, std::back_inserter(to.affinity),
-                   [](size_t affinity) {
-                     return LogicalProcessors{static_cast<int>(affinity)};
-                   });
   }
 
+  ThreadOptions to;
   if (options.thread_pool_size <= 0) {  // default
-    auto cpu_list = Env::Default().GetThreadAffinityMasks();
-    if (cpu_list.empty() || cpu_list.size() == 1)
+    to.affinity = Env::Default().GetDefaultThreadAffinities();
+    if (to.affinity.size() <= 1) {
       return nullptr;
-    options.thread_pool_size = static_cast<int>(cpu_list.size());
-    if (options.auto_set_affinity)
-      to.affinity = cpu_list;
+    }
+    options.thread_pool_size = static_cast<int>(to.affinity.size());
+  } else if (!options.affinity_str.empty()) {
+    to.affinity = ReadThreadAffinityConfig(options.affinity_str);
+    ORT_ENFORCE(to.affinity.size() == static_cast<size_t>(options.thread_pool_size) - 1,
+                "Number of affinities must equal to thread pool size minus one");
+    // prepend an empty affinity as placeholder for the main thread
+    to.affinity.insert(to.affinity.begin(), LogicalProcessors{});
   }
 
   to.set_denormal_as_zero = options.set_denormal_as_zero;
-
   // set custom thread management members
   to.custom_create_thread_fn = options.custom_create_thread_fn;
   to.custom_thread_creation_options = options.custom_thread_creation_options;
@@ -141,6 +163,17 @@ ORT_API_STATUS_IMPL(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp
   }
   tp_options->inter_op_thread_pool_params.custom_join_thread_fn = ort_custom_join_thread_fn;
   tp_options->intra_op_thread_pool_params.custom_join_thread_fn = ort_custom_join_thread_fn;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  if (!affinity_string) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null affinity string");
+  }
+  tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
 }
 

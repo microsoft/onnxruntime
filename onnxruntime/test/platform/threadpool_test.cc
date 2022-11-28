@@ -4,6 +4,11 @@
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#include "core/util/thread_utils.h"
+#ifdef _WIN32
+#include "test/platform/windows/env.h"
+#include <Windows.h>
+#endif
 
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -537,6 +542,87 @@ TEST(ThreadPoolTest, TestStackSize) {
 }
 #pragma warning(pop)
 #endif
+#endif
+
+TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
+  OrtThreadPoolParams tp_params;
+  tp_params.thread_pool_size = 3;
+  const char* wrong_formats[] = {",", "1,", ";", ";1", "a", "a;b", "1;a", "0;1", "-;2", "--", "2-1;3"};
+  for (const auto* wrong_format : wrong_formats) {
+    tp_params.affinity_str = wrong_format;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* less_than_expects[] = {"1", "1,2", "1-2"};
+  for (const auto* less_than_expect : less_than_expects) {
+    tp_params.affinity_str = less_than_expect;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* more_than_expects[] = {"1;2;3", "1-2;2-2;3-4", "1;2;3;4;5"};
+  for (const auto* more_than_expect : more_than_expects) {
+    tp_params.affinity_str = more_than_expect;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+}
+
+TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
+  OrtThreadPoolParams tp_params;
+  auto default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                  tp_params,
+                                                  concurrency::ThreadPoolType::INTRA_OP);
+  if (concurrency::ThreadPool::DegreeOfParallelism(default_tp.get()) < 3) {
+    return;
+  }
+  tp_params.thread_pool_size = 3;
+  const char* good_formats[] = {"1;1",
+                                "2;2",
+                                "1-1;2-2",
+                                "1-2;1-2"};
+  for (const auto* good_format : good_formats) {
+    tp_params.affinity_str = good_format;
+    auto non_default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                        tp_params,
+                                                        concurrency::ThreadPoolType::INTRA_OP);
+    ASSERT_TRUE(concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get()) == 3);
+  }
+}
+
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestDefaultAffinity) {
+  test::CpuGroup cpu_group = {{0, 1},
+                              {2, 3},
+                              {4, 5},
+                              {6, 7}};
+  test::CpuInfo cpu_info_single = {cpu_group};
+  test::WindowsEnvTester win_env;
+  win_env.SetCpuInfo(cpu_info_single);
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  test::CpuInfo cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+}
 #endif
 
 }  // namespace onnxruntime

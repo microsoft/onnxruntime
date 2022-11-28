@@ -15,6 +15,7 @@ limitations under the License.
 // Portions Copyright (c) Microsoft Corporation
 
 #include "core/platform/env.h"
+#include "core/common/string_utils.h"
 
 namespace onnxruntime {
 

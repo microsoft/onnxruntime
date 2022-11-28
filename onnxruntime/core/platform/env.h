@@ -139,8 +139,7 @@ class Env {
   /// <returns>Number of physical cores</returns>
   virtual int GetNumPhysicalCpuCores() const = 0;
 
-  // This function currently doesn't support systems with more than 64 logical processors on Windows
-  virtual std::vector<LogicalProcessors> GetThreadAffinityMasks() const = 0;
+  virtual std::vector<LogicalProcessors> GetDefaultThreadAffinities() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {

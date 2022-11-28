@@ -14,7 +14,6 @@ class CopyTest : public ::testing::Test {
  protected:
   void SetUp() override {
     OrtThreadPoolParams tpo;
-    tpo.auto_set_affinity = true;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP);
   }
   std::unique_ptr<concurrency::ThreadPool> tp;
