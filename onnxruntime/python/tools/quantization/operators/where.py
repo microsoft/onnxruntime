@@ -47,7 +47,7 @@ class QLinearWhere(QuantOperatorBase):
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
-        qlconcat_inputs = [
+        qlwhere_inputs = [
             node.input[0],
             q_input_names[0],
             scale_names[0],
@@ -58,12 +58,12 @@ class QLinearWhere(QuantOperatorBase):
             output_scale_name,
             output_zp_name,
         ]
-        qlconcat_node = onnx.helper.make_node(
-            "QLinearWhere", qlconcat_inputs, [qlinear_output], qlinear_output_name, **kwargs
+        qlwhere_node = onnx.helper.make_node(
+            "QLinearWhere", qlwhere_inputs, [qlinear_output], qlinear_output_name, **kwargs
         )
 
         self.quantizer.new_nodes += nodes
-        self.quantizer.new_nodes += [qlconcat_node]
+        self.quantizer.new_nodes += [qlwhere_node]
 
 
 class QDQWhere(QDQOperatorBase):
