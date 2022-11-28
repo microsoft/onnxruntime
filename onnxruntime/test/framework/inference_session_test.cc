@@ -2157,10 +2157,10 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
 #ifdef ENABLE_TRAINING
     // In training - that is a total of 2 extensions
-    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
 #else
     // In inferencing - that is a total of 3 extensions
-    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
 #endif
 
     // The arena would have shrunk both extensions it made as part of Run() - because these allocations
