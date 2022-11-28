@@ -43,25 +43,6 @@ struct DisentangledAttentionCustomOp : Ort::CustomOpBase<DisentangledAttentionCu
   void* compute_stream_;
 };
 
-/*
-struct OrtCustomOpDomain {
-  std::string domain_;
-  std::vector<const OrtCustomOp*> custom_ops_;
-};
-*/
-/*
-void CreateTensorRTCustomOpDomain_old(OrtCustomOpDomain* domain) {
-  std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
-  custom_op_domain->domain_ = "";
-
-  std::unique_ptr<OrtCustomOp> disentangled_attention_custom_op = std::make_unique<DisentangledAttentionCustomOp>("TensorrtExecutionProvider", nullptr);
-  custom_op_domain->custom_ops_.push_back(disentangled_attention_custom_op.release());
-  //custom_ops.push_back(disentangled_attention_custom_op.release());
-
-  domain = custom_op_domain.release();
-}
-*/
-
 void CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain) {
   std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
   custom_op_domain->domain_ = "";

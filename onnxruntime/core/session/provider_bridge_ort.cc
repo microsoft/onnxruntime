@@ -1530,30 +1530,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
   options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
 
-  /*
-  //OrtCustomOpDomain* custom_op_domain = new OrtCustomOpDomain();
-  std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
-  custom_op_domain->domain_ = "";
-  
-  std::vector<OrtCustomOp*> custom_ops;
-  GetTensorRTCustomOps(custom_ops); 
-  
-  //DisentangledAttentionCustomOp disentangled_attention_custom_op{"TensorrtExecutionProvider", nullptr};
-  //custom_op_list.push_back(disentangled_attention_custom_op);
-  //GetTensorRTCustomOps(custom_op_list);
-  for (auto const& custom_op : custom_ops) {
-    custom_op_domain->custom_ops_.push_back(custom_op);
-  }
-
-  
-  //std::unique_ptr<OrtCustomOp> disentangled_attention_custom_op = std::make_unique<onnxruntime::DisentangledAttentionCustomOp>("TensorrtExecutionProvider", nullptr);
-  //OrtCustomOp* disentangled_attention_custom_op = new onnxruntime::DisentangledAttentionCustomOp("TensorrtExecutionProvider", nullptr);
-  //custom_op_domain->custom_ops_.push_back(disentangled_attention_custom_op.release());
-
-  options->custom_op_domains_.push_back(custom_op_domain.release());
-
-  //GetApi().AddCustomOpDomain(this->p_, custom_op_domain)
-  */
   return nullptr;
   API_IMPL_END
 }
