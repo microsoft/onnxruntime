@@ -1046,15 +1046,22 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
+  std::string model_name;
 #ifdef _WIN32
   wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+  model_name = path_string.substr(path_string.find_last_of("/\\") + 1);
 #else
   strcpy(model_path_, path_string.c_str());
+  model_name = path_string.substr(path_string.find_last_of("/") + 1);
 #endif
+  
+  model_name = model_name.substr(0, model_name.size() - 5);
+  std::cout << "path_string: " << path_string << ", graph name: " << graph.Name() << ", model name: " << model_name << std::endl;
 
   const int number_of_ort_nodes = graph.NumberOfNodes();
   SubGraphCollection_t supported_nodes_vector;
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::string trt_node_list_name = "trt_nodes_list_" + graph.Name() + "_" + model_name + ".txt";
   if (!side_load_engine_) {
     // Get supported node list from TensorRT parser
     ///const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -1158,10 +1165,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       }
     }
     //WriteSupportedList("trt_nodes_list_zcode_encoder.txt", supported_nodes_vector);//slx
-    WriteSupportedList("trt_nodes_list.txt", supported_nodes_vector);	
+    WriteSupportedList(trt_node_list_name, supported_nodes_vector);	
   } else {
     //WriteSupportedList("trt_nodes_list.txt", supported_nodes_vector);
-    ReadSupportedList("trt_nodes_list.txt", supported_nodes_vector);
+    ReadSupportedList(trt_node_list_name, supported_nodes_vector);
     //ReadSupportedList("trt_nodes_list_bertsquad.txt", supported_nodes_vector);
     //ReadSupportedList("trt_nodes_list_zcode_encoder.txt", supported_nodes_vector); 
   }
@@ -1261,6 +1268,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
+    // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
+    if (fp16_enable_) {
+      for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
+        auto layer = trt_network->getLayer(idx);
+        auto next_layer = trt_network->getLayer(idx + 1);
+        if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow";
+          layer->setPrecision(nvinfer1::DataType::kFLOAT);
+          next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
+          layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+          next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+        }
+      }
+    }
+
     if (int8_enable_) {
       if (!trt_builder->platformHasFastInt8()) {
         int8_enable_ = false;
@@ -1314,28 +1336,22 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-    //int num_inputs = trt_network->getNbInputs();//slx
-    //int num_outputs = trt_network->getNbOutputs();//slx
-
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
     std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
     const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
     const std::string engine_cache_path = cache_path + ".engine";
     const std::string profile_cache_path = cache_path + ".profile";
-    //auto lock = GetApiLock();//???
-    std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);//slx, check everytime?????
+    //auto lock = GetApiLock();
+    std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
     std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-    std::cout << "side_load_engine_: " << side_load_engine_ << ",engine_cache_enable_: " << engine_cache_enable_ << ", engine_cache_path: " << engine_cache_path << ", profile_cache_path: " << profile_cache_path << std::endl;//", engine_file: " << engine_file << ", profile_file: " << profile_file << 
     if (side_load_engine_ && engine_cache_enable_ && engine_file && profile_file) {//Check if engine and profile exist. Only when they exist, skip parse()
       has_dynamic_shape = true;
     } else {
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] parse() starts...";//slx
       trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] parse() done.";//slx
       for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_network->getInput(i);
-        if (input != nullptr) {//slx
+        if (input != nullptr) {
           const std::string& input_name = input->getName();
           nvinfer1::Dims dims = input->getDimensions();
           int nb_dims = dims.nbDims;
@@ -1356,8 +1372,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-    std::cout << "num_inputs: " << num_inputs << ", num_outputs: " << num_outputs << ", trt_builder->platformHasFastFp16(): " << trt_builder->platformHasFastFp16() << ",trt_builder->platformHasFastInt8(): " << trt_builder->platformHasFastInt8() << ", trt_builder->getNbDLACores(): " << trt_builder->getNbDLACores() << std::endl;//slx
-
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
@@ -1369,7 +1383,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
         auto lock = GetApiLock();
 
-        std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);//slx, can be skipped
+        std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);//slx
         if (engine_cache_enable_ && engine_file) {
           engine_file.seekg(0, std::ios::end);
           size_t engine_size = engine_file.tellg();
@@ -1453,45 +1467,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-/*
-    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
-    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
-    std::unordered_map<std::string, size_t> output_types(num_outputs);
-    // Create input to index map
-    for (int i = 0; i < num_inputs; ++i) {
-      auto input = trt_network->getInput(i);
-      const std::string& input_name = input->getName();
-      const auto& iter = input_map.find(input_name);
-      if (iter != input_map.end()) {
-        input_indexes[input_name] = iter->second;
-      }
-    }
-
-    // Create output to index and type maps
-    const auto& graph_output = model_proto->graph().output();
-    for (int i = 0; i < num_outputs; ++i) {
-      const std::string& output_name = trt_network->getOutput(i)->getName();
-      const auto& iter = output_map.find(output_name);
-      if (iter != output_map.end()) {
-        output_indexes[output_name] = iter->second;
-      }
-      const auto& tensor_type = graph_output[i].type().tensor_type();
-      output_types[output_name] = tensor_type.elem_type();
-    }
-
-    // Save engine, context and input/output info to map
-    parsers_.emplace(fused_node.Name(), std::move(trt_parser));
-    engines_.emplace(fused_node.Name(), std::move(trt_engine));
-    contexts_.emplace(fused_node.Name(), std::move(trt_context));
-    builders_.emplace(fused_node.Name(), std::move(trt_builder));
-    networks_.emplace(fused_node.Name(), std::move(trt_network));
-    input_info_[fused_node.Name()].push_back(input_indexes);
-    output_info_[fused_node.Name()].push_back(output_indexes);
-    output_info_[fused_node.Name()].push_back(output_types);
-    input_shape_ranges_[fused_node.Name()] = input_shape_ranges;
-*/
-
-//slx, use input_map rather than input_indexes. need to check correctness
     // Create output to type maps
     std::unordered_map<std::string, size_t> output_types(num_outputs);
     const auto& graph_output = model_proto->graph().output();
@@ -1511,7 +1486,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     output_info_[fused_node.Name()].push_back(output_map);//slx
     output_info_[fused_node.Name()].push_back(output_types);
     input_shape_ranges_[fused_node.Name()] = input_shape_ranges;
-//slx
 
     // Create function state
     // TODO: remove default capture
@@ -1634,7 +1608,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
 
-      if (!side_load_engine_) {//slx!!!!!! if side_load_engine_ = 1: engine_update = false and just use the loaded engine and no shape range check!! and no profile is needed!!
+      if (!trt_state->side_load_engine) {//slx
         for (int i = 0, end = num_inputs; i < end; ++i) {
           auto input = trt_state->network->get()->getInput(i);
           const std::string& input_name = input->getName();
@@ -1855,7 +1829,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           output_binding_names.push_back(trt_engine->getBindingName(i));
         }
       }
-
       // Set input shapes and assign input buffers
       std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
       for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
