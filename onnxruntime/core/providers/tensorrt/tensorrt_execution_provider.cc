@@ -254,6 +254,17 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
 auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
 #endif
 
+void ReleaseTensorRTCustomOpDomain(OrtProviderCustomOpDomain* domain) {
+  if (domain != nullptr) {
+    for (auto ptr : domain->custom_ops_) {
+      if (ptr != nullptr) {
+        delete ptr;
+      }
+    }
+    delete domain;
+  }
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
 
@@ -453,6 +464,7 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
+  ReleaseTensorRTCustomOpDomain(info_.custom_op_domain_ptr);
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {

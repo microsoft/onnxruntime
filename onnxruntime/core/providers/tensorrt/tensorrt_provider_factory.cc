@@ -8,6 +8,8 @@
 #include "tensorrt_provider_factory_creator.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+//#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
 #include <string.h>
 
 using namespace onnxruntime;
@@ -23,9 +25,15 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
+  OrtProviderCustomOpDomain* GetCustomOpDomain();
+
  private:
   TensorrtExecutionProviderInfo info_;
 };
+
+OrtProviderCustomOpDomain* TensorrtProviderFactory::GetCustomOpDomain() {
+  return info_.custom_op_domain_ptr;
+}
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
@@ -43,6 +51,7 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
+    CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -69,6 +78,7 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
+    CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -141,7 +151,12 @@ struct Tensorrt_Provider : Provider {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
   }
-
+  
+  void GetCustomOpDomain(IExecutionProviderFactory* factory, OrtProviderCustomOpDomain** custom_op_domain) override {
+    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
+    *custom_op_domain = trt_factory->GetCustomOpDomain();
+  }
+  
   void Initialize() override {
     InitializeRegistry();
   }

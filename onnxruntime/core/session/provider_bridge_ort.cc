@@ -31,6 +31,8 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -74,6 +76,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
+//#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
 
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory.h"
@@ -1248,6 +1251,10 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+void TensorrtProviderGetCustomOpDomain(IExecutionProviderFactory* factory, OrtProviderCustomOpDomain** domain) {
+  s_library_tensorrt.Get().GetCustomOpDomain(factory, domain);
+}
+
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
@@ -1500,6 +1507,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Rocm: Failed to load shared library");
   }
+  OrtAllocator* allocator;
+  // TODO(pranav): what allocator should be used to create the tensor here?
+  // for the sake of simplicity of the API using the default one here
+  ORT_API_RETURN_IF_ERROR(OrtApis::GetAllocatorWithDefaultOptions(&allocator));
+ 
 
   options->provider_factories.push_back(factory);
   return nullptr;
@@ -1514,6 +1526,34 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
+  OrtProviderCustomOpDomain* custom_op_domain = nullptr;
+  TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
+  options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
+
+  /*
+  //OrtCustomOpDomain* custom_op_domain = new OrtCustomOpDomain();
+  std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  custom_op_domain->domain_ = "";
+  
+  std::vector<OrtCustomOp*> custom_ops;
+  GetTensorRTCustomOps(custom_ops); 
+  
+  //DisentangledAttentionCustomOp disentangled_attention_custom_op{"TensorrtExecutionProvider", nullptr};
+  //custom_op_list.push_back(disentangled_attention_custom_op);
+  //GetTensorRTCustomOps(custom_op_list);
+  for (auto const& custom_op : custom_ops) {
+    custom_op_domain->custom_ops_.push_back(custom_op);
+  }
+
+  
+  //std::unique_ptr<OrtCustomOp> disentangled_attention_custom_op = std::make_unique<onnxruntime::DisentangledAttentionCustomOp>("TensorrtExecutionProvider", nullptr);
+  //OrtCustomOp* disentangled_attention_custom_op = new onnxruntime::DisentangledAttentionCustomOp("TensorrtExecutionProvider", nullptr);
+  //custom_op_domain->custom_ops_.push_back(disentangled_attention_custom_op.release());
+
+  options->custom_op_domains_.push_back(custom_op_domain.release());
+
+  //GetApi().AddCustomOpDomain(this->p_, custom_op_domain)
+  */
   return nullptr;
   API_IMPL_END
 }

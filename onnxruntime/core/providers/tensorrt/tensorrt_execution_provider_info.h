@@ -36,5 +36,7 @@ struct TensorrtExecutionProviderInfo {
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptions& info);
+
+  OrtProviderCustomOpDomain* custom_op_domain_ptr{nullptr};
 };
 }  // namespace onnxruntime
