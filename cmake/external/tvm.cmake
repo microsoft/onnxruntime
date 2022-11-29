@@ -3,9 +3,10 @@ if (onnxruntime_USE_TVM)
 
   FetchContent_Declare(
     tvm
-    URL ${DEP_URL_tvm}
-    URL_HASH SHA1=${DEP_SHA1_tvm}
+    GIT_REPOSITORY https://github.com/apache/tvm.git
+    GIT_TAG        2379917985919ed3918dc12cad47f469f245be7a
   )
+
   FetchContent_GetProperties(tvm)
   if(NOT tvm_POPULATED)
     FetchContent_Populate(tvm)
