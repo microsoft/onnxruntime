@@ -39,6 +39,13 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
       ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, type, Op)>
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, Resize);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
@@ -64,6 +71,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
 
       KERNEL_CREATE_INFO(11, Conv),
+      KERNEL_CREATE_INFO(11, ConvTranspose),
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose),
+      KERNEL_CREATE_INFO(1, QLinearConvTranspose),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
       KERNEL_CREATE_INFO(11, AveragePool),
@@ -73,10 +83,18 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
       BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize)>,
+      BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm)>,
       BuildKernelCreateInfo<
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm)>,
-        BuildKernelCreateInfo<
+      BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul)>,
       BuildKernelCreateInfo<
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul)>,
