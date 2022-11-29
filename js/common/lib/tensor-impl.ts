@@ -199,28 +199,22 @@ export class Tensor implements TensorInterface {
     let rTensorPointer = 0, gTensorPointer = offset, bTensorPointer = offset * 2, aTensorPointer = -1;
 
     // Updating the pointer assignments based on the input image format
-    if (inputformat === 'RGBA') {
-      step = 4;
-      rImagePointer = 0;
-      gImagePointer = 1;
-      bImagePointer = 2;
-    } else if (inputformat === 'RGB') {
+    if (inputformat === 'RGB') {
       step = 3;
       rImagePointer = 0;
       gImagePointer = 1;
       bImagePointer = 2;
+      aImagePointer = -1;
     } else if (inputformat === 'RBG') {
       step = 3;
       rImagePointer = 0;
       bImagePointer = 1;
       gImagePointer = 2;
+      aImagePointer = -1;
     }
 
     // Updating the pointer assignments based on the output tensor format
     if (outputformat === 'RGBA') {
-      rTensorPointer = 0;
-      gTensorPointer = offset;
-      bTensorPointer = offset * 2;
       aTensorPointer = offset * 3;
     } else if (outputformat === 'RBG') {
       rTensorPointer = 0;
@@ -230,11 +224,7 @@ export class Tensor implements TensorInterface {
       bTensorPointer = 0;
       gTensorPointer = offset;
       rTensorPointer = offset * 2;
-    } else if (outputformat === 'RGB') {
-      rTensorPointer = 0;
-      gTensorPointer = offset;
-      bTensorPointer = offset * 2;
-    }
+    } 
 
     if (normMean === undefined) {
       normMean = 255;
@@ -247,10 +237,8 @@ export class Tensor implements TensorInterface {
       float32Data[rTensorPointer++] = (buffer[rImagePointer] + normBias) / normMean;
       float32Data[gTensorPointer++] = (buffer[gImagePointer] + normBias) / normMean;
       float32Data[bTensorPointer++] = (buffer[bImagePointer] + normBias) / normMean;
-      if (aTensorPointer !== -1) {
+      if (aTensorPointer !== -1 && aImagePointer !== -1) {
         float32Data[aTensorPointer++] = (buffer[aImagePointer] + normBias) / normMean; 
-      }else{
-        float32Data[aTensorPointer++] = 255; 
       }
     }
 
@@ -465,18 +453,15 @@ export class Tensor implements TensorInterface {
 
       // Updating the pointer assignments based on the input image format
       if (inputformat === 'RGBA') {
-        step = 4;
         rTensorPointer = 0;
         gTensorPointer = offset;
         bTensorPointer = offset * 2;
         aTensorPointer = offset * 3;
       } else if (inputformat === 'RGB') {
-        step = 3;
         rTensorPointer = 0;
         gTensorPointer = offset;
         bTensorPointer = offset * 2;
       } else if (inputformat === 'RBG') {
-        step = 3;
         rTensorPointer = 0;
         bTensorPointer = offset;
         gTensorPointer = offset * 2;
