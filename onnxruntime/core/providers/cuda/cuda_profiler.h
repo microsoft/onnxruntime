@@ -31,6 +31,9 @@ namespace profiling {
 
 class CudaProfiler final : public EpProfiler {
  public:
+  CudaProfiler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaProfiler);
+  ~CudaProfiler() {}
   bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override{};
   void Start(uint64_t) override{};
