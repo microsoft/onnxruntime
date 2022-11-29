@@ -41,8 +41,7 @@ def main():
             raise NameError("Please specify --new_dir or set the env var BUILD_BINARIESDIRECTORY")
         new_dir = Path(BUILD_BINARIESDIRECTORY) / "deps"
 
-    if not new_dir.exists():
-        raise NameError("The local dir %s does not exist" % (str(new_dir)))
+    # Here we intentionally do not check if new_dir exists, because it might be used in a docker container instead.
 
     deps = []
 
@@ -65,10 +64,6 @@ def main():
         for dep in deps:
             if dep.url.startswith("https://"):
                 new_url = new_dir / dep.url[8:]
-                if not new_url.exists():
-                    # Write the original thing back
-                    depfile_writer.writerow([dep.name, dep.url, dep.sha1_hash])
-                    continue
                 depfile_writer.writerow([dep.name, new_url.as_posix(), dep.sha1_hash])
             else:
                 # Write the original thing back
