@@ -79,6 +79,7 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
 std::vector<std::shared_ptr<IExecutionProvider>> GetExecutionProviders(int device_type, int device_id) {
   std::vector<std::shared_ptr<IExecutionProvider>> provider;
 
+#ifdef USE_CUDA
   if (device_type == 1) {
     OrtCUDAProviderOptions provider_options{};
     provider_options.do_copy_in_default_stream = true;
@@ -87,7 +88,10 @@ std::vector<std::shared_ptr<IExecutionProvider>> GetExecutionProviders(int devic
     }
     if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
       provider.push_back(factory->CreateProvider());
-  } else if (device_type == 0) {
+  }
+#endif
+  ORT_UNUSED_PARAMETER(device_id);
+  if (device_type == 0) {
     provider = std::vector<std::shared_ptr<IExecutionProvider>>();
   } else {
     ORT_THROW("Unsupported device type: ", device_type);
