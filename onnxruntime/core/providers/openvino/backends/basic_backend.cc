@@ -31,13 +31,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (hw_target == "MYRIAD")
     vpu_status = true;
   if (!ImportBlob(hw_target, vpu_status)) {
-  #if defined (OPENVINO_2021_4)
-    ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-    SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_,
-              global_context_.device_type);
-  #else
     ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-  #endif
 
   if (ValidateSubgraph(const_outputs_map_))
     return;
@@ -50,9 +44,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   EnableCaching();
 
   //Setting OpenCL queue throttling for GPU
-  #if defined (OV_API_20)
   EnableGPUThrottling(config);
-  #endif
 
   #if defined(IO_BUFFER_ENABLED)
     if ((global_context.device_type.find("GPU") != std::string::npos)  &&
@@ -60,11 +52,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
       LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
       cl_context ctx = static_cast<cl_context>(global_context_.context);
-      #ifdef OV_API_20
-        remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
-      #else
-        remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), hw_target, ctx);
-      #endif
+      remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
       exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
     } else {
     exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
@@ -161,7 +149,7 @@ void BasicBackend::PopulateConfigValue(OVConfig& config) {
       config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
     }
     //to check preprocessing inside model
-    #if defined (OPENVINO_2021_4) || (OPENVINO_2022_1) || (OPENVINO_2022_2)
+    #if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
       config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
     #endif
   }
@@ -180,19 +168,16 @@ void BasicBackend::EnableCaching() {
   }
 }
 
-#if defined (OV_API_20)
 void BasicBackend::EnableGPUThrottling(OVConfig& config) {
   if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
     config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
   }
 }
-#endif
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
-  #if defined (OV_API_20)
   auto graph_input_info = exe_network_.Get().inputs();
   int input_idx = 0;
   for (auto input_info_iter = graph_input_info.begin();
@@ -238,19 +223,6 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
     }
     input_idx++;
   }
-  #else
-  auto graph_input_info = exe_network_.Get().GetInputsInfo();
-  for (auto input_info_iter = graph_input_info.begin();
-       input_info_iter != graph_input_info.end(); ++input_info_iter) {
-    // Get OpenVINO's input buffer
-    OVTensorPtr graph_input_blob;
-    std::string input_name = input_info_iter->first;
-    graph_input_blob = infer_request->GetTensor(input_name);
-    auto precision = input_info_iter->second->getPrecision();
-    size_t batch_slice = 0;
-    FillInputBlob(graph_input_blob, batch_slice, input_name, context, precision, subgraph_context_);
-  }
-  #endif
   // Start Async inference
   infer_request->StartAsync();
 }
@@ -258,7 +230,6 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
 #ifdef IO_BUFFER_ENABLED
 //Wait for Remote Aynchronous inference completion
 void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
-  #if defined (OV_API_20)
   auto graph_input_info = exe_network_.Get().inputs();
   int input_idx = 0;
   for (auto input_info_iter = graph_input_info.begin();
@@ -280,12 +251,6 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
     }
     input_idx++;
-  #else
-  auto graph_input_info = exe_network_.Get().GetInputsInfo();
-  for (auto input_info_iter = graph_input_info.begin();
-       input_info_iter != graph_input_info.end(); ++input_info_iter) {
-    std::string input_name = input_info_iter->first;
-  #endif
     // Kernel Context Input Buffer
     const auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
     // If the ORTValue wraps a device pointer
@@ -295,31 +260,20 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       const void *tensor_data = tensor.GetTensorRawData();
       const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
       //Create an Input Remote Blob
-      #if defined(OV_API_20)
-        auto input = ie_cnn_network_->get_parameters().at(0);
-        auto remote_blob = remote_context_->create_tensor(input->get_element_type(), input->get_shape(), *shared_buffer_const);
-        ov::Tensor tensor = static_cast<ov::Tensor>(remote_blob);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor);
-      #else
-        cl::Buffer* shared_buffer = const_cast<cl::Buffer *>(shared_buffer_const);
-        OVTensorPtr tensor_ptr = InferenceEngine::gpu::make_shared_blob(input_info_iter->second->getTensorDesc(), remote_context_, *shared_buffer);
-      #endif
+      auto input = ie_cnn_network_->get_parameters().at(0);
+      auto remote_blob = remote_context_->create_tensor(input->get_element_type(), input->get_shape(), *shared_buffer_const);
+      ov::Tensor tensor = static_cast<ov::Tensor>(remote_blob);
+      OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor);
       infer_request->SetTensor(input_name, tensor_ptr);
     } else {
       OVTensorPtr graph_input_blob;
       graph_input_blob = infer_request->GetTensor(input_name);
       size_t batch_slice_idx = 0;
-      #if defined (OV_API_20)
-        FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
-      #else
-        auto precision = input_info_iter->second->getPrecision();
-        FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, precision, subgraph_context_);
-      #endif
+      FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
     }
   }
 
   //Set the output blob as remote blob
-  #if defined (OV_API_20)
   auto graph_output_info = exe_network_.Get().outputs();
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
@@ -340,13 +294,6 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
     if(!output_name_found) {
       ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
     }
-  #else
-  auto graph_output_info = exe_network_.Get().GetOutputsInfo();
-  for (auto output_info_iter = graph_output_info.begin();
-       output_info_iter != graph_output_info.end(); ++output_info_iter) {
-    // Get Ort Output Tensor
-    auto output_name = output_info_iter->first;
-  #endif
 
     size_t batch_size = 1;
     auto tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
@@ -356,16 +303,11 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       const void *tensor_data = tensor.GetTensorRawData();
       const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
       // Create a shared Blob, set the Infer Request Output Blob
-      #if defined(OV_API_20)
-        auto output = ie_cnn_network_->get_results().at(0);
-        auto remote_tensor = remote_context_->create_tensor(output->get_element_type(), output->get_shape(), *shared_buffer_const);
-        ov::Tensor tensor = static_cast<ov::Tensor>(remote_tensor);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor);
-      #else
-        cl::Buffer* shared_buffer = const_cast<cl::Buffer *>(shared_buffer_const);
-        OVTensorPtr tensor_ptr = InferenceEngine::gpu::make_shared_blob(output_info_iter->second->getTensorDesc(), remote_context_, *shared_buffer);
-      #endif
-        infer_request->SetTensor(output_name, tensor_ptr);
+      auto output = ie_cnn_network_->get_results().at(0);
+      auto remote_tensor = remote_context_->create_tensor(output->get_element_type(), output->get_shape(), *shared_buffer_const);
+      ov::Tensor tensor = static_cast<ov::Tensor>(remote_tensor);
+      OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor);
+      infer_request->SetTensor(output_name, tensor_ptr);
     }
   }
 
@@ -380,7 +322,6 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
   // Wait for Async inference completion
 
   infer_request->WaitRequest();
-  #if defined (OV_API_20)
   auto graph_output_info = exe_network_.Get().outputs();
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
@@ -415,26 +356,6 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
       FillOutputBlob(graph_output_blob, output_tensor, batch_slice);
     }
   }
-  #else
-  auto graph_output_info = exe_network_.Get().GetOutputsInfo();
-  for (auto output_info_iter = graph_output_info.begin();
-       output_info_iter != graph_output_info.end(); ++output_info_iter) {
-    // Get OpenVINO's output blob
-    OVTensorPtr graph_output_blob;
-    auto output_name = output_info_iter->first;
-    graph_output_blob = infer_request->GetTensor(output_name);
-    size_t batch_size = 1;
-    auto output_tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
-    auto mem_info = output_tensor.GetTensorMemoryInfo();
-    if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-      return;
-    } else {
-      auto precision = output_info_iter->second->getPrecision();
-      size_t batch_slice = 0;
-      FillOutputBlob(graph_output_blob, output_tensor, precision, batch_slice);
-    }
-  }
-  #endif
 
   if (!const_outputs_map_.empty()) {
     for (auto item : const_outputs_map_) {
