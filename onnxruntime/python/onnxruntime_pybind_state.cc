@@ -763,7 +763,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
-    return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::XnnpackProviderFactoryCreator::Create(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+        ->CreateProvider();
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
