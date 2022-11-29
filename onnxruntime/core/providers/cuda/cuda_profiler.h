@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
 #include <atomic>
 #include <mutex>
@@ -25,7 +25,8 @@ class CudaProfiler final : public GPUProfilerBase<CUPTIManager> {
 }  // namespace profiling
 }  // namespace onnxruntime
 
-#else /* !defined(USE_CUDA) || !defined(ENABLE_CUDA_PROFILING) || !defined(CUDA_VERSION) || CUDA_VERSION < 11000 */
+#else /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
+
 namespace onnxruntime {
 namespace profiling {
 
