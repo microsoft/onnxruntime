@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-using CpuLogicProcessorId = int;               // an id of a logical processor starting from 0
+using CpuLogicProcessorId = int;                   // an id of a logical processor starting from 0
 using CpuCore = std::vector<CpuLogicProcessorId>;  // a core of multiple logical processors
 using CpuGroup = std::vector<CpuCore>;             // core group
 using CpuInfo = std::vector<CpuGroup>;             // groups

@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
 
-#include "core/platform/posix/env.h"
+#include "core/platform/env.h"
+
 
 #include <assert.h>
 #include <dlfcn.h>
@@ -35,8 +36,12 @@ limitations under the License.
 #include <utility>  // for std::forward
 #include <vector>
 
-#ifdef CPUINFO_SUPPORTED
+// We can not use CPUINFO if it is not supported and we do not want to used
+// it on certain platforms because of the binary size increase.
+// We could use it to find out the number of physical cores for certain supported platforms
+#if defined(CPUINFO_SUPPORTED) &&  !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #include <cpuinfo.h>
+#define ORT_USE_CPUINFO
 #endif
 
 #include "core/common/common.h"
@@ -47,6 +52,8 @@ limitations under the License.
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
 namespace onnxruntime {
+
+namespace {
 
 constexpr int OneMillion = 1000000;
 
@@ -226,7 +233,7 @@ class PosixThread : public EnvThread {
       if (p->affinity.has_value() && !p->affinity->empty()) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-        for (auto id : *p->affinity) {
+        for(auto id : *p->affinity) {
           CPU_SET(id, &cpuset);
         }
         // pthread_setaffinity_np() does not set errno, it returns it.
@@ -255,318 +262,336 @@ class PosixThread : public EnvThread {
   pthread_t hThread;
 };
 
-PosixEnv& PosixEnv::Instance() {
-  static PosixEnv default_env;
-  return default_env;
-}
-
-EnvThread* PosixEnv::CreateThread(const ORTCHAR_T* name_prefix, int index,
-                                  unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                                  Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
-  return new PosixThread(name_prefix, index, start_address, param, thread_options);
-}
-
-int PosixEnv::DefaultNumCores() {
-  return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
-}
-
-int PosixEnv::GetNumPhysicalCpuCores() const {
-#ifdef CPUINFO_SUPPORTED
-  if (cpuinfo_available_) {
-    return narrow<int>(cpuinfo_get_cores_count());
+class PosixEnv : public Env {
+ public:
+  static PosixEnv& Instance() {
+    static PosixEnv default_env;
+    return default_env;
   }
-#endif
-  // We guess the number of cores
-  return DefaultNumCores();
-}
 
-std::vector<LogicalProcessors> PosixEnv::GetDefaultThreadAffinities() const {
-  std::vector<LogicalProcessors> ret;
-#ifdef CPUINFO_SUPPORTED
-  if (cpuinfo_available_) {
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-    // We currently do not implement affinity on more than 64 cores.
-    auto num_phys_cores = cpuinfo_get_cores_count();
-    ret.reserve(num_phys_cores);
-    for (uint32_t i = 0; i < num_phys_cores; ++i) {
-      const auto* core = cpuinfo_get_core(i);
-      LogicalProcessors th_aff;
-      // Processor count will never exceed 64 in a given group.
-      // TBD: Processor groups are currently not taken into account.
-      th_aff.reserve(core->processor_count);
-      auto log_proc_idx = core->processor_start;
-      for (uint32_t count = 0; count < core->processor_count; count++, ++log_proc_idx) {
-        const auto* log_proc = cpuinfo_get_processor(log_proc_idx);
-        th_aff.push_back(log_proc->linux_id);
+  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
+                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
+                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
+    return new PosixThread(name_prefix, index, start_address, param, thread_options);
+  }
+
+  // we are guessing the number of phys cores based on a popular HT case (2 logical proc per core)
+  static int DefaultNumCores() {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+  }
+
+  // Return the number of physical cores
+  int GetNumPhysicalCpuCores() const override {
+#ifdef ORT_USE_CPUINFO
+    if(cpuinfo_available_) {
+      return narrow<int>(cpuinfo_get_cores_count());
+    }
+#endif // ORT_USE_CPUINFO
+    return DefaultNumCores();
+  }
+
+  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
+
+    std::vector<LogicalProcessors> ret;
+#ifdef ORT_USE_CPUINFO
+    if (cpuinfo_available_) {
+      auto num_phys_cores = cpuinfo_get_cores_count();
+      ret.reserve(num_phys_cores);
+      for (uint32_t i = 0; i < num_phys_cores; ++i) {
+        const auto* core = cpuinfo_get_core(i);
+        LogicalProcessors th_aff;
+        th_aff.reserve(core->processor_count);
+        auto log_proc_idx = core->processor_start;
+        for (uint32_t count = 0; count < core->processor_count; count++, ++log_proc_idx) {
+          const auto* log_proc = cpuinfo_get_processor(log_proc_idx);
+          th_aff.push_back(log_proc->linux_id);
+        }
+        ret.push_back(std::move(th_aff));
+       }
+    }
+#endif
+    // Just the size of the thread-pool
+    if(ret.empty()) {
+      ret.resize(GetNumPhysicalCpuCores());
+    }
+    return ret;
+  }
+
+  void SleepForMicroseconds(int64_t micros) const override {
+    while (micros > 0) {
+      timespec sleep_time;
+      sleep_time.tv_sec = 0;
+      sleep_time.tv_nsec = 0;
+
+      if (micros >= OneMillion) {
+        sleep_time.tv_sec = std::min<int64_t>(micros / OneMillion, std::numeric_limits<time_t>::max());
+        micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
       }
-      ret.push_back(std::move(th_aff));
-    }
-#endif
-  }
-#endif  // CPUINFO_SUPPORTED
-  // Just the size of the thread-pool
-  if (ret.empty()) {
-    ret.resize(GetNumPhysicalCpuCores());
-  }
-  return ret;
-}
-
-void PosixEnv::SleepForMicroseconds(int64_t micros) const {
-  while (micros > 0) {
-    timespec sleep_time;
-    sleep_time.tv_sec = 0;
-    sleep_time.tv_nsec = 0;
-
-    if (micros >= OneMillion) {
-      sleep_time.tv_sec = std::min<int64_t>(micros / OneMillion, std::numeric_limits<time_t>::max());
-      micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
-    }
-    if (micros < OneMillion) {
-      sleep_time.tv_nsec = 1000 * micros;
-      micros = 0;
-    }
-    while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {
-      // Ignore signals and wait for the full interval to elapse.
-    }
-  }
-}
-
-PIDType PosixEnv::GetSelfPid() const {
-  return getpid();
-}
-
-Status PosixEnv::GetFileLength(const PathChar* file_path, size_t& length) const {
-  ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
-  return GetFileLength(file_descriptor.Get(), length);
-}
-
-common::Status PosixEnv::GetFileLength(int fd, /*out*/ size_t& file_size) const {
-  using namespace common;
-  if (fd < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
-  }
-
-  struct stat buf;
-  int rc = fstat(fd, &buf);
-  if (rc < 0) {
-    return ReportSystemError("fstat", "");
-  }
-
-  if (buf.st_size < 0) {
-    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
-  }
-
-  if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
-    return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
-  }
-
-  file_size = static_cast<size_t>(buf.st_size);
-  return Status::OK();
-}
-
-Status PosixEnv::ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                                    gsl::span<char> buffer) const {
-  ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
-  ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
-  ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
-
-  ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
-  if (!file_descriptor.IsValid()) {
-    return ReportSystemError("open", file_path);
-  }
-
-  if (length == 0)
-    return Status::OK();
-
-  if (offset > 0) {
-    const FileOffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
-    if (seek_result == -1) {
-      return ReportSystemError("lseek", file_path);
+      if (micros < OneMillion) {
+        sleep_time.tv_nsec = 1000 * micros;
+        micros = 0;
+      }
+      while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {
+        // Ignore signals and wait for the full interval to elapse.
+      }
     }
   }
 
-  size_t total_bytes_read = 0;
-  while (total_bytes_read < length) {
-    constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
-    const size_t bytes_remaining = length - total_bytes_read;
-    const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
-
-    const ssize_t bytes_read =
-        TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
-
-    if (bytes_read == -1) {
-      return ReportSystemError("read", file_path);
-    }
-
-    if (bytes_read == 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ", "File: ", file_path,
-                             ", offset: ", offset, ", length: ", length);
-    }
-
-    total_bytes_read += bytes_read;
+  PIDType GetSelfPid() const override {
+    return getpid();
   }
 
-  return Status::OK();
-}
-
-Status PosixEnv::MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                                   MappedMemoryPtr& mapped_memory) const {
-  ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
-  ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
-
-  ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
-  if (!file_descriptor.IsValid()) {
-    return ReportSystemError("open", file_path);
+  Status GetFileLength(const PathChar* file_path, size_t& length) const override {
+    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+    return GetFileLength(file_descriptor.Get(), length);
   }
 
-  if (length == 0) {
-    mapped_memory = MappedMemoryPtr{};
+  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+    using namespace common;
+    if (fd < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
+    }
+
+    struct stat buf;
+    int rc = fstat(fd, &buf);
+    if (rc < 0) {
+      return ReportSystemError("fstat", "");
+    }
+
+    if (buf.st_size < 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+    }
+
+    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    }
+
+    file_size = static_cast<size_t>(buf.st_size);
     return Status::OK();
   }
 
-  static const long page_size = sysconf(_SC_PAGESIZE);
-  const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-  const size_t mapped_length = length + offset_to_page;
-  const FileOffsetType mapped_offset = offset - offset_to_page;
-  void* const mapped_base =
-      mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
+  Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                            gsl::span<char> buffer) const override {
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+    ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
 
-  if (mapped_base == MAP_FAILED) {
-    return ReportSystemError("mmap", file_path);
-  }
-
-  mapped_memory =
-      MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
-
-  return Status::OK();
-}
-
-common::Status PosixEnv::ReportSystemError(const char* operation_name, const std::string& path) {
-  auto [err_no, err_msg] = GetSystemError();
-  std::ostringstream oss;
-  oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
-  return common::Status(common::SYSTEM, err_no, oss.str());
-}
-
-bool PosixEnv::FolderExists(const std::string& path) const {
-  struct stat sb;
-  if (stat(path.c_str(), &sb)) {
-    return false;
-  }
-  return S_ISDIR(sb.st_mode);
-}
-
-common::Status PosixEnv::CreateFolder(const std::string& path) const {
-  size_t pos = 0;
-  do {
-    pos = path.find_first_of("\\/", pos + 1);
-    std::string directory = path.substr(0, pos);
-    if (FolderExists(directory.c_str())) {
-      continue;
+    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+    if (!file_descriptor.IsValid()) {
+      return ReportSystemError("open", file_path);
     }
-    if (mkdir(directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
-      return common::Status(common::SYSTEM, errno);
+
+    if (length == 0)
+      return Status::OK();
+
+    if (offset > 0) {
+      const FileOffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
+      if (seek_result == -1) {
+        return ReportSystemError("lseek", file_path);
+      }
     }
-  } while (pos != std::string::npos);
-  return Status::OK();
-}
 
-common::Status PosixEnv::DeleteFolder(const PathString& path) const {
-  const auto result = nftw(
-      path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
-  ORT_RETURN_IF_NOT(result == 0, "DeleteFolder(): nftw() failed with error: ", result);
-  return Status::OK();
-}
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < length) {
+      constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+      const size_t bytes_remaining = length - total_bytes_read;
+      const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
 
-common::Status PosixEnv::FileOpenRd(const std::string& path, /*out*/ int& fd) const {
-  fd = open(path.c_str(), O_RDONLY);
-  if (0 > fd) {
-    return ReportSystemError("open", path);
+      const ssize_t bytes_read =
+          TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
+
+      if (bytes_read == -1) {
+        return ReportSystemError("read", file_path);
+      }
+
+      if (bytes_read == 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ", "File: ", file_path,
+                               ", offset: ", offset, ", length: ", length);
+      }
+
+      total_bytes_read += bytes_read;
+    }
+
+    return Status::OK();
   }
-  return Status::OK();
-}
 
-common::Status PosixEnv::FileOpenWr(const std::string& path, /*out*/ int& fd) const {
-  fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-  if (0 > fd) {
-    return ReportSystemError("open", path);
+  Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                           MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+
+    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+    if (!file_descriptor.IsValid()) {
+      return ReportSystemError("open", file_path);
+    }
+
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    static const long page_size = sysconf(_SC_PAGESIZE);
+    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
+    const size_t mapped_length = length + offset_to_page;
+    const FileOffsetType mapped_offset = offset - offset_to_page;
+    void* const mapped_base =
+        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
+
+    if (mapped_base == MAP_FAILED) {
+      return ReportSystemError("mmap", file_path);
+    }
+
+    mapped_memory =
+        MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
+                        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+
+    return Status::OK();
   }
-  return Status::OK();
-}
 
-common::Status PosixEnv::FileClose(int fd) const {
-  int ret = close(fd);
-  if (0 != ret) {
-    return ReportSystemError("close", "");
+  static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
+    auto [err_no, err_msg] = GetSystemError();
+    std::ostringstream oss;
+    oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
+    return common::Status(common::SYSTEM, err_no, oss.str());
   }
-  return Status::OK();
-}
 
-common::Status PosixEnv::GetCanonicalPath(const PathString& path, PathString& canonical_path) const {
-  MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Freer<char>()};
-  if (!canonical_path_cstr) {
-    return ReportSystemError("realpath", path);
+  bool FolderExists(const std::string& path) const override {
+    struct stat sb;
+    if (stat(path.c_str(), &sb)) {
+      return false;
+    }
+    return S_ISDIR(sb.st_mode);
   }
-  canonical_path.assign(canonical_path_cstr.get());
-  return Status::OK();
-}
 
-common::Status PosixEnv::LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const {
-  dlerror();  // clear any old error_str
-  *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
-  char* error_str = dlerror();
-  if (!*handle) {
-    return common::Status(common::ONNXRUNTIME, common::FAIL,
-                          "Failed to load library " + library_filename + " with error: " + error_str);
+  common::Status CreateFolder(const std::string& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of("\\/", pos + 1);
+      std::string directory = path.substr(0, pos);
+      if (FolderExists(directory.c_str())) {
+        continue;
+      }
+      if (mkdir(directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
   }
-  return common::Status::OK();
-}
 
-common::Status PosixEnv::UnloadDynamicLibrary(void* handle) const {
-  if (!handle) {
-    return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
+  common::Status DeleteFolder(const PathString& path) const override {
+    const auto result = nftw(
+        path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
+    ORT_RETURN_IF_NOT(result == 0, "DeleteFolder(): nftw() failed with error: ", result);
+    return Status::OK();
   }
-  dlerror();  // clear any old error_str
-  int retval = dlclose(handle);
-  char* error_str = dlerror();
-  if (retval != 0) {
-    return common::Status(common::ONNXRUNTIME, common::FAIL,
-                          "Failed to unload library with error: " + std::string(error_str));
+
+  common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override {
+    fd = open(path.c_str(), O_RDONLY);
+    if (0 > fd) {
+      return ReportSystemError("open", path);
+    }
+    return Status::OK();
   }
-  return common::Status::OK();
-}
 
-common::Status PosixEnv::GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const {
-  dlerror();  // clear any old error str
-  *symbol = dlsym(handle, symbol_name.c_str());
-  char* error_str = dlerror();
-  if (error_str) {
-    return common::Status(common::ONNXRUNTIME, common::FAIL,
-                          "Failed to get symbol " + symbol_name + " with error: " + error_str);
+  common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const override {
+    fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (0 > fd) {
+      return ReportSystemError("open", path);
+    }
+    return Status::OK();
   }
-  // it's possible to get a NULL symbol in our case when Schemas are not custom.
-  return common::Status::OK();
-}
 
-std::string PosixEnv::FormatLibraryFileName(const std::string& name, const std::string& version) const {
-  std::string filename;
-  if (version.empty()) {
-    filename = "lib" + name + ".so";
-  } else {
-    filename = "lib" + name + ".so" + "." + version;
+  common::Status FileClose(int fd) const override {
+    int ret = close(fd);
+    if (0 != ret) {
+      return ReportSystemError("close", "");
+    }
+    return Status::OK();
   }
-  return filename;
-}
 
-const Telemetry& PosixEnv::GetTelemetryProvider() const {
-  return telemetry_provider_;
-}
+  common::Status GetCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const override {
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Freer<char>()};
+    if (!canonical_path_cstr) {
+      return ReportSystemError("realpath", path);
+    }
+    canonical_path.assign(canonical_path_cstr.get());
+    return Status::OK();
+  }
 
-std::string PosixEnv::GetEnvironmentVar(const std::string& var_name) const {
-  char* val = getenv(var_name.c_str());
-  return val == NULL ? std::string() : std::string(val);
-}
+  common::Status LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const override {
+    dlerror();  // clear any old error_str
+    *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
+    char* error_str = dlerror();
+    if (!*handle) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Failed to load library " + library_filename + " with error: " + error_str);
+    }
+    return common::Status::OK();
+  }
+
+  common::Status UnloadDynamicLibrary(void* handle) const override {
+    if (!handle) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
+    }
+    dlerror();  // clear any old error_str
+    int retval = dlclose(handle);
+    char* error_str = dlerror();
+    if (retval != 0) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Failed to unload library with error: " + std::string(error_str));
+    }
+    return common::Status::OK();
+  }
+
+  common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
+    dlerror();  // clear any old error str
+    *symbol = dlsym(handle, symbol_name.c_str());
+    char* error_str = dlerror();
+    if (error_str) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Failed to get symbol " + symbol_name + " with error: " + error_str);
+    }
+    // it's possible to get a NULL symbol in our case when Schemas are not custom.
+    return common::Status::OK();
+  }
+
+  std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
+    std::string filename;
+    if (version.empty()) {
+      filename = "lib" + name + ".so";
+    } else {
+      filename = "lib" + name + ".so" + "." + version;
+    }
+    return filename;
+  }
+
+  // \brief returns a provider that will handle telemetry on the current platform
+  const Telemetry& GetTelemetryProvider() const override {
+    return telemetry_provider_;
+  }
+
+  // \brief returns a value for the queried variable name (var_name)
+  std::string GetEnvironmentVar(const std::string& var_name) const override {
+    char* val = getenv(var_name.c_str());
+    return val == NULL ? std::string() : std::string(val);
+  }
+
+ private:
+  Telemetry telemetry_provider_;
+#ifdef ORT_USE_CPUINFO
+  PosixEnv()  {
+    cpuinfo_available_ = cpuinfo_initialize();
+    if(!cpuinfo_available_) {
+      LOGS_DEFAULT(INFO) << "cpuinfo_initialize failed";
+    }
+  }
+  bool cpuinfo_available_{false};
+#endif // ORT_USE_CPUINFO
+};
+
+}  // namespace
 
 // REGISTER_FILE_SYSTEM("", PosixFileSystem);
 // REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
