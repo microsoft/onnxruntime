@@ -56,7 +56,8 @@ std::set<std::string> ops_supported_only_in_model = {
     "Split",
     "Tile",
     "TopK",
-    "QuantizeLinear"};
+    "QuantizeLinear",
+    "GatherElements"};
 
 //Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
@@ -118,6 +119,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Floor", V_2020_4, {"All"}},
     {"Gather", V_2020_4, {"All"}},
     {"GatherElements", V_2021_3, {"MYRIAD"}},
+    {"GatherElements", V_2022_2, {"CPU", "GPU"}},
     {"GatherND", V_2021_2, {"MYRIAD"}},
     {"GatherND", V_2021_4, {"All"}},
     {"Gemm", V_2020_4, {"All"}},
@@ -1433,6 +1435,9 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
         if (op_is_supported(optype, no_dimension_supported_)) {
           return;
         }
+        if ((optype == "Identity") || (optype == "Sqrt")) {
+          return;
+        }
         has_unsupported_dimension = true;
         return;
       } else {
@@ -1464,6 +1469,9 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 
   //Check 3a
   if (domain == kOnnxDomain && unsupported_op_mode(node)) {
+    if (optype == "GatherElements") {
+      return true;
+    }
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Failed in unsupported op mode" << std::endl;
