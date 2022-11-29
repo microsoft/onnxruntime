@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -47,9 +48,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   private static OrtEnvironment ortEnvironment = OrtEnvironment.getEnvironment();
   private static Map<String, OrtSession> sessionMap = new HashMap<>();
 
-  private static int nextSessionId = 0;
+  private static BigInteger nextSessionId = 0;
   private static String getNextSessionKey() {
-    String key = Integer.toString(nextSessionId);
+    String key = BigInteger.toString(nextSessionId);
     nextSessionId++;
     return key;
   }
