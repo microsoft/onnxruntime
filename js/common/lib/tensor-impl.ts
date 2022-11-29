@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor as TensorInterface} from './tensor';
+import {ImageFromTensorConfig, Tensor as TensorInterface, TensorFromImageConfig} from './tensor';
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;
@@ -169,108 +169,224 @@ export class Tensor implements TensorInterface {
   /**
    * Create a new tensor object from image object
    * @param buffer - Extracted image buffer data - assuming RGBA format
-   * @param imgH - image height
-   * @param imgW - image width
-   * @param format - String - image buffer format
-   * @param norm - Boolean value for if to normalizing the buffer values between 1:-1 - default behavior is normalizing
-   *     it by 255.
+   * @param imageFormat - input image configuration - required configurations height, width, format
+   * @param tensorFormat - output tensor configuration - Default is RGB format
    */
   private static bufferToTensor(
-      buffer: Uint8ClampedArray, height: number, width: number, format = 'rgba', norm = false): Tensor {
+      buffer: Uint8ClampedArray|undefined, imageFormat: ImageFromTensorConfig, tensorFormat: TensorFromImageConfig|undefined): Tensor {
+    
+    if (buffer === undefined) {
+      throw new Error('Image buffer must be defined');
+    }
+
+    if(imageFormat.height === undefined || imageFormat.width === undefined) {
+      throw new Error('Image height and width must be defined');
+    }
+
+    if (tensorFormat === undefined) {
+      // default tensor format
+    }
+
+    let {height, width, normBias, normMean} = imageFormat;
+    let inputformat = imageFormat.format !== undefined ? imageFormat.format : 'RGBA';
+    let outputformat = tensorFormat !== undefined ? (tensorFormat.format !== undefined ? tensorFormat.format: 'RGB') : 'RGB';
+    
     const offset = height * width;
-    const float32Data = new Float32Array(offset * 3);
-    let step = 4;
-    let rPointer = 0;
-    let gPointer = 1;
-    let bPointer = 2;
-    let normValue = 255.;
+    const float32Data = outputformat === 'RGBA' ? new Float32Array(offset * 4) : new Float32Array(offset * 3);
+    
+    // Default pointer assignments
+    let step = 4, rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
+    let rTensorPointer = 0, gTensorPointer = offset, bTensorPointer = offset * 2, aTensorPointer = -1;
 
-    if (format === 'RGBA') {
+    // Updating the pointer assignments based on the input image format
+    if (inputformat === 'RGBA') {
       step = 4;
-      rPointer = 0;
-      gPointer = 1;
-      bPointer = 2;
-    } else if (format === 'RGB') {
+      rImagePointer = 0;
+      gImagePointer = 1;
+      bImagePointer = 2;
+    } else if (inputformat === 'RGB') {
       step = 3;
-      rPointer = 0;
-      gPointer = 1;
-      bPointer = 2;
-    } else if (format === 'RBG') {
+      rImagePointer = 0;
+      gImagePointer = 1;
+      bImagePointer = 2;
+    } else if (inputformat === 'RBG') {
       step = 3;
-      rPointer = 0;
-      bPointer = 1;
-      gPointer = 2;
+      rImagePointer = 0;
+      bImagePointer = 1;
+      gImagePointer = 2;
     }
 
-    if (norm) {
-      let maxValue = -300;
-      for (let i = 0; i < offset * step; i++) {
-        if (buffer[i] > maxValue) {
-          maxValue = buffer[i];
-        }
+    // Updating the pointer assignments based on the output tensor format
+    if (outputformat === 'RGBA') {
+      rTensorPointer = 0;
+      gTensorPointer = offset;
+      bTensorPointer = offset * 2;
+      aTensorPointer = offset * 3;
+    } else if (outputformat === 'RBG') {
+      rTensorPointer = 0;
+      bTensorPointer = offset;
+      gTensorPointer = offset * 2;
+    } else if (outputformat === 'BGR') {
+      bTensorPointer = 0;
+      gTensorPointer = offset;
+      rTensorPointer = offset * 2;
+    } else if (outputformat === 'RGB') {
+      rTensorPointer = 0;
+      gTensorPointer = offset;
+      bTensorPointer = offset * 2;
+    }
+
+    if (normMean === undefined) {
+      normMean = 255;
+    }
+    if (normBias === undefined) {
+      normBias = 0;
+    }
+
+    for (let i = 0; i < offset;i++, rImagePointer += step, bImagePointer += step, gImagePointer += step, aImagePointer += step) {
+      float32Data[rTensorPointer++] = (buffer[rImagePointer] + normBias) / normMean;
+      float32Data[gTensorPointer++] = (buffer[gImagePointer] + normBias) / normMean;
+      float32Data[bTensorPointer++] = (buffer[bImagePointer] + normBias) / normMean;
+      if (aTensorPointer !== -1) {
+        float32Data[aTensorPointer++] = (buffer[aImagePointer] + normBias) / normMean; 
+      }else{
+        float32Data[aTensorPointer++] = 255; 
       }
-      normValue = maxValue;
-    }
-
-    for (let i = 0, rIndex = 0, gIndex = offset, bIndex = offset * 2; i < offset;
-         i++, rPointer += step, bPointer += step, gPointer += step) {
-      float32Data[rIndex++] = buffer[rPointer] / normValue;
-      float32Data[gIndex++] = buffer[gPointer] / normValue;
-      float32Data[bIndex++] = buffer[bPointer] / normValue;
     }
 
     // Float32Array -> ort.Tensor
-    const inputTensor = new Tensor('float32', float32Data, [1, 3, height, width]);
-    return inputTensor;
+    const outputTensor = outputformat === 'RGBA' ? new Tensor('float32', float32Data, [1, 4, height, width]) : new Tensor('float32', float32Data, [1, 3, height, width]);
+    return outputTensor;
   }
 
   // #region factory
-  static async fromImage(image: ImageData): Promise<Tensor>;
-  static async fromImage(image: HTMLImageElement): Promise<Tensor>;
-  static async fromImage(image: ImageBitmap, format?: 'rgb'|'rbg'|'rgba'): Promise<Tensor>;
-  static async fromImage(image: string): Promise<Tensor>;
+  static async fromImage(image: ImageData, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  static async fromImage(image: HTMLImageElement, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  static async fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  static async fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
 
-  static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, format?: 'rgb'|'rbg'|'rgba'):
+  static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
       Promise<Tensor> {
+
+    // checking the type of image object 
     const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
     const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
     const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
     const isURL = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
 
-    let height: number|undefined;
-    let width: number|undefined;
     let data: Uint8ClampedArray|undefined;
 
+    // image configuration options
+    let imageConfig: ImageFromTensorConfig = {};
+
+    // filling and checking image configuration options
     if (isHTMLImageEle) {
+      // HTMLImageElement - image object - format is RGBA by default
       const pixels2DContext = document.createElement('canvas').getContext('2d');
 
       if (pixels2DContext != null) {
-        height = (image as HTMLImageElement).height;
-        width = (image as HTMLImageElement).width;
+        let format = 'RGBA';
+        let height = (image as HTMLImageElement).height;
+        let width = (image as HTMLImageElement).width;
+
+        if(inputOptions !== undefined) {
+          imageConfig = inputOptions;
+          if (inputOptions.format !== undefined && inputOptions.format !== format) {
+            throw new Error('Image input config format must be RGBA for HTMLImageElement');
+          }else{
+            imageConfig.format = 'RGBA';
+          }
+          if (inputOptions.height !== undefined && inputOptions.height !== height) {
+            throw new Error("Image input config height doesn't match HTMLImageElement height");
+          }else{
+            imageConfig.height = height;
+          }
+          if (inputOptions.width !== undefined && inputOptions.width !== width) {
+            throw new Error("Image input config width doesn't match HTMLImageElement width");
+          }else{
+            imageConfig.width = width;
+          }
+        }else{
+          imageConfig.format = 'RGBA';
+          imageConfig.height = height;
+          imageConfig.width = width;
+        }
+
         pixels2DContext.drawImage(image as HTMLImageElement, 0, 0, width, height);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
         throw new Error('Can not access image data');
       }
+
     } else if (isImageDataEle) {
-      height = (image as ImageData).height;
-      width = (image as ImageData).width;
-      data = (image as ImageData).data;
-    } else if (isImageBitmap) {
-      if (format == null) {
-        throw new Error('Please provide image format with Imagebitmap');
+      // ImageData - image object - format is RGBA by default
+      let format = 'RGBA';
+      let height = (image as ImageData).height;
+      let width = (image as ImageData).width;
+
+      if(inputOptions !== undefined) {
+        imageConfig = inputOptions;
+        if (inputOptions.format !== undefined && inputOptions.format !== format) {
+          throw new Error('Image input config format must be RGBA for ImageData');
+        }else{
+          imageConfig.format = 'RGBA';
+        }
+        if (inputOptions.height !== undefined && inputOptions.height !== height) {
+          throw new Error("Image input config height doesn't match ImageData height");
+        }else{
+          imageConfig.height = height;
+        }
+        if (inputOptions.width !== undefined && inputOptions.width !== width) {
+          throw new Error("Image input config width doesn't match ImageData width");
+        }else{
+          imageConfig.width = width;
+        }
+      }else{
+        imageConfig.format = 'RGBA';
+        imageConfig.height = height;
+        imageConfig.width = width;
       }
+      data = (image as ImageData).data;
+      
+    } else if (isImageBitmap) {
+      // ImageBitmap - image object - format must be provided by user
+      if (inputOptions !== undefined) {
+        if (inputOptions.format !== undefined) {
+          throw new Error('Image input config format must be defined for ImageBitmap');
+        }
+        throw new Error('Please provide image config with format for Imagebitmap');
+      }
+
       const pixels2DContext = document.createElement('canvas').getContext('2d');
 
       if (pixels2DContext != null) {
-        height = (image as ImageBitmap).height;
-        width = (image as ImageBitmap).width;
+        let height = (image as ImageBitmap).height;
+        let width = (image as ImageBitmap).width;
         pixels2DContext.drawImage(image as ImageBitmap, 0, 0, width, height);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
-        return Tensor.bufferToTensor(data, height, width, format);
+        if (inputOptions !== undefined) {
+          // using square brackets to avoid TS error - type 'never'
+          if (inputOptions['height'] !== undefined && inputOptions['height'] !== height) {
+            throw new Error("Image input config height doesn't match ImageBitmap height");
+          }else{
+            imageConfig.height = height;
+          }
+          // using square brackets to avoid TS error - type 'never'
+          if (inputOptions['width'] !== undefined && inputOptions['width'] !== width) {
+            throw new Error("Image input config width doesn't match ImageBitmap width");
+          }else{
+            imageConfig.width = width;
+          }
+        } else {
+          imageConfig.height = height;
+          imageConfig.width = width;
+        }
+        
+        return Tensor.bufferToTensor(data, imageConfig, outputOptions);
       } else {
         throw new Error('Can not access image data');
       }
+
     } else if (isURL) {
       return new Promise((resolve, reject) => {
         const canvas = document.createElement('canvas');
@@ -286,37 +402,95 @@ export class Tensor implements TensorInterface {
           canvas.height = newImage.height;
           context.drawImage(newImage, 0, 0, canvas.width, canvas.height);
           const img = context.getImageData(0, 0, canvas.width, canvas.height);
-          resolve(Tensor.bufferToTensor(img.data, img.height, img.width, 'rgba'));
+          if (inputOptions !== undefined) {
+            // using square brackets to avoid TS error - type 'never'
+            if (inputOptions['height'] !== undefined && inputOptions['height'] !== canvas.height) {
+              throw new Error("Image input config height doesn't match ImageBitmap height");
+            }else{
+              imageConfig.height = canvas.height;
+            }
+            // using square brackets to avoid TS error - type 'never'
+            if (inputOptions['width'] !== undefined && inputOptions['width'] !== canvas.width) {
+              throw new Error("Image input config width doesn't match ImageBitmap width");
+            }else{
+              imageConfig.width = canvas.width;
+            }
+          } else {
+            imageConfig.height = canvas.height;
+            imageConfig.width = canvas.width;
+          }
+          resolve(Tensor.bufferToTensor(img.data, imageConfig, outputOptions));
         };
       });
     } else {
       throw new Error('Input data provided is not supported - aborted tensor creation');
     }
 
-    if (data !== undefined || height !== undefined || width !== undefined) {
-      return Tensor.bufferToTensor(data, height, width, 'rgba');
+    if (data !== undefined || imageConfig !== undefined) {
+      return Tensor.bufferToTensor(data, imageConfig, outputOptions);
     } else {
       throw new Error('Input data provided is not supported - aborted tensor creation');
     }
   }
 
-  toImage(): ImageData {
+  toImage(tensorFormat?: ImageFromTensorConfig): ImageData {
     const pixels2DContext = document.createElement('canvas').getContext('2d');
     let image: ImageData;
     if (pixels2DContext != null) {
-      const imageHeight = this.dims[3];
-      const imageWidth = this.dims[2];
-      image = pixels2DContext.createImageData(imageWidth, imageHeight);
-      let rPointer = 0;
-      let gPointer = imageWidth * imageHeight;
-      let bPointer = imageWidth * imageHeight * 2;
+      // Default values for height and width & format
+      let height = this.dims[3];
+      let width = this.dims[2];
+      let channels = this.dims[1];
+      
+      let inputformat = tensorFormat !== undefined ? (tensorFormat.format !== undefined ? tensorFormat.format: 'RGB') : 'RGB';
+      let normMean = tensorFormat !== undefined ? (tensorFormat.normMean !== undefined ? tensorFormat.normMean : 255) : 255;
+      let normBias = tensorFormat !== undefined ? (tensorFormat.normBias !== undefined ? tensorFormat.normBias : 0) : 0;
+      const offset = height * width;
 
-      for (let i = 0; i < imageHeight * imageWidth * 4; i += 4) {
-        image.data[i + 0] = (this.data[rPointer++] as number) * 255.;  // R value
-        image.data[i + 1] = (this.data[gPointer++] as number) * 255.;  // G value
-        image.data[i + 2] = (this.data[bPointer++] as number) * 255.;  // B value
-        image.data[i + 3] = NaN;                                       // A value
+      if (tensorFormat !== undefined) {
+        if (tensorFormat.height !== undefined && tensorFormat.height !== height) {
+          throw new Error("Image output config height doesn't match tensor height");
+        }
+        if (tensorFormat.width !== undefined && tensorFormat.width !== width) {
+          throw new Error("Image output config width doesn't match tensor width");
+        }
+        if (tensorFormat.format !== undefined && (channels==4 && tensorFormat.format !== 'RGBA') || (channels==3 && (tensorFormat.format !== 'RGB' && tensorFormat.format !== 'BGR'))) {
+          throw new Error("Tensor format doesn't match input tensor dims");
+        }
       }
+
+      // Default pointer assignments
+      let step = 4, rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
+      let rTensorPointer = 0, gTensorPointer = offset, bTensorPointer = offset * 2, aTensorPointer = -1;
+
+      // Updating the pointer assignments based on the input image format
+      if (inputformat === 'RGBA') {
+        step = 4;
+        rTensorPointer = 0;
+        gTensorPointer = offset;
+        bTensorPointer = offset * 2;
+        aTensorPointer = offset * 3;
+      } else if (inputformat === 'RGB') {
+        step = 3;
+        rTensorPointer = 0;
+        gTensorPointer = offset;
+        bTensorPointer = offset * 2;
+      } else if (inputformat === 'RBG') {
+        step = 3;
+        rTensorPointer = 0;
+        bTensorPointer = offset;
+        gTensorPointer = offset * 2;
+      }
+
+      image = pixels2DContext.createImageData(width, height);
+
+      for (let i = 0; i < height * width; rImagePointer +=step, gImagePointer +=step, bImagePointer +=step, aImagePointer +=step, i++) {
+        image.data[rImagePointer] = ((this.data[rTensorPointer++] as number) - normBias) * normMean;  // R value
+        image.data[gImagePointer] = ((this.data[gTensorPointer++] as number) - normBias) * normMean;  // G value
+        image.data[bImagePointer] = ((this.data[bTensorPointer++] as number) - normBias) * normMean;  // B value
+        image.data[aImagePointer] = aTensorPointer === -1 ? NaN : ((this.data[aTensorPointer++] as number) - normBias) * normMean;  // A value
+      }
+
     } else {
       throw new Error('Can not access image data');
     }

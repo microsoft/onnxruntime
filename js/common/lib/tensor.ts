@@ -242,21 +242,25 @@ export interface TensorConstructor {
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
   // #endregion
 }
-interface TensorFromImageConfig{
-  format?: 'RGB'|'RGBA'|'BGR';
+export interface TensorFromImageConfig{
+  format?: 'RGB'|'RGBA'|'BGR'|'RBG';
   dataType?: 'float32'|'uint8';
-  dimpalcment?: 'NHWC'|'NCHW';
+  dimPlacement?: 'NHWC'|'NCHW';
+  height?: number;
+  width?: number;
   numberOfChannels?: 3|4;
-  normBias?: number|[number,number,number]|[number,number,number,number];
-  normMean?: number|[number,number,number]|[number,number,number,number];
+  normBias?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
+  normMean?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
 }
-interface ImageFromTensorConfig{
-  format?: 'RGB'|'RGBA'|'BGR';
+export interface ImageFromTensorConfig{
+  format?: 'RGB'|'RGBA'|'BGR'|'RBG';
   dataType?: 'float32'|'uint8';
-  dimpalcment?: 'NHWC'|'NCHW';
+  dimPlacement?: 'NHWC'|'NCHW';
+  height?: number;
+  width?: number;
   numberOfChannels?: 3|4;
-  normBias?: number|[number,number,number]|[number,number,number,number];
-  normMean?: number|[number,number,number]|[number,number,number,number];
+  normBias?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
+  normMean?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
 }
 export interface TensorFactory {
   /**
