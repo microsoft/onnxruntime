@@ -396,6 +396,9 @@ def parse_arguments():
         "--disable_wasm_exception_catching", action="store_true", help="Disable exception catching in WebAssembly."
     )
     parser.add_argument(
+        "--enable_wasm_api_exception_catching", action="store_true", help="Catch exceptions at top level api."
+    )
+    parser.add_argument(
         "--enable_wasm_exception_throwing_override",
         action="store_true",
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
@@ -672,6 +675,13 @@ def parse_arguments():
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
+    if args.enable_wasm_api_exception_catching:
+        # if we catch on api level, we don't want to catch all
+        args.disable_wasm_exception_catching = True
+    if not args.disable_wasm_exception_catching or args.enable_wasm_api_exception_catching:
+        # doesn't make sense to catch if no one throws
+        args.enable_wasm_exception_throwing_override = True
+
     return args
 
 
@@ -926,6 +936,8 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING="
+        + ("ON" if args.enable_wasm_api_exception_catching else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),

@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/framework/tensor_shape.h"
 #include "core/providers/xnnpack/nn/conv_base.h"
 
 namespace onnxruntime {
@@ -11,9 +10,9 @@ class GraphViewer;
 class Node;
 namespace xnnpack {
 
-class Conv : public ConvBase {
+class ConvTranspose : public ConvBase {
  public:
-  Conv(const OpKernelInfo& info) : ConvBase(info, false) {}
+  ConvTranspose(const OpKernelInfo& info) : ConvBase(info, true) {}
 
   Status Compute(OpKernelContext* /*context*/) const override;
 
