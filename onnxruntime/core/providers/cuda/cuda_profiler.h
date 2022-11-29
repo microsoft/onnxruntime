@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
-
 #include <atomic>
 #include <mutex>
 #include <vector>
@@ -15,6 +13,11 @@
 namespace onnxruntime {
 namespace profiling {
 
+// Do not move this check for CUDA_VERSION above #include "cupti_manager.h"
+// the CUDA_VERSION macro is defined in cupti.h, which in turn is included
+// by cupti_manager.h
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+
 class CudaProfiler final : public GPUProfilerBase<CUPTIManager> {
  public:
   CudaProfiler();
@@ -22,13 +25,7 @@ class CudaProfiler final : public GPUProfilerBase<CUPTIManager> {
   ~CudaProfiler();
 };
 
-}  // namespace profiling
-}  // namespace onnxruntime
-
-#else /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
-
-namespace onnxruntime {
-namespace profiling {
+#else /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000 */
 
 class CudaProfiler final : public EpProfiler {
  public:
@@ -41,7 +38,7 @@ class CudaProfiler final : public EpProfiler {
   void Stop(uint64_t) override{};
 };
 
+#endif
+
 }  // namespace profiling
 }  // namespace onnxruntime
-
-#endif
