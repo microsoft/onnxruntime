@@ -251,7 +251,7 @@ stages:
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --force-reinstall --upgrade $_.fullname tabulate}
-         python -m pip install protobuf==3.18.1
+         python -m pip install protobuf==3.18.3
          Remove-Item -Recurse -Force onnxruntime
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
