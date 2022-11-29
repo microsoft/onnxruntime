@@ -31,6 +31,7 @@ struct SamplingState : public ISamplingCudaState<T> {
     this->d_sorted_score = AllocateBuffer<T>(allocator, d_sorted_score_buffer_, SafeInt<size_t>(total_count));
     this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
     this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
+    this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
     this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size));
     this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size * max_iter));
     this->d_indices = AllocateBuffer<int64_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size));
@@ -54,6 +55,7 @@ struct SamplingState : public ISamplingCudaState<T> {
   BufferUniquePtr d_sorted_score_buffer_;
   BufferUniquePtr d_sorted_softmaxed_score_buffer_;
   BufferUniquePtr d_softmaxed_score_buffer_;
+  BufferUniquePtr h_softmaxed_score_buffer_;
   BufferUniquePtr d_sampled_buffer_;
   BufferUniquePtr h_sampled_all_buffer_;
   BufferUniquePtr d_indices_buffer_;

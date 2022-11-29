@@ -510,6 +510,13 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   sequences_shape.add_dim()->set_dim_value(batch_size);
   sequences_shape.add_dim()->set_dim_value(max_length_value);
   updateOutputShape(ctx, 0, sequences_shape);
+
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::TensorShapeProto logits_to_debug_shape;
+    logits_to_debug_shape.add_dim()->set_dim_value(batch_size);
+    logits_to_debug_shape.add_dim();
+    updateOutputShape(ctx, 1, logits_to_debug_shape);
+  }
 }
 
 constexpr const char* Gelu_ver1_doc =
@@ -1129,6 +1136,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                 .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Input(7, "presence_mask", "presence penalty mask. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
+                                .Output(1, "logits_before_multinomial", "logits_before_multinomial(debug purpose). Shape is (batch_size, vocab_size)", "T")
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

@@ -130,6 +130,12 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = this->context_.Output(0, sequences_shape);
 
+  std::cout << "vocab_size: " << parameters->vocab_size << std::endl;
+  int64_t debug_logits_dims[] = {parameters->batch_size, parameters->vocab_size};
+  TensorShape debug_logits_shape(&debug_logits_dims[0], sizeof(debug_logits_dims) / sizeof(debug_logits_dims[0]));
+  std::cout << "debug_logits_shape: " << debug_logits_shape << std::endl;
+  Tensor* debug_logits = this->context_.Output(1, debug_logits_shape);
+
   std::vector<OrtValue> feeds;
   std::vector<OrtValue> fetches;
 
@@ -244,6 +250,20 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
       parameters->max_length);
     gsl::span<const int32_t> sequence_source = greedy_state.sequences.GetSequence(batch_id);
     gsl::copy(sequence_source, batch_output);
+  }
+
+  //copy the debug logits to output
+  if (this->IsCuda() && debug_logits != nullptr) {
+    gsl::span<float> logits_to_debug = debug_logits->MutableDataAsSpan<float>();
+    for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
+      std::cout << "batch_id: " << batch_id << std::endl;
+      auto batch_output = logits_to_debug.subspan(
+        static_cast<size_t>(batch_id) * parameters->vocab_size,
+        parameters->vocab_size);
+      gsl::span<const float> batch_logits_to_debug = gsl::make_span(sampling_state.h_softmaxed_score.data() + batch_id * parameters->vocab_size, parameters->vocab_size);
+
+      gsl::copy(batch_logits_to_debug, batch_output);
+    }
   }
 
   return status;

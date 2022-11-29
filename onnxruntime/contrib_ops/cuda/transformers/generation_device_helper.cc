@@ -686,6 +686,12 @@ Status GreedySearchProcessLogits(
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
 
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sampling_state->h_softmaxed_score.data(),
+                                         d_softmaxed_score.data(),
+                                         sampling_state->h_softmaxed_score.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   } else {
     // next_tokens = torch.argmax(scores, dim=-1)
