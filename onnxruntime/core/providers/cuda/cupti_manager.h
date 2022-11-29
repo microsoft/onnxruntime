@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 #include <atomic>
 #include <mutex>
@@ -40,7 +40,7 @@ class CUPTIManager : public GPUTracerManager<CUPTIManager> {
   static void CUPTIAPI BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t valid_size);
 }; /* class CUPTIManager*/
 
-#endif /* #if defined (USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
-
 } /* namespace profiling */
 } /* namespace onnxruntime */
+
+#endif /* #if defined (USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */

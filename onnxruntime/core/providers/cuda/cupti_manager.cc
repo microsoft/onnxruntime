@@ -1,9 +1,11 @@
 #include "cupti_manager.h"
 
+#include <memory>
+
 namespace onnxruntime {
 namespace profiling {
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 static inline std::string GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
   switch (kind) {
@@ -146,7 +148,13 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
 
 void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
   // ProfilerActivityBuffer expects a char[], match up new[] and delete[] types just to be safe!
-  auto buf = new char[kActivityBufferSize];
+  // Note on ownership: This method is a callback that is invoked whenever CUPTI needs
+  // a new buffer to record trace events. We allocate the buffer here, and eventually
+  // CUPTI returns the buffer to us via the BufferCompleted callback.
+  // In the BufferCompleted callback, we pass the returned buffer into a ProfilerActivityBuffer
+  // object, which then assumes ownership of the buffer. RAII semantics then delete/free the
+  // buffer whenever the ProfilerActivityBuffer is destroyed.
+  auto buf = new char[kActivityBufferSize]
   *size = kActivityBufferSize;
   *maxNumRecords = 0;
   *buffer = reinterpret_cast<uint8_t*>(buf);
@@ -154,8 +162,10 @@ void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size
 
 void CUPTIAPI CUPTIManager::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t valid_size) {
   auto& instance = GetInstance();
+  std::unique_ptr<char[]> buffer_ptr;
+  buffer_ptr.reset(buffer);
   instance.EnqueueActivityBuffer(
-      ProfilerActivityBuffer::CreateFromPreallocatedBuffer(reinterpret_cast<char*>(buffer), valid_size));
+      ProfilerActivityBuffer::CreateFromPreallocatedBuffer(std::move(buffer_ptr), valid_size));
 }
 
 #endif /* defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */

@@ -68,9 +68,9 @@ class ProfilerActivityBuffer {
     return *this;
   }
 
-  static ProfilerActivityBuffer CreateFromPreallocatedBuffer(char* data, size_t size) {
+  static ProfilerActivityBuffer CreateFromPreallocatedBuffer(std::unique_ptr<char[]>&& buffer_ptr, size_t size) {
     ProfilerActivityBuffer res{};
-    res.data_.reset(data);
+    res.data_ = std::move(buffer_ptr);
     res.size_ = size;
     return res;
   }
@@ -107,19 +107,19 @@ class GPUTracerManager {
     }
     per_client_events_by_ext_correlation_.erase(it);
     --num_active_clients_;
-    if (num_active_clients_ == 0 && logging_enabled_) {
+    if (num_active_clients_ == 0 && tracing_enabled_) {
       StopLogging();
     }
   }
 
   void StartLogging() {
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-    if (logging_enabled_) {
+    if (tracing_enabled_) {
       return;
     }
 
     auto this_as_derived = static_cast<TDerived*>(this);
-    logging_enabled_ = this_as_derived->OnStartLogging();
+    tracing_enabled_ = this_as_derived->OnStartLogging();
   }
 
   void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events) {
@@ -129,7 +129,7 @@ class GPUTracerManager {
       // Flush any pending activity records before starting
       // to process the accumulated activity records.
       std::lock_guard<std::mutex> lock_manager(manager_instance_mutex_);
-      if (!logging_enabled_) {
+      if (!tracing_enabled_) {
         return;
       }
 
@@ -155,19 +155,19 @@ class GPUTracerManager {
     }
   }
 
-  bool PushCorrelation(uint64_t client_handle,
+  void PushCorrelation(uint64_t client_handle,
                        uint64_t external_correlation_id,
                        TimePoint profiling_start_time) {
     auto this_as_derived = static_cast<TDerived*>(this);
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-    if (!logging_enabled_) {
-      return false;
+    if (!tracing_enabled_) {
+      return;
     }
 
     auto it = per_client_events_by_ext_correlation_.find(client_handle);
     if (it == per_client_events_by_ext_correlation_.end()) {
       // not a registered client, do nothing
-      return false;
+      return;
     }
 
     // external_correlation_id is simply the timestamp of this event,
@@ -193,13 +193,13 @@ class GPUTracerManager {
     uint64_t offset = std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
     auto unique_cid = external_correlation_id + offset;
     unique_correlation_id_to_client_offset_[unique_cid] = std::make_pair(client_handle, offset);
-    return this_as_derived->PushUniqueCorrelation(unique_cid);
+    this_as_derived->PushUniqueCorrelation(unique_cid);
   }
 
   void PopCorrelation(uint64_t& popped_external_correlation_id) {
     auto this_as_derived = static_cast<TDerived*>(this);
     std::lock_guard<std::mutex> lock(manager_instance_mutex_);
-    if (!logging_enabled_) {
+    if (!tracing_enabled_) {
       return;
     }
     uint64_t unique_cid;
@@ -269,11 +269,11 @@ class GPUTracerManager {
   // Requires: manager_instance_mutex_ should be held
   void StopLogging() {
     auto this_as_derived = static_cast<TDerived*>(this);
-    if (!logging_enabled_) {
+    if (!tracing_enabled_) {
       return;
     }
     this_as_derived->OnStopLogging();
-    logging_enabled_ = false;
+    tracing_enabled_ = false;
     Clear();
   }
 
@@ -296,7 +296,6 @@ class GPUTracerManager {
     // of this offset computation and why it's required.
     auto const& client_handle_offset = client_it->second;
     auto external_correlation = unique_correlation_id - client_handle_offset.second;
-
     auto& event_list = per_client_events_by_ext_correlation_[client_handle_offset.first][external_correlation];
     return &event_list;
   }
@@ -317,7 +316,7 @@ class GPUTracerManager {
   std::mutex manager_instance_mutex_;
   uint64_t next_client_id_ = 1;
   uint64_t num_active_clients_ = 0;
-  bool logging_enabled_ = false;
+  bool tracing_enabled_ = false;
   std::mutex unprocessed_activity_buffers_mutex_;
   std::mutex activity_buffer_processor_mutex_;
 
@@ -340,9 +339,12 @@ class GPUTracerManager {
 }; /* class GPUTracerManager */
 
 // Base class for a GPU profiler
+template <typename TManager>
 class GPUProfilerBase : public EpProfiler {
  protected:
   GPUProfilerBase() = default;
+  virtual ~GPUProfilerBase() {}
+
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
     Events merged_events;
 
@@ -350,29 +352,52 @@ class GPUProfilerBase : public EpProfiler {
     auto event_end = std::make_move_iterator(events.end());
     for (auto& map_iter : events_to_merge) {
       auto ts = static_cast<long long>(map_iter.first);
-      while (event_iter != event_end && event_iter->ts < ts) {
+
+      // find the last occurence of a matching timestamp,
+      // if one exists
+      while (event_iter != event_end &&
+             (event_iter->ts < ts ||
+              (event_iter->ts == ts &&
+              (event_iter + 1) != event_end &&
+              (event_iter + 1)->ts == ts))) {
         merged_events.emplace_back(*event_iter);
         ++event_iter;
       }
 
-      // find the last event with the same timestamp.
-      while (event_iter != event_end && event_iter->ts == ts && (event_iter + 1)->ts == ts) {
-        ++event_iter;
-      }
+      uint64_t increment;
+      uint64_t last_ts;
+      bool copy_op_names = false;
+      std::string op_name;
+      std::string parent_name;
 
+      // Tracers may not use Jan 1 1970 as an epoch for timestamps.
+      // So, we need to adjust the timestamp to something sensible.
       if (event_iter != event_end && event_iter->ts == ts) {
-        uint64_t increment = 1;
-        for (auto& evt : map_iter.second) {
-          evt.args["op_name"] = event_iter->args["op_name"];
-          evt.args["parent_name"] = event_iter->name;
-
-          // Tracers may not use Jan 1 1970 as an epoch for timestamps.
-          // So, we adjust the timestamp here to something sensible.
-          evt.ts = event_iter->ts + increment;
-          increment += evt.dur;
-        }
+        // In this particular case we have located a parent event -- in the main event stream --
+        // for the GPU events. We use the timestamps from that event to adjust timestamps
+        last_ts = event_iter->ts;
+        increment = 1;
+        copy_op_names = true;
+        op_name = event_iter->args["op_name"];
+        parent_name = event_iter->name;
         merged_events.emplace_back(*event_iter);
         ++event_iter;
+      } else {
+        // No parent event, let's just set the timestamp based on the
+        // timestamp of the call to EpProfiler->Start()
+        last_ts = ts;
+        increment = 1;
+      }
+
+      for (auto& evt : map_iter.second) {
+        if (copy_op_names) {
+          // If we have found a matching parent event,
+          // then inherit some names from the parent.
+          evt.args["op_name"] = op_name;
+          evt.args["parent_name"] = parent_name;
+        }
+        evt.ts = last_ts + increment;
+        increment += evt.dur;
       }
 
       merged_events.insert(merged_events.end(),
@@ -383,6 +408,34 @@ class GPUProfilerBase : public EpProfiler {
     // move any remaining events
     merged_events.insert(merged_events.end(), event_iter, event_end);
     std::swap(events, merged_events);
+  }
+
+  uint64_t client_handle_;
+  TimePoint profiling_start_time_;
+
+public:
+  virtual bool StartProfiling(TimePoint profiling_start_time) override {
+    auto& manager = TManager::GetInstance();
+    manager.StartLogging();
+    profiling_start_time_ = profiling_start_time;
+    return true;
+  }
+
+  virtual void EndProfiling(TimePoint start_time, Events& events) override {
+    auto& manager = TManager::GetInstance();
+    std::map<uint64_t, Events> event_map;
+    manager.Consume(client_handle_, start_time, event_map);
+    MergeEvents(event_map, events);
+  }
+
+  virtual void Start(uint64_t id) override {
+    auto& manager = TManager::GetInstance();
+    manager.PushCorrelation(client_handle_, id, profiling_start_time_);
+  }
+
+  virtual void Stop(uint64_t) override {
+    auto& manager = TManager::GetInstance();
+    manager.PopCorrelation();
   }
 }; /* class GPUProfilerBase */
 

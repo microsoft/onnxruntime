@@ -4,6 +4,7 @@
 #include <map>
 
 #include "core/common/gpu_profiler_common.h"
+#include "roctracer_manager.h"
 
 #if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
 
@@ -12,19 +13,11 @@ namespace profiling {
 
 using Events = std::vector<onnxruntime::profiling::EventRecord>;
 
-class RocmProfiler final : public GPUProfilerBase {
+class RocmProfiler final : public GPUProfilerBase<RoctracerManager> {
  public:
   RocmProfiler();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RocmProfiler);
   ~RocmProfiler();
-  bool StartProfiling(TimePoint profiling_start_time) override;
-  void EndProfiling(TimePoint start_time, Events& events) override;
-  void Start(uint64_t) override;
-  void Stop(uint64_t) override;
-
- private:
-  uint64_t client_handle_;
-  TimePoint profiling_start_time_;
 };
 
 }  // namespace profiling
@@ -33,7 +26,6 @@ class RocmProfiler final : public GPUProfilerBase {
 #else
 
 namespace onnxruntime {
-
 namespace profiling {
 
 class RocmProfiler final : public EpProfiler {

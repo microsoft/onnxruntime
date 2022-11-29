@@ -3,44 +3,33 @@
 
 #pragma once
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 #include <atomic>
 #include <mutex>
 #include <vector>
 
 #include "core/common/gpu_profiler_common.h"
+#include "cupti_manager.h"
 
 namespace onnxruntime {
 namespace profiling {
 
-using Events = std::vector<onnxruntime::profiling::EventRecord>;
-
-class CudaProfiler final : public GPUProfilerBase {
+class CudaProfiler final : public GPUProfilerBase<CUPTIManager> {
  public:
   CudaProfiler();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaProfiler);
   ~CudaProfiler();
-  bool StartProfiling(TimePoint profiling_start_time) override;
-  void EndProfiling(TimePoint start_time, Events& events) override;
-  void Start(uint64_t) override;
-  void Stop(uint64_t) override;
-
- private:
-  uint64_t client_handle_ = 0;
-  TimePoint profiling_start_time_{};
 };
 
 }  // namespace profiling
 }  // namespace onnxruntime
 
-#else
-
+#else /* !defined(USE_CUDA) || !defined(ENABLE_CUDA_PROFILING) || !defined(CUDA_VERSION) || CUDA_VERSION < 11000 */
 namespace onnxruntime {
-
 namespace profiling {
 
-class CudaProfiler final : public GPUProfilerBase {
+class CudaProfiler final : public EpProfiler {
  public:
   bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override{};

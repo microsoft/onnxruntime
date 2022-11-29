@@ -264,7 +264,7 @@ namespace profiling {
   std::string demangle(const char* name);
   std::string demangle(const std::string& name);
 
-} /* namespace profiling */
+} // namespace profiling
 
 namespace logging {
 
