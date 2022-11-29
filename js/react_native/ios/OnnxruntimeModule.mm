@@ -3,6 +3,7 @@
 
 #import "OnnxruntimeModule.h"
 #import "TensorHelper.h"
+#import "NSData+Base64.h"
 
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
@@ -47,7 +48,7 @@ RCT_EXPORT_METHOD(loadModel
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    NSDictionary *resultMap = [self loadModel:modelPath options:options];
+    NSDictionary *resultMap = [self loadModelFromPath:modelPath options:options];
     resolve(resultMap);
   } @catch (...) {
     reject(@"onnxruntime", @"can't load model", nil);
@@ -72,8 +73,8 @@ RCT_EXPORT_METHOD(loadModelFromBase64EncodedBuffer
     // Choices: if not working, use 3rd party library for base64 encoding/decoding:
     // https://github.com/nicklockwood/Base64/ (may be deprecated)
     // https://github.com/l4u/NSData-Base64
-    NSData *modelDataDecoded = [NSData initWithBase64EncodedString:modelDataBase64EncodedString];
-    NSDictionary *resultMap = [self loadModel:modelDataDecoded options:options];
+    NSData *modelDataDecoded = [NSData dataFromBase64String:modelDataBase64EncodedString];
+    NSDictionary *resultMap = [self loadModelFromBuffer:modelDataDecoded options:options];
     resolve(resultMap);
   } @catch (...) {
     reject(@"onnxruntime", @"can't load model from buffer", nil);
@@ -112,7 +113,7 @@ RCT_EXPORT_METHOD(run
  * @param options onnxruntime session options.
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
- - (NSDictionary *)loadModel:(NSString *)modelPath options:(NSDictionary *)options {
+ - (NSDictionary *)loadModelFromPath:(NSString *)modelPath options:(NSDictionary *)options {
     return [self loadModelImpl:modelPath modelDataBuffer:nil options:options];
 }
 
@@ -122,7 +123,7 @@ RCT_EXPORT_METHOD(run
  * @param modelData the model data buffer.
  * @param options onnxruntime session options
  */
- - (NSDictionary *)loadModel:(NSData *)modelData options:(NSDictionary *)options {
+ - (NSDictionary *)loadModelFromBuffer:(NSData *)modelData options:(NSDictionary *)options {
     return [self loadModelImpl:"" modelDataBuffer:modelData options:options];
 }
 
@@ -141,6 +142,8 @@ RCT_EXPORT_METHOD(run
   Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
   if (modelData == nil) {
+    // Question: can we still use the modelPath api call to load ort session
+    // (given we know that we can not use the model file path as the key)
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
   } else {
     NSUInteger dataLength = [modelData length];
