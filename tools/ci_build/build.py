@@ -2112,8 +2112,17 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino,
-    use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe, enable_training_on_device
+    source_dir,
+    build_dir,
+    configs,
+    use_cuda,
+    use_openvino,
+    use_tensorrt,
+    use_dnnl,
+    use_tvm,
+    use_winml,
+    use_snpe,
+    enable_training_on_device
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2224,8 +2233,7 @@ def build_nuget_package(
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
-def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
-                     use_tensorrt, use_dnnl, enable_training_on_device):
+def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_on_device):
     # Currently only running tests on windows.
     if not is_windows():
         return
@@ -2241,6 +2249,8 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
         macros += "USE_DNNL;"
     if use_cuda:
         macros += "USE_CUDA;"
+    if enable_training_on_device:
+        macros += "__TRAINING_ENABLED__;"
 
     define_constants = ""
     if macros != "":
@@ -2249,11 +2259,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
     # set build directory based on build_dir arg
     native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
     ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_build_dir + '"'
-
-    # enable training tests
-    training_enabled = '/p:TrainingEnabledNativeBuild="false"'
-    if enable_training_on_device:
-        training_enabled = '/p:TrainingEnabledNativeBuild="true"'
 
     # Skip pretrained models test. Only run unit tests as part of the build
     # add "--verbosity", "detailed" to this command if required
@@ -2265,7 +2270,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino,
         "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
         define_constants,
         ort_build_dir,
-        training_enabled
     ]
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
@@ -2803,7 +2807,7 @@ def main():
                 args.use_tvm,
                 args.use_winml,
                 args.use_snpe,
-                args.enable_training_on_device
+                args.enable_training_on_device,
             )
 
     if args.test and args.build_nuget:
@@ -2814,7 +2818,8 @@ def main():
             args.use_openvino,
             args.use_tensorrt,
             args.use_dnnl,
-            args.enable_training_on_device)
+            args.enable_training_on_device,
+        )
 
     if args.gen_doc:
         # special case CI where we create the build config separately to building
