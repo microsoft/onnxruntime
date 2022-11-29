@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from op_test_utils import TestCaseTempDir, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import TestCaseTempDir, check_model_correctness, check_op_type_count
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
 from onnxruntime.tools import symbolic_shape_infer
