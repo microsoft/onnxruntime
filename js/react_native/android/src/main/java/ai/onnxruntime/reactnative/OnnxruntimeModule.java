@@ -71,7 +71,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @param uri a model file location
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
-   * @note the return value of this function includes a key representing the session.
+   * @note the value provided to `promise` includes a key representing the session.
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
@@ -90,7 +90,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @param data the BASE64 encoded model data.
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
-   * @note the return value of this function includes a key representing the session.
+   * @note the value provided to `promise` includes a key representing the session.
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
@@ -107,7 +107,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   /**
    * React native binding API to run a model using given uri.
    *
-   * @param key a model file location given at loadModel()
+   * @param key session key representing a session given at loadModel()
    * @param input an input tensor
    * @param output an output names to be returned
    * @param options onnxruntime run options
@@ -153,7 +153,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @param options onnxruntime session options
    * @return model loading information map, such as key, input names, and output names
    */
-  public WritableMap loadModelImpl(String uri, byte[] modelData, ReadableMap options) throws Exception {
+  private WritableMap loadModelImpl(String uri, byte[] modelData, ReadableMap options) throws Exception {
     OrtSession ortSession;
     SessionOptions sessionOptions = parseSessionOptions(options);
 
@@ -191,7 +191,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   /**
    * Run a model using given uri.
    *
-   * @param key a model file location given at loadModel()
+   * @param key a session key representing the session given at loadModel()
    * @param input an input tensor
    * @param output an output names to be returned
    * @param options onnxruntime run options
@@ -200,7 +200,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   public WritableMap run(String key, ReadableMap input, ReadableArray output, ReadableMap options) throws Exception {
     OrtSession ortSession = sessionMap.get(key);
     if (ortSession == null) {
-      throw new Exception("Model is not loaded: " + key);
+      throw new Exception("Model is not loaded.");
     }
 
     RunOptions runOptions = parseRunOptions(options);
