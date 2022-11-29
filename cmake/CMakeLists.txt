@@ -844,7 +844,7 @@ if (onnxruntime_DISABLE_RTTI)
   set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
 endif()
 
-FetchContent_MakeAvailable(Protobuf)
+onnxruntime_fetchcontent_makeavailable(Protobuf)
 if(Protobuf_FOUND)
   message("Protobuf version: ${Protobuf_VERSION}")
 else()
@@ -1610,7 +1610,7 @@ FetchContent_Declare(
 )
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-  FetchContent_MakeAvailable(onnx)
+  onnxruntime_fetchcontent_makeavailable(onnx)
 else()
   include(onnx_minimal)
 endif()

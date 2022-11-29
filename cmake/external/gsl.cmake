@@ -19,7 +19,7 @@ else()
 endif()
 
 
-FetchContent_MakeAvailable(GSL)
+onnxruntime_fetchcontent_makeavailable(GSL)
 
 set(GSL_TARGET "Microsoft.GSL::GSL")
 set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
