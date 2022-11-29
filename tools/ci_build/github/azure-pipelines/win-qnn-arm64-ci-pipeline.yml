@@ -1,0 +1,107 @@
+jobs:
+- job: 'build'
+  pool: 'Onnxruntime-QNNEP-Windows-2022-ARM64-CPU'
+  variables:
+    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    EnvSetupScript: setup_env_qnn.bat
+    buildArch: arm64
+    setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+  timeoutInMinutes: 150
+  workspace:
+    clean: all
+  steps:
+
+  - script: |
+      MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+      XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
+      COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
+      DIR $(Agent.ToolsDirectory)\Python
+      DIR $(Agent.ToolsDirectory)\Python\3.11.0
+      DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+    displayName: Copy python 3.11.0 version to agent tools directory
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+      addToPath: true
+      architecture: $(buildArch)
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 16 2019" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+      platform: 'arm64'
+      configuration: $(BuildConfig)
+      msbuildArgs: $(MsbuildArguments)
+      msbuildArchitecture: $(buildArch)
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      createLogFile: true
+
+  - powershell: |
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+    displayName: 'Run unit tests'
+    enabled: false
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run ONNX Tests'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\facedetection\facedetection_op8
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run FaceDetection model test'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnHtp.dll" C:\data\qnn_test_data\facedetection\facedetection_op8
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run QDQ FaceDetection model test'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\MobileNet\mobilenetv2-1.0
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run MobileNetV2 model test'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\StyleGAN\block_1024_simp
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run StyleGAN model test'
+
+  - task: CopyFiles@2
+    displayName: 'Create Artifact'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      Contents: '**'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+      CleanTargetFolder: true
+      OverWrite: true
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'internal_release'
+      publishLocation: 'Container'
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))

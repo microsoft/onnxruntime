@@ -4,7 +4,7 @@ jobs:
   timeoutInMinutes: 30
   workspace:
     clean: all
-  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+
   steps:
   - task: UsePythonVersion@0
     displayName: Use Python $(pythonVersion)
