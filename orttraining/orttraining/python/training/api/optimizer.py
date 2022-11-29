@@ -15,7 +15,7 @@ class Optimizer:
         """
         Initializes Optimizer with the optimizer onnx and the parameters from the model.
         """
-        self._optimizer = C.Optimizer(train_optimizer_uri, model._model, model._provider_type)
+        self._optimizer = C.Optimizer(train_optimizer_uri, model._model, model._device.type, model._device.device_id)
 
     def step(self):
         """

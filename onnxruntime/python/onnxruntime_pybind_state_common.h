@@ -507,5 +507,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
+std::vector<std::shared_ptr<IExecutionProvider>> GetExecutionProviders(int device_type, int device_id);
 constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";
 }  // namespace onnxruntime

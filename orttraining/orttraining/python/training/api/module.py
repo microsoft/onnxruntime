@@ -8,6 +8,8 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 
+from .provider_type import ProviderType
+
 
 class Module:
     """
@@ -17,15 +19,15 @@ class Module:
 
     training: bool
 
-    def __init__(self, train_model_uri, state, eval_model_uri=None, provider_type="cpu") -> None:
+    def __init__(self, train_model_uri, state, eval_model_uri=None, device: str = "cpu") -> None:
         """
         Initializes Model for Training.
         __init__ will call an internatl function to create the model.
         """
         # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self.training = True
-        self._provider_type = provider_type
-        self._model = C.Module(train_model_uri, state._state, eval_model_uri, provider_type)
+        self._device = ProviderType(device)
+        self._model = C.Module(train_model_uri, state._state, eval_model_uri, self._device.type, self._device.device_id)
 
     def __call__(self, user_inputs):
         """
@@ -95,8 +97,8 @@ class Module:
                 self.get_parameters_size(trainable_only),
             ],
             np.float32,
-            self._provider_type,
-            0,
+            self._device.type_str,
+            self._device.device_id,
         )._ortvalue
         self._model.copy_parameters_to_buffer(parameters)
 

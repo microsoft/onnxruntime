@@ -75,6 +75,26 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
   }
 }
 
+std::vector<std::shared_ptr<IExecutionProvider>> GetExecutionProviders(int device_type, int device_id) {
+  std::vector<std::shared_ptr<IExecutionProvider>> provider;
+
+  if (device_type == 1) {
+    OrtCUDAProviderOptions provider_options{};
+    provider_options.do_copy_in_default_stream = true;
+    if (device_id) {
+      provider_options.device_id = device_id;
+    }
+    if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+      provider.push_back(factory->CreateProvider());
+  } else if (device_type == 0) {
+    provider = std::vector<std::shared_ptr<IExecutionProvider>>();
+  } else {
+    ORT_THROW("Unsupported device type: ", device_type);
+  }
+
+  return provider;
+}
+
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
@@ -828,18 +848,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def(py::init([](const std::string& model_uri,
                        onnxruntime::training::api::CheckpointState& state,
                        std::optional<std::string> eval_model_uri,
-                       std::optional<std::string> provider_type) {
+                       int device_type,
+                       int device_id) {
         onnxruntime::SessionOptions session_option;
-        std::vector<std::shared_ptr<IExecutionProvider>> provider;
-
-        if (provider_type == "cuda") {
-          OrtCUDAProviderOptions provider_options{};
-          provider_options.do_copy_in_default_stream = true;
-          if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-            provider.push_back(factory->CreateProvider());
-        } else {
-          provider = std::vector<std::shared_ptr<IExecutionProvider>>();
-        }
+        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProviders(device_type, device_id);
 
         return std::make_unique<onnxruntime::training::api::Module>(
             model_uri,
@@ -901,19 +913,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   training_optimizer.def(py::init([](
                                       const std::string optimizer_model_uri,
                                       onnxruntime::training::api::Module* model,
-                                      std::optional<std::string> provider_type) {
+                                      int device_type,
+                                      int device_id) {
                       onnxruntime::SessionOptions session_option;
-                      std::vector<std::shared_ptr<IExecutionProvider>> provider;
-
-                      if (provider_type == "cuda") {
-                        OrtCUDAProviderOptions provider_options{};
-                        provider_options.do_copy_in_default_stream = true;
-                        if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-                          provider.push_back(factory->CreateProvider());
-                      } else {
-                        provider = std::vector<std::shared_ptr<IExecutionProvider>>();
-                      }
-
+                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProviders(device_type, device_id);
                       return std::make_unique<onnxruntime::training::api::Optimizer>(
                           optimizer_model_uri,
                           model->NamedParameters(), session_option,

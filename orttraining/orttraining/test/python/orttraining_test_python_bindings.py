@@ -245,7 +245,7 @@ def test_cuda_execution_provider():
         # Create Checkpoint State.
         state = CheckpointState(checkpoint_file_path)
         # Create a Module.
-        model = Module(model_file_path, state, provider_type="cuda")
+        model = Module(model_file_path, state, device="cuda")
         params = model.get_contiguous_parameters()
 
         # Check if parameters are moved to cuda.
