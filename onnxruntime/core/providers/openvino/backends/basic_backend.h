@@ -34,9 +34,7 @@ class BasicBackend : public IBackend {
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
   void PopulateConfigValue(OVConfig& config);
   void EnableCaching();
-  #if defined(OV_API_20)
   void EnableGPUThrottling(OVConfig& config);
-  #endif 
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED
@@ -78,11 +76,7 @@ class InferRequestsQueue {
   void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
     for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
-      #if defined (OV_API_20)
       i->get()->QueryStatus();
-      #else 
-      std::cout << *i << "\n";
-      #endif 
     }
     std::cout << '\n';
   }

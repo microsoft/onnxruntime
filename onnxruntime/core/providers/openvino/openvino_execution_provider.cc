@@ -122,17 +122,17 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #endif
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined (OPENVINO_2021_4)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_4");
-  result = obj.Execute();
-#elif defined (OPENVINO_2022_1)
+#if defined (OPENVINO_2022_1)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
   result = obj.Execute();
 #elif defined (OPENVINO_2022_2)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
+  result = obj.Execute();
+#elif defined (OPENVINO_2022_3)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_3");
   result = obj.Execute();
 #endif
 
@@ -148,11 +148,7 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     NodeComputeInfo compute_info;
 
-#if defined(OV_API_20)
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
-#else
-    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-#endif
 
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
