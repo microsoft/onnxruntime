@@ -122,7 +122,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #endif
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-if defined (OPENVINO_2022_1)
+#if defined (OPENVINO_2022_1)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
   result = obj.Execute();

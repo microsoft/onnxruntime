@@ -73,10 +73,6 @@ namespace onnxruntime {
     std::vector<std::string> OVCore::GetAvailableDevices() {
             auto obj = oe.get_available_devices();
             return obj;
-        #else 
-            auto obj = oe.GetAvailableDevices();
-            return obj;
-        #endif
     }
  
     OVInferRequest OVExeNetwork::CreateInferRequest() {
