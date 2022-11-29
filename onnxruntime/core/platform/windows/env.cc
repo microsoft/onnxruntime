@@ -784,6 +784,10 @@ WindowsEnv::WindowsEnv() {
   InitializeCpuInfo();
 }
 
+/*
+Discover all cores in a windows system.
+Note - every "id" here, given it be group id, core id, or logical processor id, starts from 0.
+*/
 void WindowsEnv::InitializeCpuInfo() {
   DWORD returnLength = 0;
   GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &returnLength);
@@ -813,6 +817,11 @@ void WindowsEnv::InitializeCpuInfo() {
       for (int i = 0; i < sizeof(KAFFINITY) * 8; ++i) {
         if (group_mask.Mask & (bit << i)) {
           logical_processors.push_back(global_processor_id);
+          /*
+          * Build up a map between global processor id and local processor id.
+          * The map helps to bridge between ort API and windows affinity API.
+          * We need local processor id to build an affinity mask that is specific to a certain group.
+          */
           global_processor_info_map_[global_processor_id] = {static_cast<int>(group_mask.Group), i};
           global_processor_id++;
         }
