@@ -27,6 +27,7 @@
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/optimizer/qdq_fusion.h"
 
 #include <random>
 
@@ -82,7 +83,6 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
   ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
 }
 
-
 TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset14) {
   Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}},
               {}, *logger_);
@@ -113,7 +113,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   auto& output_running_mean = graph.GetOrCreateNodeArg("running_mean", &scale_tensor_type);
   auto& output_running_var = graph.GetOrCreateNodeArg("running_var", &scale_tensor_type);
   auto& bn_node = graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
-                                                {&output_Y, &output_running_mean, &output_running_var});
+                                {&output_Y, &output_running_mean, &output_running_var});
   bn_node.AddAttribute("training_mode", static_cast<int64_t>(1));
 
   auto status = graph.Resolve();
@@ -130,7 +130,6 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
   ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
 }
-
 
 TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset9) {
   Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 9}, {"com.microsoft", 1}},
@@ -164,7 +163,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   auto& saved_mean = graph.GetOrCreateNodeArg("saved_mean", &scale_tensor_type);
   auto& saved_var = graph.GetOrCreateNodeArg("saved_var", &scale_tensor_type);
   graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
-                                                {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
+                {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
@@ -951,6 +950,37 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   ASSERT_TRUE(op_to_count["com.microsoft.NegativeLogLikelihoodLossInternal"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
 }
+
+class QDQFusionTestsParameterized : public GraphTransformationTests,
+                                    public ::testing::WithParamInterface<std::tuple<PathString>> {
+};
+
+TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(std::get<0>(GetParam()), p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::map<std::string, int> op_to_count_pre_fusion = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_pre_fusion["QuantizeLinear"], 1);
+  ASSERT_EQ(op_to_count_pre_fusion["DequantizeLinear"], 1);
+  ASSERT_EQ(op_to_count_pre_fusion["com.microsoft.FakeQuant"], 0);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<QDQFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count_post_fusion = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_post_fusion["QuantizeLinear"], 0);
+  ASSERT_EQ(op_to_count_post_fusion["DequantizeLinear"], 0);
+  ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    QDQFusionTests,
+    QDQFusionTestsParameterized,
+    ::testing::Values(
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx"),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx")));
 
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
