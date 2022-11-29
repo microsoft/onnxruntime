@@ -16,16 +16,16 @@ class SliceBase {
   // static methods that can be used from other ops if needed
  public:
   // compute output_dims without steps (Slice V1-9 & DynamicSlice)
-  static Status PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                  const gsl::span<const int64_t>& raw_ends,
-                                  const gsl::span<const int64_t>& raw_axes,
+  static Status PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                  gsl::span<const int64_t> raw_ends,
+                                  gsl::span<const int64_t> raw_axes,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // compute output_dims with steps (Slice V10)
-  static Status PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                  const gsl::span<const int64_t>& raw_ends,
-                                  const gsl::span<const int64_t>& raw_axes,
-                                  const gsl::span<const int64_t>& raw_steps,
+  static Status PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                  gsl::span<const int64_t> raw_ends,
+                                  gsl::span<const int64_t> raw_axes,
+                                  gsl::span<const int64_t> raw_steps,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // Slice V10 & DynamicSlice

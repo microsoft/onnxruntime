@@ -868,7 +868,7 @@ Status LongformerQkvToContext(
   // The order of qkv space:
   //  Q, K, V, Global_K, Global_V, Global_Q (format 0)
   //  Q, K, V, Global_Q, Global_K, Global_V (format 1)
-  // Assume H_q == H_k == H_v
+  // Assume Q, K and V has same hidden size
   if (format == 1 || max_num_global == 0 || nullptr == global_input) {
     if (bias == nullptr) {
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,

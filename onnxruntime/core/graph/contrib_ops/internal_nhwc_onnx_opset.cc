@@ -13,7 +13,8 @@ namespace onnxruntime {
 namespace contrib {
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearGlobalAveragePool);
-}
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConvTranspose);
+}  // namespace contrib
 namespace internal_nhwc_onnx {
 
 using contrib::NhwcInferenceContext;
@@ -74,8 +75,12 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // For now we only register operators from opset 11 on. Models can easily have their opset updated using ONNX tools
   // so supporting older opsets is unnecessary.
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 11);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 11);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 1);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 12);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxUnpool, 9);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxUnpool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, GlobalAveragePool, 1);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, DepthToSpace, 1);
@@ -84,6 +89,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, QLinearConv, 10);
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearGlobalAveragePool, 1);
+  REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearConvTranspose, 1);
 
   // TODO: Add other layout sensitive ops when needed. Those are:
   //   BatchNormalization,

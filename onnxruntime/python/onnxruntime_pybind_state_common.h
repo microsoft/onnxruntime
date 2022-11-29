@@ -177,6 +177,8 @@ namespace python {
 extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
+// TODO remove deprecated global config
+extern onnxruntime::cuda::TunableOpInfo tunable_op;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
@@ -199,6 +201,8 @@ namespace python {
 extern bool miopen_conv_exhaustive_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
+// TODO remove deprecated global config
+extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python

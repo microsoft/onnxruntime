@@ -62,7 +62,7 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   auto& Y = *context->Output(0, dims);
 
   EigenMap<bool>(Y) =
-      ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), shape_size)
+      ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), onnxruntime::narrow<size_t>(shape_size))
           .array()
           .isNaN();
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/rocm/backward_guard.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_fwd.h"
@@ -22,7 +23,15 @@ class RocmKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    auto s = ComputeInternal(p_op_kernel_context);
+    Status s;
+    auto is_backward_pass = Info().GetAttrOrDefault<int64_t>("__backwardpass", 0);
+    if (is_backward_pass) {
+      BackwardPassGuard guard;
+      s = ComputeInternal(p_op_kernel_context);
+    }
+    else {
+      s = ComputeInternal(p_op_kernel_context);
+    }
     // use this to precisely locate the node where ROCM failure comes from
     //  if (hipSuccess != hipDeviceSynchronize())
     //    __debugbreak();
@@ -65,6 +74,8 @@ class RocmKernel : public OpKernel {
   const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
   inline hipStream_t Stream() const { return static_cast<hipStream_t>(provider_->GetComputeStream()); }
+
+  bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
 
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished

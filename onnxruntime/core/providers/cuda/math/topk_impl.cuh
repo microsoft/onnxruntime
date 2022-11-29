@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#pragma once
 
 #include "topk_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "device_atomic_functions.h"
 #include "cub/cub.cuh"
 #include "cub/util_type.cuh"
@@ -22,46 +24,6 @@ template <typename T>
 struct KV {
   T key;
   int64_t val;
-};
-
-template <typename T>
-struct NumericLimits {
-  static T Min() {
-    return std::numeric_limits<T>::lowest();
-  }
-  static T Max() {
-    return std::numeric_limits<T>::max();
-  }
-};
-
-template <>
-struct NumericLimits<MLFloat16> {
-   static half Min() {
-     return -65504.0;
-   }
-   static half Max() {
-     return 65504.0;
-   }
-};
-
-template <>
-struct NumericLimits<float> {
-  static float Min() {
-    return -INFINITY;
-  }
-  static float Max() {
-    return INFINITY;
-  }
-};
-
-template <>
-struct NumericLimits<double> {
-  static double Min() {
-    return -HUGE_VAL;
-  }
-  static double Max() {
-    return HUGE_VAL;
-  }
 };
 
 #define BT GridDim::maxThreadsPerBlock
@@ -336,7 +298,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
   uint32_t superior = 0, equal = 0;
   for (int64_t x_i = tid; x_i < dimension; x_i += blockDim.x) {
     auto x = X[FROM(x_i)];
-    if (1 == largest && x > Kth || 0 == largest && x < Kth) {
+    if ((1 == largest && x > Kth) || (0 == largest && x < Kth)) {
       ++superior;
     } else if (Equal(x, Kth)) {
       ++equal;
@@ -358,7 +320,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
   auto output_i = superior + LESS(K - all_superior, equal);
   for (int64_t x_i = tid; x_i < dimension; x_i += blockDim.x) {
     auto x = X[FROM(x_i)];
-    if (1 == largest && x > Kth || 0 == largest && x < Kth) {
+    if ((1 == largest && x > Kth) || (0 == largest && x < Kth)) {
       auto to_i = TO(output_i);
       V[to_i] = x;
       I[to_i] = x_i;

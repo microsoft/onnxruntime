@@ -12,6 +12,7 @@
 #include "hip_fence.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_call.h"
+#include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
@@ -526,11 +527,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 }
 
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
-  // If the number of nodes in the graph is less than 5, do nothing
-  // this is to deal with onnx unit tests
-  if (graph_viewer.NumberOfNodes() <= 5) {
-    return;
-  }
 
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
@@ -553,11 +549,6 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
           }
         }
       }
-    }
-
-    // if 6 operators or more
-    if (git.size() > 5) {
-      return false;
     }
 
     // rnn operators, run on GPU
@@ -1039,7 +1030,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
@@ -1165,9 +1156,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       {
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+
+        #ifdef MIGRAPHX_STREAM_SYNC
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(GetComputeStream()));
+        #else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
-
+        #endif
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
         if (prog_output_indices.size() < output_num) {
@@ -1192,5 +1187,33 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
   return Status::OK();
 }
+
+#ifdef MIGRAPHX_STREAM_SYNC
+
+Status MIGraphXExecutionProvider::Sync() const {
+  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
+
+  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  if (status != hipSuccess) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
+  }
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunStart()
+{
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunEnd(bool) {
+  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+
+  if (status != hipSuccess) {
+    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+  }
+  return Status::OK();
+}
+
+#endif
 
 }  // namespace onnxruntime

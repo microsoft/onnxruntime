@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
@@ -173,6 +173,7 @@ struct ROCM_Provider : Provider {
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
+    info.tunable_op.enabled = params->tunable_op_enabled;
 
     return std::make_shared<ROCMProviderFactory>(info);
   }

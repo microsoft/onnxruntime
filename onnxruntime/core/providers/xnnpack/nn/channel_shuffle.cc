@@ -88,7 +88,7 @@ ChanneShuffle::ChanneShuffle(const OpKernelInfo& info) : OpKernel{info} {
   auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
 
   int64_t group = 1;
-  ORT_ENFORCE(info.GetAttrs<int64_t>("group", group).IsOK(), "attribute group is required");
+  info.GetAttrOrDefault<int64_t>("group", &group, group);
   size_t channel = input_shape[input_shape.NumDimensions() - 1];
   size_t group_channels = channel / group;
   xnn_status xstatus = xnn_status_invalid_state;

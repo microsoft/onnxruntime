@@ -16,24 +16,38 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
-#include <unistd.h>
+
+#include <assert.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <ftw.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
-#include <fcntl.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <dlfcn.h>
-#include <ftw.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+#include <iostream>
+#include <optional>
 #include <thread>
 #include <utility>  // for std::forward
 #include <vector>
-#include <assert.h>
+
+// We can not use CPUINFO if it is not supported and we do not want to used
+// it on certain platforms because of the binary size increase.
+// We could use it to find out the number of physical cores for certain supported platforms
+#if defined(CPUINFO_SUPPORTED) &&  !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#include <cpuinfo.h>
+#define ORT_USE_CPUINFO
+#endif
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
@@ -54,8 +68,7 @@ class UnmapFileParam {
  *
  * @return a pair of {errno, error message}
  */
-static std::pair<int, std::string> GetSystemError() {
-  auto e = errno;
+static std::pair<int, std::string> GetSystemError(int e) {
   char buf[1024];
   const char* msg = "";
   if (e > 0) {
@@ -73,11 +86,16 @@ static std::pair<int, std::string> GetSystemError() {
   return std::make_pair(e, msg);
 }
 
+static std::pair<int, std::string> GetSystemError() {
+  auto e = errno;
+  return GetSystemError(e);
+}
+
 static void UnmapFile(void* param) noexcept {
   std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
-    auto[err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetSystemError();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
   }
 }
@@ -87,7 +105,7 @@ struct FileDescriptorTraits {
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
     if (close(h) == -1) {
-      auto[err_no, err_msg] = GetSystemError();
+      auto [err_no, err_msg] = GetSystemError();
       LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
     }
   }
@@ -114,7 +132,7 @@ int nftw_remove(
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
   const auto result = remove(fpath);
   if (result != 0) {
-    auto[err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetSystemError();
     LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err_no << " error msg: " << err_msg
                           << ", path: " << fpath;
   }
@@ -135,22 +153,38 @@ class PosixThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    const ThreadOptions& thread_options;
+    std::optional<LogicalProcessors> affinity;
+
+    Param(const ORTCHAR_T* name_prefix1,
+          int index1,
+          unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
+          Eigen::ThreadPoolInterface* param1)
+        : name_prefix(name_prefix1),
+          index(index1),
+          start_address(start_address1),
+          param(param1) {}
   };
 
  public:
   PosixThread(const ORTCHAR_T* name_prefix, int index,
               unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
+    ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
+    auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
+    if (narrow<size_t>(index) < thread_options.affinity.size()) {
+      param_ptr->affinity = thread_options.affinity[index];
+    }
+
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, param_ptr.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
+      param_ptr.release();
     } else {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);
@@ -165,24 +199,14 @@ class PosixThread : public EnvThread {
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
       }
-      s = pthread_create(&hThread, &attr, ThreadMain,
-                         new Param{name_prefix, index, start_address, param, thread_options});
+
+      s = pthread_create(&hThread, &attr, ThreadMain, param_ptr.get());
       if (s != 0) {
         auto [err_no, err_msg] = GetSystemError();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
       }
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-      if (!thread_options.affinity.empty()) {
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(thread_options.affinity[index], &cpuset);
-        s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
-        if (s != 0) {
-          auto [err_no, err_msg] = GetSystemError();
-          ORT_THROW("pthread_setaffinity_np failed, error code: ", err_no, " error msg: ", err_msg);
-        }
-      }
-#endif
+      param_ptr.release();
+      // Do not throw beyond this point so we do not lose thread handle and then not being able to join it.
     }
   }
 
@@ -203,13 +227,32 @@ class PosixThread : public EnvThread {
 
  private:
   static void* ThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+      if (p->affinity.has_value() && !p->affinity->empty()) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        for(auto id : *p->affinity) {
+          CPU_SET(id, &cpuset);
+        }
+        // pthread_setaffinity_np() does not set errno, it returns it.
+        auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        if (ret != 0) {
+          auto [err_no, err_msg] = GetSystemError(ret);
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
+                              << ", index: " << p->index
+                              << ", mask: " << *p->affinity
+                              << ", error code: " << err_no << " error msg: " << err_msg
+                              << ". Specify the number of threads explicitly so the affinity is not set.";
+        }
+      }
+#endif
       // Ignore the returned value for now
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
-      //ignore any exceptions
+    ORT_CATCH(...) {
+      // Ignore exceptions
     }
     return nullptr;
   }
@@ -232,16 +275,45 @@ class PosixEnv : public Env {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
 
-  int GetNumCpuCores() const override {
-    // TODO if you need the number of physical cores you'll need to parse
-    // /proc/cpuinfo and grep for "cpu cores".
-    // However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
-    return std::thread::hardware_concurrency();
+  // we are guessing the number of phys cores based on a popular HT case (2 logical proc per core)
+  static int DefaultNumCores() {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    std::vector<size_t> ret(std::thread::hardware_concurrency() / 2);
-    std::iota(ret.begin(), ret.end(), 0);
+  // Return the number of physical cores
+  int GetNumPhysicalCpuCores() const override {
+#ifdef ORT_USE_CPUINFO
+    if(cpuinfo_available_) {
+      return narrow<int>(cpuinfo_get_cores_count());
+    }
+#endif // ORT_USE_CPUINFO
+    return DefaultNumCores();
+  }
+
+  std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
+
+    std::vector<LogicalProcessors> ret;
+#ifdef ORT_USE_CPUINFO
+    if (cpuinfo_available_) {
+      auto num_phys_cores = cpuinfo_get_cores_count();
+      ret.reserve(num_phys_cores);
+      for (uint32_t i = 0; i < num_phys_cores; ++i) {
+        const auto* core = cpuinfo_get_core(i);
+        LogicalProcessors th_aff;
+        th_aff.reserve(core->processor_count);
+        auto log_proc_idx = core->processor_start;
+        for (uint32_t count = 0; count < core->processor_count; count++, ++log_proc_idx) {
+          const auto* log_proc = cpuinfo_get_processor(log_proc_idx);
+          th_aff.push_back(log_proc->linux_id);
+        }
+        ret.push_back(std::move(th_aff));
+       }
+    }
+#endif
+    // Just the size of the thread-pool
+    if(ret.empty()) {
+      ret.resize(GetNumPhysicalCpuCores());
+    }
     return ret;
   }
 
@@ -377,7 +449,7 @@ class PosixEnv : public Env {
   }
 
   static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto[err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetSystemError();
     std::ostringstream oss;
     oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
     return common::Status(common::SYSTEM, err_no, oss.str());
@@ -440,7 +512,7 @@ class PosixEnv : public Env {
   common::Status GetCanonicalPath(
       const PathString& path,
       PathString& canonical_path) const override {
-    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr)};
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Freer<char>()};
     if (!canonical_path_cstr) {
       return ReportSystemError("realpath", path);
     }
@@ -507,8 +579,16 @@ class PosixEnv : public Env {
   }
 
  private:
-  PosixEnv() = default;
   Telemetry telemetry_provider_;
+#ifdef ORT_USE_CPUINFO
+  PosixEnv()  {
+    cpuinfo_available_ = cpuinfo_initialize();
+    if(!cpuinfo_available_) {
+      LOGS_DEFAULT(INFO) << "cpuinfo_initialize failed";
+    }
+  }
+  bool cpuinfo_available_{false};
+#endif // ORT_USE_CPUINFO
 };
 
 }  // namespace

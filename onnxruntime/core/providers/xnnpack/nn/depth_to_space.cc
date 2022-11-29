@@ -9,7 +9,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
-#include "gsl/gsl-lite.hpp"
 #include "xnnpack.h"
 
 namespace onnxruntime {

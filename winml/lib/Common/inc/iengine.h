@@ -192,7 +192,7 @@ IEngine : IUnknown {
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
+  (_In_ _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t * num_threads) PURE;
@@ -218,10 +218,10 @@ IEngineBuilder : IUnknown {
   (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)
-  (ID3D12Device **device) PURE;
+  (_Outptr_ ID3D12Device * *device) PURE;
 
   STDMETHOD(GetID3D12CommandQueue)
-  (ID3D12CommandQueue **queue) PURE;
+  (_Outptr_ ID3D12CommandQueue * *queue) PURE;
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
@@ -239,7 +239,7 @@ IEngineBuilder : IUnknown {
   (IThreading* thread_pool) PURE;
 
   STDMETHOD(CreateEngine)
-  (IEngine **out) PURE;
+  (_Outptr_ IEngine * *out) PURE;
 };
 
 
@@ -265,9 +265,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateTensorDescriptorInfo)
   (
-      winml::TensorKind kind,
-      int64_t* dims,
-      size_t num_dims,
+      _In_ winml::TensorKind kind,
+      _In_ int64_t* dims,
+      _In_ size_t num_dims,
       _Out_ IDescriptorInfo **info) PURE;
 
   STDMETHOD(CreateSequenceDescriptorInfo)

@@ -129,7 +129,6 @@ extern "C" {
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT and ORT_EXPORT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  GSL_SUPPRESS(r .11)                  \
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
@@ -369,7 +368,16 @@ typedef enum OrtCudnnConvAlgoSearch {
 */
 typedef struct OrtCUDAProviderOptions {
 #ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtCUDAProviderOptions()
+      : device_id{},
+        cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive},
+        gpu_mem_limit{SIZE_MAX},
+        arena_extend_strategy{},
+        do_copy_in_default_stream{1},
+        has_user_compute_stream{},
+        user_compute_stream{},
+        default_memory_arena_cfg{},
+        tunable_op_enabled{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -420,6 +428,12 @@ typedef struct OrtCUDAProviderOptions {
   */
   OrtArenaCfg* default_memory_arena_cfg;
 
+  /** \brief Enable TunableOp.
+  *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+  */
+  int tunable_op_enabled;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
@@ -428,7 +442,16 @@ typedef struct OrtCUDAProviderOptions {
 */
 typedef struct OrtROCMProviderOptions {
 #ifdef __cplusplus
-  OrtROCMProviderOptions() : device_id{}, miopen_conv_exhaustive_search{0}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtROCMProviderOptions()
+      : device_id{},
+        miopen_conv_exhaustive_search{0},
+        gpu_mem_limit{SIZE_MAX},
+        arena_extend_strategy{},
+        do_copy_in_default_stream{1},
+        has_user_compute_stream{},
+        user_compute_stream{},
+        default_memory_arena_cfg{},
+        tunable_op_enabled{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -477,6 +500,12 @@ typedef struct OrtROCMProviderOptions {
   /** \brief ROCM memory arena configuration parameters
   */
   OrtArenaCfg* default_memory_arena_cfg;
+
+  /** \brief Enable TunableOp.
+  *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+  */
+  int tunable_op_enabled;
 
 } OrtROCMProviderOptions;
 
@@ -3568,13 +3597,21 @@ struct OrtApi {
   * \since Version 1.13.
   */
   void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
-  
+
  /*  \brief Get OrtDevice type from MemoryInfo
-  * 
+  *
   *  \since Version 1.14
   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
-  
+
+  /* \brief Update the OrtEnv instance with custom log severity level
+   *
+   * \param[in] ort_env The OrtEnv instance being used
+   * \param[in] log_severity_level The log severity level.
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
@@ -3628,6 +3665,13 @@ struct OrtCustomOp {
   // Returns the characteristics of the input & output tensors
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the memory type of the input tensors. This API allows the custom op
+  // to place the inputs on specific devices. By default, it returns
+  // OrtMemTypeDefault, which means the input is placed on the default device for
+  // the execution provider. If the inputs need to be with different memory tyeps,
+  // this function can be overriden to return the specific memory types.
+  OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
 
 /*

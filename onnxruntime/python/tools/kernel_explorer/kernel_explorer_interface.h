@@ -3,11 +3,23 @@
 
 #pragma once
 
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#include "core/providers/cuda/tunable/cuda_tunable.h"
+#include "core/providers/cuda/tunable/util.h"
+#elif USE_ROCM
 #include <hip/hip_runtime.h>
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "core/providers/rocm/tunable/util.h"
+#endif
 
+#ifdef USE_CUDA
+using onnxruntime::cuda::tunable::Timer;
+using StreamT = cudaStream_t;
+#elif USE_ROCM
 using onnxruntime::rocm::tunable::Timer;
+using StreamT = hipStream_t;
+#endif
 
 /// Wrapping around Op and TunableOp
 class IKernelExplorer {
@@ -35,9 +47,9 @@ class IKernelExplorer {
   virtual ~IKernelExplorer() = default;
 
  protected:
-  hipStream_t Stream() { return stream_; }
+  StreamT Stream() { return stream_; }
 
  private:
-  hipStream_t stream_{0};
+  StreamT stream_{0};
   int repeats_{100};
 };

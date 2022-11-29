@@ -104,7 +104,11 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 /// This returns a reference to the OrtApi interface in use
 inline const OrtApi& GetApi() { return *Global<void>::api_; }
 
-/// This is a C++ wrapper for OrtApi::GetAvailableProviders() and returns a vector of strings representing the available execution providers.
+/// <summary>
+/// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
+/// returns a vector of strings representing the available execution providers.
+/// </summary>
+/// <returns>vector of strings</returns>
 std::vector<std::string> GetAvailableProviders();
 
 /** \brief IEEE 754 half-precision floating point data type
@@ -269,7 +273,7 @@ struct Base<const T>;
 
 /// <summary>
 /// Covers unowned pointers owned by either the ORT
-/// or some other instance of CPP wrappers. 
+/// or some other instance of CPP wrappers.
 /// Used for ConstXXX and UnownedXXXX types that are copyable.
 /// Also convenient to wrap raw OrtXX pointers .
 /// </summary>
@@ -288,8 +292,8 @@ struct Base<Unowned<T>> {
 
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   Base& operator=(Base&& v) noexcept {
-    auto t = nullptr;
-    std::swap(t, v.p_);
+    p_ = nullptr;
+    std::swap(p_, v.p_);
     return *this;
   }
 
@@ -328,7 +332,6 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  
   explicit Status(std::nullptr_t) {}       ///< Create an empty object, must be assigned a valid one to be used
   explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null
   explicit Status(const Exception&);       ///< Creates status instance out of exception
@@ -363,7 +366,9 @@ struct Env : detail::Base<OrtEnv> {
 
   Env& EnableTelemetryEvents();   ///< Wraps OrtApi::EnableTelemetryEvents
   Env& DisableTelemetryEvents();  ///< Wraps OrtApi::DisableTelemetryEvents
-
+  
+  Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel 
+  
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
@@ -387,14 +392,14 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   explicit RunOptions(std::nullptr_t) {}  ///< Create an empty RunOptions object, must be assigned a valid one to be used
   RunOptions();                           ///< Wraps OrtApi::CreateRunOptions
 
-  RunOptions& SetRunLogVerbosityLevel(int);           ///< Wraps OrtApi::RunOptionsSetRunLogVerbosityLevel
-  int GetRunLogVerbosityLevel() const;  ///< Wraps OrtApi::RunOptionsGetRunLogVerbosityLevel
+  RunOptions& SetRunLogVerbosityLevel(int);  ///< Wraps OrtApi::RunOptionsSetRunLogVerbosityLevel
+  int GetRunLogVerbosityLevel() const;       ///< Wraps OrtApi::RunOptionsGetRunLogVerbosityLevel
 
-  RunOptions& SetRunLogSeverityLevel(int);           ///< Wraps OrtApi::RunOptionsSetRunLogSeverityLevel
-  int GetRunLogSeverityLevel() const;  ///< Wraps OrtApi::RunOptionsGetRunLogSeverityLevel
+  RunOptions& SetRunLogSeverityLevel(int);  ///< Wraps OrtApi::RunOptionsSetRunLogSeverityLevel
+  int GetRunLogSeverityLevel() const;       ///< Wraps OrtApi::RunOptionsGetRunLogSeverityLevel
 
-  RunOptions& SetRunTag(const char* run_tag);   ///< wraps OrtApi::RunOptionsSetRunTag
-  const char* GetRunTag() const;  ///< Wraps OrtApi::RunOptionsGetRunTag
+  RunOptions& SetRunTag(const char* run_tag);  ///< wraps OrtApi::RunOptionsSetRunTag
+  const char* GetRunTag() const;               ///< Wraps OrtApi::RunOptionsGetRunTag
 
   RunOptions& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddRunConfigEntry
 
@@ -600,13 +605,6 @@ struct ConstSessionImpl : Base<T> {
    */
   AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
 
-  /** \brief Returns a copy of the profiling file name.
-   *
-   * \param allocator to allocate memory for the copy of the string returned
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
-   */
-  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
   ModelMetadata GetModelMetadata() const;                                   ///< Wraps OrtApi::SessionGetModelMetadata
 
@@ -638,7 +636,7 @@ struct SessionImpl : ConstSessionImpl<T> {
    * \return A std::vector of Value objects that directly maps to the output_names array (eg. output_name[0] is the first entry of the returned vector)
    */
   std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                       const char* const* output_names, size_t output_count);
+                         const char* const* output_names, size_t output_count);
 
   /** \brief Run the model returning results in user provided outputs
    * Same as Run(const RunOptions&, const char* const*, const Value*, size_t,const char* const*, size_t)
@@ -647,6 +645,14 @@ struct SessionImpl : ConstSessionImpl<T> {
            const char* const* output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
+
+  /** \brief End profiling and return a copy of the profiling file name.
+   *
+   * \param allocator to allocate memory for the copy of the string returned
+   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+   *  The OrtAllocator instances must be valid at the point of memory release.
+   */
+  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator);  ///< Wraps OrtApi::SessionEndProfiling
 };
 
 }  // namespace detail
@@ -658,11 +664,12 @@ using UnownedSession = detail::SessionImpl<detail::Unowned<OrtSession>>;
  *
  */
 struct Session : detail::SessionImpl<OrtSession> {
-  explicit Session(std::nullptr_t) {}                                                                                                        ///< Create an empty Session object, must be assigned a valid one to be used
-  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);                                                             ///< Wraps OrtApi::CreateSession
-  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
-  Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);                                        ///< Wraps OrtApi::CreateSessionFromArray
-  Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options,
+  explicit Session(std::nullptr_t) {}                                                   ///< Create an empty Session object, must be assigned a valid one to be used
+  Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);  ///< Wraps OrtApi::CreateSession
+  Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
+          OrtPrepackedWeightsContainer* prepacked_weights_container);                                        ///< Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
+  Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);  ///< Wraps OrtApi::CreateSessionFromArray
+  Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options,
           OrtPrepackedWeightsContainer* prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer
 
   ConstSession GetConst() const { return ConstSession{this->p_}; }
@@ -991,24 +998,27 @@ struct ValueImpl : ConstValueImpl<T> {
   void* GetTensorMutableRawData();
 
   /// <summary>
-  /// Obtain a reference to an element of data at the location specified
+  //  Obtain a reference to an element of data at the location specified
   /// by the vector of dims.
   /// </summary>
+  /// <typeparam name="R"></typeparam>
+  /// <param name="location">[in] expressed by a vecotr of dimensions offsets</param>
+  /// <returns></returns>
   template <typename R>
   R& At(const std::vector<int64_t>& location);
 
   /// <summary>
   /// Set all strings at once in a string tensor
   /// </summary>
-  /// <param>[in] s An array of strings. Each string in this array must be null terminated.</param>
-  /// <param>s_len Count of strings in s (Must match the size of \p value's tensor shape)</param>
+  /// <param name="s">[in] An array of strings. Each string in this array must be null terminated.</param>
+  /// <param name="s_len">[in] Count of strings in s (Must match the size of \p value's tensor shape)</param>
   void FillStringTensor(const char* const* s, size_t s_len);
 
   /// <summary>
-  ///  Set a single string in a string tensor
+  /// Set a single string in a string tensor
   /// </summary>
-  /// <param>s A null terminated UTF-8 encoded string</param>
-  /// <param>index Index of the string in the tensor to set</param>
+  /// <param name="s">[in] A null terminated UTF-8 encoded string</param>
+  /// <param name="index">[in] Index of the string in the tensor to set</param>
   void FillStringTensorElement(const char* s, size_t index);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1642,6 +1652,7 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputType(index); };
+    OrtCustomOp::GetInputMemoryType= [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputMemoryType(index); };
 
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
@@ -1670,6 +1681,11 @@ struct CustomOpBase : OrtCustomOp {
 
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+  // Default implemention of GetInputMemoryType() that returns OrtMemTypeDefault
+  OrtMemType GetInputMemoryType(size_t /*index*/) const {
+    return OrtMemTypeDefault;
   }
 };
 

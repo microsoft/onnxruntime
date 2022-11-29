@@ -23,7 +23,7 @@
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/free_dim_override_transformer.h"
-#include "core/optimizer/gather_to_split_fusion.h"
+#include "core/optimizer/gather_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -40,6 +40,7 @@
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/propagate_cast_ops.h"
+#include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -99,8 +100,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point

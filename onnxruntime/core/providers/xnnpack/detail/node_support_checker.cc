@@ -19,8 +19,12 @@
 #include "core/providers/xnnpack/math/math_elementwise_ops.h"
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/depth_to_space.h"
+#include "core/providers/xnnpack/nn/conv_transpose.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
+#include "core/providers/xnnpack/math/gemm.h"
+#include "core/providers/xnnpack/math/matmul.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
+#include "core/providers/xnnpack/nn/resize.h"
 #include "core/providers/xnnpack/nn/softmax.h"
 #include "core/providers/xnnpack/nn/transpose.h"
 #include "core/providers/xnnpack/nn/channel_shuffle.h"
@@ -108,13 +112,17 @@ const NodeUnit* ChannelShuffleChecker(const NodeUnit& node_unit, const GraphView
 
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
   static std::unordered_map<std::string, CheckerFn> checkers{
-      {"Conv", Conv::IsConvOnnxNodeSupported},
-      {"QLinearConv", Conv::IsConvOnnxNodeSupported},
-      {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
-      {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
-      {"GlobalAveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
-      {"QLinearGlobalAveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
-      {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      {"Conv", Conv::IsOnnxNodeSupported},
+      {"ConvTranspose", ConvTranspose::IsOnnxNodeSupported},
+      {"QLinearConv", Conv::IsOnnxNodeSupported},
+      {"MaxPool", MaxPool::IsOnnxNodeSupported},
+      {"AveragePool", AveragePool::IsOnnxNodeSupported},
+      {"GlobalAveragePool", AveragePool::IsOnnxNodeSupported},
+      {"QLinearGlobalAveragePool", AveragePool::IsOnnxNodeSupported},
+      {"Softmax", Softmax::IsOnnxNodeSupported},
+      {"Resize", Resize::IsOnnxNodeSupported},
+      {"Gemm", Gemm::IsOnnxNodeSupported},
+      {"MatMul", MatMul::IsOnnxNodeSupported},
       {"Transpose", Transpose::IsOnnxNodeSupported},
       {"DepthToSpace", DepthToSpace::IsOnnxNodeSupported},
       {"Concat", Concat::IsOnnxNodeSupported},

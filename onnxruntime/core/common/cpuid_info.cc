@@ -64,6 +64,14 @@ static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #endif
 }
 
+static inline void GetCPUID(int function_id, int sub_leaf, int data[4]) {  // NOLINT
+#if defined(_MSC_VER)
+    __cpuidex(reinterpret_cast<int*>(data), function_id, sub_leaf);
+#elif defined(__GNUC__)
+  __cpuid_count(function_id, sub_leaf, data[0], data[1], data[2], data[3]);
+#endif
+}
+
 static inline int XGETBV() {
 #if defined(_MSC_VER)
   return static_cast<int>(_xgetbv(0));
@@ -97,12 +105,18 @@ void CPUIDInfo::X86Init() {
 
       if (num_IDs >= 7) {
         GetCPUID(7, data);
+        const uint32_t max_SubLeaves = data[0];
+        has_amx_bf16_ = (data[3] & (1 << 22));
         has_avx2_ = has_avx_ && (data[1] & (1 << 5));
         has_avx512f_ = has_avx512 && (data[1] & (1 << 16));
         // Add check for AVX512 Skylake since tensorization GEMM need intrinsics from avx512bw/avx512dq.
         // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
         is_hybrid_ = (data[3] & (1 << 15));
+        if (max_SubLeaves >= 1) {
+          GetCPUID(7, 1, data);
+          has_avx512_bf16_ = has_avx512 && (data[0] & (1 << 5));
+        }
       }
     }
   }
@@ -173,9 +187,9 @@ void CPUIDInfo::ArmWindowsInit() {
     unsigned long midrSize = sizeof(uint64_t);
 
     /*
-     * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2. 
+     * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2.
      * You need to put those numbers through the ARM64_SYSREG macro:
-     * 
+     *
      * #define ARM64_SYSREG(op0, op1, crn, crm, op2) \
      *    (((op0 & 1) << 14) |                       \
      *     ((op1 & 7) << 11) |                       \

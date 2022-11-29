@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_allocator.h"
@@ -154,6 +155,15 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
+  auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+      "ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
+  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
+    info.tunable_op.enabled = *env_tunable_op_enabled;
+  }
+}
+
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
@@ -180,6 +190,8 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
+
+  OverrideTunableOpInfoByEnv(info_);
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
@@ -200,6 +212,20 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   if (!external_stream_ && stream_) {
     HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+void ROCMExecutionProvider::EnableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = true;
+}
+
+void ROCMExecutionProvider::DisableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = false;
+}
+
+bool ROCMExecutionProvider::IsTunableOpEnabled() const {
+  return info_.tunable_op.enabled;
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
@@ -321,12 +347,12 @@ void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, voi
   // it will be cleaned up automatically at the end of this function.
   std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
   cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
-  for (auto ptr: cpu_buffers_info->buffers) {
+  for (auto ptr : cpu_buffers_info->buffers) {
     cpu_buffers_info->allocator->Free(ptr);
   }
 }
 
-Status ROCMExecutionProvider::EnqueueDeferredRelease() {
+Status ROCMExecutionProvider::EnqueueDeferredRelease(bool actually_defer) {
   // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
   // They have to be released outside GPU kernels because they must be alive
   // during asynchronous GPU computation even after the CPU part (e.g,
@@ -354,10 +380,13 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // we should replace the following line with
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
     if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
-      // Release memory asynchronously to avoid blocking the compute stream.
-      HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      if (actually_defer) {
+        // Release memory asynchronously to avoid blocking the compute stream.
+        HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      } else {
+        ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
+      }
     } else {
-
       // Per
       // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
       // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
@@ -386,9 +415,10 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
   // Enqueue deferred CPU memory release on related streams.
   // This will release all deferred-release CPU buffers allocated
   // before calling OnRunEnd.
-  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-
-  if (sync_stream) {
+  if (!sync_stream) {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
+  } else {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease(/* actually_defer = */ false));
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
   }
 

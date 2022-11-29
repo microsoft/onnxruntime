@@ -14,8 +14,6 @@ import sys
 from distutils.version import LooseVersion
 from pathlib import Path
 
-from amd_hipify import amd_hipify
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -172,7 +170,11 @@ def parse_arguments():
     )
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
-
+    parser.add_argument(
+        "--compile_no_warning_as_error",
+        action="store_true",
+        help="Preventing warnings from being treated as errors on compile.",
+    )
     # Training options
     parser.add_argument("--enable_nvtx_profile", action="store_true", help="Enable NVTX profile in ORT.")
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profile in ORT.")
@@ -392,6 +394,9 @@ def parse_arguments():
 
     parser.add_argument(
         "--disable_wasm_exception_catching", action="store_true", help="Disable exception catching in WebAssembly."
+    )
+    parser.add_argument(
+        "--enable_wasm_api_exception_catching", action="store_true", help="Catch exceptions at top level api."
     )
     parser.add_argument(
         "--enable_wasm_exception_throwing_override",
@@ -670,6 +675,13 @@ def parse_arguments():
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
+    if args.enable_wasm_api_exception_catching:
+        # if we catch on api level, we don't want to catch all
+        args.disable_wasm_exception_catching = True
+    if not args.disable_wasm_exception_catching or args.enable_wasm_api_exception_catching:
+        # doesn't make sense to catch if no one throws
+        args.enable_wasm_exception_throwing_override = True
+
     return args
 
 
@@ -786,16 +798,18 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
 
 
 def use_dev_mode(args):
+    if args.compile_no_warning_as_error:
+        return False
     if args.use_acl:
-        return "OFF"
+        return False
     if args.use_armnn:
-        return "OFF"
+        return False
     if args.ios and is_macOS():
-        return "OFF"
+        return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")
     if SYSTEM_COLLECTIONURI and not SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/":
-        return "OFF"
-    return "ON"
+        return False
+    return True
 
 
 def add_default_definition(definition_list, key, default_value):
@@ -834,9 +848,11 @@ def generate_build_tree(
 ):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
-    cmake_args = [
-        cmake_path,
-        cmake_dir,
+    cmake_args = [cmake_path, cmake_dir]
+    if not use_dev_mode(args):
+        cmake_args += ["--compile-no-warning-as-error"]
+
+    cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
@@ -920,6 +936,8 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING="
+        + ("ON" if args.enable_wasm_api_exception_catching else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
@@ -955,9 +973,6 @@ def generate_build_tree(
     if args.llvm_config:
         cmake_args.append("-Donnxruntime_TVM_USE_LLVM=" + args.llvm_config)
 
-    # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
-    # And OFF for the people who are not actively developing onnx runtime.
-    add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
@@ -1467,24 +1482,17 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def setup_rocm_build(args, configs):
-
+def setup_rocm_build(args):
     rocm_home = None
-
     if args.use_rocm:
         print("rocm_home = {}".format(args.rocm_home))
         rocm_home = args.rocm_home or None
-
         rocm_home_not_valid = rocm_home and not os.path.exists(rocm_home)
-
         if rocm_home_not_valid:
             raise BuildError(
                 "rocm_home paths must be specified and valid.",
                 "rocm_home='{}' valid={}.".format(rocm_home, rocm_home_not_valid),
             )
-
-        for config in configs:
-            amd_hipify(get_config_build_dir(args.build_dir, config))
     return rocm_home or ""
 
 
@@ -2053,6 +2061,7 @@ def build_python_wheel(
     use_ninja=False,
     build_eager_mode=False,
     enable_training_on_device=False,
+    enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2074,6 +2083,8 @@ def build_python_wheel(
             args.append("--enable_training_on_device")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
+        if enable_rocm_profiling:
+            args.append("--enable_rocm_profiling")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2113,7 +2124,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml
+    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2149,6 +2160,9 @@ def build_nuget_package(
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
+    elif use_snpe:
+        execution_provider = '/p:ExecutionProvider="snpe"'
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Snpe"'
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2371,7 +2385,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + str(diff))
 
-            diff_file(opkernel_doc_path, " with CPU and CUDA execution providers enabled")
+            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2392,7 +2406,7 @@ def main():
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
-    if not (args.update or args.clean or args.build or args.test):
+    if not (args.update or args.clean or args.build or args.test or args.gen_doc):
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
@@ -2503,7 +2517,7 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_build(args, configs)
+    rocm_home = setup_rocm_build(args)
 
     # if using cann, setup cann paths
     cann_home = setup_cann_vars(args)
@@ -2776,6 +2790,7 @@ def main():
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
                 enable_training_on_device=args.enable_training_on_device,
+                enable_rocm_profiling=args.enable_rocm_profiling,
             )
         if args.build_nuget:
             build_nuget_package(
@@ -2788,13 +2803,20 @@ def main():
                 args.use_dnnl,
                 args.use_tvm,
                 args.use_winml,
+                args.use_snpe,
             )
 
     if args.test and args.build_nuget:
         run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
 
-    if args.gen_doc and (args.build or args.test):
-        generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+    if args.gen_doc:
+        # special case CI where we create the build config separately to building
+        if args.update and not args.build:
+            pass
+        else:
+            # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
+            # documentation generation as a separate task post-build
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
 
     if args.gen_api_doc and (args.build or args.test):
         print("Generating Python doc for ORTModule...")

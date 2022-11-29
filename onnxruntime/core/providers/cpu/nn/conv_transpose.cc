@@ -58,14 +58,14 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     }
     filter_shape_ = tensor.Shape();
 
-    const size_t K = static_cast<size_t>(filter_shape_[0]) / conv_transpose_attrs_.group;
-    const size_t N = filter_shape_.SizeFromDimension(1);
+    const size_t K = static_cast<size_t>(filter_shape_[0]) / onnxruntime::narrow<size_t>(conv_transpose_attrs_.group);
+    const size_t N = onnxruntime::narrow<size_t>(filter_shape_.SizeFromDimension(1));
     auto packed_elements_per_group = N * K;
     if (packed_elements_per_group == 0 || N == 1 || K == 1) {  // No need for single row or single col case
       return Status::OK();
     }
 
-    size_t packed_filter_data_size = packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group;
+    size_t packed_filter_data_size = SafeInt<size_t>(packed_elements_per_group) * sizeof(float) * conv_transpose_attrs_.group;
     auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
 
     // Initialize memory to 0 as there could be some padding associated with pre-packed
@@ -260,9 +260,9 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
       math::Gemm<float>(
           p.F ? CblasTrans : CblasNoTrans,
           CblasNoTrans,
-          kernel_dim,
-          input_image_size,
-          p.num_input_channels / conv_transpose_attrs_.group,
+          onnxruntime::narrow<ptrdiff_t>(kernel_dim),
+          onnxruntime::narrow<ptrdiff_t>(input_image_size),
+          onnxruntime::narrow<ptrdiff_t>( p.num_input_channels / conv_transpose_attrs_.group),
           1,
           filter_data + group_id * W_offset,
           Xdata + group_id * X_offset,
@@ -306,8 +306,8 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
     }
 
     if (p.B != nullptr) {
-      auto Ymatrix = EigenMatrixMap<float>(Ydata, output_size, p.num_output_channels);
-      auto Bvec = ConstEigenVectorMap<float>(p.B->Data<float>(), p.num_output_channels);
+      auto Ymatrix = EigenMatrixMap<float>(Ydata, onnxruntime::narrow<size_t>(output_size), onnxruntime::narrow<size_t>(p.num_output_channels));
+      auto Bvec = ConstEigenVectorMap<float>(p.B->Data<float>(), onnxruntime::narrow<size_t>(p.num_output_channels));
       Ymatrix.rowwise() += Bvec.transpose();
     }
 

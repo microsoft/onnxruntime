@@ -98,8 +98,15 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQSub;
     else if (op_type == "Mul")
       return QuantizedOpType::QDQMul;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
+    else if (op_type == "ConvTranspose")
+      return QuantizedOpType::QDQConvTranspose;
+
   } else if (node_unit.OpType() == "QLinearConv") {
     return QuantizedOpType::QLinearConv;
+  } else if (node_unit.OpType() == "QLinearConvTranspose") {
+    return QuantizedOpType::QLinearConvTranspose;
   }
   return QuantizedOpType::Unknown;
 }
@@ -120,6 +127,8 @@ static const std::unordered_map<QuantizedOpType, ONNXOpType> qdq_to_onnx_type_ma
     {QuantizedOpType::QDQAdd, "QLinearAdd"},
     {QuantizedOpType::QDQSub, "QLinearSub"},
     {QuantizedOpType::QDQMul, "QLinearMul"},
+    {QuantizedOpType::QDQResize, "Resize"},
+    {QuantizedOpType::QDQConvTranspose, "QLinearConvTranspose"},
 };
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit) {
@@ -137,7 +146,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
   // x x-scale x-zp w w-scale w-zp. Some QDQops wouldn't have 9 inputs,
   // but the 5 more unit extra memory is not too expensive
   def.inputs.reserve(9);
-  if (qtype == QuantizedOpType::QDQConv) {
+  if (qtype == QuantizedOpType::QDQConv || qtype == QuantizedOpType::QDQConvTranspose) {
     std::for_each(inputs.cbegin(), inputs.cbegin() + 2,
                   [&def](const NodeUnitIODef& arg) {
                     // keep the number of inputs the same by inserting an empty string for a missing optional input
@@ -154,6 +163,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     // bias
     if (inputs.size() > 2) {
       def.inputs.push_back(inputs[2].node_arg.Name());
+    }
+    if (qtype == QuantizedOpType::QDQConvTranspose) {
+      def.since_version = 1;
     }
   } else if (qtype == QuantizedOpType::QDQAvgPool || qtype == QuantizedOpType::QDQSoftmax) {
     // x x-scale x-zp
@@ -174,9 +186,16 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
       def.since_version = 1;
       def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
     }
-  } else if (qtype == QuantizedOpType::QDQMaxPool) {
-    // only one input for QDQMaxPool, Tensor:X
-    def.inputs.push_back(inputs[0].node_arg.Name());
+  } else if (qtype == QuantizedOpType::QDQMaxPool || qtype == QuantizedOpType::QDQResize) {
+    // Don't care about the quantization parameters for MaxPool, Resize
+    // where the two ops don't ask for quantization parameters in computation.
+    std::for_each(inputs.cbegin(), inputs.cend(),
+                  [&def](const NodeUnitIODef& arg) {
+                    def.inputs.push_back(arg.node_arg.Name());
+                  });
+    if (qtype == QuantizedOpType::QDQResize) {
+      def.domain = kOnnxDomain;  // QDQResize is not layout sensitive
+    }
   } else if (qtype == QuantizedOpType::QDQAdd ||
              qtype == QuantizedOpType::QDQSub ||
              qtype == QuantizedOpType::QDQMul) {
@@ -399,7 +418,7 @@ gsl::span<const T> ReadConstantValues(const OpKernelInfo& info, int idx) {
     } else {
       // It's legal for zero-point to be null, we just give its default value 0
       static const T default_zp[] = {0};
-      return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::index_type>(1));
+      return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::size_type>(1));
     }
   }
   return (tensor->DataAsSpan<T>());

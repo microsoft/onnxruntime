@@ -3,7 +3,9 @@
 
 #include <memory>
 #include <assert.h>
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 
@@ -100,15 +102,15 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
     gsl::span<const int32_t> sequence = sequences->GetSequence(i);
 
-    gsl::span<const int32_t> prefix = sequence.subspan(sequence.length() - prefix_length);
-    ORT_ENFORCE(prefix.length() == prefix_length);
+    gsl::span<const int32_t> prefix = sequence.subspan(sequence.size() - prefix_length);
+    ORT_ENFORCE(prefix.size() == narrow<size_t>(prefix_length));
 
     std::unordered_set<int32_t> blocked_word_ids;
-    for (int j = 0; j <= static_cast<int>(sequence.length()) - ngram_size_; j++) {
+    for (int j = 0; j <= static_cast<int>(sequence.size()) - ngram_size_; j++) {
       // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
       // TODO(tianleiwu): build N-Gram index (hash table with prefix of length NGram - 1 as key,
       //                  and list of last word of NGram as value) for fast matching.
-      if (ngram_size_ == 1 || prefix == sequence.subspan(j, prefix_length)) {
+      if (ngram_size_ == 1 || SpanEq(prefix, sequence.subspan(j, prefix_length))) {
         blocked_word_ids.insert(sequence[static_cast<gsl::index>(j) + prefix_length]);
       }
     }

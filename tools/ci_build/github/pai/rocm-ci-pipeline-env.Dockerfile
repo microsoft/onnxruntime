@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.3_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
 
 WORKDIR /stage
 
@@ -33,7 +33,6 @@ RUN pip install \
       sacremoses \
       scipy \
       scikit-learn \
-      sklearn \
       tokenizers \
       sentencepiece \
       dill==0.3.4 \
