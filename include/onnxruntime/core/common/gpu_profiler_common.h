@@ -358,8 +358,8 @@ class GPUProfilerBase : public EpProfiler {
       while (event_iter != event_end &&
              (event_iter->ts < ts ||
               (event_iter->ts == ts &&
-              (event_iter + 1) != event_end &&
-              (event_iter + 1)->ts == ts))) {
+               (event_iter + 1) != event_end &&
+               (event_iter + 1)->ts == ts))) {
         merged_events.emplace_back(*event_iter);
         ++event_iter;
       }
@@ -413,7 +413,7 @@ class GPUProfilerBase : public EpProfiler {
   uint64_t client_handle_;
   TimePoint profiling_start_time_;
 
-public:
+ public:
   virtual bool StartProfiling(TimePoint profiling_start_time) override {
     auto& manager = TManager::GetInstance();
     manager.StartLogging();

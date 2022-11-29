@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include <map>
 #include <string>
 #include <iostream>
@@ -25,5 +24,5 @@ CudaProfiler::~CudaProfiler() {
 
 #endif /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000 */
 
-} // namespace onnxruntime
-} // namespace profiling
+}  // namespace profiling
+}  // namespace onnxruntime
