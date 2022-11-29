@@ -18,7 +18,7 @@ void DnnlConcat::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   for (size_t i = IN_DATA_0; i < node.InputCount(); ++i) {
     const auto& input_tensor = node.Input(static_cast<int>(IN_DATA_0 + i));
     if (input_rank == -1) {
-      // Tensor rank is assumed to be the same for all inputs          
+      // Tensor rank is assumed to be the same for all inputs
       const auto tensor_rank = static_cast<int64_t>(input_tensor.Dim().size());
       if (tensor_rank > 0) {
         input_rank = tensor_rank;
@@ -28,7 +28,7 @@ void DnnlConcat::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     src_mds.push_back(src_mem.get_desc());
   }
 
-  auto axis = GetAxis(node, std::max(input_rank, 0L));
+  auto axis = GetAxis(node, input_rank != -1 ? input_rank : 0);
 
   // Create primitive descriptor
   auto concat_pd = dnnl::concat::primitive_desc(axis, src_mds, dnnl_engine);
@@ -44,24 +44,24 @@ void DnnlConcat::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Create primitive arguments
   std::unordered_map<int, dnnl::memory> concat_args;
   for (int n = 0; n < static_cast<int>(concat_src_mems.size()); ++n)
-      concat_args.insert({DNNL_ARG_MULTIPLE_SRC + n, concat_src_mems[n]});
-  concat_args.insert({DNNL_ARG_DST, concat_dst_mem});  
+    concat_args.insert({DNNL_ARG_MULTIPLE_SRC + n, concat_src_mems[n]});
+  concat_args.insert({DNNL_ARG_DST, concat_dst_mem});
 
   // Create and execute primitive
-  auto concat_op = dnnl::concat(concat_pd);  
+  auto concat_op = dnnl::concat(concat_pd);
 
   sp.AddPrimitive(concat_op, concat_args);
-  sp.SetMemory(node.Output(OUT_CONCAT), concat_dst_mem);  
+  sp.SetMemory(node.Output(OUT_CONCAT), concat_dst_mem);
 }
 
 int64_t DnnlConcat::GetAxis(DnnlNode& node, int64_t input_rank) {
   auto axis_attr = node.Attributes().find("axis");
-  ORT_ENFORCE(axis_attr != node.Attributes().end(), 
-    "Axis attribute is not provided");
+  ORT_ENFORCE(axis_attr != node.Attributes().end(),
+              "Axis attribute is not provided");
   ORT_ENFORCE(axis_attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT,
-    "Axis value is not an integer");
+              "Axis value is not an integer");
 
-  int64_t signed_axis = axis_attr->second().i();  
+  int64_t signed_axis = axis_attr->second().i();
   if (signed_axis < 0) {
     signed_axis += input_rank;
   }
