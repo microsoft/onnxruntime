@@ -154,7 +154,7 @@ void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size
   // In the BufferCompleted callback, we pass the returned buffer into a ProfilerActivityBuffer
   // object, which then assumes ownership of the buffer. RAII semantics then delete/free the
   // buffer whenever the ProfilerActivityBuffer is destroyed.
-  auto buf = new char[kActivityBufferSize]
+  auto buf = new char[kActivityBufferSize];
   *size = kActivityBufferSize;
   *maxNumRecords = 0;
   *buffer = reinterpret_cast<uint8_t*>(buf);
@@ -163,7 +163,7 @@ void CUPTIAPI CUPTIManager::BufferRequested(uint8_t** buffer, size_t* size, size
 void CUPTIAPI CUPTIManager::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t valid_size) {
   auto& instance = GetInstance();
   std::unique_ptr<char[]> buffer_ptr;
-  buffer_ptr.reset(buffer);
+  buffer_ptr.reset(reinterpret_cast<char*>(buffer));
   instance.EnqueueActivityBuffer(
       ProfilerActivityBuffer::CreateFromPreallocatedBuffer(std::move(buffer_ptr), valid_size));
 }
