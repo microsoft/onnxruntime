@@ -4,27 +4,26 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/cann_kernel.h"
 
 namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-class BatchNorm final : public CannKernel {
+class Cast final : public CannKernel {
  public:
-  BatchNorm(const OpKernelInfo& info)
-      : CannKernel(info) {
-    epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
-
-    is_training_mode_ = info.GetAttrOrDefault<int64_t>("training_mode", 0);
-    ORT_ENFORCE(!is_training_mode_, "only supports inference mode");
+  Cast(const OpKernelInfo& info) : CannKernel(info) {
+    int64_t to;
+    Status status = info.GetAttr("to", &to);
+    ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
+    to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  float epsilon_;
-  int64_t is_training_mode_;
+  ONNX_NAMESPACE::TensorProto_DataType to_;
 };
 
 }  // namespace cann

@@ -4,24 +4,21 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cann/cann_kernel.h"
-#include "core/providers/cpu/nn/conv_attributes.h"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-class Conv final : public CannKernel {
+class Transpose final : public CannKernel, public TransposeBase {
  public:
-  Conv(const OpKernelInfo& info) : CannKernel(info), conv_attrs_(info) {
-    auto pads_size = conv_attrs_.pads.size();
-    ORT_ENFORCE(pads_size % 2 == 0);
+  Transpose(const OpKernelInfo& info) : CannKernel(info), TransposeBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
-
- private:
-  ConvAttributes conv_attrs_;
 };
 
 }  // namespace cann

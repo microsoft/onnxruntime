@@ -1007,6 +1007,10 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 #endif
 
+#if defined(USE_CANN)
+  RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
+#endif
+
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)
