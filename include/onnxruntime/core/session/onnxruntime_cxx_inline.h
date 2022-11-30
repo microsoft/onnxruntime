@@ -1627,9 +1627,9 @@ inline OrtOp* CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
                                     _In_ int version,
                                     _In_opt_ const char** type_constraint_names,
                                     _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                    _In_ int type_constraint_count,
+                                    _In_opt_ int type_constraint_count,
                                     _In_opt_ const OrtOpAttr* const* attr_values,
-                                    _In_ int attr_count,
+                                    _In_opt_ int attr_count,
                                     _In_ int input_count,
                                     _In_ int output_count) {
   OrtOp* ort_op{};
