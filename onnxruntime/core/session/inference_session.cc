@@ -283,6 +283,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         thread_pool_name_ = ss.str();
         to.name = thread_pool_name_.c_str();
         to.set_denormal_as_zero = set_denormal_as_zero;
+        // If the thread pool can use all the processors, then
+        // we set affinity of each thread to each processor.
+        to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
         to.allow_spinning = allow_intra_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;

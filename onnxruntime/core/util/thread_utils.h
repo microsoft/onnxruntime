@@ -13,6 +13,11 @@ struct OrtThreadPoolParams {
   //n: Create a thread pool with n threads.
   int thread_pool_size = 0;
 
+  //If it is true and thread_pool_size = 0, populate the thread affinity information in ThreadOptions.
+  //Otherwise if the thread_options has affinity information, we'll use it and set it.
+  //In the other case, don't set affinity
+  bool auto_set_affinity = false;
+
   //If it is true, the thread pool will spin a while after the queue became empty.
   bool allow_spinning = true;
 

@@ -82,7 +82,7 @@ struct ThreadOptions {
   // that are contained in a given physical core with the same index as the thread. ORT does not set any affinity
   // to the thread that is considered main (the thread that initiates the creation of the TP).
   // The process that owns the thread may consider setting its affinity.
-  std::vector<LogicalProcessors> affinity;
+  std::vector<LogicalProcessors> affinities;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;

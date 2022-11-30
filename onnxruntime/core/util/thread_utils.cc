@@ -52,17 +52,20 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
 
   ThreadOptions to;
   if (options.thread_pool_size <= 0) {  // default
-    to.affinity = Env::Default().GetDefaultThreadAffinities();
-    if (to.affinity.size() <= 1) {
+    auto default_affinities = Env::Default().GetDefaultThreadAffinities();
+    if (default_affinities.size() <= 1) {
       return nullptr;
     }
-    options.thread_pool_size = static_cast<int>(to.affinity.size());
+    options.thread_pool_size = static_cast<int>(default_affinities.size());
+    if (options.auto_set_affinity) {
+      to.affinities = std::move(default_affinities);
+    }
   } else if (!options.affinity_str.empty()) {
-    to.affinity = ReadThreadAffinityConfig(options.affinity_str);
-    ORT_ENFORCE(to.affinity.size() == static_cast<size_t>(options.thread_pool_size) - 1,
+    to.affinities = ReadThreadAffinityConfig(options.affinity_str);
+    ORT_ENFORCE(to.affinities.size() == static_cast<size_t>(options.thread_pool_size) - 1,
                 "Number of affinities must equal to thread pool size minus one");
     // prepend an empty affinity as placeholder for the main thread
-    to.affinity.insert(to.affinity.begin(), LogicalProcessors{});
+    to.affinities.insert(to.affinities.begin(), LogicalProcessors{});
   }
 
   to.set_denormal_as_zero = options.set_denormal_as_zero;

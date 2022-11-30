@@ -89,8 +89,8 @@ class WindowsThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
-    if (narrow<size_t>(index) < thread_options.affinity.size()) {
-      local_param->affinity = thread_options.affinity[index];
+    if (narrow<size_t>(index) < thread_options.affinities.size()) {
+      local_param->affinity = thread_options.affinities[index];
     }
 
     if (custom_create_thread_fn) {
