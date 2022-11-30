@@ -1308,11 +1308,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Set precision flags
     std::string trt_node_name_with_precision = fused_node.Name();
     if (fp16_enable_ && int8_enable_) {
-      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
+      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
       trt_node_name_with_precision += "_fp16_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
     } else if (fp16_enable_) {
-      trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
       trt_node_name_with_precision += "_fp16";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
     } else if (int8_enable_) {
@@ -1739,9 +1739,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
         // Set precision
         if (trt_state->fp16_enable && trt_state->int8_enable) {
-          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
+          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
         } else if (trt_state->fp16_enable) {
-          trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
         } else if (trt_state->int8_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }
