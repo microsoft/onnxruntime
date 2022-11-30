@@ -87,7 +87,7 @@ struct static_cast_int64 {
 };
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context) {
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
@@ -129,28 +129,6 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
         }
       }
       cnn_network = proc.build();
-    }
-
-    //Check for Constant Folding
-    if (!global_context.is_wholly_supported_graph) {
-      ov::pass::ConstantFolding pass_const_obj;
-      try {
-        pass_const_obj.run_on_model(cnn_network);
-      } catch (const Exception& e) {
-          throw std::string(log_tag + " Exception occured during optimization - constant folding : " + std::string(e.what()));
-      } catch (...) {
-          throw std::string(log_tag + "  Exception occured during optimization - constant folding ");
-      }
-      auto& results = const_cast<ov::ResultVector&>(cnn_network.get()->get_results());
-      size_t index = results.size() - 1;
-
-      for (auto it = results.rbegin(); it != results.rend(); ++it) {
-        if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
-          const_outputs_map[(*it)->get_friendly_name()] = const_node;
-          results.erase(results.begin() + index);
-        }
-        --index;
-      }
     }
     #ifndef NDEBUG
     if (IsDebugEnabled()) {

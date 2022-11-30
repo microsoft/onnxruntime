@@ -36,7 +36,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+  ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_);
   OVConfig config;
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -90,7 +90,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 void VADMBackend::StartAsyncInference(Ort::KernelContext& context,
                                       size_t batch_slice_idx, size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
-  
+
   auto graph_input_info = ie_cnn_network_->inputs();
     int input_idx = 0;
     for (auto input_info_iter = graph_input_info.begin();
@@ -105,13 +105,13 @@ void VADMBackend::StartAsyncInference(Ort::KernelContext& context,
           break;
         }
       }
-      // using the input name retrieved from ONNX original to match with the input names returned by OV tensors 
+      // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
       if (input_names.find(onnx_input_name) != input_names.end()) {
           input_name = onnx_input_name;
       } else {
         ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
       }
-      OVTensorPtr graph_input_blob; 
+      OVTensorPtr graph_input_blob;
       graph_input_blob = infer_request->GetTensor(input_name);
       FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
       input_idx++;
@@ -130,7 +130,7 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
 
   // Wait for Async inference completion
   infer_request->WaitRequest();
-  
+
   auto graph_output_info = ie_cnn_network_->outputs();
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
@@ -189,7 +189,7 @@ void VADMBackend::Infer(OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   Ort::KernelContext ctx(context);
-  
+
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   size_t batch_size = 1;

@@ -41,18 +41,6 @@ namespace onnxruntime {
         }
     }
 
-    OVExeNetwork OVCore::ImportModel(const std::string& compiled_blob, std::string hw_target, std::string name) {
-        try {
-            std::ifstream blob_stream_obj(compiled_blob);
-            auto obj = oe.import_model(blob_stream_obj, hw_target, {});
-            return OVExeNetwork(obj);
-        } catch (Exception &e) {
-            throw std::string(log_tag + " Exception while Importing Network for graph: " + name + ": " + e.what());
-        } catch(...) {
-            throw std::string(log_tag + " Exception while Importing Network for graph: " + name);
-        }
-    }
-
     void OVCore::SetCache(std::string cache_dir_path) {
         oe.set_property(ov::cache_dir(cache_dir_path));
     }

@@ -24,15 +24,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-  bool vpu_status = false;
-  std::string model_blob_name;
-  std::string ov_compiled_blobs_dir = "";
-
-  if (hw_target == "MYRIAD")
-    vpu_status = true;
-  if (!ImportBlob(hw_target, vpu_status)) {
   try{
-    ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+    ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_);
   } catch (std::string const & msg) {
       throw msg;
   }
@@ -76,7 +69,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
   #endif
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-  }
+
 
   //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
   //The nireq value can also be configured to any num_of_threads during runtime
@@ -98,23 +91,6 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph
     return true;
   }
   return false;
-}
-
-bool BasicBackend::ImportBlob(std::string hw_target, bool vpu_status) {
-  const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
-  if (vpu_status == true && openvino_ep::backend_utils::UseCompiledNetwork() && !compiled_blob_path.empty() &&
-    openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
-    LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
-     try{
-      exe_network_ = global_context_.ie_core.ImportModel(compiled_blob_path, hw_target, subgraph_context_.subgraph_name);
-    } catch (const char* msg) {
-        throw(msg);
-    }
-    LOGS_DEFAULT(INFO) << log_tag << "Succesfully Created an executable network from a previously exported network";
-    return true;
-  } else {
-    return false;
-  }
 }
 
 void BasicBackend::PopulateConfigValue(OVConfig& config) {
