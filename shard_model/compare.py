@@ -6,6 +6,7 @@ import os
 import pickle
 import argparse
 import time
+import psutil
 
 def modify_model_outputs(model_file, modified_file, output_names):
     ori_model = onnx.load(model_file)
@@ -24,24 +25,10 @@ def modify_model_outputs(model_file, modified_file, output_names):
 
 def run_model(model_file, device_id, inputs, output_names=None):
     so = ort.SessionOptions()
-    sess = ort.InferenceSession(model_file, sess_options=so, providers=[('CUDAExecutionProvider',{'device_id':device_id})])
+    sess = ort.InferenceSession(model_file, sess_options=so, providers=[('ROCMExecutionProvider',{'device_id':device_id})])
 
     res = sess.run(output_names, inputs)
     return res
-
-def speed_benchmark(args, log_prefix, model_file, device_id, inputs, output_names=None):
-    so = ort.SessionOptions()
-    sess = ort.InferenceSession(model_file, sess_options=so, providers=[('CUDAExecutionProvider',{'device_id':device_id})])
-
-    end = time.time()
-    interval = 100
-    for i in range(args.loop_cnt):
-        y = sess.run(output_names, inputs)
-        if i % interval == 0:
-            cost_time = time.time() - end
-            print(f'[{log_prefix}] rank: {device_id} iters: {i} cost: {cost_time} avg: {cost_time/interval}')
-            end = time.time()
-
 
 def main(args):
     local_rank = int(os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK', 0))
@@ -55,10 +42,6 @@ def main(args):
         x = pickle.load(fp)
 
     inputs = {'input_ids': x}
-    if args.benchmark:
-        #speed_benchmark(args, 'origin-model', origin_model_file, local_rank, inputs)
-        speed_benchmark(args, f'rank-{local_rank}', model_file, local_rank, inputs)
-        return
 
     output_names = ['EmbedLayerNormalization_0_output', 'onnx::MatMul_336', 'onnx::Add_338']
     save_mid_output = False
@@ -89,14 +72,13 @@ def main(args):
             print(f'r0 {r0.shape} r1 {r1.shape} is same.')
         else:
             diff = r0 - r1
-            print(f'r0 {r0.shape} r1 {r1.shape} is not same. max: {diff.max()}')
+            rel_diff = diff / r1
+            print(f'r0 {r0.shape} r1 {r1.shape} is not same. max: {diff.max()}, rel-diff: {rel_diff.max()}')
 
 def get_args():
     parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
     parser.add_argument('--model-file', type=str)
     parser.add_argument('--shard-prefix', type=str)
-    parser.add_argument('--loop-cnt', type=int, default=1000)
-    parser.add_argument('--benchmark', action='store_true', default=False)
 
     args = parser.parse_args()
     return args

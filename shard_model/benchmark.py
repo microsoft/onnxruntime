@@ -12,7 +12,7 @@ def setup_session_option():
     so = ort.SessionOptions()
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     so.intra_op_num_threads = psutil.cpu_count(logical=False)
-    so.log_severity_level=4  # 0 for verbose
+    so.log_severity_level = 4 # 0 for verbose
     so.enable_profiling = False
 
     return so
@@ -35,7 +35,7 @@ def main(args):
     inputs = create_input(args)
 
     so = setup_session_option() 
-    sess = ort.InferenceSession(model_file, sess_options=so, providers=[('CUDAExecutionProvider',{'device_id':local_rank})])
+    sess = ort.InferenceSession(model_file, sess_options=so, providers=[('ROCMExecutionProvider',{'device_id':local_rank})])
 
     end = time.time()
     interval = args.interval

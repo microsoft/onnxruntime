@@ -595,8 +595,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
     parser.add_argument('--model-file', type=str)
     parser.add_argument('--shard-prefix', type=str)
-    parser.add_argument('--allgather', action='store_true', default=False)
-    parser.add_argument('--megatron', action='store_true', default=False)
+    parser.add_argument('--mode', type=str, default='allreduce')
 
     args = parser.parse_args()
     return args
@@ -604,8 +603,8 @@ def get_args():
 if __name__ == '__main__':
     args = get_args()
     model = onnx.load(args.model_file)
-    if args.allgather:
-        shard_model(model, allgather_gemm_shard_spec, args.shard_prefix, shard,12)
-    else:
+    if args.mode == 'allreduce':
         shard_model(model, megatron_shard_spec, args.shard_prefix, shard,12)
+    elif args.mode == 'allgather':
+        shard_model(model, allgather_gemm_shard_spec, args.shard_prefix, shard,12)
     print('Shard Done')
