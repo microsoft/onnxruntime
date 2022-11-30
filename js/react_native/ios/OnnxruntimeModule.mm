@@ -113,7 +113,7 @@ RCT_EXPORT_METHOD(run
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
  - (NSDictionary *)loadModel:(NSString *)modelPath options:(NSDictionary *)options {
-    return [self loadModelImpl:modelPath modelDataBuffer:nil options:options];
+    return [self loadModelImpl:modelPath modelData:nil options:options];
 }
 
 /**
@@ -123,7 +123,7 @@ RCT_EXPORT_METHOD(run
  * @param options onnxruntime session options
  */
  - (NSDictionary *)loadModelFromBuffer:(NSData *)modelData options:(NSDictionary *)options {
-    return [self loadModelImpl:"" modelDataBuffer:modelData options:options];
+    return [self loadModelImpl:@"" modelData:modelData options:options];
 }
 
 /**
@@ -134,7 +134,7 @@ RCT_EXPORT_METHOD(run
  * @param options onnxruntime session options.
  */
 - (NSDictionary *)loadModelImpl:(NSString *)modelPath
-                modelDataBuffer:(NSData *)modelData
+                      modelData:(NSData *)modelData
                         options:(NSDictionary *)options {
   SessionInfo *sessionInfo = nullptr;
   sessionInfo = new SessionInfo();
