@@ -236,39 +236,41 @@ void RunBiasSoftmaxDropoutFusionTest(bool is_bitmask_dropout, bool is_softmax_gr
   };
 
   auto pre_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)[(is_bitmask_dropout ? ms_domain_prefix : "") + dropout_op_type], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)[ms_domain_prefix + dropout_grad_op_type], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)[ms_domain_prefix + softmax_grad_op_typ], 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[(is_bitmask_dropout ? ms_domain_prefix : "") + dropout_op_type] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[ms_domain_prefix + dropout_grad_op_type] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[ms_domain_prefix + softmax_grad_op_typ] == 1);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 0);
-    ASSERT_EQ(CountOpsInGraph(graph)[(is_bitmask_dropout ? ms_domain_prefix : "") + dropout_op_type], 0);
-    ASSERT_EQ(CountOpsInGraph(graph)[ms_domain_prefix + dropout_grad_op_type], 0);
-    ASSERT_EQ(CountOpsInGraph(graph)[ms_domain_prefix + softmax_grad_op_typ], 0);
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmaxDropout"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxDropoutGrad"], 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[(is_bitmask_dropout ? ms_domain_prefix : "") + dropout_op_type] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[ms_domain_prefix + dropout_grad_op_type] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[ms_domain_prefix + softmax_grad_op_typ] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.BiasSoftmaxDropout"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SoftmaxDropoutGrad"] == 1);
     for (auto& node : graph.Nodes()) {
       if (node.OpType() == "BiasSoftmaxDropout") {
         auto& attrs = node.GetAttributes();
-        ASSERT_TRUE(attrs.find("axis") != attrs.end());
-        ASSERT_TRUE(attrs.find("is_inner_broadcast") != attrs.end());
-        ASSERT_TRUE(attrs.find("seed") != attrs.end());
-        ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
-        ASSERT_EQ(0, static_cast<int>(attrs.at("is_inner_broadcast").i()));
-        ASSERT_EQ(42, static_cast<int>(attrs.at("seed").i()));
+        TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("is_inner_broadcast") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("seed") != attrs.end());
+        TEST_RETURN_IF_NOT(6 == static_cast<int>(attrs.at("axis").i()));
+        TEST_RETURN_IF_NOT(0 == static_cast<int>(attrs.at("is_inner_broadcast").i()));
+        TEST_RETURN_IF_NOT(42 == static_cast<int>(attrs.at("seed").i()));
       } else if (node.OpType() == "SoftmaxDropoutGrad") {
         auto& attrs = node.GetAttributes();
-        ASSERT_TRUE(attrs.find("axis") != attrs.end());
-        ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
+        TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+        TEST_RETURN_IF_NOT(6 == static_cast<int>(attrs.at("axis").i()));
       }
     }
+    return Status::OK();
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxDropoutFusion>();
-  TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
-                       pre_graph_checker, post_graph_checker);
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxDropoutFusion) {
@@ -339,26 +341,28 @@ void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias
   };
 
   auto pre_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)[bias_op_type], 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[bias_op_type] == 1);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)[bias_op_type], 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)[bias_op_type] == 0);
     for (auto& node : graph.Nodes()) {
       if (node.OpType() == "SoftmaxCrossEntropyLossInternalGrad") {
         auto& attrs = node.GetAttributes();
-        ASSERT_TRUE(attrs.find("reduction") != attrs.end());
-        ASSERT_EQ(reduction, attrs.at("reduction").s());
-        ASSERT_EQ(6, static_cast<int>(node.InputDefs().size()));
+        TEST_RETURN_IF_NOT(attrs.find("reduction") != attrs.end());
+        TEST_RETURN_IF_NOT(reduction == attrs.at("reduction").s());
+        TEST_RETURN_IF_NOT(6 == static_cast<int>(node.InputDefs().size()));
       }
     }
+    return Status::OK();
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-  TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
-                       pre_graph_checker, post_graph_checker);
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 void RunSceLossGradBiasFusionTestWrapper(int opset_version, const logging::Logger& logger) {
@@ -384,13 +388,15 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion) {
 
 TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   auto pre_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)["Sum"], 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sum"] == 1);
+    return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
-    ASSERT_EQ(CountOpsInGraph(graph)["Sum"], 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sum"] == 1);
+    return Status::OK();
   };
 
   // Sum has more than 2 inputs.
@@ -410,8 +416,8 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // SceGrad has more than 1 consumers.
@@ -432,8 +438,8 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Sum inputs shape mismatch.
@@ -452,8 +458,8 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Sum inputs shape mismatch.
@@ -475,8 +481,8 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 
   // Reshape output has more than 1 consumers.
@@ -500,8 +506,8 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                         pre_graph_checker, post_graph_checker);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                          pre_graph_checker, post_graph_checker));
   }
 }
 

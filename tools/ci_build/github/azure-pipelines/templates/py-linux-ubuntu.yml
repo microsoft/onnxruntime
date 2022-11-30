@@ -30,6 +30,8 @@ jobs:
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ parameters.base_image }} --build-arg PLATFORM=${{ parameters.arch }}"
         Repository: onnxruntimecpubuildubuntu20python${{ parameters.arch }}
+        ${{ if eq(parameters.arch, 'aarch64') }}:
+            UpdateDepsTxt: false
 
     - task: CmdLine@2
       displayName: 'Build Python Wheel'

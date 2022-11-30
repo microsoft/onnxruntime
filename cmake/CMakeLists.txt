@@ -160,6 +160,7 @@ option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly b
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING "Enable this option to turn on api exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
@@ -362,8 +363,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
     set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
-    # do not generate any debug info. This helps to accelerate building process and reduce binary size.
-    set(CMAKE_CXX_FLAGS_DEBUG "-g0")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
@@ -797,6 +797,23 @@ endif()
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
+include(external/helper_functions.cmake)
+
+file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
+foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
+  # Lines start with "#" are comments
+  if(NOT ONNXRUNTIME_DEP MATCHES "^#")
+    # The first column is name
+    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
+    # The second column is URL
+    # The URL below may be a local file path or an HTTPS URL
+    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_URL)
+    set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
+    # The third column is SHA1 hash value
+    set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
+  endif()
+endforeach()
+
 #protobuf begin
 
 #Here we support two build mode:
@@ -804,67 +821,69 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
-if (onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(Protobuf)
-endif()
-if (Protobuf_FOUND)
-  message("Use protobuf from preinstalled system lib")
-  if (onnxruntime_USE_FULL_PROTOBUF)
-    set(PROTOBUF_LIB protobuf::libprotobuf)
-    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
-    # variable exists and may leave it in a wrong state.
-    if (NOT Protobuf_USE_STATIC_LIBS)
-      # ONNX Runtime itself can work in such a setting but it may cause compatibility issues
-      # when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
-      message(WARNING "Use Protobuf_USE_STATIC_LIBS to ensure compatibility with other ONNX ecosystem components.")
-    endif()
-  else()
-    set(PROTOBUF_LIB protobuf::libprotobuf-lite)
-  endif()
+if(Patch_FOUND)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
 else()
-  message("Use protobuf from submodule")
-  # use protobuf as a submodule
-  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
-    set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
-  endif()
-  if (onnxruntime_DISABLE_RTTI)
-    set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
-  endif()
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
+endif()
 
+FetchContent_Declare(
+  Protobuf
+  URL ${DEP_URL_protobuf}
+  URL_HASH SHA1=${DEP_SHA1_protobuf}
+  SOURCE_SUBDIR  cmake
+  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
+  FIND_PACKAGE_ARGS NAMES Protobuf
+)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
+  set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
+endif()
+if (onnxruntime_DISABLE_RTTI)
+  set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
+endif()
+
+onnxruntime_fetchcontent_makeavailable(Protobuf)
+if(Protobuf_FOUND)
+  message("Protobuf version: ${Protobuf_VERSION}")
+else()
+  # Adjust warning flags
   if (TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-    add_executable(protobuf::protoc ALIAS protoc)
+    if (NOT MSVC)
+      target_compile_options(libprotoc PRIVATE "-w")
+    endif()
   endif()
   if (TARGET protoc)
+    add_executable(protobuf::protoc ALIAS protoc)
+    if (NOT MSVC)
+      target_compile_options(protoc PRIVATE "-w")
+    endif()
     set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
     get_target_property(PROTOC_OSX_ARCH protoc OSX_ARCHITECTURES)
     if (PROTOC_OSX_ARCH)
-        if (${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST PROTOC_OSX_ARCH)
-           message("protoc can run")
-        else()
-           list(APPEND PROTOC_OSX_ARCH ${CMAKE_HOST_SYSTEM_PROCESSOR})
-           set_target_properties(protoc PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
-           set_target_properties(libprotoc PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
-           set_target_properties(libprotobuf PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
-        endif()
+      if (${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST PROTOC_OSX_ARCH)
+        message("protoc can run")
+      else()
+        list(APPEND PROTOC_OSX_ARCH ${CMAKE_HOST_SYSTEM_PROCESSOR})
+        set_target_properties(protoc PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+        set_target_properties(libprotoc PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
+        set_target_properties(libprotobuf PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
+      endif()
     endif()
+   endif()
+  if (TARGET libprotobuf AND NOT MSVC)
+    target_compile_options(libprotobuf PRIVATE "-w")
   endif()
-  if (onnxruntime_USE_FULL_PROTOBUF)
-    set(PROTOBUF_LIB libprotobuf)
-  else()
-    set(PROTOBUF_LIB libprotobuf-lite)
+  if (TARGET libprotobuf-lite AND NOT MSVC)
+    target_compile_options(libprotobuf-lite PRIVATE "-w")
   endif()
 endif()
-
-if (UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
-  #https://github.com/protocolbuffers/protobuf/issues/5923
-  target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
-endif()
-
-if (MSVC AND NOT onnxruntime_PREFER_SYSTEM_LIB)
-  target_compile_options(${PROTOBUF_LIB} PRIVATE "/wd5054")
+if (onnxruntime_USE_FULL_PROTOBUF)
+  set(PROTOBUF_LIB protobuf::libprotobuf)
+else()
+  set(PROTOBUF_LIB protobuf::libprotobuf-lite)
 endif()
 
 include(protobuf_function.cmake)
@@ -1149,8 +1168,15 @@ else()
     list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
   endif()
 
-  if (HAS_ENUM_CONSTEXPR_CONVERSION)
-    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
+  #see:https://reviews.llvm.org/D131307
+  #It was intended that the 'enum-constexpr-conversion' type warnings can not be silenced by -w
+  if(HAS_ENUM_CONSTEXPR_CONVERSION AND NOT Protobuf_FOUND)
+    if (TARGET libprotobuf)
+      target_compile_options(libprotobuf PRIVATE "-Wno-enum-constexpr-conversion")
+    endif()
+    if (TARGET libprotobuf-lite)
+      target_compile_options(libprotobuf-lite PRIVATE "-Wno-enum-constexpr-conversion")
+    endif()
   endif()
 endif()
 
@@ -1404,6 +1430,7 @@ function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
         target_include_directories(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_COMPILE_DEFINITIONS>)
+        target_sources(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_SOURCES>)
     endforeach()
 endfunction()
 
@@ -1569,8 +1596,21 @@ else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
 
+if(Patch_FOUND)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+else()
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
+endif()
+
+FetchContent_Declare(
+  onnx
+  URL ${DEP_URL_onnx}
+  URL_HASH SHA1=${DEP_SHA1_onnx}
+  PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+)
+
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(onnx)
 else()
   include(onnx_minimal)
 endif()

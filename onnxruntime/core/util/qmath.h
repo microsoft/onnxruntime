@@ -5,7 +5,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-
+#include "core/common/narrow.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -51,12 +51,12 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
   std::ptrdiff_t block_size;
   std::ptrdiff_t num_blocks;
   if (concurrency::ThreadPool::ShouldParallelize(thread_pool) && num_of_elements > granularity) {
-    block_size = (num_of_elements + MAX_DEGREE_OF_PAR_FOR_MINMAX - 1) / MAX_DEGREE_OF_PAR_FOR_MINMAX;
+    block_size = onnxruntime::narrow<std::ptrdiff_t>((num_of_elements + MAX_DEGREE_OF_PAR_FOR_MINMAX - 1) / MAX_DEGREE_OF_PAR_FOR_MINMAX);
     block_size = (block_size + granularity - 1) / granularity * granularity;
-    num_blocks = (num_of_elements + block_size - 1) / block_size;
+    num_blocks = onnxruntime::narrow<std::ptrdiff_t>((num_of_elements + block_size - 1) / block_size);
   } else {
     num_blocks = 1;
-    block_size = num_of_elements;
+    block_size = onnxruntime::narrow<std::ptrdiff_t>(num_of_elements);
   }
 
   for (int i = 0; i < num_blocks; i++) {
