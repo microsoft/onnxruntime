@@ -1,6 +1,5 @@
-import numpy as np
 import onnx
-from onnx import OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 # inputs and outputs
 hidden = 1024
@@ -18,9 +17,9 @@ inputs = [
     helper.make_tensor_value_info("add4.bias", TensorProto.FLOAT16, [hidden]),
     helper.make_tensor_value_info("layer_norm1.weight", TensorProto.FLOAT, [hidden]),
     helper.make_tensor_value_info("layer_norm1.bias", TensorProto.FLOAT, [hidden]),
-    helper.make_tensor_value_info("matmul7.weight", TensorProto.FLOAT16, [hidden, hidden*4]),
-    helper.make_tensor_value_info("add7.bias", TensorProto.FLOAT16, [hidden*4]),
-    helper.make_tensor_value_info("matmul8.weight", TensorProto.FLOAT16, [hidden*4, hidden]),
+    helper.make_tensor_value_info("matmul7.weight", TensorProto.FLOAT16, [hidden, hidden * 4]),
+    helper.make_tensor_value_info("add7.bias", TensorProto.FLOAT16, [hidden * 4]),
+    helper.make_tensor_value_info("matmul8.weight", TensorProto.FLOAT16, [hidden * 4, hidden]),
     helper.make_tensor_value_info("add8.bias", TensorProto.FLOAT16, [hidden]),
     helper.make_tensor_value_info("layer_norm2.weight", TensorProto.FLOAT, [hidden]),
     helper.make_tensor_value_info("layer_norm2.bias", TensorProto.FLOAT, [hidden]),
@@ -34,7 +33,7 @@ outputs = [
 
 initializers = [
     helper.make_tensor("scalar_float_0.1", TensorProto.FLOAT, [], [0.1]),
-    helper.make_tensor("scalar_float_0", TensorProto.FLOAT, [], [0.]),
+    helper.make_tensor("scalar_float_0", TensorProto.FLOAT, [], [0.0]),
     helper.make_tensor("scalar_float16_8", TensorProto.FLOAT16, [], [8]),
     helper.make_tensor("scalar_bool_true", TensorProto.BOOL, [], [1]),
     helper.make_tensor("scalar_float_1", TensorProto.FLOAT, [], [1]),
@@ -47,6 +46,10 @@ initializers = [
     helper.make_tensor("single_value_1d_int_16", TensorProto.INT64, [1], [head]),
     helper.make_tensor("single_value_1d_int_64", TensorProto.INT64, [1], [hidden // head]),
     helper.make_tensor("single_value_1d_int_1024", TensorProto.INT64, [1], [hidden]),
+    helper.make_tensor("shape1", TensorProto.INT64, [4], [0, 0, 16, 64]),
+    helper.make_tensor("shape2", TensorProto.INT64, [4], [0, 0, 16, 64]),
+    helper.make_tensor("shape3", TensorProto.INT64, [4], [0, 0, 16, 64]),
+    helper.make_tensor("shape4", TensorProto.INT64, [3], [0, 0, 1024]),
 ]
 
 # nodes
@@ -58,56 +61,17 @@ nodes = [
     ## left branch
     helper.make_node("MatMul", ["c1_out", "matmul1.weight"], ["m1_out"], "m1"),
     helper.make_node("Add", ["add1.bias", "m1_out"], ["a1_out"], "a1"),
-    helper.make_node("Shape", ["a1_out"], ["shape1_out"], "shape1"),
-    helper.make_node("Gather", ["shape1_out", "scalar_int_0"], ["gather1_out"], "gather1"),
-    helper.make_node("Unsqueeze", ["gather1_out", "single_value_1d_int_0"], ["unsqueeze1_out"], "unsqueeze1"),
-    helper.make_node("Gather", ["shape1_out", "scalar_int_1"], ["gather2_out"], "gather2"),
-    helper.make_node("Unsqueeze", ["gather2_out", "single_value_1d_int_0"], ["unsqueeze2_out"], "unsqueeze2"),
-    helper.make_node(
-        "ConcatTraining",
-        ["unsqueeze1_out", "unsqueeze2_out", "single_value_1d_int_16", "single_value_1d_int_64"],
-        ["concattraining1_out", "concattraining1_length"],
-        "concattraining1",
-        axis=0,
-        domain="com.microsoft",
-    ),
-    helper.make_node("Reshape", ["a1_out", "concattraining1_out"], ["reshape1_out"], "reshape1"),
+    helper.make_node("Reshape", ["a1_out", "shape1"], ["reshape1_out"], "reshape1"),
     helper.make_node("Transpose", ["reshape1_out"], ["transpose1_out"], name="transpose1", perm=[0, 2, 1, 3]),
     ## middle branch
     helper.make_node("MatMul", ["c1_out", "matmul2.weight"], ["m2_out"], "m2"),
     helper.make_node("Add", ["add2.bias", "m2_out"], ["a2_out"], "a2"),
-    helper.make_node("Shape", ["a2_out"], ["shape2_out"], "shape2"),
-    helper.make_node("Gather", ["shape2_out", "scalar_int_0"], ["gather3_out"], "gather3"),
-    helper.make_node("Unsqueeze", ["gather3_out", "single_value_1d_int_0"], ["unsqueeze3_out"], "unsqueeze3"),
-    helper.make_node("Gather", ["shape2_out", "scalar_int_1"], ["gather4_out"], "gather4"),
-    helper.make_node("Unsqueeze", ["gather4_out", "single_value_1d_int_0"], ["unsqueeze4_out"], "unsqueeze4"),
-    helper.make_node(
-        "ConcatTraining",
-        ["unsqueeze3_out", "unsqueeze4_out", "single_value_1d_int_16", "single_value_1d_int_64"],
-        ["concattraining2_out", "concattraining2_length"],
-        "concattraining2",
-        axis=0,
-        domain="com.microsoft",
-    ),
-    helper.make_node("Reshape", ["a2_out", "concattraining2_out"], ["reshape2_out"], "reshape2"),
+    helper.make_node("Reshape", ["a2_out", "shape2"], ["reshape2_out"], "reshape2"),
     helper.make_node("Transpose", ["reshape2_out"], ["transpose2_out"], name="transpose2", perm=[0, 2, 1, 3]),
     ## right banch
     helper.make_node("MatMul", ["c1_out", "matmul3.weight"], ["m3_out"], "m3"),
     helper.make_node("Add", ["add3.bias", "m3_out"], ["a3_out"], "a3"),
-    helper.make_node("Shape", ["a3_out"], ["shape3_out"], "shape3"),
-    helper.make_node("Gather", ["shape3_out", "scalar_int_0"], ["gather5_out"], "gather5"),
-    helper.make_node("Unsqueeze", ["gather5_out", "single_value_1d_int_0"], ["unsqueeze5_out"], "unsqueeze5"),
-    helper.make_node("Gather", ["shape3_out", "scalar_int_1"], ["gather6_out"], "gather6"),
-    helper.make_node("Unsqueeze", ["gather6_out", "single_value_1d_int_0"], ["unsqueeze6_out"], "unsqueeze6"),
-    helper.make_node(
-        "ConcatTraining",
-        ["unsqueeze5_out", "unsqueeze6_out", "single_value_1d_int_16", "single_value_1d_int_64"],
-        ["concattraining3_out", "concattraining3_length"],
-        "concattraining3",
-        axis=0,
-        domain="com.microsoft",
-    ),
-    helper.make_node("Reshape", ["a3_out", "concattraining3_out"], ["reshape3_out"], "reshape3"),
+    helper.make_node("Reshape", ["a3_out", "shape3"], ["reshape3_out"], "reshape3"),
     helper.make_node("Transpose", ["reshape3_out"], ["transpose3_out"], name="transpose3", perm=[0, 2, 3, 1]),
     ## middle branch result computes with right branch result
     helper.make_node("MatMul", ["transpose2_out", "transpose3_out"], ["m4_out"], "m4"),
@@ -125,20 +89,7 @@ nodes = [
     ## left branch result computes with result of `middle branch result computes with right branch result``
     helper.make_node("MatMul", ["c4_out", "transpose1_out"], ["m5_out"], "m5"),
     helper.make_node("Transpose", ["m5_out"], ["tranpose4_out"], name="tranpose4", perm=[0, 2, 1, 3]),
-    helper.make_node("Shape", ["tranpose4_out"], ["shape4_out"], "shape4"),
-    helper.make_node("Gather", ["shape4_out", "scalar_int_0"], ["gather7_out"], "gather7"),
-    helper.make_node("Unsqueeze", ["gather7_out", "single_value_1d_int_0"], ["unsqueeze9_out"], "unsqueeze9"),
-    helper.make_node("Gather", ["shape4_out", "scalar_int_1"], ["gather8_out"], "gather8"),
-    helper.make_node("Unsqueeze", ["gather8_out", "single_value_1d_int_0"], ["unsqueeze10_out"], "unsqueeze10"),
-    helper.make_node(
-        "ConcatTraining",
-        ["unsqueeze9_out", "unsqueeze10_out", "single_value_1d_int_1024"],
-        ["concattraining4_out", "concattraining4_length"],
-        "concattraining4",
-        axis=0,
-        domain="com.microsoft",
-    ),
-    helper.make_node("Reshape", ["tranpose4_out", "concattraining4_out"], ["reshape4_out"], "reshape4"),
+    helper.make_node("Reshape", ["tranpose4_out", "shape4"], ["reshape4_out"], "reshape4"),
     ## attention output
     helper.make_node("MatMul", ["reshape4_out", "matmul4.weight"], ["m6_out"], "m6"),
     helper.make_node("Add", ["add4.bias", "m6_out"], ["a5_out"], "a5"),
@@ -179,44 +130,50 @@ nodes = [
 
 # Shapes that cannot be inferred by onnx shape inference
 value_infos = [
-    helper.make_value_info(name="reshape1_out",
+    helper.make_value_info(
+        name="reshape1_out",
         type_proto=helper.make_tensor_type_proto(
             elem_type=TensorProto.FLOAT16, shape=["batch_size", "sequence_length", head, hidden // head]
         ),
     ),
-    helper.make_value_info(name="reshape2_out",
+    helper.make_value_info(
+        name="reshape2_out",
         type_proto=helper.make_tensor_type_proto(
             elem_type=TensorProto.FLOAT16, shape=["batch_size", "sequence_length", head, hidden // head]
         ),
     ),
-    helper.make_value_info(name="reshape3_out",
+    helper.make_value_info(
+        name="reshape3_out",
         type_proto=helper.make_tensor_type_proto(
             elem_type=TensorProto.FLOAT16, shape=["batch_size", "sequence_length", head, hidden // head]
         ),
     ),
-    helper.make_value_info(name="reshape4_out",
+    helper.make_value_info(
+        name="reshape4_out",
         type_proto=helper.make_tensor_type_proto(
             elem_type=TensorProto.FLOAT16, shape=["batch_size", "sequence_length", hidden]
         ),
     ),
-    helper.make_value_info(name="layernorm1_out",
+    helper.make_value_info(
+        name="layernorm1_out",
         type_proto=helper.make_tensor_type_proto(
             elem_type=TensorProto.FLOAT, shape=["batch_size", "sequence_length", hidden]
         ),
     ),
-    helper.make_value_info(name="layernorm2_out",
+    helper.make_value_info(
+        name="layernorm2_out",
         type_proto=helper.make_tensor_type_proto(
             elem_type=TensorProto.FLOAT, shape=["batch_size", "sequence_length", hidden]
         ),
     ),
-    helper.make_value_info(name="concattraining4_out",
-        type_proto=helper.make_tensor_type_proto(
-            elem_type=TensorProto.INT64, shape=[3]
-        ),
+    helper.make_value_info(
+        name="concattraining4_out",
+        type_proto=helper.make_tensor_type_proto(elem_type=TensorProto.INT64, shape=[3]),
     ),
-    helper.make_value_info(name="biasgelu1_out",
+    helper.make_value_info(
+        name="biasgelu1_out",
         type_proto=helper.make_tensor_type_proto(
-            elem_type=TensorProto.FLOAT16, shape=["batch_size", "sequence_length", hidden*4]
+            elem_type=TensorProto.FLOAT16, shape=["batch_size", "sequence_length", hidden * 4]
         ),
     ),
 ]

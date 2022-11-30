@@ -10,10 +10,8 @@
 #include "core/optimizer/compute_optimizer/passthrough_actors.h"
 #include "core/optimizer/compute_optimizer/compute_optimizer.h"
 
-using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-
-using SlicingInfo = onnxruntime::optimizer::compute_optimizer::SlicingInfo;
+using SliceInfo = onnxruntime::optimizer::compute_optimizer::SliceInfo;
 using SliceOperationReorderHandle = onnxruntime::optimizer::compute_optimizer::SliceOperationReorderHandle;
 
 namespace onnxruntime {
@@ -21,30 +19,6 @@ namespace optimizer {
 namespace compute_optimizer {
 
 static constexpr int kSliceDataInputIndex = 0;
-
-void SliceOperationReorderHandle::RegisterOperators() {
-  allowed_passthrough_ops_.insert({
-      // Things to consider when more operators are added here:
-      // 1. Whether the operator is safe to pass through in term of compute equivalence.
-      //    If optype is not enough to gurantee the equivalence, we need to add a customized pre-check function
-      //    (as LayerNormalization did).
-      // 2. Whether the outputs have the same dim changes if Gather node moves before that operator.
-      // 3. Should all inputs be allowed when track back further (bottom-up);
-      //    if not, add the input index restriction as MatMul did.
-      {"Add", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"BiasGelu", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"BitmaskBiasDropout", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"Cast", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"Div", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"Dropout", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"Gelu", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-      {"LayerNormalization", OpPassThroughConfig({0}, std::make_shared<LayerNormPassThroughActor>())},
-      {"MatMul", OpPassThroughConfig({0}, std::make_shared<MatMulPassThroughActor>())},
-      {"Reshape", OpPassThroughConfig({0}, std::make_shared<ReshapePassThroughActor>())},
-      {"Softmax", OpPassThroughConfig({0}, std::make_shared<LayerNormPassThroughActor>())},
-      {"Transpose", OpPassThroughConfig({}, std::make_shared<TransposePassThroughActor>())},
-  });
-}
 
 bool EnforceNodeAllInputOutputHaveShapes(const Node& node) {
   for (const auto* input_def : node.InputDefs()) {
@@ -62,18 +36,18 @@ bool EnforceNodeAllInputOutputHaveShapes(const Node& node) {
 }
 
 bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
-                                             SlicingInfo& info,
+                                             SliceInfo& info,
                                              const logging::Logger& logger,
-                                             std::deque<SlicingInfo>& queue) {
-  Node& slice_node = *info.gather_node;
+                                             std::deque<SliceInfo>& queue) {
+  Node& slice_node = *info.slice_node;
   const std::string& op_type = current_node.OpType();
-  if (allowed_passthrough_ops_.count(op_type)) {
-    auto& pass_through_config = allowed_passthrough_ops_.at(op_type);
-    LOGS(logger, WARNING) << "Enter reorder handle for node " << current_node.Name() << "(" << op_type << ")";
+  if (GetOpPassThroughConfigMap().count(op_type)) {
+    auto& pass_through_config = GetOpPassThroughConfigMap().at(op_type);
+    LOG_DEBUG_INFO(logger, "Enter reorder handle for node " + current_node.Name() + "(" + op_type + ")");
 
     if (!EnforceNodeAllInputOutputHaveShapes(current_node)) {
-      LOGS(logger, WARNING) << "Some inputs/outputs' shape not found for node " << current_node.Name() << "("
-                            << op_type << ")";
+      LOG_DEBUG_INFO(logger, "Some inputs/outputs' shape not found for node " + current_node.Name() + "(" +
+                                 op_type + ")");
       return false;
     }
 
@@ -82,28 +56,28 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
     if (!pass_through_config.actor->PreCheck(graph, current_node, info, candidate_input_indices,
                                              pass_through_config.input_indices,
                                              input_has_dim_1_for_axis, logger)) {
-      LOGS(logger, WARNING) << "Pre-check failed for " << current_node.Name() << "(" << op_type << ")";
+      LOG_DEBUG_INFO(logger, "Pre-check failed for " + current_node.Name() + "(" + op_type + ")");
       return false;
     }
 
     if (candidate_input_indices.empty()) {
-      LOGS(logger, WARNING) << "Skip handling current node " << current_node.Name() << "(" << op_type
-                            << ") because the requirement is not met.";
+      LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
+                                 ") because the requirement is not met.");
       return false;
     }
 
     // Be noted, once we reach this point after PreCheck, graph modification started, any failure after this should
     // be reported as ERROR.
-    std::vector<SlicingInfo> populated_slicing_infos;  // Slicing infos that are populated into current_node's inputs.
+    std::vector<SliceInfo> populated_slicing_infos;  // Slicing infos that are populated into current_node's inputs.
     populated_slicing_infos.reserve(candidate_input_indices.size());
-    std::unordered_map<int, SlicingInfo> new_gather_infos;
+    std::unordered_map<int, SliceInfo> new_gather_infos;
     for (auto pair : candidate_input_indices) {
       auto input_index = pair.first;  // input index of current_node
       int new_axis = pair.second;     // new axis of current_node's input to be sliced
-      SlicingInfo gather_info = PopulateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
-                                                        logger);
+      SliceInfo gather_info = PropogateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
+                                                       logger);
 
-      ORT_ENFORCE(gather_info.gather_node, "New added gather node should not be null.");
+      ORT_ENFORCE(gather_info.slice_node, "New added gather node should not be null.");
       populated_slicing_infos.push_back(gather_info);
       new_gather_infos[input_index] = gather_info;
     }
@@ -121,23 +95,21 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
     queue.insert(queue.end(), populated_slicing_infos.begin(), populated_slicing_infos.end());
     return true;
   } else {
-    LOGS(logger, WARNING) << "op_type not supported for " << current_node.Name() << "("
-                          << op_type << ")";
+    LOG_DEBUG_INFO(logger, "op_type not supported for " + current_node.Name() + "(" + op_type + ")");
     return false;
   }
 }
 
-SlicingInfo SliceOperationReorderHandle::PopulateSlicingForInput(Graph& graph,
-                                                                 Node& slice_node,
-                                                                 Node& current_node,
-                                                                 int current_node_input_index,
-                                                                 SlicingInfo& info,
-                                                                 int new_axis,
-                                                                 const logging::Logger& logger) {
-  bool keep_dim = !info.is_slice_scalar;
-  LOGS(logger, WARNING) << "PopulateSlicingForInput for Node " << slice_node.Name() << "("
-                        << slice_node.OpType() << ") with input index "
-                        << current_node_input_index << ", keep_dim = " << keep_dim;
+SliceInfo SliceOperationReorderHandle::PropogateSlicingForInput(Graph& graph,
+                                                                Node& slice_node,
+                                                                Node& current_node,
+                                                                int current_node_input_index,
+                                                                SliceInfo& info,
+                                                                int new_axis,
+                                                                const logging::Logger& logger) {
+  LOG_DEBUG_INFO(logger, "PropogateSlicingForInput for Node " + slice_node.Name() + "(" + slice_node.OpType() +
+                             ") with input index " + std::to_string(current_node_input_index) + ", keep_dim = " +
+                             std::to_string(!info.is_slice_scalar));
 
   InlinedVector<NodeArg*> input_args;
   input_args.reserve(slice_node.InputDefs().size());
@@ -182,20 +154,18 @@ SlicingInfo SliceOperationReorderHandle::PopulateSlicingForInput(Graph& graph,
   auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[0];
   int reversed_axis = new_axis - new_slice_out_arg->Shape()->dim_size();
   UpdateSliceOutputShape(*new_slice_out_arg, reversed_axis, info.output_dim_on_axis);
-  return SlicingInfo(new_axis, info.is_slice_scalar, new_slice_node);
+  return SliceInfo(new_axis, info.is_slice_scalar, new_slice_node);
 }
 
 Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& slice_node, Node& current_node,
-                                                          const logging::Logger& logger, SlicingInfo& info) {
-  bool keep_dim = !(info.is_slice_scalar);
-  LOGS(logger, WARNING) << "RemoveOriginSlicingOp target_node " << current_node.Name() << "("
-                        << current_node.OpType() << ") gather_node " << slice_node.Name() << "("
-                        << slice_node.OpType() << "), keep_dim = " << keep_dim;
+                                                          const logging::Logger& logger, SliceInfo& info) {
+  LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp target_node " + current_node.Name() + "(" + current_node.OpType() +
+                             ") slice_node " + slice_node.Name() + "(" + slice_node.OpType() + "), keep_dim = " +
+                             std::to_string(!(info.is_slice_scalar)));
 
   auto slice_input_arg = slice_node.MutableInputDefs()[kSliceDataInputIndex];
   int slice_input_rank = slice_input_arg->Shape()->dim_size();
   int output_index = optimizer_utils::IndexOfNodeOutput(current_node, *slice_input_arg);
-  auto current_node_output_arg = current_node.MutableOutputDefs()[output_index];
   auto slice_op_output_arg = slice_node.MutableOutputDefs()[0];
 
   // Loop all outputs of target node, update the shape accordingly.
@@ -205,13 +175,14 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
   for (size_t i = 0; i < current_node.MutableOutputDefs().size(); ++i) {
     UpdateSliceOutputShape(*current_node.MutableOutputDefs()[i], info.axis - slice_input_rank, info.output_dim_on_axis);
   }
-  LOGS(logger, WARNING) << "RemoveOriginSlicingOp Replace all usage of output " << slice_op_output_arg->Name() << ":0"
-                        << " with " << current_node_output_arg->Name() << ":" << output_index;
+  LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Replace all usage of output " + slice_op_output_arg->Name() + ":0" +
+                             " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
+                             std::to_string(output_index));
 
   for (auto it = slice_node.OutputEdgesBegin(), end = slice_node.OutputEdgesEnd(); it != end; ++it) {
     if (static_cast<size_t>(it->GetSrcArgIndex()) == 0) {
-      LOGS(logger, WARNING) << "RemoveOriginSlicingOp Gather's output edge " << it->GetNode().Name() << "("
-                            << it->GetNode().OpType() << ") input index " << it->GetDstArgIndex();
+      LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Gather's output edge " + it->GetNode().Name() + "(" +
+                                 it->GetNode().OpType() + ") input index " + std::to_string(it->GetDstArgIndex()));
     }
   }
 
@@ -222,8 +193,8 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
   gathernd_consumer_nodes.reserve(gather_origin_consumer_nodes.size());
   for (auto& consumer_node : gather_origin_consumer_nodes) {
     gathernd_consumer_nodes.push_back(graph.GetNode(consumer_node->Index()));
-    LOGS(logger, WARNING) << "RemoveOriginSlicingOp Gather's consumer node " << consumer_node->Name() << "("
-                          << consumer_node->OpType() << ")";
+    LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Gather's consumer node " + consumer_node->Name() + "(" +
+                               consumer_node->OpType() + ")");
   }
   graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), gathernd_consumer_nodes);
 
@@ -235,8 +206,8 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
 }  // namespace compute_optimizer
 }  // namespace optimizer
 
-std::optional<SlicingInfo> ComputeOptimizer::IsSupportedGatherND(Graph& /*graph*/, Node& node,
-                                                                 const logging::Logger& logger) const {
+std::optional<SliceInfo> ComputeOptimizer::IsSupportedGatherND(Graph& /*graph*/, Node& node,
+                                                               const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1, 12, 13}, kOnnxDomain) ||
       !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
     return std::nullopt;
@@ -246,7 +217,7 @@ std::optional<SlicingInfo> ComputeOptimizer::IsSupportedGatherND(Graph& /*graph*
   auto indices_shape = node.MutableInputDefs()[1]->Shape();
   auto gather_out_shape = node.MutableOutputDefs()[0]->Shape();
   if (data_shape == nullptr || indices_shape == nullptr || gather_out_shape == nullptr) {
-    LOGS(logger, WARNING) << "Skip GatherND node " << node.Name() << " due to undefined shape.";
+    LOG_DEBUG_INFO(logger, "Skip GatherND node " + node.Name() + " due to undefined shape.");
     return std::nullopt;
   }
 
@@ -274,11 +245,11 @@ std::optional<SlicingInfo> ComputeOptimizer::IsSupportedGatherND(Graph& /*graph*
     return std::nullopt;
   }
 
-  return SlicingInfo(batch_dims, false, &node);
+  return SliceInfo(batch_dims, false, &node);
 }
 
-std::optional<SlicingInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/, Node& node,
-                                                               const logging::Logger& logger) const {
+std::optional<SliceInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/, Node& node,
+                                                             const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13}, kOnnxDomain) ||
       !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
     return std::nullopt;
@@ -288,7 +259,7 @@ std::optional<SlicingInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/,
   auto indices_shape = node.MutableInputDefs()[1]->Shape();
   auto gather_out_shape = node.MutableOutputDefs()[0]->Shape();
   if (data_shape == nullptr || indices_shape == nullptr || gather_out_shape == nullptr) {
-    LOGS(logger, WARNING) << "Skip Gather node " << node.Name() << " due to undefined shape.";
+    LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to undefined shape.");
     return std::nullopt;
   }
 
@@ -306,12 +277,12 @@ std::optional<SlicingInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/,
     return std::nullopt;
   }
 
-  return SlicingInfo(axis, dim_size == 0, &node);
+  return SliceInfo(axis, dim_size == 0, &node);
 }
 
 Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger)
     const {
-  LOGS(logger, WARNING) << "Enter ComputeOptimizer";
+  LOG_DEBUG_INFO(logger, "Enter ComputeOptimizer");
   bool reordered = false;
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -326,7 +297,7 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    std::optional<SlicingInfo> gather_info;
+    std::optional<SliceInfo> gather_info;
     // Same ideas might apply for GatherElements, Slice, Split, etc..
     gather_info = IsSupportedGatherND(graph, node, logger);
     if (!gather_info.has_value()) {
@@ -344,18 +315,18 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
 
     std::string node_name = node.Name();
     std::string node_type = node.OpType();
-    std::deque<SlicingInfo> gather_queue;
+    std::deque<SliceInfo> gather_queue;
     gather_queue.push_back(gather_info.value());
 
     std::string log_prefix = "Entry node " + node_name + " (" + node_type + ") ";
-    LOGS(logger, WARNING) << log_prefix << " starts re-ordering check";
+    LOG_DEBUG_INFO(logger, log_prefix + " starts re-ordering check");
 
     SliceOperationReorderHandle handle(node_name);
 
     // DON'T operate on `node` once this loop starts, as it may be removed from the graph.
     while (!gather_queue.empty()) {
-      SlicingInfo info = gather_queue.front();
-      Node* gather_node = info.gather_node;
+      SliceInfo info = gather_queue.front();
+      Node* gather_node = info.slice_node;
       gather_queue.pop_front();
       const Node* gathernd_data_producer = graph.GetProducerNode(gather_node->MutableInputDefs()[0]->Name());
       if (gathernd_data_producer == nullptr) {
@@ -363,18 +334,17 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
       Node* input_node = const_cast<Node*>(gathernd_data_producer);
       if (graph.GetConsumerNodes(input_node->MutableOutputDefs()[0]->Name()).size() > 1) {
-        LOGS(logger, WARNING) << log_prefix << " stops at node " << input_node->Name()
-                              << " since multiple consumer found";
+        LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_node->Name() + " since multiple consumer found");
         continue;
       }
 
       auto ret = handle(graph, *input_node, info, logger, gather_queue);
       if (ret) {
-        LOGS(logger, WARNING) << log_prefix << " moves up across node " << input_node->Name();
+        LOG_DEBUG_INFO(logger, log_prefix + " moves up across node " + input_node->Name());
         modified = true;
         reordered = true;
       } else {
-        LOGS(logger, WARNING) << log_prefix << " stops when handling " << input_node->Name();
+        LOG_DEBUG_INFO(logger, log_prefix + " stops when handling " + input_node->Name());
       }
     }
 
@@ -386,8 +356,8 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
   if (modified) {
     graph.SetGraphResolveNeeded();
   }
-  LOGS(logger, WARNING) << "Exit ComputeOptimizer with summary - reorderd_node_count:" << reordered_node_count
-                        << " nodes.";
+  LOGS(logger, INFO) << "Exit ComputeOptimizer with summary - reorderd_node_count:" << reordered_node_count
+                     << " nodes.";
   return Status::OK();
 }
 

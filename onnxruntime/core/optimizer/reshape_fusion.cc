@@ -27,7 +27,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
       continue;
     }
-    LOGS(logger, WARNING) << "ReshapeFusion is called for " << reshape.OpType() << " " << reshape.Name();
+
     const auto* attr_proto = graph_utils::GetNodeAttribute(reshape, "allowzero");
     if ((nullptr != attr_proto) && attr_proto->has_i() && attr_proto->i() != 0) {
       continue;
@@ -35,7 +35,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
 
     if (ReshapeFusion::Fuse_Subgraph(reshape, graph, logger)) {
       fused_count++;
-      LOGS(logger, WARNING) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
+      LOGS(logger, INFO) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
       modified = true;
     }
   }
@@ -134,17 +134,6 @@ static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, con
   return false;
 }
 
-static bool GetAxesFromUnsqueezeNode(const Graph& graph, const Node& unsqueeze, InlinedVector<int64_t>& axes) {
-  if (graph_utils::MatchesOpSinceVersion(unsqueeze, {1, 11})) {
-    return graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes);
-  } else if (graph_utils::MatchesOpSinceVersion(unsqueeze, {13})) {
-    const NodeArg* axes_node_arg = unsqueeze.InputDefs()[1];
-    return optimizer_utils::AppendTensorFromInitializer(graph, *axes_node_arg, axes, true);
-  }
-
-  return true;
-}
-
 /**
  * Find the subgraph that matches [root] -> Shape -> Gather -> Unsqueeze.
  * If checkOneElementOnly is set to true, this function only checks if the matched subgraph produces a
@@ -156,42 +145,32 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13, 15}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
-  LOGS(logger, WARNING) << "Enter Match_One_Element_Output_Subgraph_1 for " << concat.OpType() << " " << concat.Name() << " index: " << index;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    if (graph_utils::MatchesOpSinceVersion(shape, {15})) {
-      const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
-      const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
-      if (!((start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
-        return false;
-      }
-    }
-
-    LOGS(logger, WARNING) << "1111111111111111111111111111111111111";
     InlinedVector<int64_t> axes;
-    if (!(GetAxesFromUnsqueezeNode(graph, unsqueeze, axes) && axes.size() == 1 && axes[0] == 0)) {
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
       return false;
     }
-    LOGS(logger, WARNING) << "222222222222222222";
+
     if (checkOneElementOnly && ReshapeFusion::Is_One_Element_Input(gather, 1)) {
       return true;
     }
-    LOGS(logger, WARNING) << "33333333333333333";
+
     if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), int64_t(shape_value.size()), false)) {
       return false;
     }
-    LOGS(logger, WARNING) << "44444444444444444444444444";
+
     if (!Match_Shape(graph, concat, shape, root_input, logger)) {
       return false;
     }
     return true;
   }
-  LOGS(logger, WARNING) << " Exit Match_One_Element_Output_Subgraph_1 for " << concat.OpType() << " " << concat.Name() << " index: " << index;
+
   return false;
 }
 
@@ -358,18 +337,17 @@ After fusion:
 bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Logger& logger) {
   // The root could be either a graph input or a node so use node arg to compare.
   const NodeArg& root_input = *(reshape.InputDefs()[0]);
-  LOGS(logger, WARNING) << "Enter Fuse_Subgraph for " << reshape.Name();
+
   const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
   if (nullptr == p_concat) {
     return false;
   }
   const Node& concat = *p_concat;
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(concat, "ConcatTraining", {1}, kMSDomain)) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13})) {
     return false;
   }
-  LOGS(logger, WARNING) << "Fuse_Subgraph Concat found for " << concat.Name() << " type " << concat.OpType();
+
   auto concat_input_count = concat.InputArgCount().front();
   if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
     return false;
@@ -378,25 +356,21 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion.
   InlinedVector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
-  LOGS(logger, WARNING) << "Fuse_Subgraph Concat input count " << concat_input_count;
+
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
     if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
-      LOGS(logger, WARNING) << "Fuse_Subgraph Concat input " << i << " is a constant initializer";
       continue;
     }
 
     // Try to find a known pattern that produces one element output
     bool matched = ReshapeFusion::Match_One_Element_Output_Subgraph_1(graph, root_input, concat, i, shape_value, false, logger);
     if (matched) {
-      LOGS(logger, WARNING) << "Fuse_Subgraph Concat input " << i << " 1111111111111";
       shape_value.push_back(0);
       // We have matched the pattern for this input into Concat
       // Proceed to the next input
       continue;
     }
-
-    LOGS(logger, WARNING) << "Fuse_Subgraph Concat input " << i << " 22222222222222222";
 
     // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern
     // fusion. For this input to be a candidate, the number of elements in the input tensor to Concat

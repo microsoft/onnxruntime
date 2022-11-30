@@ -18,79 +18,20 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/optimizer/attention_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/bias_gelu_fusion.h"
-#include "core/optimizer/bias_softmax_fusion.h"
-#include "core/optimizer/cast_elimination.h"
+
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/compute_optimizer/compute_optimizer.h"
-#include "core/optimizer/concat_slice_elimination.h"
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/constant_sharing.h"
-#include "core/optimizer/conv_activation_fusion.h"
-#include "core/optimizer/conv_add_act_fusion.h"
-#include "core/optimizer/conv_add_fusion.h"
-#include "core/optimizer/conv_bn_fusion.h"
-#include "core/optimizer/conv_mul_fusion.h"
-#include "core/optimizer/div_mul_fusion.h"
-#include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/dynamic_quantize_matmul_fusion.h"
-#include "core/optimizer/embed_layer_norm_fusion.h"
-#include "core/optimizer/expand_elimination.h"
-#include "core/optimizer/fast_gelu_fusion.h"
-#include "core/optimizer/gather_fusion.h"
-#include "core/optimizer/gelu_approximation.h"
-#include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gemm_activation_fusion.h"
-#include "core/optimizer/gemm_sum_fusion.h"
-#include "core/optimizer/gemm_transpose_fusion.h"
-#include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/graph_transformer_config.h"
-#include "core/optimizer/graph_transformer_mgr.h"
-#include "core/optimizer/graph_transformer_utils.h"
-#include "core/optimizer/identity_elimination.h"
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/isinf_reducesum_fusion.h"
-#include "core/optimizer/layer_norm_fusion.h"
-#include "core/optimizer/matmul_add_fusion.h"
-#include "core/optimizer/matmul_integer_to_float.h"
-#include "core/optimizer/matmul_scale_fusion.h"
-#include "core/optimizer/matmul_transpose_fusion.h"
-#include "core/optimizer/noop_elimination.h"
-#include "core/optimizer/not_where_fusion.h"
-#include "core/optimizer/propagate_cast_ops.h"
-#include "core/optimizer/quick_gelu_fusion.h"
-#include "core/optimizer/relu_clip_fusion.h"
-#include "core/optimizer/reshape_fusion.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/skip_layer_norm_fusion.h"
-#include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/math.h"
-#include "test/capturing_sink.h"
-#include "test/common/tensor_op_test_utils.h"
+
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
-#include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/temp_dir.h"
-#include "test/util/include/test_utils.h"
-#ifdef ENABLE_TRAINING
-#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#endif
-
-using namespace std;
-using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
@@ -407,7 +348,6 @@ TEST(ComputationReductionTests, GatherRobertaE2E) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ReshapeFusion>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
