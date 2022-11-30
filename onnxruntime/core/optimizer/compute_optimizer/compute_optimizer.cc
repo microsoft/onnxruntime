@@ -74,7 +74,7 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
     for (auto pair : candidate_input_indices) {
       auto input_index = pair.first;  // input index of current_node
       int new_axis = pair.second;     // new axis of current_node's input to be sliced
-      SliceInfo gather_info = PropogateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
+      SliceInfo gather_info = PropagateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
                                                        logger);
 
       ORT_ENFORCE(gather_info.slice_node, "New added gather node should not be null.");
@@ -100,14 +100,14 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
   }
 }
 
-SliceInfo SliceOperationReorderHandle::PropogateSlicingForInput(Graph& graph,
+SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
                                                                 Node& slice_node,
                                                                 Node& current_node,
                                                                 int current_node_input_index,
                                                                 SliceInfo& info,
                                                                 int new_axis,
                                                                 const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "PropogateSlicingForInput for Node " + slice_node.Name() + "(" + slice_node.OpType() +
+  LOG_DEBUG_INFO(logger, "PropagateSlicingForInput for Node " + slice_node.Name() + "(" + slice_node.OpType() +
                              ") with input index " + std::to_string(current_node_input_index) + ", keep_dim = " +
                              std::to_string(!info.is_slice_scalar));
 
@@ -245,7 +245,7 @@ std::optional<SliceInfo> ComputeOptimizer::IsSupportedGatherND(Graph& /*graph*/,
     return std::nullopt;
   }
 
-  return SliceInfo(batch_dims, false, &node);
+  return SliceInfo(static_cast<int>(batch_dims), false, &node);
 }
 
 std::optional<SliceInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/, Node& node,
@@ -264,7 +264,8 @@ std::optional<SliceInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/, N
   }
 
   const auto data_rank = data_shape->dim_size();
-  if (data_rank != 3) {
+  if (data_rank <= 1) {
+    LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to rank <= 1.");
     return std::nullopt;
   }
 
@@ -274,7 +275,13 @@ std::optional<SliceInfo> ComputeOptimizer::IsSupportedGather(Graph& /*graph*/, N
   bool is_single_value_1d_tensor = dim_size != 0 && (dim_size == 1 && utils::HasDimValue(indices_shape->dim(0)) &&
                                                      indices_shape->dim(0).dim_value() == 1);
   if (dim_size != 0 && !is_single_value_1d_tensor) {
-    return std::nullopt;
+    if (dim_size == 1 && utils::HasDimValue(data_shape->dim(axis)) &&
+        data_shape->dim(axis).dim_value() > indices_shape->dim(0).dim_value()) {
+      // Can support.
+    } else {
+      LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to unsupported dim size: " + std::to_string(dim_size));
+      return std::nullopt;
+    }
   }
 
   return SliceInfo(axis, dim_size == 0, &node);
@@ -318,7 +325,8 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
     std::deque<SliceInfo> gather_queue;
     gather_queue.push_back(gather_info.value());
 
-    std::string log_prefix = "Entry node " + node_name + " (" + node_type + ") ";
+    std::string log_prefix = "Entry node " + node_name + " (" + node_type + ") with axis " +
+                             std::to_string(gather_info.value().axis);
     LOG_DEBUG_INFO(logger, log_prefix + " starts re-ordering check");
 
     SliceOperationReorderHandle handle(node_name);

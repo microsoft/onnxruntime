@@ -68,7 +68,7 @@ struct SliceOperationReorderHandle {
       allowed_passthrough_ops.insert({
           // Things to consider when more operators are added here:
           // 1. Whether the operator is safe to pass through in term of compute equivalence.
-          //    If optype is not enough to gurantee the equivalence, we need to add a customized pre-check function
+          //    If optype is not enough to guarantee the equivalence, we need to add a customized pre-check function
           //    (as LayerNormalization did).
           // 2. Whether the outputs have the same dim changes if Gather node moves before that operator.
           // 3. Should all inputs be allowed when track back further (bottom-up);
@@ -81,7 +81,7 @@ struct SliceOperationReorderHandle {
           {"Dropout", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
           {"Gelu", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
           {"LayerNormalization", OpPassThroughConfig({0}, std::make_shared<LayerNormPassThroughActor>())},
-          {"MatMul", OpPassThroughConfig({0}, std::make_shared<MatMulPassThroughActor>())},
+          {"MatMul", OpPassThroughConfig({}, std::make_shared<MatMulPassThroughActor>())},
           {"Reshape", OpPassThroughConfig({0}, std::make_shared<ReshapePassThroughActor>())},
           {"Softmax", OpPassThroughConfig({0}, std::make_shared<LayerNormPassThroughActor>())},
           {"Transpose", OpPassThroughConfig({}, std::make_shared<TransposePassThroughActor>())},
@@ -101,7 +101,7 @@ struct SliceOperationReorderHandle {
   /**
    * @brief Pass through Slicing op from current_node's output to its specific input.
    *
-   * Propogate the slicing operation into current_node's current_input_index-th input, e.g. a slicing op is inserted
+   * Propagate the slicing operation into current_node's current_input_index-th input, e.g. a slicing op is inserted
    * between current_node's current_input_index-th input and current_node. For example, if current_node is Add,
    * and slice_node is a Gather(axis=1, indices=[1]):
    *
@@ -134,13 +134,13 @@ struct SliceOperationReorderHandle {
    * @param graph Graph to iterate.
    * @param slice_node Slicing op node the takes current_node's output as input.
    * @param current_node Current node.
-   * @param current_node_input_index The current_node_input_index-th input to propogate the Slice op pass through.
+   * @param current_node_input_index The current_node_input_index-th input to propagate the Slice op pass through.
    * @param info slice_node's SliceInfo.
    * @param logger Logger.
    * @param new_axis The new axis (for the new Slice op) upon current_node's original current_node_input_index-th input.
    * @return  SliceInfo for new created slicing op.
    */
-  SliceInfo PropogateSlicingForInput(Graph& graph, Node& slice_node, Node& current_node, int current_node_input_index,
+  SliceInfo PropagateSlicingForInput(Graph& graph, Node& slice_node, Node& current_node, int current_node_input_index,
                                      SliceInfo& info, int new_axis, const logging::Logger& logger);
 
   /**

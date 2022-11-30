@@ -48,7 +48,7 @@ static void GatherNDComputationReductionTest(const std::string& op_type,
   std::string op_type_lower = op_type;
   std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(),
                  [](unsigned char c) { return std::tolower(c); });
-  std::string file_path = std::string("testdata/transform/computation_reduction/gathernd_") + op_type_lower +
+  std::string file_path = std::string("testdata/transform/computation_reduction/gathernd/gathernd_") + op_type_lower +
                           std::string(".onnx");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(ToPathString(file_path), model, nullptr, logger));
@@ -248,7 +248,7 @@ static void RunModelWithData(const PathString& model_uri, const std::string sess
 
 TEST(ComputationReductionTests, GatherND_E2E) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
-  auto model_uri = MODEL_FOLDER "computation_reduction/e2e.onnx";
+  auto model_uri = MODEL_FOLDER "computation_reduction/gathernd/e2e.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
   Graph& graph = model->MainGraph();
@@ -337,11 +337,1061 @@ TEST(ComputationReductionTests, GatherND_E2E) {
   }
 }
 
+TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnBatchDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_batch_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 0);
+  }
+
+  // Check the second Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input2");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 0);
+  }
+
+  // Check MatMul(who gathers on the second last dim)'s input and output.
+  {
+    const Node* m5 = graph.GetProducerNode("m1_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "MatMul");
+    EXPECT_EQ(m5->Name(), "m1");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Unsqueeze");
+
+    ASSERT_FALSE(rhs_input == nullptr);
+    EXPECT_EQ(rhs_input->OpType(), "Unsqueeze");
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_matmul_scalar_batch_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+  input_container.AddInput<float>("input2", {batch_size, hidden_size, sequence_length}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherMatmul_SlicingOnBatchDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_batch_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 0);
+  }
+
+  // Check the second Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input2");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 0);
+  }
+
+  // Check MatMul(who gathers on the second last dim)'s input and output.
+  {
+    const Node* m5 = graph.GetProducerNode("m1_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "MatMul");
+    EXPECT_EQ(m5->Name(), "m1");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_FALSE(rhs_input == nullptr);
+    EXPECT_EQ(rhs_input->OpType(), "Gather");
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_matmul_batch_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+  input_container.AddInput<float>("input2", {batch_size, hidden_size, sequence_length}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnLastDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_last_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "MatMul");
+  }
+
+  // Check the second Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input2");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 2);
+  }
+
+  // Check MatMul(who gathers on the second last dim)'s input and output.
+  {
+    const Node* m5 = graph.GetProducerNode("m1_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "MatMul");
+    EXPECT_EQ(m5->Name(), "m1");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_TRUE(lhs_input == nullptr);
+
+    ASSERT_FALSE(rhs_input == nullptr);
+    EXPECT_EQ(rhs_input->OpType(), "Unsqueeze");
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_matmul_scalar_last_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+  input_container.AddInput<float>("input2", {batch_size, hidden_size, sequence_length}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherMatmul_SlicingOnLastDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_last_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "MatMul");
+  }
+
+  // Check the second Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input2");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 2);
+  }
+
+  // Check MatMul(who gathers on the second last dim)'s input and output.
+  {
+    const Node* m5 = graph.GetProducerNode("m1_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "MatMul");
+    EXPECT_EQ(m5->Name(), "m1");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_TRUE(lhs_input == nullptr);
+
+    ASSERT_FALSE(rhs_input == nullptr);
+    EXPECT_EQ(rhs_input->OpType(), "Gather");
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_matmul_last_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+  input_container.AddInput<float>("input2", {batch_size, hidden_size, sequence_length}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnSecondLastDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_second_last_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 1);
+  }
+
+  // Check the second branch.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input2");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "MatMul");
+  }
+
+  // Check MatMul(who gathers on the second last dim)'s input and output.
+  {
+    const Node* m5 = graph.GetProducerNode("m1_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "MatMul");
+    EXPECT_EQ(m5->Name(), "m1");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Unsqueeze");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_matmul_scalar_second_last_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+  input_container.AddInput<float>("input2", {batch_size, hidden_size, sequence_length}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherMatmul_SlicingOnSecondLastDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_second_last_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 1);
+  }
+
+  // Check the second branch.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input2");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "MatMul");
+  }
+
+  // Check MatMul(who gathers on the second last dim)'s input and output.
+  {
+    const Node* m5 = graph.GetProducerNode("m1_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "MatMul");
+    EXPECT_EQ(m5->Name(), "m1");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_matmul_second_last_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+  input_container.AddInput<float>("input2", {batch_size, hidden_size, sequence_length}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnBatchDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_scalar_batch_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 0);
+  }
+
+  {
+    const Node* m5 = graph.GetProducerNode("reshape_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "Reshape");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+    InlinedVector<int64_t> new_shape_const_values;
+    optimizer_utils::AppendTensorFromInitializer(graph, *m5->InputDefs()[1], new_shape_const_values, true);
+    ASSERT_EQ(new_shape_const_values.size(), 3U);
+    ASSERT_EQ(new_shape_const_values[0], 0);
+    ASSERT_EQ(new_shape_const_values[1], 16);
+    ASSERT_EQ(new_shape_const_values[2], 64);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_reshape_scalar_batch_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherReshape_SlicingOnBatchDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_batch_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 0);
+  }
+
+  {
+    const Node* m5 = graph.GetProducerNode("reshape_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "Reshape");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+    InlinedVector<int64_t> new_shape_const_values;
+    optimizer_utils::AppendTensorFromInitializer(graph, *m5->InputDefs()[1], new_shape_const_values, true);
+    ASSERT_EQ(new_shape_const_values.size(), 4U);
+    ASSERT_EQ(new_shape_const_values[0], 0);
+    ASSERT_EQ(new_shape_const_values[1], 0);
+    ASSERT_EQ(new_shape_const_values[2], 16);
+    ASSERT_EQ(new_shape_const_values[3], 64);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_reshape_batch_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_scalar_seqlen_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 1);
+  }
+
+  {
+    const Node* m5 = graph.GetProducerNode("reshape_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "Reshape");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+    InlinedVector<int64_t> new_shape_const_values;
+    optimizer_utils::AppendTensorFromInitializer(graph, *m5->InputDefs()[1], new_shape_const_values, true);
+    ASSERT_EQ(new_shape_const_values.size(), 3U);
+    ASSERT_EQ(new_shape_const_values[0], 0);
+    ASSERT_EQ(new_shape_const_values[1], 16);
+    ASSERT_EQ(new_shape_const_values[2], 64);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_reshape_scalar_seqlen_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_seqlen_dim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 1);
+  }
+
+  {
+    const Node* m5 = graph.GetProducerNode("reshape_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "Reshape");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+    InlinedVector<int64_t> new_shape_const_values;
+    optimizer_utils::AppendTensorFromInitializer(graph, *m5->InputDefs()[1], new_shape_const_values, true);
+    ASSERT_EQ(new_shape_const_values.size(), 4U);
+    ASSERT_EQ(new_shape_const_values[0], 0);
+    ASSERT_EQ(new_shape_const_values[1], 0);
+    ASSERT_EQ(new_shape_const_values[2], 16);
+    ASSERT_EQ(new_shape_const_values[3], 64);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_reshape_seqlen_dim_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 16;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim2) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_seqlen_dim2.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  GraphViewer graph_viewer(graph);
+  // Check the first Gather.
+  {
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
+    ASSERT_EQ(consumers.size(), 1U);
+    const Node* gather_node = consumers[0];
+    ASSERT_EQ(gather_node->OpType(), "Gather");
+
+    auto& attrs = gather_node->GetAttributes();
+    ASSERT_TRUE(attrs.find("axis") != attrs.end());
+
+    auto& axis_attr = attrs.at("axis");
+    auto axis_value = (int)axis_attr.i();
+    ASSERT_EQ(axis_value, 1);
+  }
+
+  {
+    const Node* m5 = graph.GetProducerNode("reshape_out");
+    ASSERT_FALSE(m5 == nullptr);
+    EXPECT_EQ(m5->OpType(), "Reshape");
+
+    const Node* lhs_input = graph.GetProducerNode(m5->InputDefs()[0]->Name());
+    const Node* rhs_input = graph.GetProducerNode(m5->InputDefs()[1]->Name());
+
+    ASSERT_FALSE(lhs_input == nullptr);
+    EXPECT_EQ(lhs_input->OpType(), "Gather");
+
+    ASSERT_TRUE(rhs_input == nullptr);
+    InlinedVector<int64_t> new_shape_const_values;
+    optimizer_utils::AppendTensorFromInitializer(graph, *m5->InputDefs()[1], new_shape_const_values, true);
+    ASSERT_EQ(new_shape_const_values.size(), 4U);
+    ASSERT_EQ(new_shape_const_values[0], 0);
+    ASSERT_EQ(new_shape_const_values[1], 31);
+    ASSERT_EQ(new_shape_const_values[2], 16);
+    ASSERT_EQ(new_shape_const_values[3], 64);
+  }
+
+  // Check result diff after the re-order
+  auto new_model_uri = "gather_reshape_seqlen_dim2_optimized.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
+
+  int64_t batch_size = 8;
+  int64_t sequence_length = 128;
+  int64_t hidden_size = 1024;
+
+  InputContainer input_container;
+
+  input_container.AddInput<float>("input1", {batch_size, sequence_length, hidden_size}, RandomFillFloatVector);
+
+  static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
+      onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
+#endif
+  };
+
+  const std::vector<std::string> output_names = {"final_output"};
+
+  for (auto& provider_type : all_provider_types) {
+    std::vector<OrtValue> expected_ort_values;
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
+                     input_container, output_names, expected_ort_values);
+
+    std::vector<OrtValue> actual_ort_values;
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
+                     provider_type, input_container, output_names, actual_ort_values);
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
 TEST(ComputationReductionTests, GatherRobertaE2E) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   // Be noted, all dropout have ratio be 0.0, to make it easier to compare when running with session.
   // This did not affect the transformer tests, because we did not remove the Dropout of ratio 0. in the middle.
-  auto model_uri = MODEL_FOLDER "computation_reduction/gather_roberta_e2e.onnx";
+  auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_roberta_e2e.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
   Graph& graph = model->MainGraph();

@@ -238,7 +238,7 @@ Node* InsertItermediateNodeOnDestInput(Graph& graph,
 }
 
 TensorShapeProto CreateTensorShapeInsertDimAtAxis(const TensorShapeProto* src_shape, int axis, int64_t dim_value) {
-  ORT_ENFORCE(axis < src_shape->dim_size(), "axis is out of range.", axis, " vs ", src_shape->dim_size());
+  ORT_ENFORCE(axis <= src_shape->dim_size(), "axis is out of range.", axis, " vs ", src_shape->dim_size());
   TensorShapeProto updated_shape;
   int j = 0;
   for (j = 0; j < axis; ++j) {
@@ -320,7 +320,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
   for (size_t i = 0; i < consumer.InputDefs().size(); ++i) {
     auto input_arg = consumer.InputDefs()[i];
     if (input_arg->Name().compare(current_node.MutableOutputDefs()[current_node_output_index]->Name()) == 0) {
-      index = i;
+      index = static_cast<int>(i);
       break;
     }
   }
@@ -474,7 +474,8 @@ bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& target_no
   auto data_input_shape = target_node.InputDefs()[0]->Shape();
   auto shape_input_shape = target_node.InputDefs()[1]->Shape();
   auto output_shape = target_node.OutputDefs()[0]->Shape();
-  if (data_input_shape == nullptr || shape_input_shape == nullptr || shape_input_shape->dim_size() != 1 || output_shape == nullptr) {
+  if (data_input_shape == nullptr || shape_input_shape == nullptr || shape_input_shape->dim_size() != 1 ||
+      output_shape == nullptr) {
     LOG_DEBUG_INFO(logger, "Reshape input/output node arg shape is not valid.");
     return false;
   }
@@ -484,60 +485,70 @@ bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& target_no
     return false;
   }
 
-  auto in_dims = data_input_shape->dim();
-  auto out_dims = output_shape->dim();
-  int in_rank = in_dims.size();
-  int out_rank = out_dims.size();
+  InlinedVector<int64_t> new_shape_const_values;
+  optimizer_utils::AppendTensorFromInitializer(graph, *target_node.InputDefs()[1], new_shape_const_values, true);
+  // Only below two cases are supported for easier updating shape data after propagate slice ops.
+  // 1). If the shape data on slicing axis is zero (e.g. remain the same after slicing), we support it.
+  // 2). Or if the sliced dim value is a constant, we also support it, and can update the shape data directly.
+  // For other cases, it is feasible to support but we don't support for now.
+  if (new_shape_const_values[info.axis] == 0 || info.output_dim_on_axis.has_dim_value()) {
+    auto in_dims = data_input_shape->dim();
+    auto out_dims = output_shape->dim();
+    int in_rank = in_dims.size();
+    int out_rank = out_dims.size();
 
-  int reshape_input_axis = -1;
-  // Match from left to right.
-  for (int i = 0; i < std::min(in_rank, out_rank); ++i) {
-    bool dim_value_eq = in_dims[i].has_dim_value() && out_dims[i].has_dim_value() &&
-                        in_dims[i].dim_value() == out_dims[i].dim_value();
-    bool dim_param_eq = in_dims[i].has_dim_param() && out_dims[i].has_dim_param() &&
-                        in_dims[i].dim_param() == out_dims[i].dim_param();
-    if (dim_value_eq || dim_param_eq) {
-      if (i == info.axis) {
-        reshape_input_axis = i;
-        break;
-      }
-      continue;
-    }
-  }
-
-  if (reshape_input_axis == -1) {
-    // Match from right to left.
+    int reshape_input_axis = -1;
+    // Match from left to right.
     for (int i = 0; i < std::min(in_rank, out_rank); ++i) {
-      int in_index = in_rank - 1 - i;
-      int out_index = out_rank - 1 - i;
-      bool dim_value_eq = in_dims[in_index].has_dim_value() && out_dims[out_index].has_dim_value() &&
-                          in_dims[in_index].dim_value() == out_dims[out_index].dim_value();
-      bool dim_param_eq = in_dims[in_index].has_dim_param() && out_dims[out_index].has_dim_param() &&
-                          in_dims[in_index].dim_param() == out_dims[out_index].dim_param();
+      bool dim_value_eq = in_dims[i].has_dim_value() && out_dims[i].has_dim_value() &&
+                          in_dims[i].dim_value() == out_dims[i].dim_value();
+      bool dim_param_eq = in_dims[i].has_dim_param() && out_dims[i].has_dim_param() &&
+                          in_dims[i].dim_param() == out_dims[i].dim_param();
       if (dim_value_eq || dim_param_eq) {
-        if (out_index == info.axis) {
-          reshape_input_axis = in_index;
+        if (i == info.axis) {
+          reshape_input_axis = i;
           break;
         }
         continue;
       }
     }
+
+    if (reshape_input_axis == -1) {
+      // Match from right to left.
+      for (int i = 0; i < std::min(in_rank, out_rank); ++i) {
+        int in_index = in_rank - 1 - i;
+        int out_index = out_rank - 1 - i;
+        bool dim_value_eq = in_dims[in_index].has_dim_value() && out_dims[out_index].has_dim_value() &&
+                            in_dims[in_index].dim_value() == out_dims[out_index].dim_value();
+        bool dim_param_eq = in_dims[in_index].has_dim_param() && out_dims[out_index].has_dim_param() &&
+                            in_dims[in_index].dim_param() == out_dims[out_index].dim_param();
+        if (dim_value_eq || dim_param_eq) {
+          if (out_index == info.axis) {
+            reshape_input_axis = in_index;
+            break;
+          }
+          continue;
+        }
+      }
+    }
+
+    if (reshape_input_axis == -1) {
+      LOG_DEBUG_INFO(logger, "Cannot find Reshape's input axis for Gather.");
+      return false;
+    }
+
+    target_node_input_indices[0] = reshape_input_axis;
+    return true;
   }
 
-  if (reshape_input_axis == -1) {
-    LOG_DEBUG_INFO(logger, "Cannot find Reshape's input axis for Gather.");
-    return false;
-  }
-
-  target_node_input_indices[0] = reshape_input_axis;
-  return true;
+  return false;
 }
 
 bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int /*target_node_input_index*/,
-                                          int slice_axis, const std::string& entry_node_name,
-                                          const std::unordered_map<int, SliceInfo>& new_gather_infos,
+                                          int slice_axis, const std::string& /*entry_node_name*/,
+                                          const std::unordered_map<int, SliceInfo>& /*new_gather_infos*/,
                                           bool /*input_has_dim_1_for_axis*/, bool is_slice_scalar,
-                                          int input_rank,
+                                          int /*input_rank*/,
                                           ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
                                           const logging::Logger& logger) {
   LOG_DEBUG_INFO(logger, "ReshapePostProcess for Node " + current_node.Name() + "(" + current_node.OpType() + ")");
@@ -585,7 +596,6 @@ bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int 
     return true;
   }
 
-  // TODO: add tests for this branch.
   // If it selected shape is dim value, we can update the shape tensor directory.
   if (output_dim_on_axis.has_dim_value()) {
     new_shape_const_values[slice_axis] = output_dim_on_axis.dim_value();
@@ -594,117 +604,7 @@ bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int 
     return true;
   }
 
-  // TODO: add tests for this branch.
-  // If it selected shape is dim param, it requires multiple Slice, one Shape and one Concat to get the updated shape
-  // tensor.
-  auto slice_shape_func = [&graph](NodeArg* shape, int64_t start, int64_t end) -> Node* {
-    InlinedVector<NodeArg*> new_input_args;
-    ONNX_NAMESPACE::TensorProto starts_const_tensor;
-    starts_const_tensor.set_name(graph.GenerateNodeArgName("starts"));
-    starts_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    starts_const_tensor.add_dims(1);
-    std::vector<int64_t> dim_values{start};
-    starts_const_tensor.set_raw_data(dim_values.data(), sizeof(int64_t));
-    NodeArg* starts_arg = &graph_utils::AddInitializer(graph, starts_const_tensor);
-
-    ONNX_NAMESPACE::TensorProto ends_const_tensor;
-    ends_const_tensor.set_name(graph.GenerateNodeArgName("ends"));
-    ends_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    ends_const_tensor.add_dims(1);
-    std::vector<int64_t> ends_dim_values{end};
-    ends_const_tensor.set_raw_data(ends_dim_values.data(), sizeof(int64_t));
-    NodeArg* ends_arg = &graph_utils::AddInitializer(graph, ends_const_tensor);
-
-    ONNX_NAMESPACE::TensorProto axes_const_tensor;
-    axes_const_tensor.set_name(graph.GenerateNodeArgName("axes"));
-    axes_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    axes_const_tensor.add_dims(1);
-    std::vector<int64_t> axes_dim_values{0};
-    axes_const_tensor.set_raw_data(axes_dim_values.data(), sizeof(int64_t));
-    NodeArg* axes_arg = &graph_utils::AddInitializer(graph, axes_const_tensor);
-
-    new_input_args.push_back(shape);
-    new_input_args.push_back(starts_arg);
-    new_input_args.push_back(ends_arg);
-    new_input_args.push_back(axes_arg);
-
-    InlinedVector<NodeArg*> new_output_args;
-    new_output_args.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("slice_out_compute_opt"),
-                                                        shape->TypeAsProto()));
-
-    // Create the duplicated Gather/GatherND node.
-    Node& first_slice_node = graph.AddNode(graph.GenerateNodeName("slice_to_compute_opt"),
-                                           "Slice",
-                                           "Slice op for compute optimization",
-                                           new_input_args,
-                                           new_output_args);
-
-    auto shape_node = graph.GetProducerNode(shape->Name());
-    if (shape_node) {
-      first_slice_node.SetExecutionProviderType(shape_node->GetExecutionProviderType());
-    }
-    return &first_slice_node;
-  };
-
-  Node* first_slice = nullptr;
-  if (slice_axis > 0) {
-    first_slice = slice_shape_func(current_node.MutableInputDefs()[1], 0, slice_axis);
-    ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(slice_axis);
-    first_slice->MutableOutputDefs()[0]->SetShape(result_shape);
-  }
-
-  Node* second_slice = nullptr;
-  if (slice_axis + 1 <= input_rank - 1) {
-    second_slice = slice_shape_func(current_node.MutableInputDefs()[1], slice_axis + 1, input_rank);
-    ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(input_rank - slice_axis - 1);
-    second_slice->MutableOutputDefs()[0]->SetShape(result_shape);
-  }
-
-  Node* third_slice = nullptr;
-  if (!is_slice_scalar) {
-    int new_gather_input_rank = new_gather_infos.at(0).input_rank;
-    NodeArg* shape_out = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("shape_out"),
-                                                   current_node.MutableInputDefs()[1]->TypeAsProto());
-    Node& new_dim_retrieve_node = graph.AddNode(graph.GenerateNodeName("shape_retrieve"),
-                                                "Shape",
-                                                "Shape op for compute optimization",
-                                                {current_node.MutableInputDefs()[0]},
-                                                {shape_out});
-    // new_dim_retrieve_node.SetExecutionProviderType(target_node.MutableInputDefs()[1]->GetExecutionProviderType());
-    ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(new_gather_input_rank);
-    new_dim_retrieve_node.MutableOutputDefs()[0]->SetShape(result_shape);
-    third_slice = slice_shape_func(shape_out, new_gather_infos.at(0).axis, new_gather_infos.at(0).axis + 1);
-  }
-
-  // Concatenate the two slices.
-  InlinedVector<NodeArg*> new_input_args;
-  if (first_slice) {
-    new_input_args.push_back(first_slice->MutableOutputDefs()[0]);
-  }
-
-  if (third_slice) {
-    new_input_args.push_back(third_slice->MutableOutputDefs()[0]);
-  }
-
-  if (second_slice) {
-    new_input_args.push_back(second_slice->MutableOutputDefs()[0]);
-  }
-
-  int data_input_index = 1;
-
-  InlinedVector<NodeArg*> output_args;
-  output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("intermidiate_output"),
-                                current_node.MutableInputDefs()[data_input_index]->TypeAsProto()));
-  InsertItermediateNodeOnDestInput(graph, current_node, data_input_index, 0, 0 /* new node output index */,
-                                   graph.GenerateNodeName("Concat"), "Concat", "Adapter for Reshape data input",
-                                   new_input_args, output_args, {}, kOnnxDomain, entry_node_name,
-                                   logger);
-
-  return true;
+  ORT_THROW("Fail to update shape data in ReshapePassThroughActor::PostProcess, but this should not be called.");
 }
 
 bool TransposePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& target_node, const SliceInfo& info,
@@ -736,6 +636,84 @@ bool TransposePassThroughActor::PostProcess(Graph& graph, Node& current_node, in
                                       entry_node_name, new_gather_infos, logger);
   }
   return true;
+}
+
+bool MatMulPassThroughActor::PreCheck(const Graph& /*graph*/, const Node& target_node, const SliceInfo& info,
+                                      std::unordered_map<int, int>& target_node_input_indices,
+                                      std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
+                                      const logging::Logger& logger) {
+  LOG_DEBUG_INFO(logger, "Enter MatMulPassThroughActor PreCheck  for node " + target_node.Name());
+  auto lhs_rank = target_node.InputDefs()[0]->Shape()->dim_size();
+  auto rhs_rank = target_node.InputDefs()[1]->Shape()->dim_size();
+
+  if (!(lhs_rank >= 2 && rhs_rank >= 2)) {
+    LOG_DEBUG_INFO(logger, "MatMul input rank lower than 2, skip.");
+    return false;
+  }
+
+  target_node_input_indices.clear();
+  if (info.axis == info.input_rank - 1) {
+    target_node_input_indices[1] = rhs_rank - 1;
+    return true;
+  } else if (info.axis == info.input_rank - 2) {
+    target_node_input_indices[0] = lhs_rank - 2;
+    return true;
+  }
+
+  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(target_node, *info.slice_node->InputDefs()[0]);
+  const NodeArg* gather_data_input_arg = target_node.OutputDefs()[target_node_output_index];
+
+  // For each input of target_node, check whether it meets requirements,
+  // 1). the dimension (if exists) before minimum_rank_to_handle is same as target node's output shape.
+  // 2). or the dimension (if exists) before minimum_rank_to_handle is 1.
+  // Otherwise, we will skip the optimization.
+  auto check_shapes =
+      [&info, gather_data_input_arg, &logger](const NodeArg* input_arg_to_compare,
+                                              bool& fatal_error_found,
+                                              bool& dim_1_for_axis_found) -> std::optional<int> {
+    fatal_error_found = false;
+    auto ret_pair = AreDimsCompatibleBeforeAxisInternal(gather_data_input_arg->Shape(), info.axis,
+                                                        input_arg_to_compare->Shape());
+    if (ret_pair.first == DimCompareRet::ExactEqual) {
+      return info.axis;
+    } else if (ret_pair.first == DimCompareRet::RankTooLow) {
+      LOG_DEBUG_INFO(logger, "Skip " + input_arg_to_compare->Name() + " because its rank is too low.");
+      return std::nullopt;
+    } else if (ret_pair.first == DimCompareRet::NotEqual) {
+      fatal_error_found = true;
+    } else if (ret_pair.first == DimCompareRet::BroadcastableEqual) {
+      if (ret_pair.second) {
+        LOG_DEBUG_INFO(logger,
+                       "Skip " + input_arg_to_compare->Name() + ", whose dim on axis is 1, no need to Gather from.");
+        dim_1_for_axis_found = true;
+        return std::nullopt;
+      }
+      return info.axis;
+    }
+
+    ORT_THROW("Unexpected return value from AreDimsCompatibleBeforeAxisInternal");
+    return std::nullopt;
+  };
+
+  input_has_dim_1_for_axis = false;
+  for (size_t i = 0; i < target_node.InputDefs().size(); ++i) {
+    if (input_dices.size() > 0 && std::find(input_dices.begin(), input_dices.end(), i) == input_dices.end()) {
+      continue;
+    }
+    bool fatal_error_found = false;
+    auto ret = check_shapes(target_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
+    if (fatal_error_found) {
+      LOG_DEBUG_INFO(logger, "Skip for node " + target_node.Name() + " due to input check failure at index " +
+                                 std::to_string(i));
+      return false;
+    } else if (ret.has_value()) {
+      LOG_DEBUG_INFO(logger, "Add new input candidate for node " + target_node.Name() + " at index " +
+                                 std::to_string(i) + " with axis " + std::to_string(ret.value()));
+      target_node_input_indices[static_cast<int>(i)] = ret.value();
+    }
+  }
+
+  return target_node_input_indices.size() > 0;
 }
 
 bool MatMulPassThroughActor::PostProcess(Graph& graph, Node& current_node, int current_node_output_index,

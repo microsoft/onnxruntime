@@ -580,7 +580,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
         ORT_THROW_IF_ERROR(status);
       } catch (std::exception&) {
-        // If exception happens during worker execution, propogate the exception to main thread.
+        // If exception happens during worker execution, propagate the exception to main thread.
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },

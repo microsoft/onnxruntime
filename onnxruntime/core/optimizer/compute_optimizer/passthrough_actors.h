@@ -6,7 +6,7 @@
 using ONNXDimension = ONNX_NAMESPACE::TensorShapeProto_Dimension;
 using TensorShapeProto = ONNX_NAMESPACE::TensorShapeProto;
 
-// #define NEED_LOG_DEBUG_INFO 0
+#define NEED_LOG_DEBUG_INFO 1
 
 #ifdef NEED_LOG_DEBUG_INFO
 #define LOG_DEBUG_INFO(logger, message) LOGS(logger, WARNING) << message
@@ -24,17 +24,17 @@ namespace compute_optimizer {
 struct SliceInfo {
   SliceInfo() = default;
 
-  SliceInfo(int gather_axis, int is_slice_scalar, Node* slice_node)
-      : axis(gather_axis), is_slice_scalar(is_slice_scalar), slice_node(slice_node) {
+  SliceInfo(int gather_axis, bool is_slice_scalar, Node* slice_node)
+      : is_slice_scalar(is_slice_scalar), slice_node(slice_node) {
     const NodeArg* input = slice_node->InputDefs()[0];
     const NodeArg* output = slice_node->OutputDefs()[0];
+    input_rank = input->Shape()->dim_size();
+    output_rank = output->Shape()->dim_size();
+    axis = gather_axis < 0 ? input_rank + gather_axis : gather_axis;
     input_dim_on_axis = input->Shape()->dim(axis);
     if (!is_slice_scalar) {
       output_dim_on_axis = output->Shape()->dim(axis);
     }
-
-    input_rank = input->Shape()->dim_size();
-    output_rank = output->Shape()->dim_size();
   }
 
   int axis;              // axis to slice on
@@ -48,7 +48,7 @@ struct SliceInfo {
   ONNX_NAMESPACE::TensorShapeProto_Dimension input_dim_on_axis;
 
   // dimension of the output tensor on the slicing axis
-  // Be noted: if it is a sclar slicing, this dim will not be set, which means, afterward when use it to update
+  // Be noted: if it is a scalar slicing, this dim will not be set, which means, afterward when use it to update
   // shapes, that dim at axis will be removed.
   ONNX_NAMESPACE::TensorShapeProto_Dimension output_dim_on_axis;
 };
@@ -199,10 +199,16 @@ class TransposePassThroughActor : public DefaultOperatorPassThroughActorBase {
                    const logging::Logger& logger) override;
 };
 
-class MatMulPassThroughActor : public SimplePassThroughActor {
+class MatMulPassThroughActor : public DefaultOperatorPassThroughActorBase {
  public:
   MatMulPassThroughActor() = default;
   ~MatMulPassThroughActor() = default;
+
+  // Check which inputs can be propagated according to the slice axis.
+  bool PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
+                std::unordered_map<int, int>& target_node_input_indices,
+                std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
+                const logging::Logger& logger) override;
 
   // If scalar slice happens in the second last dimension, we need to adapt the input.
   bool PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
