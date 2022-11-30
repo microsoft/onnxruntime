@@ -198,6 +198,10 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
       return false;
     }
 
+    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
+      return false;
+    }
+
     // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
     // back alive here.
     return true;

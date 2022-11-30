@@ -53,6 +53,8 @@ jobs:
         Context: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
         Repository: onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}}
+        ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+            UpdateDepsTxt: false
 
     - task: CmdLine@2
       inputs:

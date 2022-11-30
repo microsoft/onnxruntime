@@ -160,6 +160,7 @@ option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly b
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING "Enable this option to turn on api exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
@@ -362,8 +363,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
     set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
-    # do not generate any debug info. This helps to accelerate building process and reduce binary size.
-    set(CMAKE_CXX_FLAGS_DEBUG "-g0")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
@@ -797,6 +797,23 @@ endif()
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
+include(external/helper_functions.cmake)
+
+file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
+foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
+  # Lines start with "#" are comments
+  if(NOT ONNXRUNTIME_DEP MATCHES "^#")
+    # The first column is name
+    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
+    # The second column is URL
+    # The URL below may be a local file path or an HTTPS URL
+    list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_URL)
+    set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
+    # The third column is SHA1 hash value
+    set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
+  endif()
+endforeach()
+
 #protobuf begin
 
 #Here we support two build mode:
@@ -812,8 +829,8 @@ endif()
 
 FetchContent_Declare(
   Protobuf
-  URL https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip
-  URL_HASH SHA1=b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
+  URL ${DEP_URL_protobuf}
+  URL_HASH SHA1=${DEP_SHA1_protobuf}
   SOURCE_SUBDIR  cmake
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   FIND_PACKAGE_ARGS NAMES Protobuf
@@ -827,7 +844,7 @@ if (onnxruntime_DISABLE_RTTI)
   set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
 endif()
 
-FetchContent_MakeAvailable(Protobuf)
+onnxruntime_fetchcontent_makeavailable(Protobuf)
 if(Protobuf_FOUND)
   message("Protobuf version: ${Protobuf_VERSION}")
 else()
@@ -1587,13 +1604,13 @@ endif()
 
 FetchContent_Declare(
   onnx
-  URL https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip
-  URL_HASH SHA1=edc8e1338c02f3ab222f3d803a24e17608c13895
+  URL ${DEP_URL_onnx}
+  URL_HASH SHA1=${DEP_SHA1_onnx}
   PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
 )
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-  FetchContent_MakeAvailable(onnx)
+  onnxruntime_fetchcontent_makeavailable(onnx)
 else()
   include(onnx_minimal)
 endif()

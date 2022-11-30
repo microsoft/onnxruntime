@@ -39,14 +39,64 @@ Status FastGeluOp(const FastGeluParams<T>* params) {
       !((params->bias_length > 0 && params->bias_length % VecSize == 0 && params->input_length % VecSize == 0) ||
         (params->bias_length == 0 && params->input_length % VecSize == 0)));
 
-  hipLaunchKernelGGL((FastGeluKernelVec<T, ThreadsPerBlock, VecSize>),
-                     dim3(onnxruntime::rocm::CeilDiv(params->input_length, ThreadsPerBlock * VecSize)),
-                     dim3(ThreadsPerBlock),
-                     0, params->stream,
-                     params->input_length, params->bias_length, params->input, params->bias, params->output);
-  auto status = hipGetLastError();
-  ORT_RETURN_IF(status != hipSuccess, ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, hipGetErrorName(status)));
-  return Status::OK();
+  FastGeluKernelVec<T, ThreadsPerBlock, VecSize>
+      <<<dim3(onnxruntime::rocm::CeilDiv(params->input_length, ThreadsPerBlock * VecSize)),
+         dim3(ThreadsPerBlock),
+         0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+  return HIP_CALL(hipGetLastError());
+}
+
+template <typename T>
+Status FastGeluStaticSelection(const FastGeluParams<T>* params) {
+  constexpr int block_size = 256;
+  const int grid_size = (params->input_length + block_size - 1) / block_size;
+  FastGeluKernel<T, block_size><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+      params->input_length, params->bias_length, params->input, params->bias, params->output);
+  return HIP_CALL(hipGetLastError());
+}
+
+template <>
+Status FastGeluStaticSelection(const FastGeluParams<half>* params) {
+  constexpr int block_size = 256;
+  if (params->bias != nullptr) {
+    if (0 == (params->bias_length % 8) && (params->input_length >= 3145728)) {  // 3145728=8*128*3072
+      const int grid_size = (params->input_length / 8 + block_size - 1) / block_size;
+      FastGeluKernelVec<half, block_size, 8><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    } else if (0 == (params->bias_length % 4)) {
+      const int grid_size = (params->input_length / 4 + block_size - 1) / block_size;
+      FastGeluKernelVec<half, block_size, 4><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    } else if (0 == (params->bias_length % 2)) {
+      const int grid_size = (params->input_length / 2 + block_size - 1) / block_size;
+      FastGeluKernelVec<half, block_size, 2><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    } else {
+      const int grid_size = (params->input_length + block_size - 1) / block_size;
+      FastGeluKernel<half, block_size><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    }
+  } else {
+    if (0 == (params->input_length % 8) && (params->input_length >= 3145728)) {  // 3145728=8*128*3072
+      const int grid_size = (params->input_length / 8 + block_size - 1) / block_size;
+      FastGeluKernelVec<half, block_size, 8><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    } else if (0 == (params->input_length % 4)) {
+      const int grid_size = (params->input_length / 4 + block_size - 1) / block_size;
+      FastGeluKernelVec<half, block_size, 4><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    } else if (0 == (params->input_length % 2)) {
+      const int grid_size = (params->input_length / 2 + block_size - 1) / block_size;
+      FastGeluKernelVec<half, block_size, 2><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    } else {
+      const int grid_size = (params->input_length + block_size - 1) / block_size;
+      FastGeluKernel<half, block_size><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+          params->input_length, params->bias_length, params->input, params->bias, params->output);
+    }
+  }
+  return HIP_CALL(hipGetLastError());
 }
 
 #define ADD_OP(threads_per_block)                               \
@@ -60,6 +110,7 @@ template <typename T>
 class FastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<FastGeluParams<T>> {
  public:
   FastGeluTunableOp() {
+    this->ops_.emplace_back(FastGeluStaticSelection<T>);
     ADD_OP(64);
     ADD_OP(128);
     ADD_OP(192);
@@ -69,8 +120,8 @@ class FastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<FastGeluP
     ADD_OP(448);
     ADD_OP(512);
 
-    // NOTE: the 15-th kernel seems to be better in gerenal case, so set it as default one
-    this->SetDefaultId(15);
+    // NOTE: the 1st kernel is FastGelu Original implementation.
+    this->SetDefaultId(0);
   }
 };
 
