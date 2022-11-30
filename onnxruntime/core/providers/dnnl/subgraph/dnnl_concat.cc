@@ -36,7 +36,10 @@ void DnnlConcat::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Create primitive memory objects
   std::vector<dnnl::memory> concat_src_mems;
   for (size_t i = 0; i < src_mds.size(); ++i) {
-    auto concat_src_mem = sp.GetMemoryAndReshape(node.Input(static_cast<int>(IN_DATA_0 + i)), concat_pd.src_desc(i), dnnl_engine);
+    auto concat_src_mem = sp.GetMemoryAndReshape(
+        node.Input(static_cast<int>(IN_DATA_0 + i)),
+        concat_pd.src_desc(static_cast<int>(i)),
+        dnnl_engine);
     concat_src_mems.push_back(concat_src_mem);
   }
   auto concat_dst_mem = dnnl::memory(concat_pd.dst_desc(), dnnl_engine);
