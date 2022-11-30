@@ -424,8 +424,7 @@ if (WIN32)
       endforeach()
     endif()
 
-else()
-  add_definitions(-DPLATFORM_POSIX)
+else()  
   check_cxx_compiler_flag(-Wunused-but-set-parameter HAS_UNUSED_BUT_SET_PARAMETER)
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
@@ -471,12 +470,6 @@ else()
   endif()
   if (HAS_DEPRECATED_BUILTINS)
     list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
-  endif()
-  # orttraining/orttraining/core/framework/adasum/m256_utils.h:23:42: error: AVX vector return without AVX enabled
-  # changes the ABI [-Werror=psabi].
-  # code: "inline __m256 MmLoaduPh(const uint16_t* a) {"
-  if (onnxruntime_ENABLE_TRAINING)
-    list(APPEND ORT_WARNING_FLAGS -Wno-psabi)
   endif()
   #see:https://reviews.llvm.org/D131307
   #It was intended that the 'enum-constexpr-conversion' type warnings can not be silenced by -w
@@ -597,6 +590,9 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 	if (onnxruntime_ENABLE_CPU_FP16_OPS)
 	  target_compile_definitions(${target_name} PRIVATE ENABLE_CPU_FP16_TRAINING_OPS)
+	endif()
+	if(POSIX)
+	  target_compile_definitions(${target_name} PLATFORM_POSIX)
 	endif()
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
