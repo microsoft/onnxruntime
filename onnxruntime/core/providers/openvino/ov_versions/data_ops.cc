@@ -129,6 +129,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Greater", V_2020_4, {"All"}},
     {"GreaterOrEqual", V_2022_1, {"All"}},
     {"Identity", V_2020_4, {"All"}},
+    {"If", V_2022_3, {"All"}},
     {"ImageScaler", V_2022_1, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
@@ -701,7 +702,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Slice", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                 if (node->InputDefs().size() > 1 &&
