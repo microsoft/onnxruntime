@@ -289,7 +289,7 @@ def inference_ort(
     ep,
     ort_input,
     repeat_times,
-    warmup = True,
+    warmup=True,
 ):
     runtimes = []
 
@@ -679,16 +679,16 @@ def write_map_to_file(result, file_name):
 
 def get_cuda_version():
     nvidia_strings = get_output(["nvidia-smi"])
-    version = re.search(r"CUDA Version: \d\d\.\d", nvidia_strings).group(0)
-    return version
+    version = re.search(r"CUDA Version: (\d\d\.\d)", nvidia_strings).group(1)
+    return version if version else "Unknown"
 
 
 def get_trt_version(workspace):
     libnvinfer = get_output(["find", workspace, "-name", "libnvinfer.so.*"])
     nvinfer = re.search(r".*libnvinfer.so.*", libnvinfer).group(0)
     trt_strings = get_output(["nm", "-D", nvinfer])
-    version = re.search(r"tensorrt_version.*", trt_strings).group(0)
-    return version
+    version = re.search(r"tensorrt_version_(\d+_\d+_\d+_\d+)", trt_strings).group(1)
+    return version.replace("_", ".") if version else "Unknown"
 
 
 def get_linux_distro():
@@ -754,6 +754,29 @@ def get_system_info(args):
         trt_ep: args.trt_ep_options,
         cuda_ep: args.cuda_ep_options,
     }
+
+    branch = args.branch
+    commit_id = args.commit_id
+    commit_date = args.commit_date
+
+    ort_source_dir = os.path.normpath(args.ort_source_dir)
+
+    if ort_source_dir and os.path.exists(ort_source_dir):
+        init_dir = os.getcwd()
+
+        # cd into the ORT source directory and use git commands to obtain
+        # branch and commit information.
+        os.chdir(ort_source_dir)
+
+        branch = get_output(["git", "branch", "--show-current"])
+        commit_id = get_output(["git", "rev-parse", "HEAD"])
+        commit_date = get_output(["git", "log", "-1", "--date=iso-strict", "--pretty=format:%cd"])
+
+        os.chdir(init_dir)
+
+    info["branch"] = branch
+    info["commit_id"] = commit_id
+    info["commit_date"] = commit_date
 
     return info
 
@@ -1064,15 +1087,28 @@ def output_specs(info, csv_filename):
 
     cpu_version = cpu_infos[2] if len(cpu_infos) > 2 else "Unknown"
     gpu_version = gpu_infos[0] if len(gpu_infos) > 0 else "Unknown"
-    tensorrt_version = info["trt"] + " , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32)."
+    tensorrt_version = info["trt"]
     cuda_version = info["cuda"]
     cudnn_version = info["cudnn"]
     ep_option_overrides = json.dumps(info["ep_option_overrides"])
+    branch = info["branch"]
+    commit_id = info["commit_id"]
+    commit_date = info["commit_date"]
 
     table = pd.DataFrame(
         {
-            ".": [1, 2, 3, 4, 5, 6],
-            "Spec": ["CPU", "GPU", "TensorRT", "CUDA", "CuDNN", "EPOptionOverrides"],
+            ".": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "Spec": [
+                "CPU",
+                "GPU",
+                "TensorRT",
+                "CUDA",
+                "CuDNN",
+                "EPOptionOverrides",
+                "Branch",
+                "CommitId",
+                "CommitDate",
+            ],
             "Version": [
                 cpu_version,
                 gpu_version,
@@ -1080,6 +1116,9 @@ def output_specs(info, csv_filename):
                 cuda_version,
                 cudnn_version,
                 ep_option_overrides,
+                branch,
+                commit_id,
+                commit_date,
             ],
         }
     )
@@ -1835,6 +1874,35 @@ def parse_arguments():
         help="Number of repeat times to get average inference latency.",
     )
 
+    parser.add_argument(
+        "--ort_source_dir",
+        required=False,
+        default="",
+        help="Path to the ONNX Runtime code repository from which ONNX Runtime was installed."
+        "Used to query git branch and commit information.",
+    )
+
+    parser.add_argument(
+        "--branch",
+        required=False,
+        default="",
+        help="The git branch from which ONNX Runtime was installed. Ignored if --ort_source_dir is provided.",
+    )
+
+    parser.add_argument(
+        "--commit_id",
+        required=False,
+        default="",
+        help="The git commit ID from which ONNX Runtime was installed. Ignored if --ort_source_dir is provided.",
+    )
+
+    parser.add_argument(
+        "--commit_date",
+        required=False,
+        default="",
+        help="The date of the commit from which ONNX Runtime was installed. Ignored if --ort_source_dir is provided.",
+    )
+
     parser.add_argument("--write_test_result", type=str2bool, required=False, default=True, help="")
     parser.add_argument("--benchmark_fail_csv", required=False, default=None, help="")
     parser.add_argument("--benchmark_latency_csv", required=False, default=None, help="")
@@ -1873,7 +1941,6 @@ def main():
     perf_end_time = datetime.now()
 
     print(f"[INFO] Total time for test_models_eps() call: {perf_end_time - perf_start_time}")
-
 
     fail_model_cnt = 0
     for key, value in models.items():

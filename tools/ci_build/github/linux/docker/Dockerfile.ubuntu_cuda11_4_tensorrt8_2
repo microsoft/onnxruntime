@@ -5,15 +5,14 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 ARG OS_VERSION=20.04
+
+# Build base image with required system packages
 FROM nvidia/cuda:11.4.2-cudnn8-devel-ubuntu${OS_VERSION}
 
+# The local directory into which to build and install CMAKE
+ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
 
-# ONNX Runtime Variables
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=main
-ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
-
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.24.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.24.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 ENV LD_LIBRARY_PATH /opt/miniconda/lib:$LD_LIBRARY_PATH
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -43,13 +42,40 @@ RUN v="8.2.1-1+cuda11.4" &&\
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
         python3-libnvinfer=${v}
 
-WORKDIR /code
+# Build final image from base. Builds ORT.
+FROM base as final
+
+# ONNX Runtime arguments
+
+# URL to the github repo from which to clone ORT.
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+
+# The local directory into which to clone ORT.
+ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
+
+# The git branch of ORT to checkout and build.
+ARG ONNXRUNTIME_BRANCH=main
+
+# Optional. The specific commit to pull and build from. If not set, the latest commit is used.
+ARG ONNXRUNTIME_COMMIT_ID
+
+# The supported CUDA architecture
+ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
+
+WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}
 
 # Prepare onnxruntime repository & build onnxruntime with TensorRT
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
-    /bin/sh onnxruntime/dockerfiles/scripts/checkout_submodules.sh 8.2 &&\
-    cd onnxruntime &&\
-    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
-    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
-    cd .. 
+    /bin/sh onnxruntime/dockerfiles/scripts/checkout_submodules.sh 8.2
+
+WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime
+
+# Reset to a specific commit if specified by build args.
+RUN if [ -z "$ONNXRUNTIME_COMMIT_ID" ] ; then echo "Building branch ${ONNXRUNTIME_BRANCH}" ;\
+    else echo "Building branch ${ONNXRUNTIME_BRANCH} @ commit ${ONNXRUNTIME_COMMIT_ID}" &&\
+    git reset --hard ${ONNXRUNTIME_COMMIT_ID} && /bin/sh onnxruntime/dockerfiles/scripts/checkout_submodules 8.2 ; fi
+
+RUN /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
+
+RUN pip install ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime/build/Linux/Release/dist/*.whl

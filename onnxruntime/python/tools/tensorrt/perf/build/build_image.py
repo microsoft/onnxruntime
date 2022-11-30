@@ -45,8 +45,12 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
     :return: A list of common 'docker build' arguments.
     """
 
-    return [
-        "--no-cache",
+    common_args = []
+
+    if not args.use_docker_cache:
+        common_args.append("--no-cache")
+
+    common_args += [
         "-t",
         f"{args.image_name}",
         "--build-arg",
@@ -54,6 +58,14 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
         "--build-arg",
         f"ONNXRUNTIME_BRANCH={args.branch}",
     ]
+
+    if args.commit_id:
+        common_args += ["--build-arg", f"ONNXRUNTIME_COMMIT_ID={args.commit_id}"]
+
+    if args.docker_repo_clone_dir:
+        common_args += ["--build-arg", f"ONNXRUNTIME_LOCAL_CODE_DIR={args.docker_repo_clone_dir}"]
+
+    return common_args
 
 
 def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bool:
@@ -191,8 +203,22 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("-r", "--repo_path", required=True, help="Path to the onnxruntime repository")
     parser.add_argument("-i", "--image_name", required=True, help="The resulting Docker image name")
     parser.add_argument("-b", "--branch", default="main", help="Name of the onnxruntime git branch to checkout")
+    parser.add_argument("-c", "--commit_id", default="", help="Commit SHA ID")
     parser.add_argument("-t", "--trt_version", default="8.4.1.5", help="TensorRT version (e.g., 8.4.1.5)")
     parser.add_argument("-a", "--cuda_arch", default="75", help="CUDA architecture (e.g., 75)")
+
+    parser.add_argument(
+        "--use_docker_cache",
+        action="store_true",
+        default=False,
+        help="Build docker image with caching enabled (i.e., do not use --no-cache)",
+    )
+
+    parser.add_argument(
+        "--docker_repo_clone_dir",
+        default=None,
+        help="The local directory into which the docker container will clone the onnxruntime repository",
+    )
 
     # Command-line options for installing TensorRT from binaries.
     parser.add_argument(

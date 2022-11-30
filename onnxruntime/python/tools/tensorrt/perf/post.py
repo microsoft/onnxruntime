@@ -45,18 +45,19 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--report_folder", help="Path to the local file report", required=True)
-    parser.add_argument("-c", "--commit_hash", help="Commit hash", required=True)
+    parser.add_argument("-c", "--commit_hash", help="Commit hash", required=False)
     parser.add_argument("-u", "--report_url", help="Report Url", required=True)
-    parser.add_argument("-t", "--trt_version", help="Tensorrt Version", required=True)
-    parser.add_argument("-b", "--branch", help="Branch", required=True)
+    parser.add_argument("-t", "--trt_version", help="Tensorrt Version", required=False)
+    parser.add_argument("-b", "--branch", help="Branch", required=False)
     parser.add_argument("--kusto_conn", help="Kusto connection URL", required=True)
     parser.add_argument("--database", help="Database name", required=True)
     parser.add_argument(
         "-d",
         "--commit_datetime",
         help="Commit datetime in Python's datetime ISO 8601 format",
-        required=True,
+        required=False,
         type=datetime.datetime.fromisoformat,
+        default=None,
     )
 
     return parser.parse_args()
@@ -202,29 +203,17 @@ def get_status(status, model_group):
     return status
 
 
-def get_specs(specs, branch, commit_hash, commit_datetime):
+def get_specs(specs):
     """
     Returns a new Pandas table with data that tracks the configuration/specs/versions of the hardware and software
     used to gather benchmarking data.
 
     :param specs: The Pandas table containing raw specs data imported from a CSV file.
-    :param branch: The name of the git branch corresponding to the version of ORT used to gather data.
-    :param commit_hash: The short git commit hash corresponding to the version of ORT used to gather data.
-    :param commit_datetime: The git commit datetime corresponding to the version of ORT used to gather data.
 
     :return: The updated table.
     """
 
-    init_id = int(specs.tail(1).get(".", 0)) + 1
-    specs_additional = pd.DataFrame(
-        {
-            ".": [init_id, init_id + 1, init_id + 2],
-            "Spec": ["Branch", "CommitId", "CommitTime"],
-            "Version": [branch, commit_hash, str(commit_datetime)],
-        }
-    )
-
-    return pd.concat([specs, specs_additional], ignore_index=True)
+    return specs[[".", "Spec", "Version"]]
 
 
 def get_session(session, model_group):
@@ -311,6 +300,33 @@ def get_identifier(commit_datetime, commit_hash, trt_version, branch):
     return date + "_" + commit_hash + "_" + trt_version + "_" + branch
 
 
+def get_specs_table_value(table, spec_name):
+    subtable = table.query(f"Spec == '{spec_name}'")
+    vals = subtable["Version"].values
+
+    return vals[0] if len(vals) > 0 else None
+
+
+def get_build_info(csv_filenames, args):
+    if not (specs_name + ".csv") in csv_filenames:
+        return {
+            "branch": args.branch,
+            "commit_id": args.commit_hash,
+            "commit_date": args.commit_datetime,
+            "trt_version": args.trt_version,
+        }
+
+    specs_table = pd.read_csv(f"{specs_name}.csv")
+
+    return {
+        "branch": get_specs_table_value(specs_table, "Branch") or args.branch,
+        "commit_id": get_specs_table_value(specs_table, "CommitId") or args.commit_hash,
+        "commit_date": datetime.datetime.fromisoformat(get_specs_table_value(specs_table, "CommitDate"))
+        or args.commit_datetime,
+        "trt_version": get_specs_table_value(specs_table, "TensorRT") or args.trt_version,
+    }
+
+
 def main():
     """
     Entry point of this script. Uploads data produced by benchmarking scripts to the database.
@@ -321,7 +337,6 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(args.kusto_conn)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch)
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
@@ -340,6 +355,7 @@ def main():
             session_over_time_name,
         ]
 
+        build_info = {}
         table_results = {}
         for table_name in tables:
             table_results[table_name] = pd.DataFrame()
@@ -347,6 +363,16 @@ def main():
         for model_group in folders:
             os.chdir(model_group)
             csv_filenames = os.listdir()
+
+            if not build_info:
+                build_info = get_build_info(csv_filenames, args)
+                identifier = get_identifier(
+                    build_info["commit_date"],
+                    build_info["commit_id"],
+                    build_info["trt_version"],
+                    build_info["branch"],
+                )
+
             for csv in csv_filenames:
                 table = pd.read_csv(csv)
                 if session_name in csv:
@@ -357,7 +383,7 @@ def main():
                     table_results[specs_name] = pd.concat(
                         [
                             table_results[specs_name],
-                            get_specs(table, args.branch, args.commit_hash, args.commit_datetime),
+                            get_specs(table),
                         ],
                         ignore_index=True,
                     )
@@ -393,9 +419,9 @@ def main():
                 db_table_name,
                 upload_time,
                 identifier,
-                args.branch,
-                args.commit_hash,
-                args.commit_datetime,
+                build_info["branch"],
+                build_info["commit_id"],
+                build_info["commit_date"],
             )
 
     except BaseException as e:
