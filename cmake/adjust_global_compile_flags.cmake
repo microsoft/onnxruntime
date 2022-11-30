@@ -354,14 +354,6 @@ else()
     set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
   endif()
 
-  # This is enabled only for Adasum files in training mode.
-  # The flags won't be applied globally since some high-precision training and inferencing ops will incur precision loss.
-  if (onnxruntime_ENABLE_CPU_FP16_OPS)
-    set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/adasum_mpi.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
-    set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
-    set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
-    add_definitions(-DENABLE_CPU_FP16_TRAINING_OPS)
-  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
