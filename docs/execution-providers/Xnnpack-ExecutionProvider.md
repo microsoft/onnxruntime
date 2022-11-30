@@ -81,8 +81,13 @@ Following ops are supported by the XNNPACK Execution Provider,
 |--------|------|
 |ai.onnx:AveragePool|Only 2D Pool is supported.|
 |ai.onnx:Conv|Only 2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:ConvTranspose|Only 2D ConvTranspose is supported.<br/>Weights and bias should be constant.|
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
 |ai.onnx:Softmax|all opset below 13 is supported, only support opset 13 when AXIS is the last dimension|
 |ai.onnx:QLinearConv|Only 2D Conv is supported.<br/>Weights and bias should be constant.<br/>All quantization scales and zero points should be constant.|
+|ai.onnx:Resize|2D/4D Resize in `Bilinear mode` are supported|
+|ai.onnx:Gemm|Only 2D Op is supported|
+|ai.onnx:Matmul|Only 2D Op is supported|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSoftmax|All quantization scales and zero points should be constant.|
+|com.microsoft:QLinearConvTranspose|All quantization scales and zero points should be constant.|
