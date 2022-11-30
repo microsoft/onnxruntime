@@ -11,9 +11,9 @@ namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-class Pool : public CannKernel, public PoolBase {
+class MaxPool : public CannKernel, public PoolBase {
  public:
-  explicit Pool(const OpKernelInfo& info) : CannKernel(info), PoolBase(info) {}
+  explicit MaxPool(const OpKernelInfo& info) : CannKernel(info), PoolBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
