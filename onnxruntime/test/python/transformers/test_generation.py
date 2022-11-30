@@ -72,8 +72,8 @@ class TestBeamSearchGpt(unittest.TestCase):
             arguments.extend("--output_sequences_score".split())
 
         # Test CPU
-        # result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-        # self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
 
         # Test GPU
         if self.enable_cuda:
@@ -108,19 +108,21 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.run_beam_search("", is_greedy=True)
 
     @pytest.mark.slow
+    def test_greedy_search_kv_cache(self):
+        self.run_beam_search("--use_kv_cache", is_greedy=True)
+
+    @pytest.mark.slow
     def test_greedy_search_float16(self):
         # TODO: investigate fp16 parity issue for greedy/beam search with repetition_penalty != 1.0
         if self.enable_cuda:
             self.run_beam_search("--repetition_penalty 1.0 --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
-    def test_greedy_search_kv_cache(self):
-        self.run_beam_search("--use_kv_cache --num_beams 1 --num_return_sequences 1")
-
-    @pytest.mark.slow
     def test_external_data(self):
         self.run_beam_search(
-            f"-m gpt2 --output_sequences_score -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
+            f"-m gpt2 --output_sequences_score -e --output {self.beam_search_onnx_path}",
+            sentences=None,
+            append_arguments=False
         )
 
 

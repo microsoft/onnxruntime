@@ -875,38 +875,38 @@ def move_initializers(
     return moved_initializers
 
 def _attribute_to_pair(attribute):
-    '''
+    """
     Convert attribute to kwarg format for use with onnx.helper.make_node.
         :parameter attribute: attribute in AttributeProto format.
         :return: attribute in {key: value} format.
-    '''
-    if (attribute.type == 0):
-        raise ValueError('attribute {} does not have type specified.'.format(attribute.name))
+    """
+    if attribute.type == 0:
+        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
-    if (attribute.type == 1):
+    if attribute.type == 1:
         value = attribute.f
-    elif (attribute.type == 2):
+    elif attribute.type == 2:
         value = attribute.i
-    elif (attribute.type == 3):
+    elif attribute.type == 3:
         value = attribute.s
-    elif (attribute.type == 4):
+    elif attribute.type == 4:
         value = attribute.t
-    elif (attribute.type == 5):
+    elif attribute.type == 5:
         value = attribute.g
-    elif (attribute.type == 6):
+    elif attribute.type == 6:
         value = attribute.floats
-    elif (attribute.type == 7):
+    elif attribute.type == 7:
         value = attribute.ints
-    elif (attribute.type == 8):
+    elif attribute.type == 8:
         value = attribute.strings
-    elif (attribute.type == 9):
+    elif attribute.type == 9:
         value = attribute.tensors
-    elif (attribute.type == 10):
+    elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError('attribute {} has unsupported type {}.'.format(attribute.name, attribute.type))
+        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
 
     return (attribute.name, value)
 
@@ -916,7 +916,7 @@ def kwargs_of(node):
         (key, value) = _attribute_to_pair(attr)
         kwargs.update({key: value})
     if node.domain:
-      kwargs.update({'domain' : node.domain})
+        kwargs.update({"domain" : node.domain})
     return kwargs
 
 def shape_of(vi):
@@ -932,10 +932,10 @@ def kv_cache_update_decoder_subgraph(subg):
             vi = onnx.helper.make_tensor_value_info(
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[shape[0], shape[1], shape[2], 'max_seq_len', shape[4]])
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]])
         new_inputs.extend([vi])
-    new_inputs.extend([onnx.helper.make_tensor_value_info('past_sequence_length', onnx.TensorProto.INT32, shape=[1])])
-    subg.ClearField('input')
+    new_inputs.extend([onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])])
+    subg.ClearField("input")
     subg.input.extend(new_inputs)
 
     new_outputs = []
@@ -945,25 +945,25 @@ def kv_cache_update_decoder_subgraph(subg):
             vi = onnx.helper.make_tensor_value_info(
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[shape[0], shape[1], shape[2], 'max_seq_len', shape[4]])
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]])
         new_outputs.extend([vi])
-    subg.ClearField('output')
+    subg.ClearField("output")
     subg.output.extend(new_outputs)
 
     new_nodes = []
     for node in subg.node:
-        if node.op_type == 'Attention':
+        if node.op_type == "Attention":
             kwargs = kwargs_of(node)
-            kwargs.update({'kv_cache_past_present' : 1})
+            kwargs.update({"kv_cache_past_present" : 1})
             nis = []
             nis.extend(node.input)
             while len(nis) < 8:
-                nis.extend([''])
+                nis.extend([""])
             if len(nis) < 9:
-                nis.extend(['past_sequence_length'])
-            node = onnx.helper.make_node('Attention', nis, node.output, name=node.name, **kwargs)
+                nis.extend(["past_sequence_length"])
+            node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
         new_nodes.extend([node])
-    subg.ClearField('node')
+    subg.ClearField("node")
     subg.node.extend(new_nodes)
     return subg
 
@@ -975,7 +975,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     """
     is_gpt2: bool = args.model_type == "gpt2"
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
-    use_kv_cache : bool = (args.use_kv_cache and is_greedysearch)
+    use_kv_cache: bool = args.use_kv_cache and is_greedysearch
 
     print("*****************************************************")
     print(f"**** use_kv_cache={use_kv_cache}, is_greedysearch={is_greedysearch}")
