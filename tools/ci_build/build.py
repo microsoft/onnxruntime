@@ -168,6 +168,7 @@ def parse_arguments():
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
         "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
     )
+    parser.add_argument("--parallel_test", help="The argument's value will be passed to onnx_test_runner's -c parameter", nargs="?", const=2)
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
     parser.add_argument(
@@ -193,7 +194,7 @@ def parse_arguments():
     parser.add_argument(
         "--enable_onnx_tests",
         action="store_true",
-        help="""When running the Test phase, run onnx_test_running against
+        help="""When running the Test phase, run onnx_test_runner against
         available test data directories.""",
     )
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe.")
@@ -1991,6 +1992,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
+                    if args.parallel_test is not None:
+                        run_subprocess([os.path.join(cwd, "onnx_test_runner"), "-c", args.parallel_test, "test_models"], cwd=cwd)
                     if config != "Debug":
                         run_subprocess([sys.executable, "onnx_backend_test_series.py"], cwd=cwd, dll_path=dll_path)
 
