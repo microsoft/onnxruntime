@@ -472,7 +472,12 @@ else()
   if (HAS_DEPRECATED_BUILTINS)
     list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
   endif()
-
+  # orttraining/orttraining/core/framework/adasum/m256_utils.h:23:42: error: AVX vector return without AVX enabled
+  # changes the ABI [-Werror=psabi].
+  # code: "inline __m256 MmLoaduPh(const uint16_t* a) {"
+  if (onnxruntime_ENABLE_TRAINING)
+    list(APPEND ORT_WARNING_FLAGS -Wno-psabi)
+  endif()
   #see:https://reviews.llvm.org/D131307
   #It was intended that the 'enum-constexpr-conversion' type warnings can not be silenced by -w
   if(HAS_ENUM_CONSTEXPR_CONVERSION AND NOT Protobuf_FOUND)
