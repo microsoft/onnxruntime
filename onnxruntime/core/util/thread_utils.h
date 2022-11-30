@@ -25,6 +25,10 @@ struct OrtThreadPoolParams {
   //of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
   int dynamic_block_base_ = 0;
 
+  //affinity_vec and affinity_vec_len are deprecated, keep them around only for winml compatibility
+  size_t* affinity_vec = nullptr;
+  size_t affinity_vec_len = 0;
+
   unsigned int stack_size = 0;
 
   // A utf-8 string of affinity settings, format be like:

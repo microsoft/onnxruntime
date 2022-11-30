@@ -11,6 +11,7 @@
 #include <thread>
 #include "core/session/ort_apis.h"
 #include "core/common/string_utils.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -48,6 +49,9 @@ static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1) {
     return nullptr;
+  }
+  if (options.affinity_vec_len != 0) {
+    LOGS_DEFAULT(WARNING) << "affinity_vec is deprecated, please use affinity_str to set thread affinity";
   }
 
   ThreadOptions to;

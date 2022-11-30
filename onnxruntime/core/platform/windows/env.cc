@@ -160,48 +160,52 @@ class WindowsThread : public EnvThread {
         int group_id = -1;
         KAFFINITY mask = 0;
         KAFFINITY bit = 1;
-        const auto& env = dynamic_cast<const WindowsEnv&>(Env::Default());
-        for (auto processor_id : *p->affinity) {
-          auto processor_info = env.GetProcessorAffinityMask(processor_id);
-          if (processor_info.processor_id > -1) {
-            mask |= bit << processor_info.processor_id;
-          } else {
-            LOGS_DEFAULT(ERROR) << "Cannot set affinity for thread " << GetCurrentThreadId()
-                                << ", processor " << processor_id << " not found";
-            group_id = -1;
-            mask = 0;
-            break;
+        const WindowsEnv* env = dynamic_cast<const WindowsEnv*>(&Env::Default());
+        if (env) {
+          for (auto processor_id : *p->affinity) {
+            auto processor_info = env->GetProcessorAffinityMask(processor_id);
+            if (processor_info.processor_id > -1) {
+              mask |= bit << processor_info.processor_id;
+            } else {
+              LOGS_DEFAULT(ERROR) << "Cannot set affinity for thread " << GetCurrentThreadId()
+                                  << ", processor " << processor_id << " not found";
+              group_id = -1;
+              mask = 0;
+              break;
+            }
+            if (group_id == -1) {
+              group_id = processor_info.group_id;
+            } else if (group_id != processor_info.group_id) {
+              LOGS_DEFAULT(ERROR) << "Cannot set cross-group affinity for thread "
+                                  << GetCurrentThreadId();
+              group_id = -1;
+              mask = 0;
+              break;
+            }
+          }  //for
+          if (group_id > -1 && mask) {
+            GROUP_AFFINITY thread_affinity;
+            memset(&thread_affinity, 0x0, sizeof(GROUP_AFFINITY));
+            thread_affinity.Group = static_cast<WORD>(group_id);
+            thread_affinity.Mask = mask;
+            if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
+              LOGS_DEFAULT(INFO) << "SetThreadAffinityMask done for thread: " << GetCurrentThreadId()
+                                 << ", group_id: " << static_cast<int>(thread_affinity.Group)
+                                 << ", mask: " << thread_affinity.Mask;
+            } else {
+              const auto error_code = GetLastError();
+              LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
+                                  << ", index: " << p->index
+                                  << ", mask: " << *p->affinity
+                                  << ", error code: " << error_code
+                                  << ", error msg: " << std::system_category().message(error_code)
+                                  << ". Specify the number of threads explicitly so the affinity is not set.";
+            }
           }
-          if (group_id == -1) {
-            group_id = processor_info.group_id;
-          } else if (group_id != processor_info.group_id) {
-            LOGS_DEFAULT(ERROR) << "Cannot set cross-group affinity for thread "
-                                << GetCurrentThreadId();
-            group_id = -1;
-            mask = 0;
-            break;
-          }
-        }  //for
-        if (group_id > -1 && mask) {
-          GROUP_AFFINITY thread_affinity;
-          memset(&thread_affinity, 0x0, sizeof(GROUP_AFFINITY));
-          thread_affinity.Group = static_cast<WORD>(group_id);
-          thread_affinity.Mask = mask;
-          if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
-            LOGS_DEFAULT(INFO) << "SetThreadAffinityMask done for thread: " << GetCurrentThreadId()
-                               << ", group_id: " << static_cast<int>(thread_affinity.Group)
-                               << ", mask: " << thread_affinity.Mask;
-          } else {
-            const auto error_code = GetLastError();
-            LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
-                                << ", index: " << p->index
-                                << ", mask: " << *p->affinity
-                                << ", error code: " << error_code
-                                << ", error msg: " << std::system_category().message(error_code)
-                                << ". Specify the number of threads explicitly so the affinity is not set.";
-          }
+        } else {  // if (env)
+          LOGS_DEFAULT(ERROR) << "Cannot get windows env for setting thread affinity ";
         }
-      }
+      } 
 
       ret = p->start_address(p->index, p->param);
     }
