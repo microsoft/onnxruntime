@@ -151,7 +151,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
                       ort_api);
 
   // now go build all the strings
-  for (auto i = 0; i < length; ++i) {
+  for (uint64_t i = 0; i < length; ++i) {
     size_t str_len = 0;
     // are we on the last one?
     if (i == (length - 1)) {

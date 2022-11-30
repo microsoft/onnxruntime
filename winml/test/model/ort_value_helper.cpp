@@ -46,7 +46,7 @@ winml::ITensor CreateStringTensor(Ort::Value& val) {
   WINML_EXPECT_NO_THROW(val.GetStringTensorContent(buffer.get(), bufferLength, offsets.data(), offsets.size()));
 
    // now go build all the strings
-  for (auto i = 0; i < length; ++i) {
+  for (uint64_t i = 0; i < length; ++i) {
     size_t strLength = 0;
     // are we on the last one?
     if (i == (length - 1)) {

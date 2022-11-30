@@ -47,7 +47,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
   Microsoft::WRL::ComPtr<ID3D11Texture2D> ShareD3D12Texture(ID3D12Resource* pResource, ID3D11Device* pDevice);
 
   void ConvertGPUTensorToSoftwareBitmap(
-      _In_ UINT32 batch_index,
+      _In_ UINT64 batch_index,
       _In_ ID3D12Resource* input_tensor,
       _In_ _winml::D3DDeviceCache& device_cache,
       _In_ const ImageTensorDescription& tensor_description,

@@ -39,7 +39,7 @@ class CpuTensorizer {
 
     if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
       // Convert BGR8 -> BGR8 or RGB8 -> RGB8
-      for (uint32_t y = 0; y < yElements; y++) {
+      for (uint64_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
             pBuffer + y * bufferWidth + start,
             pCPUTensor + y * inputBounds.Width,
@@ -51,7 +51,7 @@ class CpuTensorizer {
       }
     } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
       // Convert RGB8 -> BGR8 or BGR8 -> RGB8
-      for (uint32_t y = 0; y < yElements; y++) {
+      for (uint64_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
             pBuffer + y * bufferWidth + start,
             pCPUTensor + (inputBounds.Height * inputBounds.Width) * 2 + y * inputBounds.Width,

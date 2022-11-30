@@ -144,7 +144,7 @@ class CpuDetensorizer {
       const T* zChannel,
       uint32_t tensorWidth,
       BYTE* pData,
-      uint32_t bytesPerPixel,
+      uint64_t bytesPerPixel,
       const NominalRangeConverter& nominalRangeConverter) {
     BYTE* pPixel = pData;
     uint32_t tensorWidthRemaining = tensorWidth;
@@ -171,7 +171,7 @@ class CpuDetensorizer {
       const float* zChannel,
       uint32_t tensorWidth,
       BYTE* pData,
-      uint32_t bytesPerPixel,
+      uint64_t bytesPerPixel,
       const NominalRangeConverter& nominalRangeConverter
     ) {
     BYTE* pPixel = pData;

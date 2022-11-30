@@ -38,7 +38,7 @@ public:
         case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX:
         case DML_OPERATOR_ACTIVATION_HARDMAX:
             {
-                const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
+                const uint64_t onnxDimCount = gsl::narrow_cast<uint64_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
                 int axis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
                 std::vector<int32_t> onnxAxes(onnxDimCount - axis);
                 std::iota(onnxAxes.begin(), onnxAxes.end(), static_cast<int32_t>(axis));

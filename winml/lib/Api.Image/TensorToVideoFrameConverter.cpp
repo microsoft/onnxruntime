@@ -545,7 +545,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
 }
 
 void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
-    _In_ UINT32 batchIdx,
+    _In_ UINT64 batchIdx,
     _In_ ID3D12Resource* pInputTensor,
     _In_ _winml::D3DDeviceCache& device_cache,
     _In_ const ImageTensorDescription& tensorDesc,
@@ -561,7 +561,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   }
 
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
-  uint32_t singleVideoFramebufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
+  uint64_t singleVideoFramebufferSize = static_cast<uint64_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
 
   // TODO: Make an allocator for readback heaps
   if (!readback_heap_ || readback_heap_->GetDesc().Width < singleVideoFramebufferSize) {

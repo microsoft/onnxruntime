@@ -54,12 +54,12 @@ void ComputePixelOffsetsAndScales(
         "Resize expects 'roi' tensor for 'tf_crop_and_resize' mode."
     );
 
-    const uint32_t rank = gsl::narrow_cast<uint32_t>(inputDimensions.size());
+    const uint64_t rank = gsl::narrow_cast<uint64_t>(inputDimensions.size());
 
     // Fill in all the input/output pixel offset for each axis,
     // and recompute the scale for certain modes.
 
-    for (uint32_t i = 0; i < rank; ++i)
+    for (uint64_t i = 0; i < rank; ++i)
     {
         float inputPixelOffset = 0;
         float outputPixelOffset = 0;

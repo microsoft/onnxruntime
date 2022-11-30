@@ -30,7 +30,7 @@ public:
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
         uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
         onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
+        std::vector<uint32_t> onnxAxes((uint64_t) inputDimCount - onnxAxis);
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
