@@ -23,13 +23,13 @@ class Optimizer:
         """
         self._optimizer.optimizer_step()
 
-    def set_learning_rate(self, learning_rate):
+    def set_learning_rate(self, learning_rate: float) -> None:
         """
         Set Learning Rate.
         """
         self._optimizer.set_learning_rate(learning_rate)
 
-    def get_learning_rate(self):
+    def get_learning_rate(self) -> float:
         """
         Get Learning Rate.
         """

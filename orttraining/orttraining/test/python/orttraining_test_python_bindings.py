@@ -159,6 +159,8 @@ def test_get_and_set_lr():
 
         # Test get and set learning rate.
         lr = optimizer.get_learning_rate()
+        assert round(lr, 3) == 0.001
+
         optimizer.set_learning_rate(0.5)
         new_lr = optimizer.get_learning_rate()
 
