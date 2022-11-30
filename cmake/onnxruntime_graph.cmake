@@ -99,7 +99,6 @@ endif()
 if(NOT MSVC)
   target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
 endif()
-
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
   target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})

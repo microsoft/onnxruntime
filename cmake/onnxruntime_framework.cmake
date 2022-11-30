@@ -59,7 +59,7 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
-  # DLPack is a header-only dependency  
+  # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
@@ -72,7 +72,6 @@ endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
 endif()
-
 
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes

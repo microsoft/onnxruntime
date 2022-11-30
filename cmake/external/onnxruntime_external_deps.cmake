@@ -115,7 +115,7 @@ FetchContent_Declare(
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   FIND_PACKAGE_ARGS NAMES Protobuf
 )
-
+set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
   set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
@@ -234,8 +234,10 @@ if (onnxruntime_BUILD_BENCHMARKS)
 endif()
 
 if (NOT WIN32)
-    onnxruntime_fetchcontent_makeavailable(google_nsync)
-    set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
+  #nsync tests failed on Mac Build
+  set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+  onnxruntime_fetchcontent_makeavailable(google_nsync)
+  set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
 endif()
 
 if(onnxruntime_USE_CUDA)
