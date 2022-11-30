@@ -595,6 +595,9 @@ function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
       onnxruntime_add_include_to_target(${target_name} cpuinfo)
     endif()
+	if (onnxruntime_ENABLE_CPU_FP16_OPS)
+	  target_compile_definitions(${target_name} PRIVATE ENABLE_CPU_FP16_TRAINING_OPS)
+	endif()
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
@@ -900,10 +903,6 @@ endif()
 # onnxruntime-extensions
 if (onnxruntime_USE_EXTENSIONS)
   include(extensions)
-endif()
-
-if (MSVC)
-   string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
 endif()
 
 #Dependencies end. In the next we'll enable "treat warning as error"

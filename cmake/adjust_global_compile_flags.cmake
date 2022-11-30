@@ -374,4 +374,6 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
+	# required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
+	string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
 endif()
