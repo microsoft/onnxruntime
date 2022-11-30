@@ -496,6 +496,71 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     return True
 
 
+def remove_logits_matmul_from_decoder_subgraph(
+    decoder_model_proto: ModelProto,
+) -> TensorProto:
+    """
+    TODO
+    """
+
+    logits_output_name = decoder_model_proto.graph.output[0].name
+
+    decoder_model = OnnxModel(decoder_model_proto)
+
+    output_name_to_node = decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    matmul_node = output_name_to_node[logits_output_name]
+    # Sanity check - the logits need to be produced by a MatMul node
+    if matmul_node.op_type != "MatMul":
+        print("Nothing to do")
+
+    logits_weight = decoder_model.get_initializer(matmul_node.input[1])
+    if logits_weight is None:
+        print("Nothing to do 2")
+
+    decoder_model_proto.graph.initializer.remove(logits_weight)
+    decoder_model_proto.graph.node.remove(matmul_node)
+    decoder_model_proto.graph.output.remove(decoder_model_proto.graph.output[0])
+
+    matmul_input_value_info_proto = None
+    for value_info in decoder_model_proto.graph.value_info:
+        if value_info.name == matmul_node.input[0]:
+            matmul_parent = decoder_model.get_parent(matmul_node, 0)
+            matmul_parent.output[0] = "pre-logits" 
+            value_info.name = "pre-logits"
+            matmul_input_value_info_proto = value_info
+            
+    if matmul_input_value_info_proto is not None:
+        # Preserve output ordering as before
+        temp_list = []
+        for output in decoder_model_proto.graph.output:
+            temp_list.append(output)
+        
+        for output in temp_list:
+            decoder_model_proto.graph.output.remove(output)
+        
+        # Append new output first
+        decoder_model_proto.graph.output.append(matmul_input_value_info_proto)
+
+        # Append previous outputs as before
+        for output in temp_list:
+            decoder_model_proto.graph.output.append(output)
+
+    else:
+        a = 1
+        # TODO: Add ValueInfoProto ?
+
+    # Add type info, otherwise ORT will raise error: "input arg (*) does not have type information set by parent node."
+    shape = onnx.numpy_helper.to_array(logits_weight).shape
+    value_info = onnx.helper.make_tensor_value_info(logits_weight.name, logits_weight.data_type, shape)
+    decoder_model_proto.graph.value_info.append(value_info)
+
+    OnnxModel.save(decoder_model_proto, "C:\\Users\\hasesh\\Desktop\\temp2.onnx")
+
+    return logits_weight
+
+
 def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
     """Create OnnxRuntime session.
 
@@ -922,7 +987,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
         if not logits_matmul_weight_padded:
             logger.warning(
-                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+                "Tried and failed to pad logits MatMul weights. Performance may be sub-optimal for this MatMul."
             )
 
     # If the user explicitly requests running shape inference or if we padded/mutated
@@ -958,6 +1023,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
+    logits_weight = remove_logits_matmul_from_decoder_subgraph(decoder_model)
+
     inputs = (
         [
             "input_ids",
@@ -991,6 +1058,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         inputs.append("attention_mask")
     else:
         inputs.append("")
+
+    inputs.append(logits_weight.name)
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
@@ -1036,12 +1105,14 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     )
 
     # Explicitly pass in the vocab size via an attribute
-    if logits_matmul_weight_padded:
+    if logits_matmul_weight_padded or True:
         attr_to_extend.extend([onnx.helper.make_attribute("vocab_size", vocab_size)])
 
     node.attribute.extend(attr_to_extend)
 
     initializers = []
+    initializers.append(logits_weight)
+
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
             logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
@@ -1052,7 +1123,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
         if not args.disable_shared_initializers:
             # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
-            initializers = get_shared_initializers(encoder_model, decoder_model)
+            shared_initializers = get_shared_initializers(encoder_model, decoder_model)
+            initializers.extend(shared_initializers)
             logger.info(
                 f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in subgraphs are moved to the main graph"
             )
@@ -1077,10 +1149,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         )
     else:
         # Move initializer from subgraph to main graph could reduce memory usage in inference.
-        initializers = move_initializers(decoder_model.graph)
+        moved_initializers = move_initializers(decoder_model.graph)
+        initializers.extend(moved_initializers)
         logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
-
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
+
 
     # graph inputs
     input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
@@ -1125,6 +1198,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             "attention_mask", TensorProto.INT32, ["batch_size", "sequence_length"]
         )
         graph_inputs.append(attention_mask)
+
+    logits_weight_value_info = onnx.helper.make_tensor_value_info(logits_weight.name, logits_weight.data_type, logits_weight.dims)
+    graph_inputs.append(logits_weight_value_info)
 
     # graph outputs
     sequences = (

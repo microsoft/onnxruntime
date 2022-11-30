@@ -18,6 +18,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
             int batch_size,
             int num_beams,
             int vocab_size,
+            int hidden_dim,
             int sequence_length,
             int max_length,
             bool output_scores,
@@ -25,6 +26,14 @@ struct BeamSearchState : public IBeamSearchState<T> {
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * vocab_size;
+
+    // Only if hidden_dim > 0, do we need to allocate this buffer
+    if (hidden_dim > 0) {
+        this->logits_matmul_placeholder = AllocateBuffer<T>(allocator,
+            logits_matmul_placeholder_buffer_, SafeInt<size_t>(batch_beam_size) * hiddden_dim);
+
+    }
+
     this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
     this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
 
@@ -52,6 +61,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
   }
 
  private:
+  BufferUniquePtr logits_matmul_placeholder_buffer_;
   BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
@@ -173,6 +183,15 @@ class BeamSearchBase : public GenerateBase  {
                        AllocatorPtr& allocator,
                        int counter);
 
+  // TODO:
+  OrtValue CalculateLogitsFromPreLogits(
+      const Tensor& pre_logits,   // pre_logits output of subgraph
+      const Tensor& logits_weight,
+      const transformers::IBeamSearchParameters* parameters,
+      BeamSearchState<T>& beam_state,
+      AllocatorPtr& allocator);
+
+
   BeamSearchParameters* parameters_;
 
   std::unique_ptr<BeamSearchScorer> beam_scorer_;
@@ -191,7 +210,7 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                                             context.Input<Tensor>(0),     // input_ids
                                             context.Input<Tensor>(7),     // vocab_mask
                                             context.Input<Tensor>(8),     // prefix_vocab_mask
-                                            context.Input<Tensor>(10)));  // attention_mask
+                                            context.Input<Tensor>(9)));  // attention_mask
 
   return Status::OK();
 }
@@ -272,6 +291,30 @@ Status BeamSearchBase<T>::GenerateNextToken(
   return Status::OK();
 }
 
+template<typename T>
+OrtValue BeamSearchBase<T>::CalculateLogitsFromPreLogits(
+    const Tensor& pre_logits,
+    const Tensor& logits_weight, 
+    const transformers::IBeamSearchParameters* parameters,
+    BeamSearchState<T>& beam_state,
+    AllocatorPtr& allocator) {
+
+    const auto& pre_logits_shape = pre_logits.Shape();
+    const auto& logits_weight_shape = logits_weight.Shape();
+
+    ORT_ENFORCE(pre_logits_shape[2] == logits_weight_shape[0]);
+
+    cublasGemmHelper();
+
+    OrtValue logits;
+    // We will limit the logits to the last token in the pre-logits sequence
+    TensorShape logits_shape(pre_logits_shape[0], 1, logits_weight_shape[1]);
+    auto element_type = DataTypeImpl::GetType<T>();
+    Tensor::InitOrtValue(element_type, logits_shape, beam_state.next_token_logits.data(), allocator->Info(),
+        logits);
+
+    return logits;
+}
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

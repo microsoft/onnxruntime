@@ -25,9 +25,11 @@ Subgraph::Subgraph(
       num_heads(0),
       head_size(0),
       vocab_size(0),
+      hidden_dim(0),
       num_layers(0),
       allocator_(nullptr),
-      is_output_float16_(false) {
+      is_output_float16_(false),
+      is_output_logits_(true) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
 
   auto& subgraph_inputs = subgraph.GetInputs();

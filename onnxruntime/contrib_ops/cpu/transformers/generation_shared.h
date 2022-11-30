@@ -23,6 +23,7 @@ namespace transformers {
 
 template <typename T>
 struct IBeamSearchState {
+  gsl::span<T> logits_matmul_placeholder;  // shape (batch_size * num_beams, hidden_dim)
   gsl::span<T> next_token_logits;      // shape (batch_size * num_beams, vocab_size)
   gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
   gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
@@ -129,6 +130,7 @@ struct IBeamSearchParameters {
   int num_heads;
   int head_size;
   int num_layers;
+  int hidden_dim;
 };
 
 class IConsoleDumper {

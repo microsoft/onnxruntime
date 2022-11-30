@@ -86,7 +86,9 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       parameters_.SetSubgraphParameters(gpt_subgraph_->vocab_size,
                                         gpt_subgraph_->num_heads,
                                         gpt_subgraph_->head_size,
-                                        gpt_subgraph_->num_layers);
+                                        gpt_subgraph_->num_layers,
+                                        -1); // unknown hidden dim
+
     }
   } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {
     if (attribute_name == "encoder") {
@@ -116,7 +118,8 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
                                         t5_decoder_subgraph_->num_heads,
                                         t5_decoder_subgraph_->head_size,
-                                        t5_decoder_subgraph_->num_layers);
+                                        t5_decoder_subgraph_->num_layers,
+                                        -1); // unknown hidden dim
     }
   }
 

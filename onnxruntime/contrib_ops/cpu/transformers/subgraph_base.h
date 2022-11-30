@@ -42,6 +42,7 @@ class Subgraph {
   int num_heads;
   int head_size;
   int vocab_size;
+  int hidden_dim;
   int num_layers;
 
   // Setup execution
@@ -56,6 +57,8 @@ class Subgraph {
 
   bool IsOutputFloat16() const { return is_output_float16_; }
 
+  bool IsOutputLogits() const { return is_output_logits_; }
+
   virtual Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                           const std::vector<const NodeArg*>& subgraph_outputs) = 0;
 
@@ -69,6 +72,7 @@ class Subgraph {
   const SessionState* subgraph_session_state_;
   std::optional<FeedsFetchesManager> feeds_fetches_manager_;
   bool is_output_float16_;
+  bool is_output_logits_;
 };
 
 }  // namespace transformers

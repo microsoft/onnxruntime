@@ -173,6 +173,10 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    void* stream) {
   // TODO(tianleiwu): we can use another stream to avoid blocking subgraph execution.
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
+
+  if (!beam_state->logits_matmul_placeholder.empty()) {
+      cudaMemsetAsync(beam_state->logits_matmul_placeholder.data(), 0, beam_state->logits_matmul_placeholder.size_bytes(), cuda_stream);
+  }
   cudaMemsetAsync(beam_state->next_token_logits.data(), 0, beam_state->next_token_logits.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_tokens.data(), 0, beam_state->next_tokens.size_bytes(), cuda_stream);

@@ -173,6 +173,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
                   parameters->batch_size,
                   parameters->num_beams,
                   parameters->vocab_size,
+                 parameters->hidden_dim,
                   parameters->sequence_length,
                   parameters->max_length,
                   parameters->output_scores,

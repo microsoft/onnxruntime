@@ -68,16 +68,27 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 
-void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
+void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, 
+                                                 int hidden_size_per_head, int layers,
+                                                 int hidden_dim) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
   // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
   if (vocab_size == -1) {
     vocab_size = vocabulary_size;
   }
 
+  // Sanity check to enforce that we have gotten hold of the vocab size
+  // either through a BeamSearch attribute or from the shape of
+  //  the decoder subgraph's logits output.
+    
+  // If the decoder subgraph's output is pre-logits, then the vocab_size
+  // MUST be provided as an attribute.
+  ORT_ENFORCE(vocab_size > 0, "Vocab size needs to be positive");
+
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;
+  hidden_dim = hidden_dim;
 }
 
 }  // namespace transformers

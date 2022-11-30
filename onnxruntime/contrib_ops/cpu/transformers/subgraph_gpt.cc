@@ -119,24 +119,45 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                 "subgraph past state dimension 4 shall have a positive value for hidden size per head");
 
   // check subgraph outputs
-  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
-                "subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
+  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits" && subgraph_outputs[0]->Name() != "pre-logits",
+                "subgraph output 0 shall be named as logits or pre-logits, instead got: ", subgraph_outputs[0]->Name());
+
+  is_output_logits_ = subgraph_outputs[0]->Name() == "logits";
 
   ORT_RETURN_IF(subgraph_outputs[1]->Name() != "present_0",
                 "subgraph input 1 shall be named as present_0, got: ", subgraph_outputs[1]->Name());
 
-  // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
-  const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
-  ORT_RETURN_IF(logits_shape->dim_size() != 3,
-                "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
+  const ONNX_NAMESPACE::TensorShapeProto* logits_shape = nullptr;
+  const ONNX_NAMESPACE::TensorShapeProto* pre_logits_shape = nullptr;
 
-  ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
-                "subgraph past state dimension 2 shall have a positive value for vocabulary size");
+  if (is_output_logits_) {
+    // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
+    logits_shape = subgraph_outputs[0]->Shape();
+    ORT_RETURN_IF(logits_shape->dim_size() != 3,
+                  "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
+
+    ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
+                  "subgraph logits output dimension 2 shall have a positive value for vocabulary size");
+  } else {  // Output is pre-logits
+    // Pre-Logits shape is like (batch_size, seq_len, 768). Here 768 is the hidden dim.
+    pre_logits_shape = subgraph_outputs[0]->Shape();
+    ORT_RETURN_IF(pre_logits_shape->dim_size() != 3,
+                  "subgraph pre-logits output is expected to have 3 dimension, got ", pre_logits_shape->dim_size());
+
+    ORT_RETURN_IF(!pre_logits_shape->dim(2).has_dim_value() || pre_logits_shape->dim(2).dim_value() <= 0,
+                  "subgraph pre-logits output dimension 2 shall have a positive value for hidden dim");
+  }
 
   // Save parameters related to the subgraph.
   num_heads = static_cast<int>(past_shape->dim(2).dim_value());
   head_size = static_cast<int>(past_shape->dim(4).dim_value());
-  vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+
+  if (is_output_logits_) {
+    vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+  } else {
+    hidden_dim = static_cast<int>(pre_logits_shape->dim(2).dim_value());
+  }
+
   num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
 
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;

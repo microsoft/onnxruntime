@@ -83,7 +83,8 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
       parameters_.SetSubgraphParameters(gpt_subgraph_->vocab_size,
                                         gpt_subgraph_->num_heads,
                                         gpt_subgraph_->head_size,
-                                        gpt_subgraph_->num_layers);
+                                        gpt_subgraph_->num_layers,
+                                        -1); // unknown hidden dim
     }
   } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {  // encoder-decoder like T5
     ORT_THROW("Not Implemented");
