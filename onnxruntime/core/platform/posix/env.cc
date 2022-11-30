@@ -287,7 +287,7 @@ class PosixEnv : public Env {
     return DefaultNumCores();
   }
 
-  std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
+  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
 
     std::vector<LogicalProcessors> ret;
 #ifdef CPUINFO_SUPPORTED
