@@ -136,7 +136,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       ${ONNXRUNTIME_MLAS_LIBS}
       onnxruntime_common
       onnxruntime_flatbuffers
-	  Boost::mp11 safeint_interface
+      Boost::mp11 safeint_interface
   )
 
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)

@@ -14,7 +14,7 @@ cmake_policy(SET CMP0104 OLD)
 
 # Project
 project(onnxruntime C CXX ASM)
-message(${PROJECT_BINARY_DIR})
+
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 
@@ -116,7 +116,8 @@ option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algor
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 
 # Options related to reducing the binary size produced by the build
-option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+# XNNPACK EP requires the internal NHWC contrib ops to be available, so this option must be OFF when onnxruntime_USE_XNNPACK is ON
+cmake_dependent_option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF "NOT onnxruntime_USE_XNNPACK" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
@@ -197,7 +198,7 @@ option(onnxruntime_ENABLE_ROCM_PROFILING "Enable ROCM kernel profiling" OFF)
 option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 
 # ATen fallback support
-cmake_dependent_option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF "NOT onnxruntime_ENABLE_TRAINING" ON)
+option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
@@ -1685,6 +1686,10 @@ if (onnxruntime_ENABLE_TRAINING)
 
   add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds

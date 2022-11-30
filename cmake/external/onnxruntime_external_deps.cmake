@@ -140,24 +140,12 @@ add_library(date_interface INTERFACE)
 target_include_directories(date_interface INTERFACE ${date_SOURCE_DIR}/include)
 
 
-if (onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(boost_mp11)
-  find_package(Boost)
-  if (TARGET Boost::boost AND NOT TARGET Boost::mp11)
-    add_library(Boost::mp11 ALIAS Boost::boost)
-  endif()
-endif()
-if (TARGET Boost::mp11)
-  message("Use mp11 from preinstalled system lib")
-else()
-  FetchContent_Declare(
-    mp11
-    URL ${DEP_URL_mp11}
-    URL_HASH SHA1=${DEP_SHA1_mp11}
-  )
-  onnxruntime_fetchcontent_makeavailable(mp11)
-endif()
 
+FetchContent_Declare(
+  mp11
+  URL ${DEP_URL_mp11}
+  URL_HASH SHA1=${DEP_SHA1_mp11}
+)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
@@ -273,7 +261,7 @@ FetchContent_Declare(
 )
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
 if (onnxruntime_BUILD_UNIT_TESTS) 
   onnxruntime_fetchcontent_makeavailable(googletest)  
 endif()
@@ -370,7 +358,13 @@ if (onnxruntime_USE_XNNPACK)
 endif()
 
 if (onnxruntime_USE_MIMALLOC)
-  include(external/mimalloc.cmake)
+  add_definitions(-DUSE_MIMALLOC)
+
+  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  onnxruntime_fetchcontent_makeavailable(mimalloc)
 endif()
 
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
