@@ -50,7 +50,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
   private static BigInteger nextSessionId = new BigInteger("0");
   private static String getNextSessionKey() {
-    String key = nextSessionId.toString(2);
+    String key = nextSessionId.toString();
     nextSessionId = nextSessionId.add(BigInteger.valueOf(1));
     return key;
   }
