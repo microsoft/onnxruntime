@@ -48,10 +48,10 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   private static OrtEnvironment ortEnvironment = OrtEnvironment.getEnvironment();
   private static Map<String, OrtSession> sessionMap = new HashMap<>();
 
-  private static BigInteger nextSessionId = 0;
+  private static BigInteger nextSessionId = new BigInteger("0");
   private static String getNextSessionKey() {
-    String key = BigInteger.toString(nextSessionId);
-    nextSessionId++;
+    String key = nextSessionId.toString(2);
+    nextSessionId.add(new BigInteger("1"));
     return key;
   }
 
