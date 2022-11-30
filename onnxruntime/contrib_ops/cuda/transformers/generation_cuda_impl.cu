@@ -440,7 +440,7 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
 
   int count = vocab_idx;
   float sum = 0.0f;
-  while (count != 0) {
+  while (count >= 0) {
     sum += d_sorted_logits_in[start_index];
     ++start_index;
     --count;
