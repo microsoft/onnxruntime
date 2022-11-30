@@ -5,12 +5,13 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include <iostream>
 
-using namespace onnxruntime;
+using namespace onnxruntime;;
 
 namespace onnxruntime {
 
-
+int CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain);
 struct TensorRTCustomKernel {
   TensorRTCustomKernel(const OrtKernelInfo* /*info*/, void* compute_stream)
       : compute_stream_(compute_stream) {
@@ -43,6 +44,7 @@ struct DisentangledAttentionCustomOp : Ort::CustomOpBase<DisentangledAttentionCu
   void* compute_stream_;
 };
 
+/*
 void CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain) {
   std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
   custom_op_domain->domain_ = "";
@@ -53,5 +55,5 @@ void CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain) {
 
   *domain = custom_op_domain.release();
 }
-
+*/
 }
