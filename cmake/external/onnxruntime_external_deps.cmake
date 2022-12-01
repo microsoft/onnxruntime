@@ -21,8 +21,6 @@ message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
 if(NOT onnxruntime_DISABLE_ABSEIL)
   include(external/abseil-cpp.cmake)
-else()
-  add_compile_definitions(DISABLE_ABSEIL)
 endif()
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
