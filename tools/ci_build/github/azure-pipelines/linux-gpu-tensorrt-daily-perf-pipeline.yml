@@ -38,6 +38,16 @@ parameters:
   type: object
   default: []
 
+- name: OrtBranchOverride
+  displayName: Testing branch override
+  type: string
+  default: ""
+
+- name: OrtCommitIdOverride
+  displayName: Testing commit override
+  type: string
+  default: ""
+
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
@@ -50,10 +60,14 @@ jobs:
       value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
 
     - name: branchName
-      value: $[ replace(replace(eq(variables['ortBranchOverride'], ''), True, variables['scriptsBranchName']), False, variables['ortBranchOverride']) ]
+      ${{ if eq(parameters.OrtBranchOverride, '') }}:
+        value: $(scriptsBranchName)
+      ${{ else }}:
+        value: ${{ parameters.OrtBranchOverride }}
 
     - name: buildCommitIdCLIArg
-      value: $[ replace(replace(eq(variables['ortCommitId'], ''), True, ''), False, '-c ' + variables['ortCommitId']) ]
+      ${{ if not(eq(parameters.OrtCommitIdOverride, '')) }}:
+        value: -c ${{ parameters.OrtCommitIdOverride }}
 
     - name: trtVersion
       ${{ if eq(parameters.TrtVersion, 'BIN') }}:
