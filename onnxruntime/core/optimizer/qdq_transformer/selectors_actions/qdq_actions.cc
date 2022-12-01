@@ -73,15 +73,18 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
   return moves;
 }
 std::vector<NodeAndMoveInfo> WhereMoves(){
-  NTO::NodeLocation dq_cond{NTO::NodeType::kInput, 0}; // TODO: check with conv
+  NTO::NodeLocation cond{NTO::NodeType::kInput, 0}; // TODO: check with conv
   NTO::NodeLocation dq_x{NTO::NodeType::kInput, 1};
   NTO::NodeLocation dq_y{NTO::NodeType::kInput, 2};
-
+  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
   std::vector<NodeAndMoveInfo> moves{
-      MoveAll(dq_cond, ArgType::kInput),                          // append all inputs from cond
+      MoveAndAppend(cond,ArgType::kInput, 0, ArgType::kInput),  // move the condition to the new node
       MoveAll(dq_x, ArgType::kInput),                             // append all inputs from x
-      MoveAll(dq_y, ArgType::kInput)
+      MoveAll(dq_y, ArgType::kInput),
+      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),  // append scale (input 1) from q
+      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),  // append zp (input 2) from q
+      MoveAll(q, ArgType::kOutput)
   };
   return moves;
 }
@@ -237,7 +240,7 @@ ConvReplaceWithQLinear::ConvReplaceWithQLinear()
     : ReplaceWithQLinear(kOnnxDomain, ConvMoves()) {
 }
 WhereReplaceWithQLinear::WhereReplaceWithQLinear()
-    : ReplaceWithQLinear(kOnnxDomain, WhereMoves()) {
+    : ReplaceWithQLinear(kMSDomain, WhereMoves()) {
 }
 MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
