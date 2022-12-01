@@ -401,15 +401,15 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
   current_node.MutableOutputDefs()[0]->SetShape(CreateTensorShapeInsertDimAtAxis(matmul_out_shape, slice_axis, 1));
 }
 
-bool DefaultOperatorPassThroughActorBase::PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                                                      int slice_axis, const std::string& entry_node_name,
-                                                      const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                                                      bool input_has_dim_1_for_axis, bool is_slice_scalar,
-                                                      int /*input_rank*/,
-                                                      const ONNX_NAMESPACE::TensorShapeProto_Dimension& /*output_dim_on_axis*/,
-                                                      const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "DefaultOperatorPassThroughActorBase for Node " + current_node.Name() + "(" +
-                             current_node.OpType() + ")");
+bool DefaultOperatorPassThroughActorBase::PostProcess(
+    Graph& graph, Node& current_node, int current_node_output_index,
+    int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
+    const ONNX_NAMESPACE::TensorShapeProto_Dimension& /*output_dim_on_axis*/,
+    const std::string& entry_node_name,
+    const std::unordered_map<int, SliceInfo>& new_gather_infos,
+    const logging::Logger& logger) {
+  LOG_DEBUG_INFO(logger, "Enter DefaultOperatorPassThroughActorBase::PostProcess for Node " + current_node.Name() +
+                             "(" + current_node.OpType() + ")");
   if (is_slice_scalar && input_has_dim_1_for_axis) {
     AdaptInputAndOutputForScalarSlice(graph, current_node, current_node_output_index, slice_axis,
                                       entry_node_name, new_gather_infos, logger);
@@ -418,18 +418,17 @@ bool DefaultOperatorPassThroughActorBase::PostProcess(Graph& graph, Node& curren
   return true;
 }
 
-bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/,
-                                      const Node& target_node,
-                                      const SliceInfo& info,
-                                      std::unordered_map<int, int>& target_node_input_indices,
-                                      std::vector<int>& input_dices,
-                                      bool& input_has_dim_1_for_axis,
-                                      const logging::Logger& logger) {
+bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& current_node, const SliceInfo& info,
+                                      const std::vector<int>& allowed_input_indices,
+                                      const logging::Logger& logger,
+                                      std::unordered_map<int, int>& propagate_input_config,
+                                      bool& input_has_dim_1_for_axis) {
+  LOG_DEBUG_INFO(logger, "Enter SimplePassThroughActor::PreCheck for node " + current_node.Name());
+
   Node* slice_node = info.GetNode();
-  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(target_node, *slice_node->InputDefs()[0]);
-  const NodeArg* gather_data_input_arg = target_node.OutputDefs()[target_node_output_index];
-  LOG_DEBUG_INFO(logger, "Enter SimplePassThroughPreCheck for node " + target_node.Name());
-  // For each input of target_node, check whether it meets a requirements,
+  int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *slice_node->InputDefs()[0]);
+  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[current_node_output_index];
+  // For each input of current_node, check whether it meets a requirements,
   // 1). either its rank is lower than minimum_rank_to_handle.
   // 2). or the dimension (if exists) before minimum_rank_to_handle is same as target node's output shape.
   // 3). or the dimension (if exists) before minimum_rank_to_handle is 1.
@@ -463,82 +462,86 @@ bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/,
     return std::nullopt;
   };
 
-  target_node_input_indices.clear();
+  propagate_input_config.clear();
   input_has_dim_1_for_axis = false;
-  for (size_t i = 0; i < target_node.InputDefs().size(); ++i) {
-    if (input_dices.size() > 0 && std::find(input_dices.begin(), input_dices.end(), i) == input_dices.end()) {
+  for (size_t i = 0; i < current_node.InputDefs().size(); ++i) {
+    if (allowed_input_indices.size() > 0 &&
+        std::find(allowed_input_indices.begin(), allowed_input_indices.end(), i) == allowed_input_indices.end()) {
       continue;
     }
     bool fatal_error_found = false;
-    auto ret = check_shapes(target_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
+    auto ret = check_shapes(current_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
     if (fatal_error_found) {
-      LOG_DEBUG_INFO(logger, "Skip for node " + target_node.Name() + " due to input check failure at index " +
+      LOG_DEBUG_INFO(logger, "Skip for node " + current_node.Name() + " due to input check failure at index " +
                                  std::to_string(i));
       return false;
     } else if (ret.has_value()) {
-      target_node_input_indices[static_cast<int>(i)] = ret.value();
+      propagate_input_config[static_cast<int>(i)] = ret.value();
     }
   }
 
   // Make sure once Gather is moved before target node, all its outputs can be correctly be sliced.
   std::unordered_map<int, int> output_dices;
-  for (size_t i = 0; i < target_node.OutputDefs().size(); ++i) {
-    if (static_cast<int>(i) == target_node_output_index) {
+  for (size_t i = 0; i < current_node.OutputDefs().size(); ++i) {
+    if (static_cast<int>(i) == current_node_output_index) {
       continue;
     }
 
     bool fatal_error_found = false;
     bool dim_1_for_axis_found = false;
-    auto ret = check_shapes(target_node.OutputDefs()[i], fatal_error_found, dim_1_for_axis_found);
+    auto ret = check_shapes(current_node.OutputDefs()[i], fatal_error_found, dim_1_for_axis_found);
     if (fatal_error_found) {
-      LOG_DEBUG_INFO(logger, "Skip for node " + target_node.Name() + " due to output check failure at index " +
+      LOG_DEBUG_INFO(logger, "Skip for node " + current_node.Name() + " due to output check failure at index " +
                                  std::to_string(i));
       return false;
     } else if (ret.has_value()) {
       output_dices[static_cast<int>(i)] = ret.value();
     }
   }
-  bool output_check_success = output_dices.size() == target_node.OutputDefs().size() - 1;
+  bool output_check_success = output_dices.size() == current_node.OutputDefs().size() - 1;
 
   return output_check_success;
 }
 
-bool ReductionOpPassThroughActor::PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                                           std::unordered_map<int, int>& target_node_input_indices,
-                                           std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                                           const logging::Logger& logger) {
-  auto axis = static_cast<int64_t>(target_node.GetAttributes().at("axis").i());
-  axis = axis < 0 ? axis + target_node.InputDefs()[0]->Shape()->dim_size() : axis;
+bool ReductionOpPassThroughActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                                           const std::vector<int>& allowed_input_indices,
+                                           const logging::Logger& logger,
+                                           std::unordered_map<int, int>& propagate_input_config,
+                                           bool& input_has_dim_1_for_axis) {
+  auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
+  axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
   // Make sure layernorm/softmax's reduction happens after the axis we want to slice.
   if (axis <= info.GetAxis()) {
     return false;
   }
 
-  return SimplePassThroughActor::PreCheck(graph, target_node, info, target_node_input_indices, input_dices,
-                                          input_has_dim_1_for_axis, logger);
+  return SimplePassThroughActor::PreCheck(graph, current_node, info, allowed_input_indices, logger,
+                                          propagate_input_config, input_has_dim_1_for_axis);
 }
-
-bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                                       std::unordered_map<int, int>& target_node_input_indices,
-                                       std::vector<int>& /*input_dices*/, bool& /*input_has_dim_1_for_axis*/,
-                                       const logging::Logger& logger) {
-  auto data_input_shape = target_node.InputDefs()[0]->Shape();
-  auto shape_input_shape = target_node.InputDefs()[1]->Shape();
-  auto output_shape = target_node.OutputDefs()[0]->Shape();
+bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                                       const std::vector<int>& /*allowed_input_indices*/,
+                                       const logging::Logger& logger,
+                                       std::unordered_map<int, int>& propagate_input_config,
+                                       bool& /*input_has_dim_1_for_axis*/) {
+  auto data_input_shape = current_node.InputDefs()[0]->Shape();
+  auto shape_input_shape = current_node.InputDefs()[1]->Shape();
+  auto output_shape = current_node.OutputDefs()[0]->Shape();
   if (data_input_shape == nullptr || shape_input_shape == nullptr || shape_input_shape->dim_size() != 1 ||
       output_shape == nullptr) {
     LOG_DEBUG_INFO(logger, "Reshape input/output node arg shape is not valid.");
     return false;
   }
 
-  if (!graph_utils::IsConstantInitializer(graph, target_node.InputDefs()[1]->Name())) {
+  if (!graph_utils::IsConstantInitializer(graph, current_node.InputDefs()[1]->Name())) {
     LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because the new shape is not constant.");
     return false;
   }
 
+  propagate_input_config.clear();
+
   InlinedVector<int64_t> new_shape_const_values;
-  optimizer_utils::AppendTensorFromInitializer(graph, *target_node.InputDefs()[1], new_shape_const_values, true);
+  optimizer_utils::AppendTensorFromInitializer(graph, *current_node.InputDefs()[1], new_shape_const_values, true);
   // Only below two cases are supported for easier updating shape data after propagate slice ops.
   // 1). If the shape data on slicing axis is zero (e.g. remain the same after slicing), we support it.
   // 2). Or if the sliced dim value is a constant, we also support it, and can update the shape data directly.
@@ -589,19 +592,18 @@ bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& target_no
       return false;
     }
 
-    target_node_input_indices[0] = reshape_input_axis;
+    propagate_input_config[0] = reshape_input_axis;
     return true;
   }
 
   return false;
 }
 
-bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int /*target_node_input_index*/,
-                                          int slice_axis, const std::string& /*entry_node_name*/,
-                                          const std::unordered_map<int, SliceInfo>& /*new_gather_infos*/,
-                                          bool /*input_has_dim_1_for_axis*/, bool is_slice_scalar,
-                                          int /*input_rank*/,
+bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int /*current_node_output_index*/,
+                                          int slice_axis, bool is_slice_scalar, bool /*input_has_dim_1_for_axis*/,
                                           const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
+                                          const std::string& /*entry_node_name*/,
+                                          const std::unordered_map<int, SliceInfo>& /*new_gather_infos*/,
                                           const logging::Logger& logger) {
   LOG_DEBUG_INFO(logger, "ReshapePostProcess for Node " + current_node.Name() + "(" + current_node.OpType() + ")");
   InlinedVector<int64_t> new_shape_const_values;
@@ -659,28 +661,30 @@ bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int 
   ORT_THROW("Fail to update shape data in ReshapePassThroughActor::PostProcess, but this should not be called.");
 }
 
-bool TransposePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& target_node, const SliceInfo& info,
-                                         std::unordered_map<int, int>& target_node_input_indices,
-                                         std::vector<int>& /*input_dices*/, bool& /*input_has_dim_1_for_axis*/,
-                                         const logging::Logger& logger) {
+bool TransposePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& current_node, const SliceInfo& info,
+                                         const std::vector<int>& /*allowed_input_indices*/,
+                                         const logging::Logger& logger,
+                                         std::unordered_map<int, int>& propagate_input_config,
+                                         bool& input_has_dim_1_for_axis) {
   InlinedVector<int64_t> perm;
-  if (!graph_utils::GetRepeatedNodeAttributeValues(target_node, "perm", perm)) {
-    LOG_DEBUG_INFO(logger, "perm attribute is not set for node " + target_node.Name());
+  if (!graph_utils::GetRepeatedNodeAttributeValues(current_node, "perm", perm)) {
+    LOG_DEBUG_INFO(logger, "perm attribute is not set for node " + current_node.Name());
     return false;
   }
-
-  target_node_input_indices[0] = static_cast<int>(perm[info.GetAxis()]);
+  propagate_input_config.clear();
+  propagate_input_config[0] = static_cast<int>(perm[info.GetAxis()]);
+  input_has_dim_1_for_axis = false;
   return true;
 }
 
 bool TransposePassThroughActor::PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                                            int slice_axis, const std::string& entry_node_name,
-                                            const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                                            bool /*input_has_dim_1_for_axis*/, bool is_slice_scalar,
-                                            int /*input_rank*/,
+                                            int slice_axis, bool is_slice_scalar, bool /*input_has_dim_1_for_axis*/,
                                             const ONNX_NAMESPACE::TensorShapeProto_Dimension& /*output_dim_on_axis*/,
+                                            const std::string& entry_node_name,
+                                            const std::unordered_map<int, SliceInfo>& new_gather_infos,
                                             const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "TransposePostProcess for Node " + current_node.Name() + "(" + current_node.OpType() + ")");
+  LOG_DEBUG_INFO(logger, "Enter TransposePassThroughActor::PostProcess for Node " + current_node.Name() + "(" +
+                             current_node.OpType() + ")");
 
   // We need keep the original dimension to align with original perm.
   if (is_slice_scalar) {
@@ -690,32 +694,33 @@ bool TransposePassThroughActor::PostProcess(Graph& graph, Node& current_node, in
   return true;
 }
 
-bool MatMulPassThroughActor::PreCheck(const Graph& /*graph*/, const Node& target_node, const SliceInfo& info,
-                                      std::unordered_map<int, int>& target_node_input_indices,
-                                      std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                                      const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "Enter MatMulPassThroughActor PreCheck  for node " + target_node.Name());
-  auto lhs_rank = target_node.InputDefs()[0]->Shape()->dim_size();
-  auto rhs_rank = target_node.InputDefs()[1]->Shape()->dim_size();
+bool MatMulPassThroughActor::PreCheck(const Graph& /*graph*/, const Node& current_node, const SliceInfo& info,
+                                      const std::vector<int>& allowed_input_indices,
+                                      const logging::Logger& logger,
+                                      std::unordered_map<int, int>& propagate_input_config,
+                                      bool& input_has_dim_1_for_axis) {
+  LOG_DEBUG_INFO(logger, "Enter MatMulPassThroughActor::PreCheck for node " + current_node.Name());
+  auto lhs_rank = current_node.InputDefs()[0]->Shape()->dim_size();
+  auto rhs_rank = current_node.InputDefs()[1]->Shape()->dim_size();
 
   if (!(lhs_rank >= 2 && rhs_rank >= 2)) {
     LOG_DEBUG_INFO(logger, "MatMul input rank lower than 2, skip.");
     return false;
   }
 
-  target_node_input_indices.clear();
+  propagate_input_config.clear();
   if (info.GetAxis() == info.GetInputRank() - 1) {
-    target_node_input_indices[1] = rhs_rank - 1;
+    propagate_input_config[1] = rhs_rank - 1;
     return true;
   } else if (info.GetAxis() == info.GetInputRank() - 2) {
-    target_node_input_indices[0] = lhs_rank - 2;
+    propagate_input_config[0] = lhs_rank - 2;
     return true;
   }
 
-  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(target_node, *info.GetNode()->InputDefs()[0]);
-  const NodeArg* gather_data_input_arg = target_node.OutputDefs()[target_node_output_index];
+  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.GetNode()->InputDefs()[0]);
+  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[target_node_output_index];
 
-  // For each input of target_node, check whether it meets requirements,
+  // For each input of current_node, check whether it meets requirements,
   // 1). the dimension (if exists) before minimum_rank_to_handle is same as target node's output shape.
   // 2). or the dimension (if exists) before minimum_rank_to_handle is 1.
   // Otherwise, we will skip the optimization.
@@ -745,38 +750,38 @@ bool MatMulPassThroughActor::PreCheck(const Graph& /*graph*/, const Node& target
     }
 
     ORT_THROW("Unexpected return value from MatMulPassThroughActor::PreCheck");
-    return std::nullopt;
   };
 
   input_has_dim_1_for_axis = false;
-  for (size_t i = 0; i < target_node.InputDefs().size(); ++i) {
-    if (input_dices.size() > 0 && std::find(input_dices.begin(), input_dices.end(), i) == input_dices.end()) {
+  for (size_t i = 0; i < current_node.InputDefs().size(); ++i) {
+    if (allowed_input_indices.size() > 0 &&
+        std::find(allowed_input_indices.begin(), allowed_input_indices.end(), i) == allowed_input_indices.end()) {
       continue;
     }
     bool fatal_error_found = false;
-    auto ret = check_shapes(target_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
+    auto ret = check_shapes(current_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
     if (fatal_error_found) {
-      LOG_DEBUG_INFO(logger, "Skip for node " + target_node.Name() + " due to input check failure at index " +
+      LOG_DEBUG_INFO(logger, "Skip for node " + current_node.Name() + " due to input check failure at index " +
                                  std::to_string(i));
       return false;
     } else if (ret.has_value()) {
-      LOG_DEBUG_INFO(logger, "Add new input candidate for node " + target_node.Name() + " at index " +
+      LOG_DEBUG_INFO(logger, "Add new input candidate for node " + current_node.Name() + " at index " +
                                  std::to_string(i) + " with axis " + std::to_string(ret.value()));
-      target_node_input_indices[static_cast<int>(i)] = ret.value();
+      propagate_input_config[static_cast<int>(i)] = ret.value();
     }
   }
 
-  return target_node_input_indices.size() > 0;
+  return propagate_input_config.size() > 0;
 }
 
 bool MatMulPassThroughActor::PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                                         int slice_axis, const std::string& entry_node_name,
-                                         const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                                         bool /*input_has_dim_1_for_axis*/, bool is_slice_scalar,
-                                         int /*input_rank*/,
+                                         int slice_axis, bool is_slice_scalar, bool /*input_has_dim_1_for_axis*/,
                                          const ONNX_NAMESPACE::TensorShapeProto_Dimension& /*output_dim_on_axis*/,
+                                         const std::string& entry_node_name,
+                                         const std::unordered_map<int, SliceInfo>& new_gather_infos,
                                          const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "MatMulPassThroughActor for Node " + current_node.Name() + "(" + current_node.OpType() + ")");
+  LOG_DEBUG_INFO(logger, "Enter MatMulPassThroughActor::PostProcess for Node " + current_node.Name() + "(" +
+                             current_node.OpType() + ")");
 
   // We need keep the original dimension to avoid the matmul inputs cannot be compatible to compute.
   if (is_slice_scalar) {

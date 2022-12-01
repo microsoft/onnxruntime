@@ -163,6 +163,7 @@ void RandomFillFloatVector(const TensorShapeVector& shape, std::vector<float>& d
   float scale = 1.f;
   float mean = 0.f;
   float seed = 123.f;
+  data.resize(TensorShape(shape).Size());
   std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution_float{mean, scale};
 
@@ -174,7 +175,6 @@ void RandomFillFloatVector(const TensorShapeVector& shape, std::vector<float>& d
 
 void RandomFillHalfVector(const TensorShapeVector& shape, std::vector<MLFloat16>& data) {
   std::vector<float> data_float(TensorShape(shape).Size());
-  RandomFillFloatVector(shape, data_float);
   std::transform(data_float.begin(), data_float.end(), data.begin(),
                  [](float value) { return MLFloat16(math::floatToHalf(value)); });
 }

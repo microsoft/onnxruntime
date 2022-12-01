@@ -10,15 +10,13 @@
 #include "core/optimizer/compute_optimizer/passthrough_actors.h"
 #include "core/optimizer/compute_optimizer/compute_optimizer.h"
 
-using namespace ::onnxruntime::common;
+// using namespace ::onnxruntime::common;
 using SliceInfo = onnxruntime::optimizer::compute_optimizer::SliceInfo;
 using SliceOperationReorderHandle = onnxruntime::optimizer::compute_optimizer::SliceOperationReorderHandle;
 
 namespace onnxruntime {
 namespace optimizer {
 namespace compute_optimizer {
-
-static constexpr int kSliceDataInputIndex = 0;
 
 bool EnforceNodeAllInputOutputHaveShapes(const Node& node) {
   for (const auto* input_def : node.InputDefs()) {
@@ -60,9 +58,8 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
 
     std::unordered_map<int, int> candidate_input_indices;
     bool input_has_dim_1_for_axis = false;
-    if (!pass_through_config.actor->PreCheck(graph, current_node, info, candidate_input_indices,
-                                             pass_through_config.input_indices,
-                                             input_has_dim_1_for_axis, logger)) {
+    if (!pass_through_config.actor->PreCheck(graph, current_node, info, pass_through_config.input_indices, logger,
+                                             candidate_input_indices, input_has_dim_1_for_axis)) {
       LOG_DEBUG_INFO(logger, "Pre-check failed for " + current_node.Name() + "(" + op_type + ")");
       return false;
     }
@@ -90,11 +87,12 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
     }
 
     int index_of_output =
-        optimizer_utils::IndexOfNodeOutput(current_node, *slice_node.InputDefs()[kSliceDataInputIndex]);
+        optimizer_utils::IndexOfNodeOutput(current_node, *slice_node.InputDefs()[info.GetDataInputIndex()]);
     ORT_ENFORCE(RemoveOriginSlicingOp(graph, slice_node, current_node, logger, info).IsOK());
     if (!pass_through_config.actor->PostProcess(graph, current_node, index_of_output, info.GetAxis(),
-                                                entry_node_name_, new_gather_infos, input_has_dim_1_for_axis,
-                                                info.IsSliceScalar(), info.GetInputRank(), info.GetOutputDimOnAxis(),
+                                                info.IsSliceScalar(), input_has_dim_1_for_axis,
+                                                info.GetOutputDimOnAxis(),
+                                                entry_node_name_, new_gather_infos,
                                                 logger)) {
       ORT_THROW("Post-process failed for " + current_node.Name() + "(" + op_type + ")");
     }
@@ -140,8 +138,10 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(info.GetEntrySliceArgName()),
                                 current_node.MutableInputDefs()[current_node_input_index]->TypeAsProto()));
 
-  int new_slice_input_index_to_connect = 0;  /* new node input index to connect to current_node's input node*/
-  int new_slice_output_index_to_connect = 0; /* new node output index to connect to current_node*/
+  /* new node input index to connect to current_node's input node*/
+  int new_slice_input_index_to_connect = info.GetDataInputIndex();
+  /* new node output index to connect to current_node*/
+  int new_slice_output_index_to_connect = info.GetOutputIndex();
   Node* new_slice_node = InsertIntermediateNodeOnDestInput(graph, current_node,
                                                            current_node_input_index,
                                                            new_slice_input_index_to_connect,
@@ -158,7 +158,7 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
   new_slice_node->SetExecutionProviderType(slice_node.GetExecutionProviderType());
 
   // Set correct shape for new created node.
-  auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[0];
+  auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[new_slice_output_index_to_connect];
   int reversed_axis = new_axis - new_slice_out_arg->Shape()->dim_size();
   UpdateSliceOutputShape(*new_slice_out_arg, reversed_axis, info.GetOutputDimOnAxis());
   auto new_slice_info = SliceInfo(new_slice_node, info.IsSliceScalar(), info.GetAxisAttrName(), new_axis);
@@ -172,10 +172,10 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
                              ") slice_node " + slice_node.Name() + "(" + slice_node.OpType() + "), keep_dim = " +
                              std::to_string(!(info.IsSliceScalar())));
 
-  auto slice_input_arg = slice_node.MutableInputDefs()[kSliceDataInputIndex];
+  auto slice_input_arg = slice_node.MutableInputDefs()[info.GetDataInputIndex()];
   int slice_input_rank = slice_input_arg->Shape()->dim_size();
   int output_index = optimizer_utils::IndexOfNodeOutput(current_node, *slice_input_arg);
-  auto slice_op_output_arg = slice_node.MutableOutputDefs()[0];
+  auto slice_op_output_arg = slice_node.MutableOutputDefs()[info.GetOutputIndex()];
 
   // Loop all outputs of target node, update the shape accordingly.
   // For elementwise ops like (LayerNorm/Dropout/Add), we should handle all outputs.
@@ -189,14 +189,7 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
                              " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
                              std::to_string(output_index));
 
-  for (auto it = slice_node.OutputEdgesBegin(), end = slice_node.OutputEdgesEnd(); it != end; ++it) {
-    if (static_cast<size_t>(it->GetSrcArgIndex()) == 0) {
-      LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Gather's output edge " + it->GetNode().Name() + "(" +
-                                 it->GetNode().OpType() + ") input index " + std::to_string(it->GetDstArgIndex()));
-    }
-  }
-
-  graph_utils::ReplaceDownstreamNodeInput(graph, slice_node, 0 /*output_idx*/, current_node,
+  graph_utils::ReplaceDownstreamNodeInput(graph, slice_node, info.GetOutputIndex() /*output_idx*/, current_node,
                                           output_index /*replacement_output_idx*/);
   auto gather_origin_consumer_nodes = graph.GetConsumerNodes(slice_op_output_arg->Name());
   std::vector<Node*> slice_op_consumers;

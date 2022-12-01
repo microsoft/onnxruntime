@@ -28,6 +28,9 @@ namespace compute_optimizer {
  * more instances of this class are created. The propagation stops when the all inputs are not supported to be sliced.
  */
 struct SliceInfo {
+  static constexpr int kSliceDataInputIndex = 0;
+  static constexpr int kSliceOutputIndex = 0;
+
   SliceInfo() = default;
 
   SliceInfo(Node* slice_node,
@@ -38,8 +41,8 @@ struct SliceInfo {
       : slice_node_(slice_node), is_slice_scalar_(is_slice_scalar) {
     axis_attr_name_ = slice_axis_attr_name;
 
-    const NodeArg* input = slice_node_->InputDefs()[0];
-    const NodeArg* output = slice_node_->OutputDefs()[0];
+    const NodeArg* input = slice_node_->InputDefs()[kSliceDataInputIndex];
+    const NodeArg* output = slice_node_->OutputDefs()[kSliceOutputIndex];
     input_rank_ = input->Shape()->dim_size();
     axis_ = slice_axis < 0 ? input_rank_ + slice_axis : slice_axis;
 
@@ -48,7 +51,7 @@ struct SliceInfo {
     }
 
     if (is_entry_slice_node_) {
-      entry_slice_arg_name_ = slice_node_->OutputDefs()[0]->Name();
+      entry_slice_arg_name_ = slice_node_->OutputDefs()[kSliceOutputIndex]->Name();
     }
   }
 
@@ -82,6 +85,14 @@ struct SliceInfo {
 
   const ONNXDimension& GetOutputDimOnAxis() const {
     return output_dim_on_axis_;
+  }
+
+  int GetDataInputIndex() const {
+    return kSliceDataInputIndex;
+  }
+
+  int GetOutputIndex() const {
+    return kSliceOutputIndex;
   }
 
  private:
@@ -120,7 +131,9 @@ class OperatorPassThroughActorBase {
    * @param graph The graph that the node belongs to.
    * @param current_node The node to be checked.
    * @param info The slicing info of the Gather/GatherND node.
-   * @param current_node_input_indices: Used as a return value - a map of input index to new slice axis.
+   * @param allowed_input_indices The input indices explicitly specified of the current_node that are allowed to do pass
+   *  through.
+   * @param propagate_input_config: Used as a return value - a map of input index to new slice axis.
    *  The key is an integer, which is the index of the input of the current_node.
    *  The value is an integer, which is the new axis index after the pass through on the corresponding input.
    *  For example:
@@ -128,12 +141,14 @@ class OperatorPassThroughActorBase {
    *      also have axis 1 when we move the slice to the input.
    *    > if the current_node is a Transpose (perm=[1, 0, 2]) node, and the slice
    *      axis is 1, then the new axis for the input should be 0.
-   * @param input_dices The input indices explicitly specified of the current_node that are allowed to do pass through.
+   * @param input_has_dim_1_for_axis: Used as a return value - a bool indicates whether any of current_node' input
+   *  has dim 1 on the slice axis.
    */
   virtual bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
-                        std::unordered_map<int, int>& current_node_input_indices,
-                        std::vector<int>& input_dices, bool& /*input_has_dim_1_for_axis*/,
-                        const logging::Logger& logger) = 0;
+                        const std::vector<int>& allowed_input_indices,
+                        const logging::Logger& logger,
+                        std::unordered_map<int, int>& propagate_input_config,
+                        bool& input_has_dim_1_for_axis) = 0;
 
   /**
    * @brief After slice op pass through all inputs, do some post process work.
@@ -145,20 +160,19 @@ class OperatorPassThroughActorBase {
    * @param current_node The node that has been passed through.
    * @param current_node_output_index The output index of the current_node connecting to slice op.
    * @param slice_axis slice axis of the slice op.
+   * @param is_slice_scalar whether the slice is a scalar.
+   * @param input_has_dim_1_for_axis whether any of current_node's inputs has dim 1 on the slice axis.
+   * @param output_dim_on_axis dimension of the slice op's output tensor on the slice axis.
    * @param entry_node_name name of entry node that trigger the pass through search, for naming only.
    * @param new_gather_infos new gather infos that are generated during the pass through for current_node's inputs.
-   * @param input_has_dim_1_for_axis whether any of current_node's inputs has dim 1 on the slice axis.
-   * @param is_slice_scalar_ whether the slice is a scalar.
-   * @param input_rank rank of the slice op's data input tensor.
-   * @param output_dim_on_axis dimension of the slice op's output tensor on the slice axis.
    * @param logger
    * @return
    */
   virtual bool PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                           int slice_axis, const std::string& entry_node_name,
+                           int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
+                           const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
+                           const std::string& entry_node_name,
                            const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                           bool input_has_dim_1_for_axis, bool is_slice_scalar_,
-                           int input_rank, const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
                            const logging::Logger& logger) = 0;
 };
 
@@ -167,18 +181,16 @@ class DefaultOperatorPassThroughActorBase : public OperatorPassThroughActorBase 
   DefaultOperatorPassThroughActorBase() = default;
   ~DefaultOperatorPassThroughActorBase() = default;
 
-  bool PreCheck(const Graph& /*graph*/, const Node& /*current_node*/, const SliceInfo& /*info*/,
-                std::unordered_map<int, int>& /*current_node_input_indices*/,
-                std::vector<int>& /*input_dices*/, bool& /*input_has_dim_1_for_axis*/,
-                const logging::Logger& /*logger*/) override {
+  bool PreCheck(const Graph&, const Node&, const SliceInfo&, const std::vector<int>&, const logging::Logger&,
+                std::unordered_map<int, int>&, bool&) override {
     return true;
   };
 
   bool PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                   int slice_axis, const std::string& entry_node_name,
+                   int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
+                   const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
+                   const std::string& entry_node_name,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                   bool input_has_dim_1_for_axis, bool is_slice_scalar_,
-                   int /*input_rank*/, const ONNX_NAMESPACE::TensorShapeProto_Dimension& /*output_dim_on_axis*/,
                    const logging::Logger& logger) override;
 };
 
@@ -187,10 +199,11 @@ class SimplePassThroughActor : public DefaultOperatorPassThroughActorBase {
   SimplePassThroughActor() = default;
   ~SimplePassThroughActor() = default;
 
-  bool PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                std::unordered_map<int, int>& target_node_input_indices,
-                std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                const logging::Logger& logger) override;
+  bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                const std::vector<int>& allowed_input_indices,
+                const logging::Logger& logger,
+                std::unordered_map<int, int>& propagate_input_config,
+                bool& input_has_dim_1_for_axis) override;
 };
 
 class ReductionOpPassThroughActor : public SimplePassThroughActor {
@@ -198,10 +211,11 @@ class ReductionOpPassThroughActor : public SimplePassThroughActor {
   ReductionOpPassThroughActor() = default;
   ~ReductionOpPassThroughActor() = default;
 
-  bool PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                std::unordered_map<int, int>& target_node_input_indices,
-                std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                const logging::Logger& logger) override;
+  bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                const std::vector<int>& allowed_input_indices,
+                const logging::Logger& logger,
+                std::unordered_map<int, int>& propagate_input_config,
+                bool& input_has_dim_1_for_axis) override;
 };
 
 class ReshapePassThroughActor : public DefaultOperatorPassThroughActorBase {
@@ -209,17 +223,18 @@ class ReshapePassThroughActor : public DefaultOperatorPassThroughActorBase {
   ReshapePassThroughActor() = default;
   ~ReshapePassThroughActor() = default;
 
-  bool PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                std::unordered_map<int, int>& target_node_input_indices,
-                std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                const logging::Logger& logger) override;
+  bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                const std::vector<int>& allowed_input_indices,
+                const logging::Logger& logger,
+                std::unordered_map<int, int>& propagate_input_config,
+                bool& input_has_dim_1_for_axis) override;
 
   // Once slice node is passed through, we need to update the shape accordingly.
   bool PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                   int slice_axis, const std::string& entry_node_name,
+                   int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
+                   const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
+                   const std::string& entry_node_name,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                   bool input_has_dim_1_for_axis, bool is_slice_scalar_,
-                   int input_rank, const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
                    const logging::Logger& logger) override;
 };
 
@@ -228,17 +243,18 @@ class TransposePassThroughActor : public DefaultOperatorPassThroughActorBase {
   TransposePassThroughActor() = default;
   ~TransposePassThroughActor() = default;
 
-  bool PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                std::unordered_map<int, int>& target_node_input_indices,
-                std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                const logging::Logger& logger) override;
+  bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                const std::vector<int>& allowed_input_indices,
+                const logging::Logger& logger,
+                std::unordered_map<int, int>& propagate_input_config,
+                bool& input_has_dim_1_for_axis) override;
 
   // If scalar slice happens, we need adapt the input, otherwise the perm cannot be matched.
   bool PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                   int slice_axis, const std::string& entry_node_name,
+                   int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
+                   const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
+                   const std::string& entry_node_name,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                   bool input_has_dim_1_for_axis, bool is_slice_scalar_,
-                   int input_rank, const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
                    const logging::Logger& logger) override;
 };
 
@@ -248,17 +264,18 @@ class MatMulPassThroughActor : public DefaultOperatorPassThroughActorBase {
   ~MatMulPassThroughActor() = default;
 
   // Check which inputs can be propagated according to the slice axis.
-  bool PreCheck(const Graph& graph, const Node& target_node, const SliceInfo& info,
-                std::unordered_map<int, int>& target_node_input_indices,
-                std::vector<int>& input_dices, bool& input_has_dim_1_for_axis,
-                const logging::Logger& logger) override;
+  bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
+                const std::vector<int>& allowed_input_indices,
+                const logging::Logger& logger,
+                std::unordered_map<int, int>& propagate_input_config,
+                bool& input_has_dim_1_for_axis) override;
 
   // If scalar slice happens in the second last dimension, we need to adapt the input.
   bool PostProcess(Graph& graph, Node& current_node, int current_node_output_index,
-                   int slice_axis, const std::string& entry_node_name,
+                   int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
+                   const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
+                   const std::string& entry_node_name,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos,
-                   bool input_has_dim_1_for_axis, bool is_slice_scalar_,
-                   int input_rank, const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis,
                    const logging::Logger& logger) override;
 };
 
