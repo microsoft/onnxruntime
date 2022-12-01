@@ -390,6 +390,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!layer_norm_fp32_fallback_env.empty()) {
       layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
     }
+
+    const std::string side_load_engine_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSideLoadEngine);
+    if (!side_load_engine_env.empty()) {
+      side_load_engine_ = (std::stoi(side_load_engine_env) == 0 ? false : true);
+    }
   }
 
   // Validate setting
@@ -455,7 +460,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
-                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_;
+                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
+                        << ", trt_side_load_engine: " << side_load_engine_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1045,63 +1051,121 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
+  std::string model_name;
 #ifdef _WIN32
   wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+  model_name = path_string.substr(path_string.find_last_of("/\\") + 1);
 #else
   strcpy(model_path_, path_string.c_str());
+  model_name = path_string.substr(path_string.find_last_of("/") + 1);
 #endif
+  model_name = model_name.substr(0, model_name.size() - 5);
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
-  std::vector<size_t> nodes_vector(number_of_ort_nodes);
-  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  SubGraphCollection_t supported_nodes_vector;
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::string trt_node_list_name = "trt_nodes_list_" + graph.Name() + "_" + model_name + ".txt";
+  if (!side_load_engine_) {
+    std::vector<size_t> nodes_vector(number_of_ort_nodes);
+    std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  
+    std::vector<size_t> filtered_nodes_vector;
+    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+    for (const auto& index : nodes_vector) {
+      const auto& node = graph.GetNode(node_index[index]);
+  
+      /* If current node is control flow op, we take different approach based on following four cases:
+       *
+       * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
+       * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
+       * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
+       * (4) control flow op is not supported by TRT, and not all its subgraphs supported by TRT. Don't assign this node to TRT.
+       *
+       * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
+       */
+      if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+        auto sub_graphs = node->GetSubgraphs();
+        if (sub_graphs.size() != 0) {
+          bool all_subgraphs_are_supported = true;
+          for (auto sub_graph : sub_graphs) {
+            if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
+              all_subgraphs_are_supported = false;
+              break;
+            }
+          }
+          if (!all_subgraphs_are_supported) {
+          // if not all its subgraphs are supported, we need to exclude this control flow op
+            continue;
+          }
+        }
+      }
+      filtered_nodes_vector.push_back(index);
+    }
+  
+    SubGraphCollection_t parser_nodes_vector = {{filtered_nodes_vector, false}};
+    bool early_termination = false;
+    supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+    if (early_termination) {
+      supported_nodes_vector.clear();
+    }
+  
+    // Remove subgraphs if its size is less than the predefined minimal size
+    for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+      const size_t subgraph_size = it->first.size();
+      if (subgraph_size < min_subgraph_size_) {
+        supported_nodes_vector.erase(it--);
+      }
+    }
 
-  std::vector<size_t> filtered_nodes_vector;
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  for (const auto& index : nodes_vector) {
-    const auto& node = graph.GetNode(node_index[index]);
-
-    /* If current node is control flow op, we take different approach based on following four cases:
-     *
-     * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
-     * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
-     * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
-     * (4) control flow op is not supported by TRT, and not all its subgraphs supported by TRT. Don't assign this node to TRT.
-     *
-     * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
-     */
-    if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
-      auto sub_graphs = node->GetSubgraphs();
-      if (sub_graphs.size() != 0) {
-        bool all_subgraphs_are_supported = true;
+    // Handle the case where the graph is subgraph of control flow op.
+    // The purpose is to make control flow op as well as its subgraphs run on TRT.
+    // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
+    if (IsSubGraphOfControlFlowOp(graph) && IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
+      const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+      bool all_subgraphs_are_supported = true;
+  
+      // "If" control flow op has two subgraph bodies, "then" body and "else" body respectively.
+      // Check its parent node's another subgraph to see whether that subgraph is also fully supported by TRT.
+      if (graph.ParentNode()->OpType() == "If") {
+        all_subgraphs_are_supported = false;
+        SubGraphCollection_t subgraph_supported_nodes_vector;
+        auto sub_graphs = graph.ParentNode()->GetSubgraphs();
         for (auto sub_graph : sub_graphs) {
-          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
-            all_subgraphs_are_supported = false;
+          if (sub_graph.get() != &graph.GetGraph()) {
+            auto sub_graph_veiwer = sub_graph->CreateGraphViewer();
+            const int number_of_ort_subgraph_nodes = sub_graph_veiwer->NumberOfNodes();
+            std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
+            std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
+            SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
+            bool subgraph_early_termination = false;
+            subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+            all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
             break;
           }
         }
-        if (!all_subgraphs_are_supported) {
-        // if not all its subgraphs are supported, we need to exclude this control flow op
-          continue;
+      }
+  
+      // Construct subgraph capability from node list
+      if (all_subgraphs_are_supported) {
+        // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
+        // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does).
+        for (const auto& group : supported_nodes_vector) {
+          if (!group.first.empty()) {
+            for (const auto& index : group.first) {
+              std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+              sub_graph->Nodes().push_back(node_index[index]);
+              result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+            }
+          }
         }
+        LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+        return result;
       }
     }
-    filtered_nodes_vector.push_back(index);
-  }
-
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
-  bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
-  if (early_termination) {
-    supported_nodes_vector.clear();
-  }
-
-  // Remove subgraphs if its size is less than the predefined minimal size
-  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
-    const size_t subgraph_size = it->first.size();
-    if (subgraph_size < min_subgraph_size_) {
-      supported_nodes_vector.erase(it--);
-    }
+    WriteSupportedList(trt_node_list_name, supported_nodes_vector);
+  } else {
+    ReadSupportedList(trt_node_list_name, supported_nodes_vector);
   }
 
   // Detect and remove cycles from supported node list
@@ -1109,7 +1173,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Consolidate supported node list
   if (supported_nodes_vector.size() > 1) {
-    nodes_vector.clear();
+    std::vector<size_t> nodes_vector;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         nodes_vector.insert(nodes_vector.end(), group.first.begin(), group.first.end());
@@ -1121,54 +1185,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     } else {
       LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are consolidated into one subgraph";
       supported_nodes_vector = consolidated_supported_nodes_vector;
-    }
-  }
-
-  // Construct subgraph capability from node list
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-
-  // Handle the case where the graph is subgraph of control flow op.
-  // The purpose is to make control flow op as well as its subgraphs run on TRT.
-  // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
-  if (IsSubGraphOfControlFlowOp(graph) && IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
-    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-    bool all_subgraphs_are_supported = true;
-
-    // "If" control flow op has two subgraph bodies, "then" body and "else" body respectively.
-    // Check its parent node's another subgraph to see whether that subgraph is also fully supported by TRT.
-    if (graph.ParentNode()->OpType() == "If") {
-      all_subgraphs_are_supported = false;
-      SubGraphCollection_t subgraph_supported_nodes_vector;
-      auto sub_graphs = graph.ParentNode()->GetSubgraphs();
-      for (auto sub_graph : sub_graphs) {
-        if (sub_graph.get() != &graph.GetGraph()) {
-          auto sub_graph_veiwer = sub_graph->CreateGraphViewer();
-          const int number_of_ort_subgraph_nodes = sub_graph_veiwer->NumberOfNodes();
-          std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
-          std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
-          SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
-          bool subgraph_early_termination = false;
-          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
-          all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
-          break;
-        }
-      }
-    }
-
-    if (all_subgraphs_are_supported) {
-      // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
-      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does).
-      for (const auto& group : supported_nodes_vector) {
-        if (!group.first.empty()) {
-          for (const auto& index : group.first) {
-            std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
-            sub_graph->Nodes().push_back(node_index[index]);
-            result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-          }
-        }
-      }
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
-      return result;
     }
   }
 
@@ -1201,16 +1217,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, size_t> input_map;
     const auto& input_defs = fused_node.InputDefs();
-    input_map.reserve(input_defs.size());
-    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+    int num_inputs = input_defs.size();
+    input_map.reserve(num_inputs);
+    for (size_t i = 0, end = num_inputs; i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
     }
 
     // Build map from output name to its index in output definitions
     std::unordered_map<std::string, size_t> output_map;
     const auto& output_defs = fused_node.OutputDefs();
-    output_map.reserve(output_defs.size());
-    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
+    int num_outputs = output_defs.size();
+    output_map.reserve(num_outputs);
+    for (size_t i = 0, end = num_outputs; i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
 
@@ -1234,7 +1252,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+    ///trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
@@ -1249,43 +1267,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
           next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
         }
-      }
-    }
-
-    int num_inputs = trt_network->getNbInputs();
-    int num_outputs = trt_network->getNbOutputs();
-    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
-    std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
-    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
-    std::unordered_map<std::string, size_t> output_types(num_outputs);
-
-    // Initialize shape range for dynamic shape tensors
-    bool has_dynamic_shape = false;
-    for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
-      auto input = trt_network->getInput(i);
-      const std::string& input_name = input->getName();
-      nvinfer1::Dims dims = input->getDimensions();
-      int nb_dims = dims.nbDims;
-      if (input->isShapeTensor()) {
-        // Shape tensor
-        input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
-        has_dynamic_shape = true;
-      } else {
-        // Execution tensor
-        for (int j = 0, end = nb_dims; j < end; ++j) {
-          if (dims.d[j] == -1) {
-            input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
-            has_dynamic_shape = true;
-          }
-        }
-      }
-    }
-
-    // Check platform availability for low precision
-    if (fp16_enable_) {
-      if (!trt_builder->platformHasFastFp16()) {
-        fp16_enable_ = false;
-        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
       }
     }
 
@@ -1339,6 +1320,49 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setDLACore(dla_core_);
           trt_node_name_with_precision += "_dlacore" + std::to_string(dla_core_);
         }
+      }
+    }
+
+    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
+    std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
+    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
+    std::unordered_map<std::string, size_t> output_types(num_outputs);
+
+    // Initialize shape range for dynamic shape tensors
+    bool has_dynamic_shape = false;
+    const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+    const std::string engine_cache_path = cache_path + ".engine";
+    const std::string profile_cache_path = cache_path + ".profile";
+    if (side_load_engine_ && engine_cache_enable_ && engine_file && profile_file) {
+      has_dynamic_shape = true;
+    } else {
+      trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+      for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
+        auto input = trt_network->getInput(i);
+        const std::string& input_name = input->getName();
+        nvinfer1::Dims dims = input->getDimensions();
+        int nb_dims = dims.nbDims;
+        if (input->isShapeTensor()) {
+          // Shape tensor
+          input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
+          has_dynamic_shape = true;
+        } else {
+          // Execution tensor
+          for (int j = 0, end = nb_dims; j < end; ++j) {
+            if (dims.d[j] == -1) {
+              input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
+              has_dynamic_shape = true;
+            }
+          }
+        }
+      }
+	}
+
+    // Check platform availability for low precision
+    if (fp16_enable_) {
+      if (!trt_builder->platformHasFastFp16()) {
+        fp16_enable_ = false;
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
       }
     }
 
