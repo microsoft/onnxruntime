@@ -5,55 +5,97 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/shared_library/provider_api.h"
 #include <iostream>
 
-using namespace onnxruntime;;
+using namespace onnxruntime;
 
 namespace onnxruntime {
 
+#define TEMP_CUSTOM_OP_NUM_INPUTS 20
+#define TEMP_CUSTOM_OP_NUM_OUTPUTS TEMP_CUSTOM_OP_NUM_INPUTS
+
 int CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain);
+
 struct TensorRTCustomKernel {
   TensorRTCustomKernel(const OrtKernelInfo* /*info*/, void* compute_stream)
       : compute_stream_(compute_stream) {
   }
 
-  void Compute(OrtKernelContext* context){};  // The implementation is in TensorRT repos.
+  void Compute(OrtKernelContext* context) {};  // The implementation is in TensorRT OSS repos. No need to implement it here.
 
  private:
   void* compute_stream_;
 };
 
-struct DisentangledAttentionCustomOp : Ort::CustomOpBase<DisentangledAttentionCustomOp, TensorRTCustomKernel> {
-  explicit DisentangledAttentionCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKernel> {
+  explicit TensorRTCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new TensorRTCustomKernel(info, compute_stream_); };
-  const char* GetName() const { return "DisentangledAttention_TRT"; };
+
+  const char* GetName() const { return name_; };
+
+  void SetName(const char* name) { name_ = name; };
+
   const char* GetExecutionProviderType() const { return provider_; };
 
-  size_t GetInputTypeCount() const { return 3; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
-    // Both the inputs need to be necessarily of float type
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  };
+  size_t GetInputTypeCount() const { return num_inputs_; };
 
-  size_t GetOutputTypeCount() const { return 1; };
+  void SetInputTypeCount(size_t num) { num_inputs_ = num; };
+
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };   
+
+  size_t GetOutputTypeCount() const { return num_outputs_; };
+
+  void SetOutputTypeCount(size_t num) { num_outputs_ = num; };
+
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };
+
  private:
-  const char* provider_{"TensorrtExecutionProvider"};
+  const char* provider_{onnxruntime::kTensorrtExecutionProvider};
   void* compute_stream_;
+  const char* name_;
+  size_t num_inputs_ = TEMP_CUSTOM_OP_NUM_INPUTS;
+  size_t num_outputs_ = TEMP_CUSTOM_OP_NUM_OUTPUTS;
 };
 
 /*
-void CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain) {
-  std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
-  custom_op_domain->domain_ = "";
+#define TRT_PLUGIN_CUSTOM_OP_CLASS(op, num_outputs)                                                   \
+  struct CustomOp##op : Ort::CustomOpBase<CustomOp##op, TensorRTCustomKernel> {                       \
+    explicit CustomOp##op(const char* provider, void* compute_stream) :                               \
+      provider_(provider), compute_stream_(compute_stream) {}                                         \
+                                                                                                      \
+    void* CreateKernel(const OrtApi& , const OrtKernelInfo* info) const {                    \
+      return new TensorRTCustomKernel(info, compute_stream_); };                                      \
+    const char* GetName() const { return #op; };                                                      \
+    const char* GetExecutionProviderType() const { return provider_; };                               \
+                                                                                                      \
+    size_t GetInputTypeCount() const { return 20; };                                                  \
+    ONNXTensorElementDataType GetInputType(size_t) const {                                  \
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;                                                     \
+    };                                                                                                \
+                                                                                                      \
+    OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const {             \
+      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;                             \
+    };                                                                                                \
+                                                                                                      \
+    size_t GetOutputTypeCount() const { return 1; };                                                  \
+    ONNXTensorElementDataType GetOutputType(size_t) const {                                 \
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };                                                  \
+                                                                                                      \
+   private:                                                                                           \
+    const char* provider_{"TensorrtExecutionProvider"};                                               \
+    void* compute_stream_;                                                                            \
+  };
 
-  std::unique_ptr<OrtCustomOp> disentangled_attention_custom_op = std::make_unique<DisentangledAttentionCustomOp>("TensorrtExecutionProvider", nullptr);
-  custom_op_domain->custom_ops_.push_back(disentangled_attention_custom_op.release());
-  //custom_ops.push_back(disentangled_attention_custom_op.release());
+#define TRT_PLUGIN_CUSTOM_OP_OBJ(op)                                                                  \
+  std::unique_ptr<OrtCustomOp> custom_op =                                                            \
+    std::make_unique<CustomOp##op>("TensorrtExecutionProvider", nullptr);  
 
-  *domain = custom_op_domain.release();
-}
 */
+
 }

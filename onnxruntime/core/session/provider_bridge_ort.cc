@@ -32,7 +32,6 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -1396,6 +1395,10 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   }
 
   options->provider_factories.push_back(factory);
+  onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
+  TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
+  options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
+
   return nullptr;
   API_IMPL_END
 }
@@ -1420,6 +1423,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   }
 
   options->provider_factories.push_back(factory);
+  onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
+  TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
+  options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
+
   return nullptr;
   API_IMPL_END
 }
@@ -1507,12 +1514,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Rocm: Failed to load shared library");
   }
-  OrtAllocator* allocator;
-  // TODO(pranav): what allocator should be used to create the tensor here?
-  // for the sake of simplicity of the API using the default one here
-  ORT_API_RETURN_IF_ERROR(OrtApis::GetAllocatorWithDefaultOptions(&allocator));
  
-
   options->provider_factories.push_back(factory);
   return nullptr;
   API_IMPL_END
@@ -1526,7 +1528,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
-  OrtProviderCustomOpDomain* custom_op_domain = nullptr;
+  onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
   TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
   options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
 

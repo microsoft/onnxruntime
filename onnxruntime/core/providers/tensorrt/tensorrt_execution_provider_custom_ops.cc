@@ -7,6 +7,7 @@
 #include <NvInferRuntime.h>
 #include <NvInferPlugin.h>
 #include <iostream>
+#include <unordered_set>
 
 namespace onnxruntime {
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -45,42 +46,49 @@ TensorrtLogger& GetTensorrtLogger2() {
   return trt_logger2;
 }
 
+
+void IterateTensorRTPluginFields(const nvinfer1::PluginFieldCollection* plugin_field_collection) {
+  if (plugin_field_collection == nullptr) {
+    return;
+  }
+  std::cout << "plugin fields:" << std::endl;
+  for (int i = 0; i < plugin_field_collection->nbFields; ++i) {
+    auto plugin_field = plugin_field_collection->fields[i];
+    std::string plugin_field_name(plugin_field.name);
+    std::cout << "\t" << plugin_field_name << std::endl;
+  }  
+}
+
 int CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain) {
   std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
   custom_op_domain->domain_ = "";
 
-  std::unique_ptr<OrtCustomOp> disentangled_attention_custom_op = std::make_unique<DisentangledAttentionCustomOp>("TensorrtExecutionProvider", nullptr);
-  custom_op_domain->custom_ops_.push_back(disentangled_attention_custom_op.release());
-  //custom_ops.push_back(disentangled_attention_custom_op.release());
-
-  *domain = custom_op_domain.release();
   TensorrtLogger trt_logger = GetTensorrtLogger2();
   initLibNvInferPlugins(&trt_logger, "");
 
   int num_plugin_creator = 0;
-  auto creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+  auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+  std::unordered_set<std::string> registered_plugin_name; 
   
   for (int i = 0; i < num_plugin_creator; ++i) {
-    auto plugin_creator = creators[i];
-    std::string str(plugin_creator->getPluginName());
-    std::cout << "\n" << str << std::endl;
-    std::cout << "version: " << plugin_creator->getPluginVersion();
+    auto plugin_creator = plugin_creators[i];
+    std::string plugin_name(plugin_creator->getPluginName());
+    auto plugin_field_collection = plugin_creator->getFieldNames();
 
-    /*
-    auto plugin_field_names = plugin_creator->getFieldNames();
-    if (plugin_field_names != nullptr) {
-      int num_field = plugin_field_names->nbFields;
-      auto plugin_field = plugin_field_names->fields;
-      std::cout << num_field << std::endl;
-      std::string field_name_str(plugin_field->name);
-      std::cout << field_name_str << std::endl;
+    std::cout << plugin_name << ", version: " << plugin_creator->getPluginVersion() << std::endl;
+    IterateTensorRTPluginFields(plugin_field_collection);
+
+    if (registered_plugin_name.find(plugin_name) != registered_plugin_name.end()) {
+      continue;
     }
-    */
-    
+    registered_plugin_name.insert(plugin_name);
 
+    std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
+    trt_custom_op->SetName(plugin_creator->getPluginName());
+    custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
   }
-  
 
+  *domain = custom_op_domain.release();
   return 0;
 }
 
