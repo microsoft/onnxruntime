@@ -179,7 +179,7 @@ static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
                         ? "QLinear" + node_unit.OpType()
                         : node_unit.OpType();
-  return dynamic_schema_set.contains(key);
+  return dynamic_schema_set.count(key);
 }
 
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
