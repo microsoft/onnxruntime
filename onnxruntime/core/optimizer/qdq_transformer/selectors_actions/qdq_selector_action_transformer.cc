@@ -185,7 +185,25 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
 }
+void WhereQDQRules (SelectorActionRegistry& qdq_selector_action_registry) {
+  // 3 nodes. 2 x DQ for inputs, target
+  // Replace with QLinearWhere
+  // Delete all original nodes.
+  const std::string action_name{"Where"};
+  std::unique_ptr<Action> action = std::make_unique<QDQ::WhereReplaceWithQLinear>();
 
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>();
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"Where", {}}},
+                                                         std::move(selector),
+                                                         std::move(action));
+
+#else
+  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+}
+}
 void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 to 5 nodes. 0=DQ A, 1=DQ B, 2=DQ C(optional), 3=Gemm, 4=Q Y(optional)
   // Replace with QGemm
@@ -217,6 +235,8 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   ConvQDQRules(qdq_selector_action_registry, is_int8_allowed);
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
   GemmQDQRules(qdq_selector_action_registry);
+  WhereQDQRules(qdq_selector_action_registry);
+
 
   return qdq_selector_action_registry;
 }

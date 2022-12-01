@@ -309,6 +309,17 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
+bool WhereNodeGroupSelector::Check(const GraphViewer &graph_viewer, const Node &node,
+                                   const std::vector<const Node *> &dq_nodes,
+                                   const std::vector<const Node *> &q_nodes) const {
+  return true; // TODO: add check for input types
+
+}
+void WhereSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder & builder) const {
+ //ToDO: add input nodes
+}
+
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 
