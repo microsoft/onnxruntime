@@ -66,46 +66,42 @@ import { inferenceSentiment } from "./bert/inferenceSentiment";
 - Next add the `sentiment` and `question` functions.
 
 ```javascript
-    /**
-     * Returns the sentiment of a string.
-     * @customfunction
-     * @param text Text string
-     * @returns sentiment string.
-     */
-    export async function sentiment(text: string): Promise<string> {
-    const result = await inferenceSentiment(text);
-    console.log(result[1][0]);
-    return result[1][0].toString();
-    }
-
-    /**
-     * Returns the sentiment of a string.
-     * @customfunction
-     * @param question Question string
-     * @param context Context string
-     * @returns answer string.
-     */
-    export async function question(question: string, context: string): Promise<string> {
-    const result = await inferenceQuestion(question, context);
-
-    if (result.length > 0) {
-        console.log(result[0].text);
-        return result[0].text.toString();
-    }
-    return "Unable to find answer";
-    }
+/**
+* Returns the sentiment of a string.
+* @customfunction
+* @param text Text string
+* @returns sentiment string.
+*/
+export async function sentiment(text: string): Promise<string> {
+const result = await inferenceSentiment(text);
+console.log(result[1][0]);
+return result[1][0].toString();
+}
+/**
+ * Returns the sentiment of a string.
+ * @customfunction
+ * @param question Question string
+ * @param context Context string
+ * @returns answer string.
+ */
+export async function question(question: string, context: string): Promise<string> {
+const result = await inferenceQuestion(question, context);
+if (result.length > 0) {
+    console.log(result[0].text);
+    return result[0].text.toString();
+}
+return "Unable to find answer";
+}
 ```
 
-Now lets dive into the logic used in these functions.
-
-## `InferenceQuestion.ts` file
+## The `InferenceQuestion.ts` file
 
 The `InferenceQuestion.ts` file has the logic to process the Question and Answer BERT Model. This model was created using [this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html#obtain-and-convert-pytorch-model-to-onnx-format). Then we used ORT Quantization tool to reduce the size of the model. Learn more about [quantization here](https://onnxruntime.ai/docs/performance/quantization.html).
 
 
 - First import `onnxruntime-web` and the helper functions from `question_answer.ts`. The `question_answer.ts` is an edited version from the tensorflow example found [here](https://github.com/tensorflow/tfjs-models/blob/master/qna/src/question_and_answer.ts).
 
-```JavaScript
+```javaScript
 /* eslint-disable no-undef */
 import * as ort from "onnxruntime-web";
 import { create_model_input, Feature, getBestAnswers, Answer } from "./utils/question_answer";
@@ -170,19 +166,15 @@ export async function inferenceQuestion(question: string, context: string): Prom
 
   console.log("arrays", input_ids, attention_mask, token_type_ids);
 ```
-- Create `ort.Tensor`s from the `Arrays`.
+- Create `ort.Tensor` from the `Arrays`.
 
 ```javascript
-
   const sequence_length = input_ids.length;
-
   var input_ids_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(input_ids), [1, sequence_length]);
-  
   var attention_mask_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(attention_mask), [
     1,
     sequence_length,
   ]);
-  
   var token_type_ids_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(token_type_ids), [
     1,
     sequence_length,
@@ -197,9 +189,7 @@ export async function inferenceQuestion(question: string, context: string): Prom
     segment_ids: token_type_ids_tensor,
   };
   const output_names: ort.InferenceSession.FetchesType = ["start_logits", "end_logits"];
-
   const output = await session.run(model_input, output_names);
-
   const result_length = output["start_logits"].data.length;
 ```
 - Next loop through the result and create a number array from the resulting `start_logits` and `end_logits`.
@@ -207,15 +197,11 @@ export async function inferenceQuestion(question: string, context: string): Prom
 ```javascript
   const start_logits: number[] = Array(); 
   const end_logits: number[] = Array(); 
-
   console.log("start_logits", start_logits);
   console.log("end_logits", end_logits);
-
   for (let i = 0; i <= result_length; i++) {
     start_logits.push(Number(output["start_logits"].data[i]));
   }
-  
-
   for (let i = 0; i  <= result_length; i++) {
     end_logits.push(Number(output["end_logits"].data[i]));
   }
@@ -252,13 +238,13 @@ export async function question(question: string, context: string): Promise<strin
 
 That is a breakdown for the `ORT.Question()` custom function, next we will breakdown how the `ORT.Sentiment()` is implemented.
 
-## `InferenceSentiment.ts` file
+## The `InferenceSentiment.ts` file
 
 The `InferenceSentiment.ts` is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](). Let's jump in and learn how this part works.
 
 - First lets import the packages needed. As you will see in this tutorial the `bertProcessing` function will create our model input.  `bert_tokenizer` is the JavaScript tokenizer for BERT models. `onnxruntime-web` enables inference in JavaScript on the browser.
 
-```JavaScript
+```javaScript
 /* eslint-disable no-undef */
 import * as bertProcessing from "./bertProcessing";
 import * as ort from "onnxruntime-web";
@@ -271,7 +257,6 @@ import { loadTokenizer } from "./bert_tokenizer";
 export async function inferenceSentiment(text: string) {
   // Set model path.
   const model: string = "./xtremedistill-go-emotion-int8.onnx";
-
   const options: ort.InferenceSession.SessionOptions = {
     executionProviders: ["wasm"],
     // executionProviders: ['webgl']
@@ -290,10 +275,8 @@ export async function inferenceSentiment(text: string) {
   });
   console.log("encoded", encoded);
   const model_input = await bertProcessing.create_model_input(encoded);
-  
   console.log("run session");
   const output = await session.run(model_input, ["output_0"]);
-
   const outputResult = output["output_0"].data;
   console.log("outputResult", outputResult);
 ```
@@ -305,7 +288,6 @@ export async function inferenceSentiment(text: string) {
     let sig = bertProcessing.sigmoid(outputResult[i]);
     probs.push(Math.floor(sig * 100));
   }
-
   console.log("probs", probs);
   const result = [];
   for (var i = 0; i < EMOJIS.length; i++) {
