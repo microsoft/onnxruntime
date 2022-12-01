@@ -51,7 +51,9 @@ def add_github_dep(name, parsed_url):
         print("unrecognized github url path:" + parsed_url.path)
         return
     git_repo_url = "https://github.com/%s/%s.git" % (org_name, repo_name)
-    if len(segments) == 5 and len(PurePosixPath(segments[4]).stem) == 40:
+    # For example, the url might be like 'https://github.com/myorg/myrepo/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip'
+    # The last segment, segments[4], is '5a5f8a5935762397aa68429b5493084ff970f774.zip'
+    if len(segments) == 5 and re.match(r"[0-9a-f]{40}", PurePosixPath(segments[4]).stem):
         commit = PurePosixPath(segments[4]).stem
         dep = GitDep(commit, git_repo_url)
         if dep not in git_deps:
@@ -178,6 +180,7 @@ with open(os.path.join(SCRIPT_DIR, "..", "cmake", "deps.txt")) as f:
             continue
         url = row[1]
         parsed_url = urlparse(url)
+        # TODO: add support for gitlab
         if parsed_url.hostname == "github.com":
             add_github_dep(name, parsed_url)
         else:

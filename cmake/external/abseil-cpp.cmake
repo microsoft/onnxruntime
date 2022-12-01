@@ -43,6 +43,4 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
   set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
     absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
     absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
-else()
-  add_compile_definitions(DISABLE_ABSEIL)
 endif()

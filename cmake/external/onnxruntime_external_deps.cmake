@@ -21,6 +21,8 @@ message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
 if(NOT onnxruntime_DISABLE_ABSEIL)
   include(external/abseil-cpp.cmake)
+else()
+  add_compile_definitions(DISABLE_ABSEIL)
 endif()
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -48,7 +50,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     URL ${DEP_URL_googletest}
     FIND_PACKAGE_ARGS NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
-  )  
+  )
 endif()
 
 if (onnxruntime_BUILD_BENCHMARKS)
@@ -264,8 +266,8 @@ FetchContent_Declare(
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
 onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
-if (onnxruntime_BUILD_UNIT_TESTS) 
-  onnxruntime_fetchcontent_makeavailable(googletest)  
+if (onnxruntime_BUILD_UNIT_TESTS)
+  onnxruntime_fetchcontent_makeavailable(googletest)
 endif()
 
 if(Protobuf_FOUND)
