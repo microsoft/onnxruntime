@@ -3,23 +3,22 @@
 
 #pragma once
 
-
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-    template <typename T>
-    class LastTokenMatMul final : public onnxruntime::cuda::CudaKernel {
-        using Base = CudaKernel;
-    public:
-        LastTokenMatMul(const OpKernelInfo& info)
-            : CudaKernel(info) {}
+template <typename T>
+class LastTokenMatMul final : public onnxruntime::cuda::CudaKernel {
+  using Base = CudaKernel;
 
-        Status ComputeInternal(OpKernelContext* context) const override;
+ public:
+  LastTokenMatMul(const OpKernelInfo& info)
+      : CudaKernel(info) {}
 
-    };
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
 
 }  // namespace cuda
 }  // namespace contrib
