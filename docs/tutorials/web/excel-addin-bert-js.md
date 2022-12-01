@@ -1,13 +1,13 @@
 ---
-title: ONNX Runtime Web Custom Functions for BERT NLP Tasks in JavaScript
-description: ONNX Runtime Web Custom Functions for BERT NLP Tasks in JavaScript
+title: Custom Excel Functions for BERT Tasks in JavaScript
+description:  Custom Excel Functions for BERT Tasks in JavaScript
 parent: Deploy on web
 grand_parent: Tutorials
 has_children: false
 nav_order: 2
 ---
 
-# ONNX Runtime Web Custom Functions for BERT NLP Tasks in JavaScript
+# ONNX Runtime Custom Excel Functions for BERT NLP Tasks in JavaScript
 {: .no_toc }
 
 In this tutorial we will look at how we can use a custom excel function to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happen locally in the browser with excel on the web. 
@@ -33,7 +33,7 @@ Example template output:
 
 Excel has many native functions like `SUM()` that you are likely familiar with. Custom functions are a useful tool to create and add new functions to Excel by defining those functions in JavaScript as part of an add-in. These functions can be accessed within Excel just as you would any native function in Excel.
 
-## Creating the `ORT.Sentiment` and `ORT.Question` functions
+## Creating the Custom Function project with the Yeoman CLI
 
 Now that we know what custom functions are lets look at how we can create functions that will inference a model locally to get the sentiment text in a cell or extract information from a cell by asking a question and the answer being returned to the cell.
 
@@ -45,14 +45,14 @@ Now that we know what custom functions are lets look at how we can create functi
 
 ## The `manifest.xml` file
 
- The `manifest.xml` file specifies that all custom functions belong to the `ORT` namespace. You'll use the namespace to access the custom functions in Excel.
+ The `manifest.xml` file specifies that all custom functions belong to the `ORT` namespace. You'll use the namespace to access the custom functions in Excel. Update the values in the `mainfest.xml` to `ORT`.
 
 ```xml
 <bt:String id="Functions.Namespace" DefaultValue="ORT"/>
 <ProviderName>ORT</ProviderName>
 ```
 
-### The `Functions.ts` file
+## The `Functions.ts` file
 
 In the `Function.ts` file we define the functions name, parameters, logic and return type.
 
@@ -66,34 +66,36 @@ import { inferenceSentiment } from "./bert/inferenceSentiment";
 - Next add the `sentiment` and `question` functions.
 
 ```Javascript
-/**
- * Returns the sentiment of a string.
- * @customfunction
- * @param text Text string
- * @returns sentiment string.
- */
-export async function sentiment(text: string): Promise<string> {
-  const result = await inferenceSentiment(text);
-  console.log(result[1][0]);
-  return result[1][0].toString();
-}
 
-/**
- * Returns the sentiment of a string.
- * @customfunction
- * @param question Question string
- * @param context Context string
- * @returns answer string.
- */
-export async function question(question: string, context: string): Promise<string> {
-  const result = await inferenceQuestion(question, context);
+    /**
+     * Returns the sentiment of a string.
+     * @customfunction
+     * @param text Text string
+     * @returns sentiment string.
+     */
+    export async function sentiment(text: string): Promise<string> {
+    const result = await inferenceSentiment(text);
+    console.log(result[1][0]);
+    return result[1][0].toString();
+    }
 
-  if (result.length > 0) {
-    console.log(result[0].text);
-    return result[0].text.toString();
-  }
-  return "Unable to find answer";
-}
+    /**
+     * Returns the sentiment of a string.
+     * @customfunction
+     * @param question Question string
+     * @param context Context string
+     * @returns answer string.
+     */
+    export async function question(question: string, context: string): Promise<string> {
+    const result = await inferenceQuestion(question, context);
+
+    if (result.length > 0) {
+        console.log(result[0].text);
+        return result[0].text.toString();
+    }
+    return "Unable to find answer";
+    }
+
 ```
 
 Now lets dive into the logic used in these functions.
