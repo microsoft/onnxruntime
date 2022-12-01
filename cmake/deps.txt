@@ -8,6 +8,28 @@
 #since the file contains a version string: "lts_20211102". However, the file is for debugging purposes only and would
 #not affect built binaries.
 abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.zip;ce61532df974d00025b1220408ce1c900d81baf2
+cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
+date;https://github.com/HowardHinnant/date/archive/refs/tags/v2.4.1.zip;ea99f021262b1d804a872735c658860a6a13cc98
+dlpack;https://github.com/dmlc/dlpack/archive/refs/tags/v0.6.zip;4d565dd2e5b31321e5549591d78aa7f377173445
+flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v1.12.0.zip;ba0a75fd12dbef8f6557a74e611b7a3d0c5fe7bf
+fp16;https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip;b985f6985a05a1c03ff1bb71190f66d8f98a1494
+fxdiv;https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip;a5658f4036402dbca7cebee32be57fb8149811e1
+google_benchmark;https://github.com/google/benchmark/archive/refs/tags/v1.7.0.zip;e97c368b176e8614e3f1bf13dd9abcf6a7ad9908
+google_nsync;https://github.com/google/nsync/archive/refs/tags/1.23.0.zip;f3233450cf7156fc0bedd1b0e884eddec264897c
+googletest;https://github.com/google/googletest/archive/519beb0e52c842729b4b53731d27c0e0c32ab4a2.zip;4b3c37972e4c1bef1185d46f702082f8772ee73f
+googlexnnpack;https://github.com/google/XNNPACK/archive/003c580e696a774afdc984996ee909b7c8d8128c.zip;9f192e3f15e1e37ae9c78d53eeea47e45c5eb31c
+json;https://github.com/nlohmann/json/archive/refs/tags/v3.10.5.zip;f257f8dc27c5b8c085dc887b40cddd18ae1f725c
 microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip;cf368104cd22a87b4dd0c80228919bb2df3e2a14
+microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becdd918fcc872039ba.zip;fd119887d0d17c37adf1fc227b054befa28158ad
+mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.0.3.zip;e4f37b93b2da78a5816c2495603a4188d316214b
+mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
 onnx;https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip;edc8e1338c02f3ab222f3d803a24e17608c13895
+onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/87c7a70688fd98fb355b8976f41425b40e4fe52f.zip;b97d112d9d6efa180c9b94e05268f2ff3294a534
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip;b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
+psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
+pthreadpool;https://github.com/Maratyszcza/pthreadpool/archive/1787867f6183f056420e532eec640cba25efafea.zip;e43e80781560c5ab404a4da20f34d846f5f5d101
+pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.6.2.zip;950b3b319384a1a36b252cc821953e5f9be14840
+pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/5916273f79a21551890fd3d56fc5375a78d1598d.zip;2be4d2ae321fada97cb39eaf4eeba5f8c85597cf
+re2;https://github.com/google/re2/archive/refs/tags/2022-06-01.zip;aa77313b76e91b531ee7f3e45f004c6a502a5374
+safeint;https://github.com/dcleblanc/SafeInt/archive/ff15c6ada150a5018c5ef2172401cb4529eac9c0.zip;913a4046e5274d329af2806cb53194f617d8c0ab
+tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381

@@ -4,9 +4,6 @@
 [submodule "cmake/external/googletest"]
 	path = cmake/external/googletest
 	url = https://github.com/google/googletest.git
-[submodule "cmake/external/googlebenchmark"]
-	path = cmake/external/googlebenchmark
-	url = https://github.com/google/benchmark.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx.git
@@ -22,36 +19,15 @@
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-[submodule "cmake/external/cxxopts"]
-	path = cmake/external/cxxopts
-	url = https://github.com/jarro2783/cxxopts.git
 [submodule "cmake/external/tensorboard"]
 	path = cmake/external/tensorboard
 	url = https://github.com/tensorflow/tensorboard.git
-[submodule "cmake/external/mimalloc"]
-	path = cmake/external/mimalloc
-	url = https://github.com/microsoft/mimalloc.git
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
 	url = https://github.com/microsoft/wil.git
-[submodule "cmake/external/json"]
-	path = cmake/external/json
-	url = https://github.com/nlohmann/json.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
-[submodule "cmake/external/flatbuffers"]
-	path = cmake/external/flatbuffers
-	url = https://github.com/google/flatbuffers.git
-[submodule "cmake/external/SafeInt/safeint"]
-	path = cmake/external/SafeInt/safeint
-	url = https://github.com/dcleblanc/SafeInt.git
-[submodule "cmake/external/mp11"]
-	path = cmake/external/mp11
-	url = https://github.com/boostorg/mp11.git
-[submodule "cmake/external/dlpack"]
-	path = cmake/external/dlpack
-	url = https://github.com/dmlc/dlpack.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
@@ -66,13 +42,3 @@
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
 	branch = 8.4-GA
-[submodule "cmake/external/pthreadpool"]
-	path = cmake/external/pthreadpool
-	url = https://github.com/Maratyszcza/pthreadpool.git
-[submodule "cmake/external/FP16"]
-	path = cmake/external/FP16
-	url = https://github.com/Maratyszcza/FP16.git
-[submodule "cmake/external/XNNPACK"]
-	path = cmake/external/XNNPACK
-	url = https://github.com/google/XNNPACK.git
-	ignore = dirty

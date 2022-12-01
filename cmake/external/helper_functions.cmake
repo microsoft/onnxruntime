@@ -1,7 +1,13 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-# This file was copied from cmake source with modifications
+# This file was copied from cmake source with modifications:
+# 1. Add the EXCLUDE_FROM_ALL keyword when this function calls add_subdirectory. It will also resolve the
+#    'make install' issue.
+# 2. Group the VC projects into the "external" folder. We can do it at there in a centralized way instead
+#    of doing it one by one.
+# 3. Set the cmake property COMPILE_WARNING_AS_ERROR to OFF for these external projects.
+
 macro(onnxruntime_fetchcontent_makeavailable)
 
   # We must append an item, even if the variable is unset, so prefix its value.
