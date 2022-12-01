@@ -715,31 +715,13 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
-    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None):
+    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None)  :
         lhs_shape = self._get_shape(node, 0)
         rhs_shape = self._get_shape(node, 1)
         lhs_rank = len(lhs_shape)
         rhs_rank = len(rhs_shape)
-        lhs_reduce_dim = 0
-        rhs_reduce_dim = 0
-        assert lhs_rank > 0 and rhs_rank > 0
-        if lhs_rank == 1 and rhs_rank == 1:
-            new_shape = []
-        elif lhs_rank == 1:
-            rhs_reduce_dim = -2
-            new_shape = rhs_shape[:rhs_reduce_dim] + [rhs_shape[-1]]
-        elif rhs_rank == 1:
-            lhs_reduce_dim = -1
-            new_shape = lhs_shape[:lhs_reduce_dim]
-        else:
-            lhs_reduce_dim = -1
-            rhs_reduce_dim = -2
-            new_shape = self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]) + [lhs_shape[-2]] + [rhs_shape[-1]]
-        # merge reduce dim
-        self._check_merged_dims(
-            [lhs_shape[lhs_reduce_dim], rhs_shape[rhs_reduce_dim]],
-            allow_broadcast=False,
-        )
+        assert lhs_rank == 3 and rhs_rank == 2
+        new_shape = [lhs_shape[0]] + [1] + [rhs_shape[1]]          
         if output_dtype is None:
             # infer output_dtype from input type when not specified
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
