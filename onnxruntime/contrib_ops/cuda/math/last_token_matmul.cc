@@ -57,7 +57,7 @@ Status LastTokenMatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     size_t sliced_input_buffer_size = static_cast<size_t>(batch_size) * hidden_dim * element_size;
 
     sliced_input_buffer = GetScratchBuffer<void>(sliced_input_buffer_size);
-    ORT_ENFORCE(sliced_input_buffer != nullptr);
+    ORT_ENFORCE(sliced_input_buffer.get() != nullptr);
 
     CudaT* dst = reinterpret_cast<CudaT*>(sliced_input_buffer.get());
     const CudaT* src = reinterpret_cast<const CudaT*>(input_1->Data<T>()) + (sequence_length - 1) * hidden_dim;
