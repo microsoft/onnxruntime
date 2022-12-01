@@ -14,11 +14,14 @@
 #include "ck/tensor_operation/gpu/device/device_gemm_multiple_d.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
 
-#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
+
+using onnxruntime::rocm::ToHipType;
+using onnxruntime::rocm::tunable::Op;
 
 namespace onnxruntime {
+namespace contrib {
 namespace rocm {
-namespace tunable {
 namespace blas {
 namespace internal {
 
@@ -125,6 +128,6 @@ auto GetCKGemmFastGeluTypeStringAndOps() {
 
 }  // namespace internal
 }  // namespace blas
-}  // namespace tunable
 }  // namespace rocm
+}  // namespace contrib
 }  // namespace onnxruntime

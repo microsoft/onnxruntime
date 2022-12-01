@@ -7,14 +7,14 @@
 #include <memory>
 
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_ck.cuh"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "core/providers/rocm/tunable/gemm.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_ck.cuh"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
+namespace contrib{
 namespace rocm {
-namespace tunable {
 namespace blas {
 namespace internal {
 
@@ -70,6 +70,6 @@ class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmF
 
 }  // namespace internal
 }  // namespace blas
-}  // namespace tunable
 }  // namespace rocm
+}  // namespace contrib
 }  // namespace onnxruntime

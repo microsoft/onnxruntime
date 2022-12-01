@@ -3,13 +3,13 @@
 
 #pragma once
 
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace rocm {
-namespace tunable {
 namespace blas {
 
 #define GEMMFASTGELU(T, ScalarT)                                                 \
@@ -31,8 +31,8 @@ GEMMFASTGELU(BFloat16, float);
 }  // namespace row_major
 
 }  // namespace blas
-}  // namespace tunable
 }  // namespace rocm
+}  // namespace contrib
 }  // namespace onnxruntime
 
 #ifndef _GEMM_FASTGELU_H_KEEP_SIGNATURE_DEFINES

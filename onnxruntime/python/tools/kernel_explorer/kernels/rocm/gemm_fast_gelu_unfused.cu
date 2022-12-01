@@ -7,13 +7,13 @@
 #include <string>
 #include <vector>
 
-#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_tunable.cuh"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_tunable.cuh"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
-using namespace onnxruntime::rocm::tunable::blas;
-using namespace onnxruntime::rocm::tunable::blas::internal;
+using namespace onnxruntime::contrib::rocm::blas;
+using namespace onnxruntime::contrib::rocm::blas::internal;
 
 namespace py = pybind11;
 
@@ -56,7 +56,7 @@ class GemmFastGeluUnfused : public IKernelExplorer {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR((rocm::tunable::blas::internal::GemmFastGeluUnfused<T>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::blas::internal::GemmFastGeluUnfused<T>(&params_)));
   }
 
   std::vector<std::string> ListOps() const {
@@ -64,7 +64,7 @@ class GemmFastGeluUnfused : public IKernelExplorer {
   }
 
   bool SelectOp(const std::string& name) {
-    Status status = rocm::tunable::blas::internal::GemmFastGeluUnfused<T>(&params_);
+    Status status = contrib::rocm::blas::internal::GemmFastGeluUnfused<T>(&params_);
     return status.IsOK() && name == "GemmFastGeluUnfused";
   }
 

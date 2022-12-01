@@ -10,13 +10,16 @@
 #include "core/providers/rocm/tunable/gemm_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
+using onnxruntime::rocm::tunable::blas::BlasOp;
+using onnxruntime::rocm::tunable::blas::BlasOpToString;
+
 namespace onnxruntime {
+namespace contrib {
 namespace rocm {
-namespace tunable {
 namespace blas {
 
 template <typename T>
-struct GemmFastGeluParams : tunable::OpParams {
+struct GemmFastGeluParams : onnxruntime::rocm::tunable::OpParams {
   std::string Signature() const override {
     bool has_bias = (nullptr != bias) ? 0 : 1;
     return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k, '_', has_bias);
@@ -40,6 +43,6 @@ struct GemmFastGeluParams : tunable::OpParams {
 };
 
 }  // namespace blas
-}  // namespace tunable
 }  // namespace rocm
+}  // namespace contrib
 }  // namespace onnxruntime

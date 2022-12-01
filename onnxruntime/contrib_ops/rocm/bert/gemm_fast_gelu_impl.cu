@@ -2,17 +2,17 @@
 // Licensed under the MIT License.
 
 #define _GEMM_FASTGELU_H_KEEP_SIGNATURE_DEFINES
-#include "core/providers/rocm/tunable/gemm_fast_gelu.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_impl.h"
 
 #include <type_traits>
 #include <utility>
 
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_tunable.cuh"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_tunable.cuh"
 
 namespace onnxruntime {
+namespace contrib {
 namespace rocm {
-namespace tunable {
 namespace blas {
 
 namespace row_major {
@@ -90,6 +90,6 @@ GEMMFASTGELU(BFloat16, float   ) { return CALL_GEMMFASTGELU(BFloat16, float   );
 }  // namespace row_major
 
 }  // namespace blas
-}  // namespace tunable
 }  // namespace rocm
+}  // namespace contrib
 }  // namespace onnxruntime

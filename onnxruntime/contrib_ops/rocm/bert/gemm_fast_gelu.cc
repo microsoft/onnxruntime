@@ -3,13 +3,12 @@
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu.h"
 
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_impl.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
 
 using onnxruntime::rocm::ToHipType;
-using onnxruntime::rocm::tunable::blas::BlasOp;
 
 namespace onnxruntime {
 namespace contrib {
@@ -56,7 +55,9 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const HipT alpha = ToHipType<T>::FromFloat(1.0f);
   const HipT beta = ToHipType<T>::FromFloat(0.0f);
 
-  return onnxruntime::rocm::tunable::blas::row_major::GemmFastGelu(
+  using onnxruntime::rocm::tunable::blas::BlasOp;
+
+  return blas::row_major::GemmFastGelu(
       IsTunableOpEnabled(),
       Stream(ctx), GetRocblasHandle(ctx),
       transa ? BlasOp::Trans : BlasOp::NonTrans,

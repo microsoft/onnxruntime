@@ -8,13 +8,13 @@
 #include <string>
 #include <vector>
 
-#include "core/providers/rocm/tunable/gemm_fast_gelu_common.h"
-#include "core/providers/rocm/tunable/gemm_fast_gelu_tunable.cuh"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_tunable.cuh"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
-using namespace onnxruntime::rocm::tunable::blas;
-using namespace onnxruntime::rocm::tunable::blas::internal;
+using namespace onnxruntime::contrib::rocm::blas;
+using namespace onnxruntime::contrib::rocm::blas::internal;
 
 namespace py = pybind11;
 
