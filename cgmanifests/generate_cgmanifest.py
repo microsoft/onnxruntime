@@ -51,7 +51,7 @@ def add_github_dep(name, parsed_url):
         print("unrecognized github url path:" + parsed_url.path)
         return
     git_repo_url = "https://github.com/%s/%s.git" % (org_name, repo_name)
-    # For example, the url might be like 'https://github.com/myorg/myrepo/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip'
+    # For example, the path might be like '/myorg/myrepo/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip'
     # The last segment, segments[4], is '5a5f8a5935762397aa68429b5493084ff970f774.zip'
     if len(segments) == 5 and re.match(r"[0-9a-f]{40}", PurePosixPath(segments[4]).stem):
         commit = PurePosixPath(segments[4]).stem
