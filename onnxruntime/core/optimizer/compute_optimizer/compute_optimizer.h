@@ -40,6 +40,7 @@ namespace compute_optimizer {
  *   (for example Gather/GatherND node).
  */
 struct SliceOperationReorderHandle {
+  using OPSET_VERSION_LIST = std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>;
   /**
    * @brief Pass through configuration for specific operator.
    *
@@ -53,17 +54,33 @@ struct SliceOperationReorderHandle {
   struct OpPassThroughConfig {
     OpPassThroughConfig() = default;
 
-    OpPassThroughConfig(const std::vector<int>& input_indices, std::shared_ptr<OperatorPassThroughActorBase> actor)
-        : input_indices(input_indices), actor(actor) {}
+    OpPassThroughConfig(const std::vector<int>& input_indices,
+                        std::shared_ptr<OperatorPassThroughActorBase> actor,
+                        const OPSET_VERSION_LIST& opset_list)
+        : input_indices(input_indices), actor(actor), opsets(opset_list) {
+    }
 
     std::vector<int> input_indices;
     std::shared_ptr<OperatorPassThroughActorBase> actor;
+    const OPSET_VERSION_LIST& opsets;
   };
+
+  static std::string GetFullQualifiedOpName(const std::string& op_type, const std::string& domain) {
+    return domain + "::" + op_type;
+  }
+
+  constexpr static const OPSET_VERSION_LIST opset_1 = {1};
+  constexpr static const OPSET_VERSION_LIST opset_13_1 = {13, 1};
+  constexpr static const OPSET_VERSION_LIST opset_13_9_1 = {13, 9, 1};
+  constexpr static const OPSET_VERSION_LIST opset_13_11_1 = {13, 11, 1};
+  constexpr static const OPSET_VERSION_LIST opset_13_9_6_1 = {13, 9, 6, 1};
+  constexpr static const OPSET_VERSION_LIST opset_14_13_5_1 = {14, 13, 5, 1};
+  constexpr static const OPSET_VERSION_LIST opset_14_13_7_6_1 = {14, 13, 7, 6, 1};
+  constexpr static const OPSET_VERSION_LIST opset_13_12_10_7_6_1 = {13, 12, 10, 7, 6, 1};
 
   static std::unordered_map<std::string, OpPassThroughConfig>& GetOpPassThroughConfigMap() {
     static std::unordered_map<std::string, OpPassThroughConfig> allowed_passthrough_ops;
     static std::once_flag allowed_ops_init;
-
     std::call_once(allowed_ops_init, []() {
       allowed_passthrough_ops.insert({
           // Things to consider when more operators are added here:
@@ -73,18 +90,31 @@ struct SliceOperationReorderHandle {
           // 2. Whether the outputs have the same dim changes if Gather node moves before that operator.
           // 3. Should all inputs be allowed when track back further (bottom-up);
           //    if not, add the input index restriction as MatMul did.
-          {"Add", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"BiasGelu", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"BitmaskBiasDropout", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"Cast", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"Div", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"Dropout", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"Gelu", OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>())},
-          {"LayerNormalization", OpPassThroughConfig({0}, std::make_shared<LayerNormPassThroughActor>())},
-          {"MatMul", OpPassThroughConfig({}, std::make_shared<MatMulPassThroughActor>())},
-          {"Reshape", OpPassThroughConfig({0}, std::make_shared<ReshapePassThroughActor>())},
-          {"Softmax", OpPassThroughConfig({0}, std::make_shared<LayerNormPassThroughActor>())},
-          {"Transpose", OpPassThroughConfig({}, std::make_shared<TransposePassThroughActor>())},
+          {GetFullQualifiedOpName("Add", kOnnxDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_14_13_7_6_1)},
+          {GetFullQualifiedOpName("BiasGelu", kMSDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_1)},
+          {GetFullQualifiedOpName("BitmaskBiasDropout", kMSDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_1)},
+          {GetFullQualifiedOpName("Cast", kOnnxDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_13_9_6_1)},
+          {GetFullQualifiedOpName("Div", kOnnxDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_14_13_7_6_1)},
+          {GetFullQualifiedOpName("Dropout", kOnnxDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_13_12_10_7_6_1)},
+          {GetFullQualifiedOpName("Gelu", kMSDomain),
+           OpPassThroughConfig({}, std::make_shared<SimplePassThroughActor>(), opset_1)},
+          {// Be noted, this is our own implementation of ONNX domain op.
+           GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
+           OpPassThroughConfig({0}, std::make_shared<ReductionOpPassThroughActor>(), opset_1)},
+          {GetFullQualifiedOpName("MatMul", kOnnxDomain),
+           OpPassThroughConfig({}, std::make_shared<MatMulPassThroughActor>(), opset_13_9_1)},
+          {GetFullQualifiedOpName("Reshape", kOnnxDomain),
+           OpPassThroughConfig({0}, std::make_shared<ReshapePassThroughActor>(), opset_14_13_5_1)},
+          {GetFullQualifiedOpName("Softmax", kOnnxDomain),
+           OpPassThroughConfig({0}, std::make_shared<ReductionOpPassThroughActor>(), opset_13_11_1)},
+          {GetFullQualifiedOpName("Transpose", kOnnxDomain),
+           OpPassThroughConfig({}, std::make_shared<TransposePassThroughActor>(), opset_13_1)},
       });
     });
 
