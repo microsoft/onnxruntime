@@ -53,7 +53,7 @@ jobs:
       value: $[ replace(replace(eq(variables['ortBranchOverride'], ''), True, variables['scriptsBranchName']), False, variables['ortBranchOverride']) ]
 
     - name: buildCommitIdCLIArg
-      value: $[ replace(replace(eq(variables['ortCommitId'], ''), True, ''), False, -c variables['ortCommitId']) ]
+      value: $[ replace(replace(eq(variables['ortCommitId'], ''), True, ''), False, '-c ' + variables['ortCommitId']) ]
 
     - name: trtVersion
       ${{ if eq(parameters.TrtVersion, 'BIN') }}:
