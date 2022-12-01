@@ -19,6 +19,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <iostream>//slx
 
 #ifdef _WIN32
 #include <windows.h>
@@ -735,6 +736,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
   meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
+  std::cout << "meta_def->name(): " << meta_def->name() << std::endl;//slx
 
   // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
@@ -1168,7 +1170,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     ReadSupportedList(trt_node_list_name, supported_nodes_vector);
   }
 
+  std::cout << "path_string: " << path_string << ", model_name: " << model_name << std::endl;//slx
   // Detect and remove cycles from supported node list
+  std::cout << "DetectTensorRTGraphCycles: " << std::endl;//slx
   DetectTensorRTGraphCycles(supported_nodes_vector, graph);
 
   // Consolidate supported node list
@@ -1188,6 +1192,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
+  std::cout << "final GetSubGraph: " << std::endl;//slx
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
@@ -1255,6 +1260,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     ///trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
+    // Check platform availability for low precision
+    if (fp16_enable_) {
+      if (!trt_builder->platformHasFastFp16()) {
+        fp16_enable_ = false;
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
+      }
+    }
     // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
     if (fp16_enable_ && layer_norm_fp32_fallback_) {
       for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
@@ -1323,48 +1335,40 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
-    std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
-    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
-    std::unordered_map<std::string, size_t> output_types(num_outputs);
-
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
+    std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
     const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
     const std::string engine_cache_path = cache_path + ".engine";
     const std::string profile_cache_path = cache_path + ".profile";
+    std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+    std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
     if (side_load_engine_ && engine_cache_enable_ && engine_file && profile_file) {
       has_dynamic_shape = true;
     } else {
       trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
       for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_network->getInput(i);
-        const std::string& input_name = input->getName();
-        nvinfer1::Dims dims = input->getDimensions();
-        int nb_dims = dims.nbDims;
-        if (input->isShapeTensor()) {
-          // Shape tensor
-          input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
-          has_dynamic_shape = true;
-        } else {
-          // Execution tensor
-          for (int j = 0, end = nb_dims; j < end; ++j) {
-            if (dims.d[j] == -1) {
-              input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
-              has_dynamic_shape = true;
+        if (input != nullptr) {//slx
+          const std::string& input_name = input->getName();
+          nvinfer1::Dims dims = input->getDimensions();
+          int nb_dims = dims.nbDims;
+          if (input->isShapeTensor()) {
+            // Shape tensor
+            input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
+            has_dynamic_shape = true;
+          } else {
+            // Execution tensor
+            for (int j = 0, end = nb_dims; j < end; ++j) {
+              if (dims.d[j] == -1) {
+                input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
+                has_dynamic_shape = true;
+              }
             }
           }
         }
       }
 	}
-
-    // Check platform availability for low precision
-    if (fp16_enable_) {
-      if (!trt_builder->platformHasFastFp16()) {
-        fp16_enable_ = false;
-        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
-      }
-    }
 
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
@@ -1461,26 +1465,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-    // Create input to index map
-    for (int i = 0; i < num_inputs; ++i) {
-      auto input = trt_network->getInput(i);
-      const std::string& input_name = input->getName();
-      const auto& iter = input_map.find(input_name);
-      if (iter != input_map.end()) {
-        input_indexes[input_name] = iter->second;
-      }
-    }
-
-    // Create output to index and type maps
+    // Create output to type maps
+    std::unordered_map<std::string, size_t> output_types(num_outputs);
     const auto& graph_output = model_proto->graph().output();
-    for (int i = 0; i < num_outputs; ++i) {
-      const std::string& output_name = trt_network->getOutput(i)->getName();
-      const auto& iter = output_map.find(output_name);
-      if (iter != output_map.end()) {
-        output_indexes[output_name] = iter->second;
-      }
-      const auto& tensor_type = graph_output[i].type().tensor_type();
-      output_types[output_name] = tensor_type.elem_type();
+	int idx = 0;
+    for (auto& output : output_map) {
+      const auto& tensor_type = graph_output[idx++].type().tensor_type();
+      output_types[output.first] = tensor_type.elem_type();
     }
 
     // Save engine, context and input/output info to map
@@ -1489,8 +1480,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     contexts_.emplace(fused_node.Name(), std::move(trt_context));
     builders_.emplace(fused_node.Name(), std::move(trt_builder));
     networks_.emplace(fused_node.Name(), std::move(trt_network));
-    input_info_[fused_node.Name()].push_back(input_indexes);
-    output_info_[fused_node.Name()].push_back(output_indexes);
+    input_info_[fused_node.Name()].push_back(input_map);
+    output_info_[fused_node.Name()].push_back(output_map);
     output_info_[fused_node.Name()].push_back(output_types);
     input_shape_ranges_[fused_node.Name()] = input_shape_ranges;
 
@@ -1505,7 +1496,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
-            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
+            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, side_load_engine_};
       *state = p.release();
       return 0;
     };
@@ -1535,7 +1526,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
-      std::unordered_set<std::string> input_names;
+      ///std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
       cudaStream_t stream = static_cast<cudaStream_t>(this->GetComputeStream());
@@ -1615,131 +1606,133 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
 
-      for (int i = 0, end = num_inputs; i < end; ++i) {
-        auto input = trt_state->network->get()->getInput(i);
-        const std::string& input_name = input->getName();
-        nvinfer1::Dims dims = input->getDimensions();
-        int nb_dims = dims.nbDims;
-        // Check and update shape ranges for dynamic shape inputs
-        input_names.insert(input_name);
-        if (shape_ranges.find(input_name) != shape_ranges.end()) {
-          size_t input_index = 0;
-          const auto& iter = input_indexes.find(input_name);
-          if (iter != input_indexes.end()) {
-            input_index = iter->second;
-          }
-
-          auto input_tensor = ctx.GetInput(input_index);
-          auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-          const auto tensor_shapes = tensor_info.GetShape();
-          auto& shape_range = shape_ranges[input_name];
-
-          // Create shape profile
-          if (input->isShapeTensor()) {
-            // Get shape values for shape tensor input
-            const auto tensor_type = tensor_info.GetElementType();
-            int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
-            tensor_shape_values[input_name].resize(shape_size);
-            switch (tensor_type) {
-              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-                auto input = std::make_unique<int32_t[]>(shape_size);
-                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
-                CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-                for (int j = 0; j < shape_size; ++j) {
-                  tensor_shape_values[input_name][j] = input[j];
-                }
-                break;
-              }
-              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-                auto input = std::make_unique<int64_t[]>(shape_size);
-                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
-                CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-                for (int j = 0; j < shape_size; ++j) {
-                  tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
-                }
-                break;
-              }
-              default: {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                       "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
-              }
+      if (!trt_state->side_load_engine) {
+        for (int i = 0, end = num_inputs; i < end; ++i) {
+          auto input = trt_state->network->get()->getInput(i);
+          const std::string& input_name = input->getName();
+          nvinfer1::Dims dims = input->getDimensions();
+          int nb_dims = dims.nbDims;
+          // Check and update shape ranges for dynamic shape inputs
+          ///input_names.insert(input_name);
+          if (shape_ranges.find(input_name) != shape_ranges.end()) {
+            size_t input_index = 0;
+            const auto& iter = input_indexes.find(input_name);
+            if (iter != input_indexes.end()) {
+              input_index = iter->second;
             }
-
-            // Update shape ranges
-            std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-            int shape_range_size = static_cast<int>(shape_range.size());
-            if (shape_size == shape_range_size) {
-              // If shape size matches, check/update shape range
-              for (int j = 0; j < shape_size; ++j) {
-                shapes_min[j] = static_cast<int32_t>(shape_range[j].first);
-                shapes_opt[j] = static_cast<int32_t>(shape_range[j].second);
-                shapes_max[j] = static_cast<int32_t>(shape_range[j].second);
-
-                const auto& tensor_shape_value = tensor_shape_values[input_name][j];
-                // Update shape range lower bound
-                if (tensor_shape_value < shape_range[j].first) {
-                  shape_range[j].first = tensor_shape_value;
+  
+            auto input_tensor = ctx.GetInput(input_index);
+            auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+            const auto tensor_shapes = tensor_info.GetShape();
+            auto& shape_range = shape_ranges[input_name];
+  
+            // Create shape profile
+            if (input->isShapeTensor()) {
+              // Get shape values for shape tensor input
+              const auto tensor_type = tensor_info.GetElementType();
+              int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+              tensor_shape_values[input_name].resize(shape_size);
+              switch (tensor_type) {
+                case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+                  auto input = std::make_unique<int32_t[]>(shape_size);
+                  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+                  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+                  for (int j = 0; j < shape_size; ++j) {
+                    tensor_shape_values[input_name][j] = input[j];
+                  }
+                  break;
+                }
+                case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+                  auto input = std::make_unique<int64_t[]>(shape_size);
+                  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+                  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+                  for (int j = 0; j < shape_size; ++j) {
+                    tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
+                  }
+                  break;
+                }
+                default: {
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                         "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
+                }
+              }
+  
+              // Update shape ranges
+              std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+              int shape_range_size = static_cast<int>(shape_range.size());
+              if (shape_size == shape_range_size) {
+                // If shape size matches, check/update shape range
+                for (int j = 0; j < shape_size; ++j) {
+                  shapes_min[j] = static_cast<int32_t>(shape_range[j].first);
+                  shapes_opt[j] = static_cast<int32_t>(shape_range[j].second);
+                  shapes_max[j] = static_cast<int32_t>(shape_range[j].second);
+  
+                  const auto& tensor_shape_value = tensor_shape_values[input_name][j];
+                  // Update shape range lower bound
+                  if (tensor_shape_value < shape_range[j].first) {
+                    shape_range[j].first = tensor_shape_value;
+                    shapes_min[j] = tensor_shape_value;
+                    engine_update = true;
+                  }
+                  // Update shape range upper bound
+                  if (tensor_shape_value > shape_range[j].second) {
+                    shape_range[j].second = tensor_shape_value;
+                    shapes_max[j] = tensor_shape_value;
+                    shapes_opt[j] = tensor_shape_value;
+                    engine_update = true;
+                  }
+                }
+              } else {
+                // If shape size doesn't match, initialize shape_range with the new shape value
+                shape_range.clear();
+                for (int j = 0; j < shape_size; ++j) {
+                  const auto& tensor_shape_value = tensor_shape_values[input_name][j];
+                  shape_range[j] = std::make_pair(tensor_shape_value, tensor_shape_value);
                   shapes_min[j] = tensor_shape_value;
-                  engine_update = true;
-                }
-                // Update shape range upper bound
-                if (tensor_shape_value > shape_range[j].second) {
-                  shape_range[j].second = tensor_shape_value;
-                  shapes_max[j] = tensor_shape_value;
                   shapes_opt[j] = tensor_shape_value;
-                  engine_update = true;
+                  shapes_max[j] = tensor_shape_value;
+                }
+                engine_update = true;
+              }
+  
+              if (*trt_profile == nullptr) {
+                *trt_profile = trt_builder->createOptimizationProfile();
+              }
+              (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+              (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+              (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+            } else {  // Execution tensor
+              nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
+              for (int j = 0, end = nb_dims; j < end; ++j) {
+                const auto& tensor_shape = tensor_shapes[j];
+                if (shape_range.find(j) != shape_range.end()) {
+                  dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
+                  dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
+                  dims_max.d[j] = static_cast<int32_t>(shape_range[j].second);
+  
+                  // Update minimum dimension
+                  if (tensor_shape < shape_range[j].first) {
+                    shape_range[j].first = tensor_shape;
+                    dims_min.d[j] = static_cast<int32_t>(tensor_shape);
+                    engine_update = true;
+                  }
+                  // Update maximum dimension
+                  if (tensor_shape > shape_range[j].second) {
+                    shape_range[j].second = tensor_shape;
+                    dims_max.d[j] = static_cast<int32_t>(tensor_shape);
+                    dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
+                    engine_update = true;
+                  }
                 }
               }
-            } else {
-              // If shape size doesn't match, initialize shape_range with the new shape value
-              shape_range.clear();
-              for (int j = 0; j < shape_size; ++j) {
-                const auto& tensor_shape_value = tensor_shape_values[input_name][j];
-                shape_range[j] = std::make_pair(tensor_shape_value, tensor_shape_value);
-                shapes_min[j] = tensor_shape_value;
-                shapes_opt[j] = tensor_shape_value;
-                shapes_max[j] = tensor_shape_value;
+  
+              if (*trt_profile == nullptr) {
+                *trt_profile = trt_builder->createOptimizationProfile();
               }
-              engine_update = true;
+              (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+              (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+              (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
             }
-
-            if (*trt_profile == nullptr) {
-              *trt_profile = trt_builder->createOptimizationProfile();
-            }
-            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-          } else {  // Execution tensor
-            nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
-            for (int j = 0, end = nb_dims; j < end; ++j) {
-              const auto& tensor_shape = tensor_shapes[j];
-              if (shape_range.find(j) != shape_range.end()) {
-                dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
-                dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
-                dims_max.d[j] = static_cast<int32_t>(shape_range[j].second);
-
-                // Update minimum dimension
-                if (tensor_shape < shape_range[j].first) {
-                  shape_range[j].first = tensor_shape;
-                  dims_min.d[j] = static_cast<int32_t>(tensor_shape);
-                  engine_update = true;
-                }
-                // Update maximum dimension
-                if (tensor_shape > shape_range[j].second) {
-                  shape_range[j].second = tensor_shape;
-                  dims_max.d[j] = static_cast<int32_t>(tensor_shape);
-                  dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
-                  engine_update = true;
-                }
-              }
-            }
-
-            if (*trt_profile == nullptr) {
-              *trt_profile = trt_builder->createOptimizationProfile();
-            }
-            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
           }
         }
       }
@@ -1856,7 +1849,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         // Set dynamic shapes
         nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(binding_index));
         int nb_dims = dimensions.nbDims;
-        if (input_names.count(input_name) == 1) {
+        ///if (input_names.count(input_name) == 1) {//some inputs in the network could be optimized off in the engine!!
           if (trt_engine->isShapeBinding(binding_index)) {
             trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
           } else {
@@ -1869,7 +1862,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                                   "TensorRT EP cannot set the dynamic dimensions of a binding"));
             }
           }
-        }
+        ///}
 
         const auto input_type = tensor_info.GetElementType();
         switch (input_type) {

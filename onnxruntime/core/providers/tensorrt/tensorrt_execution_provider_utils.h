@@ -16,6 +16,49 @@ namespace fs = std::experimental::filesystem;
 
 namespace onnxruntime {
 
+bool WriteSupportedList(const std::string file_name, std::vector<std::pair<std::vector<size_t>, bool>>& supported_nodes_vector) {//SubGraphCollection_t
+  std::ofstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+  if (!outfile) {
+    return false;
+  }
+
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      for (const auto& index : group.first) {
+        outfile << index << " ";
+      }
+      outfile << std::endl;
+    }
+  }
+  outfile.close();
+  return true;
+}
+
+bool ReadSupportedList(const std::string file_name, std::vector<std::pair<std::vector<size_t>, bool>>& supported_nodes_vector) {//SubGraphCollection_t
+  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
+  if (!infile) {
+    return false;
+  }
+
+  std::string line;
+  //char delim = ' ';
+  while (std::getline(infile, line)) {
+    std::istringstream in_line(line);
+    int index;
+    std::vector<size_t> node_list;
+    while (!in_line.eof()) {
+      in_line >> index;
+      node_list.push_back(index);            
+    }
+    for (auto idx : node_list)
+      std::cout << idx << " ";
+    std::cout << std::endl;
+    supported_nodes_vector.push_back({node_list, true});
+  }
+  infile.close();
+  return true;
+}
+
 float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
