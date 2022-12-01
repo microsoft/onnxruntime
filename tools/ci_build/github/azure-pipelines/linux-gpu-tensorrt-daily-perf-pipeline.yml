@@ -52,6 +52,12 @@ jobs:
       ${{ else }}:
         value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
 
+    - name: buildCommitIdCLIArg
+      ${{ if not(eq(variables['ortCommitId'], '')) }}:
+        value: -c $(ortCommitId)
+      ${{ else }}:
+        value: ""
+
     - name: trtVersion
       ${{ if eq(parameters.TrtVersion, 'BIN') }}:
         value: $(tarTrtVersion)
@@ -80,11 +86,11 @@ jobs:
       - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).cudnn$(tarCudnnVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
 
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -c $(ortCommitId) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=. --docker_repo_clone_dir=$(dockerCodeDir)'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) $(buildCommitIdCLIArg) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=. --docker_repo_clone_dir=$(dockerCodeDir)'
         displayName: 'Install TensorRT from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     - ${{ else }}:
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -c $(ortCommitId) -t $(trtVersion) -a 75 --docker_repo_clone_dir=$(dockerCodeDir)'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) $(buildCommitIdCLIArg) -t $(trtVersion) -a 75 --docker_repo_clone_dir=$(dockerCodeDir)'
         displayName: 'Build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
