@@ -75,7 +75,7 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
     j += 1;
   }
 }
-
+#ifdef ENABLE_TRAINING_ON_DEVICE
 namespace {
 // This function is used to create an execution provider to be passed to Module and Optimizer.
 std::vector<std::shared_ptr<IExecutionProvider>>
@@ -102,7 +102,7 @@ GetExecutionProvidersForTrainingApis(OrtDevice device) {
   return provider;
 }
 }  // namespace
-
+#endif
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
