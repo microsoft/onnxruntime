@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import dataclasses
+import itertools
 import logging
 from typing import Any, Callable, Dict, Mapping, Set, Tuple, Union
 
@@ -18,8 +19,10 @@ import torch.jit
 import torch.onnx
 import torch.onnx._onnx_supported_ops
 from torch._decomp import decomposition_table
+from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
+
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
@@ -79,18 +82,27 @@ def _get_onnx_supported_table() -> Set[str]:
     # TODO(wechi): this entire function should be replaced by a formal a exporter API.
 
     onnx_supported_ops: Set[str] = set()
-    for aten_op_name, schema in torch.onnx._onnx_supported_ops.all_symbolics_schemas().items():
+    for (
+        aten_op_name,
+        schema,
+    ) in torch.onnx._onnx_supported_ops.all_symbolics_schemas().items():
         # TODO(wechi): aten_op_name could be prim::add in addition to aten::add.
         # We should build another dictionary for storing support table for prim ops.
         # Currently, we only consider aten ops as before.
         if not aten_op_name.startswith("aten::"):
-            logger.info("Skip %s in support table because it's not in aten domain.", aten_op_name)
+            logger.info(
+                "Skip %s in support table because it's not in aten domain.",
+                aten_op_name,
+            )
             continue
         short_op_name = aten_op_name.split("aten::")[1]
         if not hasattr(torch.ops.aten, short_op_name):  # type: ignore
             # Some aten ops are not in torch.ops.aten. Those are excluded until we
             # figure out why.
-            logger.info("Skip %s in support table because it's not found in torch.ops.aten.", aten_op_name)
+            logger.info(
+                "Skip %s in support table because it's not found in torch.ops.aten.",
+                aten_op_name,
+            )
             continue
         # aten_op_name is aten symbol's name; e.g., "sum" for aten::sum.
         # opsets_string is the ONNX opsets that can express info[0]; e.g., "15 16 17"
@@ -171,7 +183,12 @@ def _get_support_dictionaries_and_decomposition_tables() -> Tuple[
         "_operator.getitem": None,
     }
 
-    return support_dictionary, extra_support_dictionary, aten2aten_decomposition_table, aten2prim_decomposition_table
+    return (
+        support_dictionary,
+        extra_support_dictionary,
+        aten2aten_decomposition_table,
+        aten2prim_decomposition_table,
+    )
 
 
 (
@@ -201,16 +218,32 @@ class OrtOperatorSupport(OperatorSupport):
             return False
         # This is the and the only place to decide if aten op is supported.
         if node.op == "call_function" and node.target in _SUPPORT_DICT:
-            logger.info("support_dict supports node.target: %s (type: %s)", node.target, type(node.target))
+            logger.info(
+                "support_dict supports node.target: %s (type: %s)",
+                node.target,
+                type(node.target),
+            )
             return True
-        logger.info("support_dict doesn't support node.target: %s (type: %s)", node.target, type(node.target))
+        logger.info(
+            "support_dict doesn't support node.target: %s (type: %s)",
+            node.target,
+            type(node.target),
+        )
         # If node.target is not in support_dict, we still want to check if torch.jit.script
         # can convert it to ONNX equivalence. Let's use base mechanism to do this.
         # See extra_support_dict  for supported ops.
         if super().is_node_supported(submodules, node):
-            logger.info("extra_support_dict supports node.target: %s (type: %s)", node.target, type(node.target))
+            logger.info(
+                "extra_support_dict supports node.target: %s (type: %s)",
+                node.target,
+                type(node.target),
+            )
             return True
-        logger.info("extra_support_dict doesn't supports node.target: %s (type: %s)", node.target, type(node.target))
+        logger.info(
+            "extra_support_dict doesn't supports node.target: %s (type: %s)",
+            node.target,
+            type(node.target),
+        )
         return False
 
 
@@ -290,9 +323,12 @@ def _replace_to_copy_with_to(fx_module: torch.fx.GraphModule) -> None:
 
                 node.target = torch.ops.aten.to.dtype  # type: ignore
             else:
-                raise RuntimeError(
-                    f"aten._to_copy must be replaced with other ONNX-supported aten ops. \
-                         args={[arg.meta for arg in node.args]}, kwargs={node.kwargs}"
+                logger.info(
+                    "For better performance, aten._to_copy should be replaced with other ONNX-supported aten ops. \
+                     args=%s, args' meta=%s, kwargs=%s",
+                    node.args,
+                    [arg.meta for arg in node.args],
+                    node.kwargs,
                 )
     fx_module.recompile()
 
@@ -341,7 +377,10 @@ def _create_onnx_session(onnx_proto, device):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
     if device.type == "cuda":
-        return onnxruntime.InferenceSession(onnx_proto, providers=["CUDAExecutionProvider"])
+        ep_name = "CUDAExecutionProvider"
+        ep_options = {"device_id": device.index}
+        ep_config = (ep_name, ep_options)
+        return onnxruntime.InferenceSession(onnx_proto, providers=[ep_config])
     return onnxruntime.InferenceSession(onnx_proto, providers=["CPUExecutionProvider"])
 
 
@@ -403,7 +442,10 @@ def _run_onnx_session_with_ortvaluevector(
 
 
 def _assert_allclose_with_detailed_error_message(
-    actual: torch.Tensor, expected: torch.Tensor, rtol: float = 1e-03, atol: float = 1e-04
+    actual: torch.Tensor,
+    expected: torch.Tensor,
+    rtol: float = 1e-03,
+    atol: float = 1e-04,
 ):
     diff = actual - expected
     real_atol = torch.max(torch.abs(diff))
@@ -443,6 +485,36 @@ class OrtExecutionInfo:
         self.example_outputs: Dict[torch.fx.GraphModule, Union[Tuple[torch.Tensor, ...], torch.Tensor]] = {}
 
 
+def _fake_prop_on_module_with_parameters_and_buffers(graph_module: torch.fx.GraphModule, *args):
+    """Run FakeTensorProp on graph module possibly with
+    parameters (i.e., values returned by model.parameters()) and
+    buffers (i.e., values returned by model.buffers()).
+    """
+    # Create the unique dispatch mode for all fake tensor operations.
+    # Mixing operations with different modes will cause undefined behavior
+    # and throw.
+    with FakeTensorMode() as fake_tensor_mode:
+
+        def to_fake_tensor(x):
+            if isinstance(x, torch.Tensor) and not isinstance(x, FakeTensor):
+                return fake_tensor_mode.from_tensor(x)
+            return x
+
+        # FakeTensorProp requires all tensors, including model parameters and buffer,
+        # being fake tensors.
+        fake_parameters_and_buffers = {
+            k: to_fake_tensor(v)
+            for k, v in itertools.chain(graph_module.named_parameters(), graph_module.named_buffers())
+        }
+
+        # Temporally replace real tensors with fake tensors inside nn.Module.
+        with torch.nn.utils.stateless._reparametrize_module(graph_module, fake_parameters_and_buffers):
+            # Run the model to get shape information.
+            # Note that all model parameters and buffers are already fake tensors,
+            # and args will be converted to fake tensors in FakeTensorProp.propagate.
+            return FakeTensorProp(graph_module, fake_tensor_mode).propagate(*args)
+
+
 class OrtBackend:
     """A backend compiles (sub-)graphs in torch.fx.GraphModule to onnxruntime.InferenceSession calls.
 
@@ -480,7 +552,7 @@ class OrtBackend:
             #
             # WARNING: The downstream code should not change prim_outputs and
             # this backend should always produces output with schema identical to prim_outputs'.
-            prim_outputs = FakeTensorProp(graph_module).propagate(*args, **kwargs)
+            prim_outputs = _fake_prop_on_module_with_parameters_and_buffers(graph_module, *args)
             self._ort_execution_info.example_outputs[graph_module] = prim_outputs
             # Compile the torch.fx.GraphModule into a torch.jit.ScriptModule.
             script_module = _fx_to_torchscript(graph_module)
@@ -524,7 +596,13 @@ class OrtBackend:
             # ORT output is ok.
             _nvtx_range_push("run_onnx_session_with_ortvaluevector")
             onnx_outputs = _run_onnx_session_with_ortvaluevector(
-                onnx_session, input_names, args, input_devices, output_names, prim_outputs, output_devices
+                onnx_session,
+                input_names,
+                args,
+                input_devices,
+                output_names,
+                prim_outputs,
+                output_devices,
             )
             _nvtx_range_pop()
             if self._ort_execution_info.assert_allclose_to_baseline:
@@ -540,7 +618,13 @@ class OrtBackend:
             # ORT output's first element must be extracted and returned. Otherwise, type
             # mismatch may happen in downstream computation.
             onnx_outputs = _run_onnx_session_with_ortvaluevector(
-                onnx_session, input_names, args, input_devices, output_names, (prim_outputs,), output_devices
+                onnx_session,
+                input_names,
+                args,
+                input_devices,
+                output_names,
+                (prim_outputs,),
+                output_devices,
             )
             assert len(onnx_outputs) == 1
             if self._ort_execution_info.assert_allclose_to_baseline:
@@ -558,10 +642,12 @@ class OrtBackend:
             prim_graph_module = make_fx(graph_module, decomposition_table=_ATEN2ATEN_DECOMP)(*args)
             # TODO(wechi): this is required for removing aten::_to_copy in _replace_to_copy_with_to.
             # We need input and output tensors' devices to decide if aten::_to_copy is just a Cast.
-            FakeTensorProp(prim_graph_module).propagate(*args)
+            _fake_prop_on_module_with_parameters_and_buffers(prim_graph_module, *args)
             _replace_to_copy_with_to(prim_graph_module)
             partitioner = CapabilityBasedPartitioner(
-                prim_graph_module, self._supported_ops, allows_single_node_partition=False
+                prim_graph_module,
+                self._supported_ops,
+                allows_single_node_partition=False,
             )
             partitioned_prim_graph_module = partitioner.partition_and_fuse()
             self._partitioner_cache[graph_module] = partitioned_prim_graph_module
