@@ -237,7 +237,7 @@ endif()
 
 if (NOT WIN32)
   #nsync tests failed on Mac Build
-  set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+  set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(google_nsync)
   set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
 endif()
