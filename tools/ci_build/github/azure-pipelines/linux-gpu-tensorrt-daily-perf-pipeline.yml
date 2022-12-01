@@ -50,30 +50,10 @@ jobs:
       value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
 
     - name: branchName
-      value: $[
-        replace(
-          replace(
-            eq(variables['ortBranchOverride'], ''),
-            True,
-            variables['scriptsBranchName']
-          ),
-          False,
-          variables['ortBranchOverride']
-        )
-      ]
+      value: $[ replace(replace(eq(variables['ortBranchOverride'], ''), True, variables['scriptsBranchName']), False, variables['ortBranchOverride']) ]
 
     - name: buildCommitIdCLIArg
-      value: $[
-        replace(
-          replace(
-            eq(variables['ortCommitId'], ''),
-            True,
-            ''
-          ),
-          False,
-          '-c $(ortCommitId)'
-        )
-      ]
+      value: $[ replace(replace(eq(variables['ortCommitId'], ''), True, ''), False, '-c $(ortCommitId)') ]
 
     - name: trtVersion
       ${{ if eq(parameters.TrtVersion, 'BIN') }}:
