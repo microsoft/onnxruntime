@@ -16,15 +16,17 @@
 - (void)testOnnxruntimeModule {
   NSBundle *bundle = [NSBundle bundleForClass:[OnnxruntimeModuleTest class]];
   NSString *dataPath = [bundle pathForResource:@"test_types_float" ofType:@"ort"];
+  NSString *sessionKey = @"";
 
   OnnxruntimeModule *onnxruntimeModule = [OnnxruntimeModule new];
 
-  // test loadModel()
+  // test loadModelFromBuffer()
   {
     NSMutableDictionary *options = [NSMutableDictionary dictionary];
-    NSDictionary *resultMap = [onnxruntimeModule loadModel:dataPath options:options];
+    NSData *fileData = [NSData dataWithContentsOfFile: dataPath];
+    NSDictionary *resultMap = [onnxruntimeModule loadModelFromBuffer:fileData options:options];
 
-    XCTAssertEqual(resultMap[@"key"], dataPath);
+    sessionKey = resultMap[@"key"];
     NSArray *inputNames = resultMap[@"inputNames"];
     XCTAssertEqual([inputNames count], 1);
     XCTAssertEqualObjects(inputNames[0], @"input");
@@ -68,7 +70,7 @@
     NSMutableArray *output = [NSMutableArray array];
     [output addObject:@"output"];
 
-    NSDictionary *resultMap = [onnxruntimeModule run:dataPath input:inputDataMap output:output options:options];
+    NSDictionary *resultMap = [onnxruntimeModule run:sessionKey input:inputDataMap output:output options:options];
 
     XCTAssertTrue([[resultMap objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
   }

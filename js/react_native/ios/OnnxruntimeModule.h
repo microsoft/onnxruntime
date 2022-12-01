@@ -11,6 +11,9 @@
 -(NSDictionary*)loadModel:(NSString*)modelPath
                   options:(NSDictionary*)options;
 
+-(NSDictionary*)loadModelFromBuffer:(NSData*)modelData
+                            options:(NSDictionary*)options;
+
 -(NSDictionary*)run:(NSString*)url
               input:(NSDictionary*)input
              output:(NSArray*)output

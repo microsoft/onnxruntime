@@ -22,6 +22,13 @@ static Ort::Env *ortEnv = new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
 static NSMutableDictionary *sessionMap = [NSMutableDictionary dictionary];
 static Ort::AllocatorWithDefaultOptions ortAllocator;
 
+static int nextSessionId = 0;
+- (NSString *)getNextSessionKey {
+  NSString *key = @(nextSessionId).stringValue;
+  nextSessionId++;
+  return key;
+}
+
 RCT_EXPORT_MODULE(Onnxruntime)
 
 /**
@@ -44,6 +51,32 @@ RCT_EXPORT_METHOD(loadModel
     resolve(resultMap);
   } @catch (...) {
     reject(@"onnxruntime", @"can't load model", nil);
+  }
+}
+
+/**
+ * React native binding API to load a model using BASE64 encoded model data string.
+ *
+ * @param modelData the BASE64 encoded model data string
+ * @param options onnxruntime session options
+ * @param resolve callback for returning output back to react native js
+ * @param reject callback for returning an error back to react native js
+ * @note when run() is called, the same modelPath must be passed into the first parameter.
+ */
+RCT_EXPORT_METHOD(loadModelFromBase64EncodedBuffer
+                  : (NSString *)modelDataBase64EncodedString options
+                  : (NSDictionary *)options resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  @try {
+    // Choices: if not working, use 3rd party library for base64 encoding/decoding:
+    // https://github.com/nicklockwood/Base64/ (may be deprecated)
+    // https://github.com/l4u/NSData-Base64
+    NSData *modelDataDecoded = [[NSData alloc] initWithBase64EncodedString:modelDataBase64EncodedString options:0];
+    NSDictionary *resultMap = [self loadModelFromBuffer:modelDataDecoded options:options];
+    resolve(resultMap);
+  } @catch (...) {
+    reject(@"onnxruntime", @"can't load model from buffer", nil);
   }
 }
 
@@ -75,42 +108,68 @@ RCT_EXPORT_METHOD(run
 /**
  * Load a model using given model path.
  *
- * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models
- * are loaded.
- * @param options onnxruntime session options
+ * @param modelPath a model file location.
+ * @param options onnxruntime session options.
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
-- (NSDictionary *)loadModel:(NSString *)modelPath options:(NSDictionary *)options {
-  NSValue *value = [sessionMap objectForKey:modelPath];
+ - (NSDictionary *)loadModel:(NSString *)modelPath options:(NSDictionary *)options {
+    return [self loadModelImpl:modelPath modelData:nil options:options];
+}
+
+/**
+ * Load a model using given model data array
+ *
+ * @param modelData the model data buffer.
+ * @param options onnxruntime session options
+ */
+ - (NSDictionary *)loadModelFromBuffer:(NSData *)modelData options:(NSDictionary *)options {
+    return [self loadModelImpl:@"" modelData:modelData options:options];
+}
+
+/**
+ * Load model implementation method given either model data array or model path
+ *
+ * @param modelPath the model file location.
+ * @param modelData the model data buffer.
+ * @param options onnxruntime session options.
+ */
+- (NSDictionary *)loadModelImpl:(NSString *)modelPath
+                      modelData:(NSData *)modelData
+                        options:(NSDictionary *)options {
   SessionInfo *sessionInfo = nullptr;
-  if (value == nil) {
-    sessionInfo = new SessionInfo();
+  sessionInfo = new SessionInfo();
+  Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
-    Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
+  if (modelData == nil) {
+    // Question: can we still use the modelPath api call to load ort session
+    // (given we know that we can not use the model file path as the key)
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
-
-    sessionInfo->inputNames.reserve(sessionInfo->session->GetInputCount());
-    for (size_t i = 0; i < sessionInfo->session->GetInputCount(); ++i) {
-      auto inputName = sessionInfo->session->GetInputNameAllocated(i, ortAllocator);
-      sessionInfo->inputNames.emplace_back(inputName.get());
-      sessionInfo->inputNames_ptrs.emplace_back(std::move(inputName));
-    }
-
-    sessionInfo->outputNames.reserve(sessionInfo->session->GetOutputCount());
-    for (size_t i = 0; i < sessionInfo->session->GetOutputCount(); ++i) {
-      auto outputName = sessionInfo->session->GetOutputNameAllocated(i, ortAllocator);
-      sessionInfo->outputNames.emplace_back(outputName.get());
-      sessionInfo->outputNames_ptrs.emplace_back(std::move(outputName));
-    }
-
-    value = [NSValue valueWithPointer:(void *)sessionInfo];
-    sessionMap[modelPath] = value;
   } else {
-    sessionInfo = (SessionInfo *)[value pointerValue];
+    NSUInteger dataLength = [modelData length];
+    Byte *modelBytes = (Byte *)[modelData bytes];
+    sessionInfo->session.reset(new Ort::Session(*ortEnv, modelBytes, (size_t)dataLength, sessionOptions));
   }
 
+  sessionInfo->inputNames.reserve(sessionInfo->session->GetInputCount());
+  for (size_t i = 0; i < sessionInfo->session->GetInputCount(); ++i) {
+    auto inputName = sessionInfo->session->GetInputNameAllocated(i, ortAllocator);
+    sessionInfo->inputNames.emplace_back(inputName.get());
+    sessionInfo->inputNames_ptrs.emplace_back(std::move(inputName));
+  }
+
+  sessionInfo->outputNames.reserve(sessionInfo->session->GetOutputCount());
+  for (size_t i = 0; i < sessionInfo->session->GetOutputCount(); ++i) {
+    auto outputName = sessionInfo->session->GetOutputNameAllocated(i, ortAllocator);
+    sessionInfo->outputNames.emplace_back(outputName.get());
+    sessionInfo->outputNames_ptrs.emplace_back(std::move(outputName));
+  }
+
+  NSString *key = [self getNextSessionKey];
+  NSValue *value = [NSValue valueWithPointer:(void *)sessionInfo];
+  sessionMap[key] = value;
+
   NSMutableDictionary *resultMap = [NSMutableDictionary dictionary];
-  resultMap[@"key"] = modelPath;
+  resultMap[@"key"] = key;
 
   NSMutableArray *inputNames = [NSMutableArray array];
   for (auto inputName : sessionInfo->inputNames) {
