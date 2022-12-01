@@ -46,17 +46,34 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
+    - name: scriptsBranchName
+      value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
+
     - name: branchName
-      ${{ if not(eq(variables['ortBranchOverride'], '')) }}:
-        value: $(ortBranchOverride)
-      ${{ else }}:
-        value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
+      value: $[
+        replace(
+          replace(
+            eq(variables['ortBranchOverride'], ''),
+            True,
+            variables['scriptsBranchName']
+          ),
+          False,
+          variables['ortBranchOverride']
+        )
+      ]
 
     - name: buildCommitIdCLIArg
-      ${{ if not(eq(variables['ortCommitId'], '')) }}:
-        value: -c $(ortCommitId)
-      ${{ else }}:
-        value: ""
+      value: $[
+        replace(
+          replace(
+            eq(variables['ortCommitId'], ''),
+            True,
+            ''
+          ),
+          False,
+          '-c $(ortCommitId)'
+        )
+      ]
 
     - name: trtVersion
       ${{ if eq(parameters.TrtVersion, 'BIN') }}:
