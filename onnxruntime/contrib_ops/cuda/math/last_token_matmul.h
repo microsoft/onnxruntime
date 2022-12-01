@@ -14,7 +14,7 @@ class LastTokenMatMul final : public onnxruntime::cuda::CudaKernel {
   using Base = CudaKernel;
 
  public:
-  LastTokenMatMul(const OpKernelInfo& info)
+  explicit LastTokenMatMul(const OpKernelInfo& info)
       : CudaKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;

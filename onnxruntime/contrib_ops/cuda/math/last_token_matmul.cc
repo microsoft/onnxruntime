@@ -19,7 +19,8 @@ Status LastTokenMatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_2_shape = input_2->Shape().GetDims();
 
   if ((input_1_shape.size() != 3) && (input_2_shape.size() != 2)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "First input must be 3D and the second input must be 2D");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "First input must be 3D and the second input must be 2D");
   }
 
   if (input_1_shape[2] != input_2_shape[0]) {
@@ -79,7 +80,7 @@ Status LastTokenMatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       &alpha,
       reinterpret_cast<const CudaT*>(input_2->Data<T>()),
       static_cast<int>(proj_dim),
-      // Re-use the input buffer if sequence_lengts == 1
+      // Re-use the input buffer if sequence_length == 1
       sequence_length == 1 ? reinterpret_cast<const CudaT*>(input_1->Data<T>())
                            : reinterpret_cast<const CudaT*>(sliced_input_buffer.get()),
       static_cast<int>(hidden_dim),
