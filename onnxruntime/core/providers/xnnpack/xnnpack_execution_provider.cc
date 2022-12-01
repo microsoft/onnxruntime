@@ -179,7 +179,7 @@ static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
                         ? "QLinear" + node_unit.OpType()
                         : node_unit.OpType();
-  return dynamic_schema_set.contains(key);
+  return dynamic_schema_set.count(key) > 0;
 }
 
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
@@ -257,7 +257,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
 
     bool request_node = false;
     // any node in NodeUnit will trigger IsNodeSupported, so we just check once.
-    if (node_unit_supported_result.count(&node_unit)) {
+    if (node_unit_supported_result.count(&node_unit) > 0) {
       continue;
     } else if (node_unit.GetNode().GetExecutionProviderType() == "") {
       // unassigned node.
