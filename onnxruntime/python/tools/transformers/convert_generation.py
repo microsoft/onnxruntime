@@ -189,7 +189,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Replaces the logits MatMul with a customized operator that only projects the "
         "encoding of the last token in the batched sequence onto the vocab space instead of "
-        "projecting the encodings of the entire batched sequence"
+        "projecting the encodings of the entire batched sequence",
     )
     output_group.set_defaults(enable_last_token_logits_matmul=True)
 
@@ -972,16 +972,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # onto the vocabulary space. We hence replace the MatMul operator with a customized
     # operator that does just that.
     # NOTE: We currently only support this for fp16/fp32 GPT2 BeamSearch.
-    # This can be expanded to other models/decoding strategies/data types later    
+    # This can be expanded to other models/decoding strategies/data types later
     last_token_logits_matmul_enabled = False
-    if (
-        args.enable_last_token_logits_matmul
-        and is_gpt2
-        and generation_type == GenerationType.BEAMSEARCH
-    ):
+    if args.enable_last_token_logits_matmul and is_gpt2 and generation_type == GenerationType.BEAMSEARCH:
         logger.info(
-            f"Replace logits MatMul with LastTokenMatMul on {args.decoder_onnx}. "
-            "The file will be overwritten."
+            f"Replace logits MatMul with LastTokenMatMul on {args.decoder_onnx}. " "The file will be overwritten."
         )
         last_token_logits_matmul_enabled = replace_logits_matmul(args.decoder_onnx, args.use_external_data_format)
         if not last_token_logits_matmul_enabled:
@@ -990,7 +985,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             )
 
     # If the user explicitly requests running shape inference or if we padded/mutated
-    # weight(s)/node(s) in the decoder subgraph, we want to re-run shape inference 
+    # weight(s)/node(s) in the decoder subgraph, we want to re-run shape inference
     # to capture the new shapes
     if last_token_logits_matmul_enabled or logits_matmul_weight_padded or args.run_shape_inference:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
