@@ -4,7 +4,7 @@ jobs:
     BuildConfig: 'Debug'
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    additionalBuildFlags: --build_wheel --disable_memleak_checker --use_mimalloc
+    additionalBuildFlags: --disable_memleak_checker --use_mimalloc
     msbuildPlatform: x64
     isX86: false
     job_name_suffix: x64_mimalloc
@@ -13,6 +13,7 @@ jobs:
     isTraining: false
     ORT_EP_NAME: CPU
     GenerateDocumentation: false
+    EnablePython: false
     MachinePool: 'Win-CPU-2021'
 
 - template: templates/win-ci-vs-2019.yml
