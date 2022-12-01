@@ -1,15 +1,15 @@
 ---
-title: AMD - ROCm
-description: Instructions to execute ONNX Runtime with the AMD ROCm execution provider
+title: AMD - MIGraphX
+description: Instructions to execute ONNX Runtime with the AMD MIGraphX execution provider
 parent: Execution Providers
 nav_order: 10
-redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
+redirect_from: /docs/reference/execution-providers/MIGraphX-ExecutionProvider
 ---
 
 # ROCm Execution Provider
 {: .no_toc }
 
-The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm-enabled GPUs. 
+The MIGraphX Execution Provider enables hardware accelerated computation on AMD ROCm-enabled GPUs. 
 
 ## Contents
 {: .no_toc }
@@ -23,12 +23,12 @@ The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm
 
 For Nightly PyTorch builds please see [Pytorch home](https://pytorch.org/) and select ROCm as the Compute Platform.
 
-Pre-built binaries of ONNX Runtime with ROCm EP are published for most language bindings. Please reference [Install ORT](../install).
+Pre-built binaries of ONNX Runtime with MIGraphX EP are published for most language bindings. Please reference [Install ORT](../install).
 
 ## Requirements
 
 
-|ONNX Runtime|ROCm|
+|ONNX Runtime|MIGraphX|
 |---|---|
 |main|5.4|
 |1.13|5.4|
@@ -38,7 +38,7 @@ Pre-built binaries of ONNX Runtime with ROCm EP are published for most language 
 
 
 ## Build
-For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm). 
+For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx).
 
 ## Usage
 
@@ -48,7 +48,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm).
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
 int device_id = 0;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCm(so, device_id));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(so, device_id));
 ```
 
 The C API details are [here](../get-started/with-c.md).
@@ -69,7 +69,7 @@ import onnxruntime as ort
 model_path = '<path to model>'
 
 providers = [
-    'ROCmExecutionProvider',
+    'MIGraphXExecutionProvider',
     'CPUExecutionProvider',
 ]
 
