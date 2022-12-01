@@ -715,13 +715,13 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
-    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None) :
+    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None):
         lhs_shape = self._get_shape(node, 0)
         rhs_shape = self._get_shape(node, 1)
         lhs_rank = len(lhs_shape)
         rhs_rank = len(rhs_shape)
         assert lhs_rank == 3 and rhs_rank == 2
-        new_shape = [lhs_shape[0]] + [1] + [rhs_shape[1]]          
+        new_shape = [lhs_shape[0]] + [1] + [rhs_shape[1]]
         if output_dtype is None:
             # infer output_dtype from input type when not specified
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
