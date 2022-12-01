@@ -183,6 +183,17 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(pad_vocab_size=True)
 
     output_group.add_argument(
+        "-eltm",
+        "--enable_last_token_logits_matmul",
+        required=False,
+        action="store_true",
+        help="Replaces the logits MatMul with a customized operator that only projects the "
+        "encoding of the last token in the batched sequence onto the vocab space instead of "
+        "projecting the encodings of the entire batched sequence"
+    )
+    output_group.set_defaults(enable_last_token_logits_matmul=True)
+
+    output_group.add_argument(
         "-i",
         "--disable_shared_initializers",
         required=False,
@@ -490,6 +501,38 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
         logits_weight.raw_data = weight_with_padding.tobytes()
     else:
         return False
+
+    # Save the model
+    OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
+    return True
+
+
+def replace_logits_matmul(onnx_path: str, use_external_data_format: bool = True) -> bool:
+    """Replaces the logits MatMul with LastTokenMatMul in the provided decoder model, which will be overwritten.
+
+    Args:
+        onnx_path (str): Path of onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+    decoder_model_proto = onnx.load_model(onnx_path, load_external_data=True)
+
+    logits_output_name = decoder_model_proto.graph.output[0].name
+
+    decoder_model = OnnxModel(decoder_model_proto)
+
+    output_name_to_node = decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    matmul_node = output_name_to_node[logits_output_name]
+    # Sanity check - the logits need to be produced by a MatMul node
+    if matmul_node.op_type != "MatMul":
+        return False
+
+    # TODO(hasesh): Do we want to enforce that the first input to the MatMul is 3D
+    # and the second input to the MatMul is 2D before going ahead with the switch ?
+
+    matmul_node.op_type = "LastTokenMatMul"
+    matmul_node.domain = "com.microsoft"
 
     # Save the model
     OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
@@ -922,13 +965,34 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
         if not logits_matmul_weight_padded:
             logger.warning(
-                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+                "Tried and failed to pad logits MatMul weights. Performance may be sub-optimal for this MatMul"
+            )
+
+    # We only want to project the encoding of the last token in the batched sequence
+    # onto the vocabulary space. We hence replace the MatMul operator with a customized
+    # operator that does just that.
+    # NOTE: We currently only support this for fp16/fp32 GPT2 BeamSearch.
+    # This can be expanded to other models/decoding strategies/data types later    
+    last_token_logits_matmul_enabled = False
+    if (
+        args.enable_last_token_logits_matmul
+        and is_gpt2
+        and generation_type == GenerationType.BEAMSEARCH
+    ):
+        logger.info(
+            f"Replace logits MatMul with LastTokenMatMul on {args.decoder_onnx}. "
+            "The file will be overwritten."
+        )
+        last_token_logits_matmul_enabled = replace_logits_matmul(args.decoder_onnx, args.use_external_data_format)
+        if not last_token_logits_matmul_enabled:
+            logger.warning(
+                "Tried and failed to replace logits MatMul with LastTokenMatMul. Performance may be sub-optimal for this MatMul"
             )
 
     # If the user explicitly requests running shape inference or if we padded/mutated
-    # weight(s) in the decoder, we want to run shape inference to capture the new
-    # shapes
-    if logits_matmul_weight_padded or args.run_shape_inference:
+    # weight(s)/node(s) in the decoder subgraph, we want to re-run shape inference 
+    # to capture the new shapes
+    if last_token_logits_matmul_enabled or logits_matmul_weight_padded or args.run_shape_inference:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
 
