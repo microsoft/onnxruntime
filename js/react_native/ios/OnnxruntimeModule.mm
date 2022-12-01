@@ -146,7 +146,7 @@ RCT_EXPORT_METHOD(run
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
   } else {
     NSUInteger dataLength = [modelData length];
-    char *modelBytes = (char *)[modelData bytes];
+    Byte *modelBytes = (Byte *)[modelData bytes];
     sessionInfo->session.reset(new Ort::Session(*ortEnv, modelBytes, (size_t)dataLength, sessionOptions));
   }
 
