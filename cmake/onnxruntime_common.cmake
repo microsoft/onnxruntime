@@ -90,26 +90,14 @@ onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
-
 if (onnxruntime_USE_MIMALLOC)
-    if(NOT WIN32)
-        message(FATAL_ERROR "Currently do not support MIMALLOC in GPU builds")
-    endif()
-    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
-        message(WARNING "Currently do not support MIMALLOC in GPU builds")
-    else()
-        include(external/mimalloc.cmake)
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
-        list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
-        set(onnxruntime_mimalloc_shim_src "${ONNXRUNTIME_ROOT}/core/platform/windows/mimalloc/mimalloc_overloads.cc")
-        add_library(onnxruntime_mimalloc_shim ${onnxruntime_mimalloc_shim_src})
-        target_link_libraries(onnxruntime_mimalloc_shim mimalloc-static)
-        target_link_libraries(onnxruntime_common onnxruntime_mimalloc_shim)
-    endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
+  onnxruntime_add_static_library(onnxruntime_mimalloc_shim "${ONNXRUNTIME_ROOT}/core/platform/windows/mimalloc/mimalloc_overloads.cc")
+  target_link_libraries(onnxruntime_mimalloc_shim PRIVATE mimalloc-static)
+  target_link_libraries(onnxruntime_common PRIVATE onnxruntime_mimalloc_shim)
 endif()
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(external/abseil-cpp.cmake)
   target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
   if (MSVC)
     set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
@@ -119,18 +107,15 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
   endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
+onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 ${GSL_TARGET})
 
-if(NOT WIN32)
-  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-endif()
+target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET})
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -138,20 +123,6 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DEST
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 
-# check if we need to link against librt on Linux
-include(CheckLibraryExists)
-include(CheckFunctionExists)
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
-  check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
-
-  if (NOT HAVE_CLOCK_GETTIME)
-    set(CMAKE_EXTRA_INCLUDE_FILES time.h)
-    check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
-    set(CMAKE_EXTRA_INCLUDE_FILES)
-  else()
-    target_link_libraries(onnxruntime_common rt)
-  endif()
-endif()
 
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(onnxruntime_common PRIVATE "BUILD_INBOX=1")
@@ -164,7 +135,7 @@ if (onnxruntime_LINK_LIBATOMIC)
 endif()
 
 if(APPLE)
-  target_link_libraries(onnxruntime_common "-framework Foundation")
+  target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
 
@@ -222,9 +193,8 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
-
     if (CPUINFO_SUPPORTED)
-      target_link_libraries(onnxruntime_common cpuinfo)
+      onnxruntime_add_include_to_target(onnxruntime_common cpuinfo)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
     endif()
   endif()

@@ -47,7 +47,7 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
   // used originally for float uniqueness, is this correct?
   using IndexingMap = InlinedHashMap<float, ElementData>;
   IndexingMap mapped_indices;
-  mapped_indices.reserve(num_elements);
+  mapped_indices.reserve(onnxruntime::narrow<size_t>(num_elements));
 
   // processing
   for (int64_t i = 0; i < num_elements; ++i) {
