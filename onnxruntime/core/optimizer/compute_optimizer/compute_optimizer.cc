@@ -128,7 +128,7 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
   }
 
   // Update the axis attribute if new_axis is not same with the original slicing axis (which happens when data
-  // layerout got changed by Transpose or Reshape ops)
+  // layout got changed by Transpose or Reshape ops)
   onnxruntime::NodeAttributes attributes = slice_node.GetAttributes();
   if (info.GetAxis() != new_axis) {
     attributes[info.GetAxisAttrName()] =
@@ -142,18 +142,18 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
 
   int new_slice_input_index_to_connect = 0;  /* new node input index to connect to current_node's input node*/
   int new_slice_output_index_to_connect = 0; /* new node output index to connect to current_node*/
-  Node* new_slice_node = InsertItermediateNodeOnDestInput(graph, current_node,
-                                                          current_node_input_index,
-                                                          new_slice_input_index_to_connect,
-                                                          new_slice_output_index_to_connect,
-                                                          graph.GenerateNodeName(info.GetEntrySliceArgName()),
-                                                          slice_node.OpType(),
-                                                          "Duplicated Gather node",
-                                                          input_args,
-                                                          output_args,
-                                                          attributes,
-                                                          slice_node.Domain(),
-                                                          logger);
+  Node* new_slice_node = InsertIntermediateNodeOnDestInput(graph, current_node,
+                                                           current_node_input_index,
+                                                           new_slice_input_index_to_connect,
+                                                           new_slice_output_index_to_connect,
+                                                           graph.GenerateNodeName(info.GetEntrySliceArgName()),
+                                                           slice_node.OpType(),
+                                                           "Duplicated Gather node",
+                                                           input_args,
+                                                           output_args,
+                                                           attributes,
+                                                           slice_node.Domain(),
+                                                           logger);
 
   new_slice_node->SetExecutionProviderType(slice_node.GetExecutionProviderType());
 
@@ -199,14 +199,14 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
   graph_utils::ReplaceDownstreamNodeInput(graph, slice_node, 0 /*output_idx*/, current_node,
                                           output_index /*replacement_output_idx*/);
   auto gather_origin_consumer_nodes = graph.GetConsumerNodes(slice_op_output_arg->Name());
-  std::vector<Node*> gathernd_consumer_nodes;
-  gathernd_consumer_nodes.reserve(gather_origin_consumer_nodes.size());
+  std::vector<Node*> slice_op_consumers;
+  slice_op_consumers.reserve(gather_origin_consumer_nodes.size());
   for (auto& consumer_node : gather_origin_consumer_nodes) {
-    gathernd_consumer_nodes.push_back(graph.GetNode(consumer_node->Index()));
+    slice_op_consumers.push_back(graph.GetNode(consumer_node->Index()));
     LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Gather's consumer node " + consumer_node->Name() + "(" +
                                consumer_node->OpType() + ")");
   }
-  graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), gathernd_consumer_nodes);
+  graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), slice_op_consumers);
 
   graph.UpdateConsumerNodes(slice_op_output_arg->Name(), {});
   graph.RemoveNode(slice_node.Index());
@@ -347,11 +347,11 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
       SliceInfo info = gather_queue.front();
       Node* gather_node = info.GetNode();
       gather_queue.pop_front();
-      const Node* gathernd_data_producer = graph.GetProducerNode(gather_node->MutableInputDefs()[0]->Name());
-      if (gathernd_data_producer == nullptr) {
+      const Node* slice_input_data_producer = graph.GetProducerNode(gather_node->MutableInputDefs()[0]->Name());
+      if (slice_input_data_producer == nullptr) {
         break;
       }
-      Node* input_node = const_cast<Node*>(gathernd_data_producer);
+      Node* input_node = const_cast<Node*>(slice_input_data_producer);
       if (graph.GetConsumerNodes(input_node->MutableOutputDefs()[0]->Name()).size() > 1) {
         LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_node->Name() + " since multiple consumer found");
         continue;

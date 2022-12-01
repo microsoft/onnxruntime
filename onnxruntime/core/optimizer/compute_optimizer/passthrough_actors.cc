@@ -29,7 +29,7 @@ enum class DimCompareRet {
 /**
  * @brief Check dimensions are equal or broadcastable before axis.
  *
- * @param full_broadcasted_shape Full brodcasted shape as a baseline to compare.
+ * @param full_broadcasted_shape Full broadcasted shape as a baseline to compare.
  * @param axis The axis (inclusive, of full_broadcasted_shape) where we end the comparison.
  * @param target_shape Shape to compare, can have dim value be 1 for broadcastable dimension.
  * @return A pair of bool, bool. The first bool is true if the dimensions are exactly same before and include axis.
@@ -147,17 +147,17 @@ bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const ONNX
   return true;
 }
 
-Node* InsertItermediateNodeOnDestInput(Graph& graph,
-                                       Node& dest_node, int dest_in_index,
-                                       int new_node_input_index,
-                                       int new_node_output_index,
-                                       const std::string& name, const std::string& op_type,
-                                       const std::string& description,
-                                       const InlinedVector<NodeArg*>& input_args,
-                                       const InlinedVector<NodeArg*>& output_args,
-                                       const onnxruntime::NodeAttributes& attributes,
-                                       const std::string& domain,
-                                       const logging::Logger& logger) {
+Node* InsertIntermediateNodeOnDestInput(Graph& graph,
+                                        Node& dest_node, int dest_in_index,
+                                        int new_node_input_index,
+                                        int new_node_output_index,
+                                        const std::string& name, const std::string& op_type,
+                                        const std::string& description,
+                                        const InlinedVector<NodeArg*>& input_args,
+                                        const InlinedVector<NodeArg*>& output_args,
+                                        const onnxruntime::NodeAttributes& attributes,
+                                        const std::string& domain,
+                                        const logging::Logger& logger) {
   LOG_DEBUG_INFO(logger, "Inserting " + op_type + " node on " + dest_node.Name() + " 's " +
                              std::to_string(dest_in_index) + "th input " +
                              dest_node.InputDefs()[dest_in_index]->Name() + ", and connect inserted node's " +
@@ -178,7 +178,7 @@ Node* InsertItermediateNodeOnDestInput(Graph& graph,
   Node& new_node = graph.AddNode(name, op_type, description, input_args, output_args, &attributes, domain);
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(new_node), "Failed to set op schema for " + new_node.Name());
 
-  // Connect dest_node's input node to dumplicated node.
+  // Connect dest_node's input node to duplicated node.
   // Update new node producer and consumer map.
   for (size_t j = 0; j < new_node.MutableOutputDefs().size(); ++j) {
     graph.UpdateProducerNode(new_node.MutableOutputDefs()[j]->Name(), new_node.Index());
@@ -298,13 +298,13 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
   for (auto pair : new_gather_infos) {
     int input_index = pair.first;
     Node* new_node = nullptr;
-    // Be noted, the unsqueeze should happens on the axis of new slice node.
+    // Be noted, the Unsqueeze should happens on the axis of new slice node.
     if (GetONNXOpSetVersion(graph) < 13) {
       onnxruntime::NodeAttributes attributes;
       attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{pair.second.GetAxis()});
 
       new_node =
-          InsertItermediateNodeOnDestInput(
+          InsertIntermediateNodeOnDestInput(
               graph,
               current_node, input_index,
               0 /* new node input index to connect to current_node's input node*/,
@@ -320,7 +320,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
               logger);
     } else {
       new_node =
-          InsertItermediateNodeOnDestInput(
+          InsertIntermediateNodeOnDestInput(
               graph,
               current_node, input_index,
               0 /* new node input index to connect to current_node's input node*/,
@@ -337,7 +337,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
               logger);
     }
     new_node->SetExecutionProviderType(current_node.GetExecutionProviderType());
-    // Set correct shape for Unsquee node
+    // Set correct shape for Unsqueeze node
     const TensorShapeProto* unsqueeze_input_shape = new_node->MutableInputDefs()[0]->Shape();
     new_node->MutableOutputDefs()[0]->SetShape(
         CreateTensorShapeInsertDimAtAxis(unsqueeze_input_shape, pair.second.GetAxis(), 1));
@@ -359,14 +359,12 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
   }
 
   // Create Squeeze node connecting MatMul output to consumer node.
-
   Node* matmul_out_adaptor_node = nullptr;
-
   if (GetONNXOpSetVersion(graph) < 13) {
     onnxruntime::NodeAttributes attributes;
     attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{slice_axis});
     matmul_out_adaptor_node =
-        InsertItermediateNodeOnDestInput(
+        InsertIntermediateNodeOnDestInput(
             graph, consumer, index,
             0,
             0 /* new node output index*/,
@@ -380,7 +378,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
             attributes, kOnnxDomain, logger);
   } else {
     matmul_out_adaptor_node =
-        InsertItermediateNodeOnDestInput(
+        InsertIntermediateNodeOnDestInput(
             graph, consumer, index,
             0,
             0 /* new node output index*/,
@@ -671,7 +669,7 @@ bool TransposePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& tar
     return false;
   }
 
-  target_node_input_indices[0] = perm[info.GetAxis()];
+  target_node_input_indices[0] = static_cast<int>(perm[info.GetAxis()]);
   return true;
 }
 

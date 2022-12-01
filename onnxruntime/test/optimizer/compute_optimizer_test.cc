@@ -41,7 +41,6 @@ namespace test {
 // LayerNormalization/Gelu implementation are in contrib namespace (OnnxDomain 1), so
 // Without contib_ops enabled, we cannot parse the graph correctly.
 #ifndef DISABLE_CONTRIB_OPS
-// We used Opset 12 for testing to make sure we are not using GatherND OnnxDomain Opset 1.
 static void GatherNDComputationReductionTest(const std::string& op_type,
                                              const logging::Logger& logger,
                                              std::function<void(Graph&, std::string op_type)> validation_func) {
@@ -93,7 +92,7 @@ TEST(ComputationReductionTests, GatherND_Add) {
     const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
     Node* gathernd_node = nullptr;
-    bool found_gathernd_around_graoh_output = false;
+    bool found_gathernd_around_graph_output = false;
     for (auto node_index : node_topology_list) {
       Node* p_node = graph.GetNode(node_index);
       ASSERT_FALSE(p_node == nullptr);
@@ -104,12 +103,12 @@ TEST(ComputationReductionTests, GatherND_Add) {
           const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
           EXPECT_EQ(consumers[0]->OpType(), op_type);
         } else {
-          found_gathernd_around_graoh_output = true;
+          found_gathernd_around_graph_output = true;
         }
       }
     }
     ASSERT_FALSE(gathernd_node == nullptr);
-    EXPECT_TRUE(found_gathernd_around_graoh_output); });
+    EXPECT_TRUE(found_gathernd_around_graph_output); });
 }
 
 TEST(ComputationReductionTests, GatherND_LayerNormalization) {
@@ -337,7 +336,7 @@ TEST(ComputationReductionTests, GatherND_E2E) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnBatchDim) {
+TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_batch_dim.onnx";
   std::shared_ptr<Model> model;
@@ -380,7 +379,7 @@ TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnBatchDim) {
     ASSERT_EQ(axis_value, 0);
   }
 
-  // Check MatMul(who gathers on the second last dim)'s input and output.
+  // Check MatMul's input and output.
   {
     const Node* m5 = graph.GetProducerNode("m1_out");
     ASSERT_FALSE(m5 == nullptr);
@@ -441,7 +440,7 @@ TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnBatchDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatmul_SlicingOnBatchDim) {
+TEST(ComputationReductionTests, GatherMatMul_SlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_batch_dim.onnx";
   std::shared_ptr<Model> model;
@@ -484,7 +483,7 @@ TEST(ComputationReductionTests, GatherMatmul_SlicingOnBatchDim) {
     ASSERT_EQ(axis_value, 0);
   }
 
-  // Check MatMul(who gathers on the second last dim)'s input and output.
+  // Check MatMul's input and output.
   {
     const Node* m5 = graph.GetProducerNode("m1_out");
     ASSERT_FALSE(m5 == nullptr);
@@ -545,7 +544,7 @@ TEST(ComputationReductionTests, GatherMatmul_SlicingOnBatchDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnLastDim) {
+TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -558,7 +557,7 @@ TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnLastDim) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
-  // Check the first Gather.
+  // Check the first branch.
   {
     const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
     ASSERT_EQ(consumers.size(), 1U);
@@ -581,7 +580,7 @@ TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnLastDim) {
     ASSERT_EQ(axis_value, 2);
   }
 
-  // Check MatMul(who gathers on the second last dim)'s input and output.
+  // Check MatMul's input and output.
   {
     const Node* m5 = graph.GetProducerNode("m1_out");
     ASSERT_FALSE(m5 == nullptr);
@@ -641,7 +640,7 @@ TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatmul_SlicingOnLastDim) {
+TEST(ComputationReductionTests, GatherMatMul_SlicingOnLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -654,7 +653,7 @@ TEST(ComputationReductionTests, GatherMatmul_SlicingOnLastDim) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
-  // Check the first Gather.
+  // Check the first branch.
   {
     const std::vector<const Node*>& consumers = graph.GetConsumerNodes("input1");
     ASSERT_EQ(consumers.size(), 1U);
@@ -677,7 +676,7 @@ TEST(ComputationReductionTests, GatherMatmul_SlicingOnLastDim) {
     ASSERT_EQ(axis_value, 2);
   }
 
-  // Check MatMul(who gathers on the second last dim)'s input and output.
+  // Check MatMul's input and output.
   {
     const Node* m5 = graph.GetProducerNode("m1_out");
     ASSERT_FALSE(m5 == nullptr);
@@ -737,7 +736,7 @@ TEST(ComputationReductionTests, GatherMatmul_SlicingOnLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnSecondLastDim) {
+TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_second_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -833,7 +832,7 @@ TEST(ComputationReductionTests, GatherMatmul_ScalarSlicingOnSecondLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatmul_SlicingOnSecondLastDim) {
+TEST(ComputationReductionTests, GatherMatMul_SlicingOnSecondLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_second_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -869,7 +868,7 @@ TEST(ComputationReductionTests, GatherMatmul_SlicingOnSecondLastDim) {
     ASSERT_EQ(gather_node->OpType(), "MatMul");
   }
 
-  // Check MatMul(who gathers on the second last dim)'s input and output.
+  // Check MatMul's input and output.
   {
     const Node* m5 = graph.GetProducerNode("m1_out");
     ASSERT_FALSE(m5 == nullptr);

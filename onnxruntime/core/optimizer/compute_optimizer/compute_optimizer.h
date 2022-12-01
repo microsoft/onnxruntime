@@ -13,7 +13,7 @@ namespace onnxruntime {
 /**
  * @brief Graph transformer that helps reduce compute FLOP while maintaining mathematically equivalent result.
  *
- * This graph transformation tries to identify opportunaties to reduce unnecessary computations on the graph level.
+ * This graph transformation tries to identify opportunities to reduce unnecessary computations on the graph level.
  * Currently, the major optimization is to bring some sling operators ahead as much as possible, to leave more ops
  * operate on sliced input data. Gather and GatherND are the entry operators that trigger the optimization search.
  *
@@ -52,8 +52,6 @@ struct SliceOperationReorderHandle {
    *   stage.
    */
   struct OpPassThroughConfig {
-    OpPassThroughConfig() = default;
-
     OpPassThroughConfig(const std::vector<int>& input_indices,
                         std::shared_ptr<OperatorPassThroughActorBase> actor,
                         const OPSET_VERSION_LIST& opset_list)

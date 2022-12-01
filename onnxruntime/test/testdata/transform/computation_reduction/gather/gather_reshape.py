@@ -4,8 +4,10 @@ from onnx import OperatorSetIdProto, TensorProto, helper
 hidden = 1024
 head = 16
 
-def _create_model_proto(input_shapes, output_shapes, axis_to_gather,
-                        slice_dims, slices_values, shape_dims, shape_values, model_name):
+
+def _create_model_proto(
+    input_shapes, output_shapes, axis_to_gather, slice_dims, slices_values, shape_dims, shape_values, model_name
+):
     # inputs and outputs
     inputs = [
         helper.make_tensor_value_info("input1", TensorProto.FLOAT, input_shapes),
@@ -58,12 +60,30 @@ def _create_model_proto(input_shapes, output_shapes, axis_to_gather,
     final_model = onnx.shape_inference.infer_shapes(model_def)
     onnx.save(final_model, model_name + ".onnx")
 
+
 input_shapes1 = ["batch_size", "sequence_length", hidden]
-_create_model_proto(input_shapes1, ["sequence_length", 16, 64], 0, [], [1], [4], [0, 0, 16, 64], "gather_reshape_scalar_batch_dim")
-_create_model_proto(input_shapes1, [1, "sequence_length", 16, 64], 0, [1], [1], [4], [0, 0, 16, 64], "gather_reshape_batch_dim")
-_create_model_proto(input_shapes1, ["batch_size", 16, 64], 1, [], [1], [4], [0, 0, 16, 64], "gather_reshape_scalar_seqlen_dim")
-_create_model_proto(input_shapes1, ["batch_size", 1, 16, 64], 1, [1], [1], [4], [0, 0, 16, 64], "gather_reshape_seqlen_dim")
+_create_model_proto(
+    input_shapes1, ["sequence_length", 16, 64], 0, [], [1], [4], [0, 0, 16, 64], "gather_reshape_scalar_batch_dim"
+)
+_create_model_proto(
+    input_shapes1, [1, "sequence_length", 16, 64], 0, [1], [1], [4], [0, 0, 16, 64], "gather_reshape_batch_dim"
+)
+_create_model_proto(
+    input_shapes1, ["batch_size", 16, 64], 1, [], [1], [4], [0, 0, 16, 64], "gather_reshape_scalar_seqlen_dim"
+)
+_create_model_proto(
+    input_shapes1, ["batch_size", 1, 16, 64], 1, [1], [1], [4], [0, 0, 16, 64], "gather_reshape_seqlen_dim"
+)
 
 
 input_shapes2 = ["batch_size", 128, hidden]
-_create_model_proto(input_shapes2, ["batch_size", 31, 16, 64], 1, [31], [i for i in range(31)], [4], [0, 128, 16, 64], "gather_reshape_seqlen_dim2")
+_create_model_proto(
+    input_shapes2,
+    ["batch_size", 31, 16, 64],
+    1,
+    [31],
+    [i for i in range(31)],
+    [4],
+    [0, 128, 16, 64],
+    "gather_reshape_seqlen_dim2",
+)

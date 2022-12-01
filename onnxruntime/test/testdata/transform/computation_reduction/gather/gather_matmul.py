@@ -5,7 +5,6 @@ from onnx import OperatorSetIdProto, TensorProto, helper
 def _create_model_proto(output_shapes, axis_to_gather, slice_dims, slices_values, model_name):
     # inputs and outputs
     hidden = 1024
-    head = 16
     inputs = [
         helper.make_tensor_value_info("input1", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden]),
         helper.make_tensor_value_info("input2", TensorProto.FLOAT, ["batch_size", hidden, "sequence_length"]),

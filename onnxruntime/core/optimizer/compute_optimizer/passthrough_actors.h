@@ -25,7 +25,7 @@ namespace compute_optimizer {
  * @brief Struct to hold the information of the slicing operations.
  *
  * Initially, an instance of this class for entry node is created, as the slice op propagates to entry node's inputs,
- * more instances of this class are created. The propogation stops when the all inputs are not supported to be sliced.
+ * more instances of this class are created. The propagation stops when the all inputs are not supported to be sliced.
  */
 struct SliceInfo {
   SliceInfo() = default;
@@ -120,13 +120,13 @@ class OperatorPassThroughActorBase {
    * @param graph The graph that the node belongs to.
    * @param current_node The node to be checked.
    * @param info The slicing info of the Gather/GatherND node.
-   * @param current_node_input_indices: Used as a return value - a map of input dicices to new axis indices.
-   *  The key is an interger, which is the index of the input of the current_node.
-   *  The value is an interger, which is the new axis index after the pass through on the corresponding input.
+   * @param current_node_input_indices: Used as a return value - a map of input index to new slice axis.
+   *  The key is an integer, which is the index of the input of the current_node.
+   *  The value is an integer, which is the new axis index after the pass through on the corresponding input.
    *  For example:
    *    > if the current_node is a Add node, and the slice axe is 1, then the corresponding input should
    *      also have axis 1 when we move the slice to the input.
-   *    > if the current_node is a Tranpose (perm=[1, 0, 2]) node, and the slice
+   *    > if the current_node is a Transpose (perm=[1, 0, 2]) node, and the slice
    *      axis is 1, then the new axis for the input should be 0.
    * @param input_dices The input indices explicitly specified of the current_node that are allowed to do pass through.
    */
@@ -317,20 +317,20 @@ bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const ONNX
  * @param logger The logger.
  * @return
  */
-Node* InsertItermediateNodeOnDestInput(Graph& graph,
-                                       Node& dest_node, int dest_in_index,
-                                       int new_node_input_index,
-                                       int new_node_output_index,
-                                       const std::string& name, const std::string& op_type,
-                                       const std::string& description,
-                                       const InlinedVector<NodeArg*>& input_args,
-                                       const InlinedVector<NodeArg*>& output_args,
-                                       const onnxruntime::NodeAttributes& attributes,
-                                       const std::string& domain,
-                                       const logging::Logger& logger);
+Node* InsertIntermediateNodeOnDestInput(Graph& graph,
+                                        Node& dest_node, int dest_in_index,
+                                        int new_node_input_index,
+                                        int new_node_output_index,
+                                        const std::string& name, const std::string& op_type,
+                                        const std::string& description,
+                                        const InlinedVector<NodeArg*>& input_args,
+                                        const InlinedVector<NodeArg*>& output_args,
+                                        const onnxruntime::NodeAttributes& attributes,
+                                        const std::string& domain,
+                                        const logging::Logger& logger);
 
 /**
- * @brief Insert adaptor nodes for the inputs and output, to make sure they remain the same rank, when scalar slcing
+ * @brief Insert adaptor nodes for the inputs and output, to make sure they remain the same rank, when scalar slicing
  *  is done.
  *
  * Be noted: at this point, slice node already been removed.
