@@ -76,29 +76,32 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
   }
 }
 
-std::vector<std::shared_ptr<IExecutionProvider>> GetExecutionProviders(int device_type, int device_id) {
+namespace {
+// This function is used to create an execution provider to be passed to Module and Optimizer.
+std::vector<std::shared_ptr<IExecutionProvider>>
+GetExecutionProvidersForTrainingApis(OrtDevice device) {
   std::vector<std::shared_ptr<IExecutionProvider>> provider;
 
 #ifdef USE_CUDA
-  if (device_type == 1) {
+  if (device.Type() == OrtDevice::GPU) {
     OrtCUDAProviderOptions provider_options{};
     provider_options.do_copy_in_default_stream = true;
-    if (device_id) {
-      provider_options.device_id = device_id;
-    }
+    provider_options.device_id = device.Id();
+
     if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
       provider.push_back(factory->CreateProvider());
+
+    return provider;
   }
 #endif
-  ORT_UNUSED_PARAMETER(device_id);
-  if (device_type == 0) {
+  if (device.Type() == OrtDevice::CPU) {
     provider = std::vector<std::shared_ptr<IExecutionProvider>>();
   } else {
-    ORT_THROW("Unsupported device type: ", device_type);
+    ORT_THROW("Unsupported device type: ", device.Type());
   }
-
   return provider;
 }
+}  // namespace
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -853,10 +856,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def(py::init([](const std::string& model_uri,
                        onnxruntime::training::api::CheckpointState& state,
                        std::optional<std::string> eval_model_uri,
-                       int device_type,
-                       int device_id) {
+                       OrtDevice device) {
         onnxruntime::SessionOptions session_option;
-        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProviders(device_type, device_id);
+        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
 
         return std::make_unique<onnxruntime::training::api::Module>(
             model_uri,
@@ -918,10 +920,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   training_optimizer.def(py::init([](
                                       const std::string optimizer_model_uri,
                                       onnxruntime::training::api::Module* model,
-                                      int device_type,
-                                      int device_id) {
+                                      OrtDevice device) {
                       onnxruntime::SessionOptions session_option;
-                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProviders(device_type, device_id);
+                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
                       return std::make_unique<onnxruntime::training::api::Optimizer>(
                           optimizer_model_uri,
                           model->NamedParameters(), session_option,
