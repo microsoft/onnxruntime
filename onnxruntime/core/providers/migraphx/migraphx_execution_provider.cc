@@ -527,11 +527,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 }
 
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
-  // If the number of nodes in the graph is less than 5, do nothing
-  // this is to deal with onnx unit tests
-  if (graph_viewer.NumberOfNodes() <= 5) {
-    return;
-  }
 
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
@@ -554,11 +549,6 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
           }
         }
       }
-    }
-
-    // if 6 operators or more
-    if (git.size() > 5) {
-      return false;
     }
 
     // rnn operators, run on GPU

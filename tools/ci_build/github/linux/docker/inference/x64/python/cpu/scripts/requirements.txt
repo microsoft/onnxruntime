@@ -3,7 +3,7 @@ mypy
 pytest
 setuptools>=41.4.0
 wheel
-onnx==1.12.0
+git+http://github.com/onnx/onnx.git@5a5f8a5935762397aa68429b5493084ff970f774#egg=onnx
 protobuf==3.18.3
 sympy==1.10.1
 flatbuffers
