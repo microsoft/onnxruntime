@@ -45,7 +45,8 @@ void usage() {
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
-      "\t-t: Specify custom absoulte and relative tolerance values for output value comparison. default: 1e-5\n"
+      "\t-t: Specify custom relative tolerance values for output value comparison. default: 1e-5\n"
+      "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
@@ -157,7 +158,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:xvo:d:i:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -230,8 +231,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           break;
         case 't':
           override_tolerance = true;
+          rtol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
+          break;
+        case 'a':
+          override_tolerance = true;
           atol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
-          rtol = atol;
           break;
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
