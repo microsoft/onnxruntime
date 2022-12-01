@@ -6,7 +6,6 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
-#include <iostream>
 
 using namespace onnxruntime;
 
@@ -62,40 +61,4 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
   size_t num_inputs_ = TEMP_CUSTOM_OP_NUM_INPUTS;
   size_t num_outputs_ = TEMP_CUSTOM_OP_NUM_OUTPUTS;
 };
-
-/*
-#define TRT_PLUGIN_CUSTOM_OP_CLASS(op, num_outputs)                                                   \
-  struct CustomOp##op : Ort::CustomOpBase<CustomOp##op, TensorRTCustomKernel> {                       \
-    explicit CustomOp##op(const char* provider, void* compute_stream) :                               \
-      provider_(provider), compute_stream_(compute_stream) {}                                         \
-                                                                                                      \
-    void* CreateKernel(const OrtApi& , const OrtKernelInfo* info) const {                    \
-      return new TensorRTCustomKernel(info, compute_stream_); };                                      \
-    const char* GetName() const { return #op; };                                                      \
-    const char* GetExecutionProviderType() const { return provider_; };                               \
-                                                                                                      \
-    size_t GetInputTypeCount() const { return 20; };                                                  \
-    ONNXTensorElementDataType GetInputType(size_t) const {                                  \
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;                                                     \
-    };                                                                                                \
-                                                                                                      \
-    OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const {             \
-      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;                             \
-    };                                                                                                \
-                                                                                                      \
-    size_t GetOutputTypeCount() const { return 1; };                                                  \
-    ONNXTensorElementDataType GetOutputType(size_t) const {                                 \
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };                                                  \
-                                                                                                      \
-   private:                                                                                           \
-    const char* provider_{"TensorrtExecutionProvider"};                                               \
-    void* compute_stream_;                                                                            \
-  };
-
-#define TRT_PLUGIN_CUSTOM_OP_OBJ(op)                                                                  \
-  std::unique_ptr<OrtCustomOp> custom_op =                                                            \
-    std::make_unique<CustomOp##op>("TensorrtExecutionProvider", nullptr);  
-
-*/
-
 }
