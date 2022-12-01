@@ -65,8 +65,7 @@ import { inferenceSentiment } from "./bert/inferenceSentiment";
 ```
 - Next add the `sentiment` and `question` functions.
 
-```Javascript
-
+```javascript
     /**
      * Returns the sentiment of a string.
      * @customfunction
@@ -95,7 +94,6 @@ import { inferenceSentiment } from "./bert/inferenceSentiment";
     }
     return "Unable to find answer";
     }
-
 ```
 
 Now lets dive into the logic used in these functions.
