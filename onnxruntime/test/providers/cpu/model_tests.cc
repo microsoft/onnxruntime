@@ -10,7 +10,6 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "test_allocator.h"
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
@@ -39,11 +38,13 @@
 #endif
 
 // test infrastructure
+#include "test/onnx/testenv.h"
 #include "test/onnx/TestCase.h"
 #include "test/compare_ortvalue.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
 #include "test/onnx/callback.h"
+#include "test/onnx/testcase_request.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -623,6 +624,9 @@ TEST_P(ModelTest, Run) {
       }
     }
   }
+
+  std::set<std::string> testsRunParallel = {};  // TODO(leca): fill the test name which the datasets need to be run parallel 
+
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
@@ -723,7 +727,19 @@ TEST_P(ModelTest, Run) {
       }
       std::unique_ptr<OrtSession, decltype(&OrtApis::ReleaseSession)> rel_ort_session(ort_session,
                                                                                       &OrtApis::ReleaseSession);
+
       const size_t data_count = l->GetDataCount();
+      if (data_count > 1 && testsRunParallel.find(l->GetTestCaseName()) != testsRunParallel.end()) {
+        Ort::SessionOptions ort_session_options(ortso);
+        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(TestEnv::GetDefaultThreadPool(Env::Default()), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
+        for (EXECUTE_RESULT res : results->GetExcutionResult()) {
+          ASSERT_EQ(res, EXECUTE_RESULT::SUCCESS) << "is_single_thread:" << is_single_thread << ", execution_mode:" << execution_mode << ", provider_name:"
+                                                  << provider_name << ", test name:" << results->GetName() << ", result: " << res;
+        }
+        continue;
+      }
+
+      // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
       for (size_t task_id = 0; task_id != data_count; ++task_id) {
@@ -1136,7 +1152,8 @@ TEST_P(ModelTest, Run) {
           return true;
         });
       }
-      ORT_CATCH(const std::exception&) {
+      ORT_CATCH(const std::exception& e) {
+        if (e.what()) return v;
       }  // ignore non-exist dir
     }
   }
