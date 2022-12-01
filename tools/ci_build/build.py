@@ -2122,7 +2122,7 @@ def build_nuget_package(
     use_tvm,
     use_winml,
     use_snpe,
-    enable_training_on_device
+    enable_training_on_device,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
