@@ -715,7 +715,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
-    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None)  :
+    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None) :
         lhs_shape = self._get_shape(node, 0)
         rhs_shape = self._get_shape(node, 1)
         lhs_rank = len(lhs_shape)
