@@ -45,10 +45,12 @@ Now that we know what custom functions are lets look at how we can create functi
 
 - Install ONNX Runtime `npm install onnxruntime-web --save`
 
-- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. This will start Excel web and sideload the add-in to the spreadsheet that is provided in the command.
+- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
 
 ```cmd
+
 npm run start:web -- --document {url}
+
 ```
 
 ## The `manifest.xml` file
@@ -325,7 +327,9 @@ export async function sentiment(text: string): Promise<string> {
 - Now you can run the below command to build and side load the add-in to your excel spreadsheet!
 
 ```cmd
+
 npm run start:web -- --document {url}
+
 ```
 
 ## Conclusion
