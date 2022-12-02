@@ -88,6 +88,51 @@ Status QnnBackendManager::ShutdownBackend() {
   return Status::OK();
 }
 
+Status QnnBackendManager::CheckDeviceProperty() {
+  if (nullptr != qnn_interface_.propertyHasCapability) {
+    auto rt = qnn_interface_.propertyHasCapability(QNN_PROPERTY_GROUP_DEVICE);
+    if (QNN_PROPERTY_NOT_SUPPORTED == rt || QNN_PROPERTY_ERROR_UNKNOWN_KEY == rt) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Device property not supported or unknown to backend");
+    }
+  }
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::CreateDevice() {
+  if (true == device_created_) {
+    LOGS_DEFAULT(INFO) << "Device intialized already.";
+    return Status::OK();
+  }
+
+  if (nullptr != qnn_interface_.deviceCreate) {
+    auto result = qnn_interface_.deviceCreate(log_handle_, nullptr, &device_handle_);
+    if (QNN_SUCCESS != result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", result);
+    }
+  }
+  device_created_ = true;
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::ReleaseDevice() {
+  if (false == device_created_) {
+    return Status::OK();
+  }
+
+  if (nullptr != qnn_interface_.deviceFree) {
+    auto result = qnn_interface_.deviceFree(device_handle_);
+    if (QNN_SUCCESS != result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", result);
+    }
+  }
+
+  device_created_ = false;
+
+  return Status::OK();
+}
+
 Status QnnBackendManager::InitializeProfiling() {
   if (ProfilingLevel::OFF == profiling_level_ || ProfilingLevel::INVALID == profiling_level_) {
     LOGS_DEFAULT(INFO) << "Profiling turned off.";
@@ -124,7 +169,10 @@ Status QnnBackendManager::CreateContext() {
     return Status::OK();
   }
 
-  auto result = qnn_interface_.contextCreate(backend_handle_, device_handle_, (const QnnContext_Config_t**)&context_config_, &context_);
+  auto result = qnn_interface_.contextCreate(backend_handle_,
+                                             device_handle_,
+                                             (const QnnContext_Config_t**)&context_config_,
+                                             &context_);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
 
@@ -161,6 +209,12 @@ Status QnnBackendManager::SetupBackend(const logging::Logger* logger) {
 
   ORT_RETURN_IF_ERROR(InitializeBackend());
   LOGS(*logger, VERBOSE) << "InitializeBackend succeed.";
+
+  ORT_RETURN_IF_ERROR(CheckDeviceProperty());
+  LOGS(*logger, VERBOSE) << "CheckDeviceProperty succeed.";
+
+  ORT_RETURN_IF_ERROR(CreateDevice());
+  LOGS(*logger, VERBOSE) << "CreateDevice succeed.";
 
   ORT_RETURN_IF_ERROR(InitializeProfiling());
   LOGS(*logger, VERBOSE) << "InitializeProfiling succeed.";
@@ -266,6 +320,11 @@ void QnnBackendManager::ReleaseResources() {
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseProfilehandle.");
+  }
+
+  result = ReleaseDevice();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to ReleaseDevice.");
   }
 
   result = ShutdownBackend();

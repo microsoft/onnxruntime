@@ -35,6 +35,12 @@ class QnnBackendManager {
 
   Status InitializeBackend();
 
+  Status CheckDeviceProperty();
+
+  Status CreateDevice();
+
+  Status ReleaseDevice();
+
   Status ShutdownBackend();
 
   Status InitializeProfiling();
@@ -153,6 +159,7 @@ class QnnBackendManager {
   QnnContext_Config_t** context_config_ = nullptr;
   ProfilingLevel profiling_level_;
   bool backend_initialized_ = false;
+  bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   // NPU backend requires quantized model
