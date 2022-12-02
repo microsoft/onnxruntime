@@ -2269,7 +2269,7 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     if use_cuda:
         macros += "USE_CUDA;"
     if enable_training_on_device:
-        macros += "__TRAINING_ENABLED__;"
+        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;"
 
     define_constants = ""
     if macros != "":

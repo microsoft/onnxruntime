@@ -24,7 +24,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TrainingEnabledNativeBuild)'=='true'">
-    <ExtraDefineConstants>$(ExtraDefineConstants);__TRAINING_ENABLED__</ExtraDefineConstants>
+    <ExtraDefineConstants>$(ExtraDefineConstants);__TRAINING_ENABLED_NATIVE_BUILD__</ExtraDefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>

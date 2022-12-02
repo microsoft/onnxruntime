@@ -23,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             this.output = o;
         }
 
-#if !__TRAINING_ENABLED__
+#if !__TRAINING_ENABLED_NATIVE_BUILD__
         [Fact(DisplayName = "TestLoadCheckpointThrows")]
         public void TestLoadCheckpointThrows()
         {
@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
-#if __TRAINING_ENABLED__
+#if __TRAINING_ENABLED_NATIVE_BUILD__
         [Fact(DisplayName = "TestLoadCheckpoint")]
         public void TestLoadCheckpoint()
         {
