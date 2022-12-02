@@ -47,8 +47,8 @@ Now that we know what custom functions are lets look at how we can create functi
 
 - Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
 
-```cmd
-// Command to run the web.
+```bash
+// Command to run on the web.
 npm run start:web -- --document {url}
 ```
 
@@ -239,7 +239,8 @@ export async function question(question: string, context: string): Promise<strin
 ```
 - Now you can run the below command to build and side load the add-in to your excel spreadsheet!
 
-```cmd
+```bash
+// Command to run on the web.
 npm run start:web -- --document {url}
 ```
 
@@ -325,8 +326,8 @@ export async function sentiment(text: string): Promise<string> {
 
 - Now you can run the below command to build and side load the add-in to your excel spreadsheet!
 
-```cmd
-// Command to run the web.
+```bash
+// Command to run on the web.
 npm run start:web -- --document {url}
 ```
 
