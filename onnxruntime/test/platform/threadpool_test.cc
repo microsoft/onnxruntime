@@ -544,6 +544,7 @@ TEST(ThreadPoolTest, TestStackSize) {
 #endif
 #endif
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
   OrtThreadPoolParams tp_params;
   tp_params.thread_pool_size = 3;
@@ -572,6 +573,7 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
                  std::exception);
   }
 }
+#endif
 
 TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
   OrtThreadPoolParams tp_params;

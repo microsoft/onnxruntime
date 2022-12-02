@@ -20,9 +20,14 @@ limitations under the License.
 
 namespace onnxruntime {
 
+/*
+Logical processor information:
+1. its belonging group;
+2. its id within that belonging group;
+*/
 struct ProcessorInfo {
   int group_id;
-  int processor_id;
+  int local_processor_id;
 };
 
 using GlobalProcessorInfoMap = std::unordered_map<int, ProcessorInfo>;

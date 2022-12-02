@@ -50,10 +50,6 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1) {
     return nullptr;
   }
-  if (options.affinity_vec_len != 0) {
-    LOGS_DEFAULT(WARNING) << "affinity_vec is deprecated, please use affinity_str to set thread affinity";
-  }
-
   ThreadOptions to;
   if (options.thread_pool_size <= 0) {  // default
     auto default_affinities = Env::Default().GetDefaultThreadAffinities();
