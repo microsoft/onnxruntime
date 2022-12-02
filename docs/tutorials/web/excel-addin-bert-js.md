@@ -33,7 +33,7 @@ In this tutorial we will look at how we can create custom excel functions (`ORT.
 - [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html#:~:text=ONNX%20Runtime%20Web%20You%20can%20install%20and%20import,syntax%20%28recommended%29%20import%20%2A%20as%20ort%20from%20%27onnxruntime-web%27%3B)
 - This plugin currently doesn't work in the client version of excel.
 
-## What are custom functions?
+## What are Custom Functions?
 
 Excel has many native functions like `SUM()` that you are likely familiar with. Custom functions are a useful tool to create and add new functions to Excel by defining those functions in JavaScript as part of an add-in. These functions can be accessed within Excel just as you would any native function in Excel.
 
@@ -56,9 +56,9 @@ Now that we know what custom functions are lets look at how we can create functi
 <ProviderName>ORT</ProviderName>
 ```
 
-## The `Functions.ts` file
+## The `functions.ts` file
 
-In the `Function.ts` file we define the functions name, parameters, logic and return type.
+In the [`function.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/functions.ts) file we define the functions name, parameters, logic and return type.
 
 - Import the functions `inferenceQuestion` and `inferenceSentiment` at the top of the `function.ts` file. (We will go over the logic in these functions later in this tutorial.)
 
@@ -98,9 +98,9 @@ return "Unable to find answer";
 }
 ```
 
-## The `InferenceQuestion.ts` file
+## The `inferenceQuestion.ts` file
 
-The `InferenceQuestion.ts` file has the logic to process the Question and Answer BERT Model. This model was created using [this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html#obtain-and-convert-pytorch-model-to-onnx-format). Then we used ORT Quantization tool to reduce the size of the model. Learn more about [quantization here](https://onnxruntime.ai/docs/performance/quantization.html).
+The [`inferenceQuestion.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/inferenceQuestion.ts) file has the logic to process the Question and Answer BERT Model. This model was created using [this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html#obtain-and-convert-pytorch-model-to-onnx-format). Then we used ORT Quantization tool to reduce the size of the model. Learn more about [quantization here](https://onnxruntime.ai/docs/performance/quantization.html).
 
 
 - First import `onnxruntime-web` and the helper functions from `question_answer.ts`. The `question_answer.ts` is an edited version from the tensorflow example found [here](https://github.com/tensorflow/tfjs-models/blob/master/qna/src/question_and_answer.ts). You can find the edited version in the source for this project [here](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/question_answer.ts).
@@ -235,9 +235,9 @@ export async function question(question: string, context: string): Promise<strin
 
 That is a breakdown for the `ORT.Question()` custom function, next we will breakdown how the `ORT.Sentiment()` is implemented.
 
-## The `InferenceSentiment.ts` file
+## The `inferenceSentiment.ts` file
 
-The `InferenceSentiment.ts` is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
+The [`inferenceSentiment.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/inferenceSentiment.ts) is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
 
 - First lets import the packages needed. As you will see in this tutorial the `bertProcessing` function will create our model input.  `bert_tokenizer` is the JavaScript tokenizer for BERT models. `onnxruntime-web` enables inference in JavaScript on the browser.
 
