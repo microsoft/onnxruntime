@@ -4,7 +4,7 @@ parameters:
 
 - name: machine_pool
   type: string
-  
+
 - name: base_image
   type: string
 
@@ -29,7 +29,7 @@ jobs:
   steps:
     - checkout: self
       clean: true
-      submodules: recursive
+      submodules: none
 
     - template: set-nightly-build-option-variable-step.yml
 
@@ -42,25 +42,12 @@ jobs:
         ${{ if eq(parameters.arch, 'aarch64') }}:
             UpdateDepsTxt: false
 
-    - task: CmdLine@2
+    - task: Bash@3
       displayName: 'Build Python Wheel'
       inputs:
-        script: |
-            set -e -x
-            mkdir -p $HOME/.onnx
-            docker run --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -w /onnxruntime_src \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuilpython${{ parameters.arch }} tools/ci_build/github/linux/build_linux_arm64_python_package.sh
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
-            cd $(Build.BinariesDirectory)/Release
-            find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }}
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
