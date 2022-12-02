@@ -9,13 +9,13 @@ namespace onnxruntime {
 namespace xnnpack {
 
 // Todo -
-// 1. Integrate activation layers - Cliping & Relu 
+// 1. Integrate activation layers - Cliping & Relu
 // 2. Enable C matrix broadcasting - reuse "GemmBroadcastBias" function / logic
 // 3. Enable Quant ops
-// 4. Review possible consolidation of MatMul & Gemm 
+// 4. Review possible consolidation of MatMul & Gemm
 //
 
-bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
+bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   const onnxruntime::Node& node = node_unit.GetNode();
 
@@ -37,7 +37,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     // we only support float currently
     const auto* A_type = A_arg->TypeAsProto();
 
-    if (A_type == nullptr || 
+    if (A_type == nullptr ||
         A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       break;
     }
@@ -67,7 +67,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     if (!C_shape || C_shape->dim_size() >= 3) {
       break;
     }
-    
+
     if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
       break;
     }
@@ -92,7 +92,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
 
   C_matrix_exists_ = C_arg && C_arg->Exists();
 
-  // A - MxK 
+  // A - MxK
   if (trans_A_ == CblasNoTrans) {
     M_ = shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value() : 1;
     K_ = shapeA->dim(1).dim_value();
@@ -108,9 +108,9 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
   }
 }
 
-Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                      /*out*/ bool& is_packed,
-                      /*out*/ PrePackedWeights*) {
+Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
+                     /*out*/ bool& is_packed,
+                     /*out*/ PrePackedWeights*) {
   is_packed = false;
 
   if (input_idx == 0) {
@@ -161,7 +161,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
   }
   op0_.reset(p);
-  
+
   return Status::OK();
 }
 
@@ -176,15 +176,15 @@ Status Gemm::Compute(OpKernelContext* context) const {
 
   xnn_status status = xnn_setup_fully_connected_nc_f32(
       op0_.get(),
-      trans_A_ == CblasNoTrans ? M_ : K_,  // Number of rows to multiply 
+      trans_A_ == CblasNoTrans ? M_ : K_,  // Number of rows to multiply
       A->Data<float>(),
       Y->MutableData<float>(),
       t_pool);
-  
+
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
   }
-  
+
   status = xnn_run_operator(op0_.get(), nullptr);
 
   if (status != xnn_status_success) {

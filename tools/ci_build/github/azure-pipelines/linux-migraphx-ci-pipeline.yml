@@ -24,8 +24,8 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
-      Context: tools/ci_build/github/pai
+      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/linux/docker
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
@@ -60,7 +60,7 @@ jobs:
               --parallel 32 \
               --build_wheel \
               --skip_submodule_sync \
-              --skip_tests
+              --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest 
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
 
