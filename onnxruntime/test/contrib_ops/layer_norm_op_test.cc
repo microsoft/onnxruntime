@@ -45,11 +45,6 @@ TEST(LayerNormTest, BERTLayerNorm) {
 }
 
 TEST(LayerNormTest, BERTLayerNorm_NoBias) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
-  }
-
   OpTester tester("LayerNormalization", 1 /*opset_version*/);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
@@ -95,11 +90,6 @@ TEST(LayerNormTest, LayerNorm_Scale) {
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16Input) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because DML's LayerNorm doesn't support less than 3 inputs yet";
-  }
-
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
@@ -112,11 +102,6 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16Input) {
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16ScaleOutput) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because DML's LayerNorm doesn't support less than 3 inputs yet";
-  }
-
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
@@ -129,11 +114,6 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16ScaleOutput) {
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16InputScaleOutput) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because DML's LayerNorm doesn't support less than 3 inputs yet";
-  }
-
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
