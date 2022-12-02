@@ -320,7 +320,6 @@ Here we went over the logic needed to create custom functions in an excel add-in
 ## Additional resources
 * [Full source code for this example](https://github.com/cassiebreviu/bert-excel-addin-ort-web)
 * [Custom functions overview](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-overview)
-* [Custom functions best practices](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-best-practices)
 * [Custom functions runtime](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-runtime)
 * [Office Add-ins documentation](https://docs.microsoft.com/office/dev/add-ins/overview/office-add-ins)
 * More Office Add-ins samples at [OfficeDev on Github](https://github.com/officedev)
