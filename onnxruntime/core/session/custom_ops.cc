@@ -183,6 +183,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        } else if (ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL == type) {
+          schema.Input(i, "Input" + std::to_string(i), "", "T", option);
+          if (i == 0) { schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types"); }
         } else {
           schema.Input(i, "Input" + std::to_string(i), "",
                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
@@ -209,6 +212,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
                       "cannot be inferred without which model loading cannot proceed.");
 
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option);
+        } else if (ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL == type) {
+          schema.Output(i, "Input" + std::to_string(i), "", "T", option);
         } else {
           schema.Output(i, "Output" + std::to_string(i), "",
                         DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
