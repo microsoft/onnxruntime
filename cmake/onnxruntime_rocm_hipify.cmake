@@ -33,6 +33,8 @@ set(contrib_ops_excluded_files
   "math/fft_ops.h"
   "math/fft_ops_impl.cu"
   "math/fft_ops_impl.h"
+  "math/last_token_matmul.cc"
+  "math/last_token_matmul.h"  
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"

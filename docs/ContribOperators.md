@@ -36,6 +36,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
+  * <a href="#com.microsoft.LastTokenMatMul">com.microsoft.LastTokenMatMul</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
@@ -1862,6 +1863,41 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.LastTokenMatMul"></a><a name="com.microsoft.lasttokenmatmul">**com.microsoft.LastTokenMatMul**</a>
+
+  Given a 3-D batched sequence of shape [B,S,H] (input A) and 2-D weights of shape [H, V] (input B), only the last token in the sequence
+  per-batch has the MatMul operation performed on (i.e.) the effective shape of the first input is made [B, 1, H] and the output shape
+  will be [B, 1, V] after the MatMul operation. The single token chosen is always the last token in the sequence. This operation is useful
+  for scenarios where one would like to project only the last token's embedding onto the weight space instead of the entire sequence of tokens.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>3-dimensional matrix A</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>2-dimensional matrix B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>3-dimensional Matrix multiplication results of just the last token in each batch in the provided batched sequence</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input and output types to float16/float32 tensors.</dd>
 </dl>
 
 
