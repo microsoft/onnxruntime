@@ -78,6 +78,71 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
 #endif
 };
 
+template <typename T, typename ALayout, typename BLayout>
+class BatchedGemmTunableOp : public tunable::TunableOp<BatchedGemmParams<T>> {
+ public:
+  BatchedGemmTunableOp() {
+    this->ops_.emplace_back(RocBlasBatchedGemmOp<T>);
+  }
+
+  const BatchedGemmParams<T>* PreTuning(const BatchedGemmParams<T>* params) override {
+    if (!IsZero(params->beta)) {
+      // See GemmTunableOp<T>::PreTuning for more details
+      BatchedGemmParams<T>* proxy = new BatchedGemmParams<T>();
+      *proxy = *params;
+      using PointerOfT = T*;
+      proxy->cs = new PointerOfT[params->batch];
+      for (int i = 0; i < params->batch; i++) {
+        HIP_CALL_THROW(hipMalloc(&(proxy->cs[i]), proxy->m * proxy->ldc * sizeof(T)));
+      }
+      return proxy;
+    }
+
+    return params;
+  }
+
+  void PostTuning(const BatchedGemmParams<T>* params) override {
+    if (!IsZero(params->beta)) {
+      for (int i = 0; i < params->batch; i++) {
+        HIP_CALL_THROW(hipFree(params->cs[i]));
+      }
+      delete[] params->cs;
+      delete params;
+    }
+  }
+};
+
+template <typename T, typename ALayout, typename BLayout>
+class StridedBatchedGemmTunableOp : public tunable::TunableOp<StridedBatchedGemmParams<T>> {
+ public:
+  StridedBatchedGemmTunableOp() {
+    this->ops_.emplace_back(RocBlasStridedBatchedGemmOp<T>);
+    for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->ops_.emplace_back(std::move(op));
+    }
+  }
+
+  const StridedBatchedGemmParams<T>* PreTuning(const StridedBatchedGemmParams<T>* params) override {
+    if (!IsZero(params->beta)) {
+      // See GemmTunableOp<T>::PreTuning for more details
+      StridedBatchedGemmParams<T>* proxy = new StridedBatchedGemmParams<T>();
+      *proxy = *params;
+      HIP_CALL_THROW(hipMalloc(&(proxy->c), proxy->m * proxy->stride_c * sizeof(T)));
+      return proxy;
+    }
+
+    return params;
+  }
+
+  void PostTuning(const StridedBatchedGemmParams<T>* params) override {
+    if (!IsZero(params->beta)) {
+      HIP_CALL_THROW(hipFree(params->c));
+      delete params;
+    }
+  }
+};
+
 }  // namespace internal
 }  // namespace blas
 }  // namespace tunable

@@ -77,26 +77,99 @@ class RocBlasGemm : public IKernelExplorer {
   OpT op_{RocBlasGemmOp<T>};
 };
 
-void InitRocBlasGemm(py::module mod) {
-  // float
-  py::class_<RocBlasGemm<float>>(mod, "RocblasGemm_float")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
-                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
-      .def("SetRepeats", &RocBlasGemm<float>::SetRepeats)
-      .def("Profile", &RocBlasGemm<float>::Profile)
-      .def("Run", &RocBlasGemm<float>::Run)
-      .def("ListOps", &RocBlasGemm<float>::ListOps)
-      .def("SelectOp", &RocBlasGemm<float>::SelectOp);
+template <typename T>
+class RocBlasStridedBatchedGemm : public IKernelExplorer {
+ public:
+  RocBlasStridedBatchedGemm(BlasOp opa, BlasOp opb,
+                            int64_t m, int64_t n, int64_t k,
+                            double alpha,
+                            DeviceArray& a, int64_t lda, int64_t stride_a,
+                            DeviceArray& b, int64_t ldb, int64_t stride_b,
+                            double beta,
+                            DeviceArray& c, int64_t ldc, int64_t stride_c,
+                            int64_t batch) {
+    ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.stream = Stream();
+    params_.handle = rocblas_handle_;
+    params_.opa = opa;
+    params_.opb = opb;
+    params_.m = m;
+    params_.n = n;
+    params_.k = k;
+    params_.alpha = alpha;
+    params_.a = static_cast<T*>(a.ptr());
+    params_.lda = lda;
+    params_.stride_a = stride_a;
+    params_.b = static_cast<T*>(b.ptr());
+    params_.ldb = ldb;
+    params_.stride_b = stride_b;
+    params_.beta = beta;
+    params_.c = static_cast<T*>(c.ptr());
+    params_.ldc = ldc;
+    params_.stride_c = stride_c;
+    params_.batch = batch;
+  }
 
-  // half
-  py::class_<RocBlasGemm<half>>(mod, "RocblasGemm_half")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
-                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
-      .def("SetRepeats", &RocBlasGemm<half>::SetRepeats)
-      .def("Profile", &RocBlasGemm<half>::Profile)
-      .def("Run", &RocBlasGemm<half>::Run)
-      .def("ListOps", &RocBlasGemm<half>::ListOps)
-      .def("SelectOp", &RocBlasGemm<half>::SelectOp);
+  ~RocBlasStridedBatchedGemm() {
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
+    rocblas_handle_ = nullptr;
+  }
+
+  void Run() override {
+    ORT_THROW_IF_ERROR(op_(&params_));
+  }
+
+  std::vector<std::string> ListOps() const {
+    return {"Rocblas"};
+  }
+
+  bool SelectOp(const std::string& name) {
+    return name == "Rocblas";
+  }
+
+ private:
+  rocblas_handle rocblas_handle_;
+
+  using ParamsT = StridedBatchedGemmParams<T>;
+  using OpT = rocm::tunable::Op<ParamsT>;
+
+  ParamsT params_{};
+  OpT op_{RocBlasStridedBatchedGemmOp<T>};
+};
+
+#define REGISTER_OP_COMMON(type, dtype)            \
+  py::class_<type<dtype>>(mod, #type "_" #dtype)   \
+      .def("SetRepeats", &type<dtype>::SetRepeats) \
+      .def("Profile", &type<dtype>::Profile)       \
+      .def("Run", &type<dtype>::Run)               \
+      .def("ListOps", &type<dtype>::ListOps)       \
+      .def("SelectOp", &type<dtype>::SelectOp)
+
+#define REGISTER_GEMM(dtype)                                   \
+  REGISTER_OP_COMMON(RocBlasGemm, dtype)                       \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
+                    double,                                    \
+                    DeviceArray&, int64_t,                     \
+                    DeviceArray&, int64_t,                     \
+                    double,                                    \
+                    DeviceArray&, int64_t>())
+
+#define REGISTER_STRIDED_BATCHED_GEMM(dtype)                   \
+  REGISTER_OP_COMMON(RocBlasStridedBatchedGemm, dtype)         \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
+                    double,                                    \
+                    DeviceArray&, int64_t, int64_t,            \
+                    DeviceArray&, int64_t, int64_t,            \
+                    double,                                    \
+                    DeviceArray&, int64_t, int64_t,            \
+                    int64_t>())
+
+void InitRocBlasGemm(py::module mod) {
+  REGISTER_GEMM(float);
+  REGISTER_GEMM(half);
+
+  REGISTER_STRIDED_BATCHED_GEMM(float);
+  REGISTER_STRIDED_BATCHED_GEMM(half);
 }
 
 }  // namespace onnxruntime

@@ -73,7 +73,7 @@ all_transabs = list(product([True, False], repeat=2))
 @pytest.mark.parametrize("size", get_gemm_basic_sizes(full=True) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)
 def test_rocblas_gemm_all_cases(dtype, size, transab):
-    _test_gemm(getattr(ke, "RocblasGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
+    _test_gemm(getattr(ke, "RocBlasGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
 
 
 @pytest.mark.parametrize("dtype", dtypes)
