@@ -990,7 +990,7 @@ class PlannerImpl {
     return true;
   }
 
-#ifndef ORT_MINIMAL_BUILD
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
   // assume we already have a baseline reuse plan (no memory reuse at all)
   // this funciton will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
@@ -1327,7 +1327,7 @@ class PlannerImpl {
     if (IsSingleStream())
       return Status::OK();
 
-#ifndef ORT_MINIMAL_BUILD
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
 #endif
 
@@ -1708,7 +1708,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-#ifdef ORT_MINIMAL_BUILD
+#if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
                             const std::string& /*partition_config_file*/) {
@@ -2190,7 +2190,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
