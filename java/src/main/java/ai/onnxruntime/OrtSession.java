@@ -514,7 +514,7 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
-    private final long nativeHandle;
+    final long nativeHandle;
 
     private final List<Long> customLibraryHandles;
 
@@ -1151,7 +1151,7 @@ public class OrtSession implements AutoCloseable {
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
   public static class RunOptions implements AutoCloseable {
 
-    private final long nativeHandle;
+    final long nativeHandle;
 
     private boolean closed = false;
 
