@@ -10,11 +10,7 @@ nav_order: 2
 # ONNX Runtime Custom Excel Functions for BERT NLP Tasks in JavaScript
 {: .no_toc }
 
-In this tutorial we will look at how we can use a custom excel function to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happen locally in the browser with excel on the web. 
-
-NOTE: this plugin currently doesn't work in the client version of excel. 
-
-Example:
+In this tutorial we will look at how we can create custom excel functions (`ORT.Sentiment()` and `ORT.Question()`) to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happen locally in the browser with excel on the web. 
 
 <div class="embed-container">
   <iframe
@@ -35,6 +31,7 @@ Example:
 
 - [See the prerequisites from this tutorial](https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions?source=recommendations&tabs=excel-windows#prerequisites)
 - [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html#:~:text=ONNX%20Runtime%20Web%20You%20can%20install%20and%20import,syntax%20%28recommended%29%20import%20%2A%20as%20ort%20from%20%27onnxruntime-web%27%3B)
+- This plugin currently doesn't work in the client version of excel.
 
 ## What are custom functions?
 
@@ -106,9 +103,9 @@ return "Unable to find answer";
 The `InferenceQuestion.ts` file has the logic to process the Question and Answer BERT Model. This model was created using [this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html#obtain-and-convert-pytorch-model-to-onnx-format). Then we used ORT Quantization tool to reduce the size of the model. Learn more about [quantization here](https://onnxruntime.ai/docs/performance/quantization.html).
 
 
-- First import `onnxruntime-web` and the helper functions from `question_answer.ts`. The `question_answer.ts` is an edited version from the tensorflow example found [here](https://github.com/tensorflow/tfjs-models/blob/master/qna/src/question_and_answer.ts).
+- First import `onnxruntime-web` and the helper functions from `question_answer.ts`. The `question_answer.ts` is an edited version from the tensorflow example found [here](https://github.com/tensorflow/tfjs-models/blob/master/qna/src/question_and_answer.ts). You can find the edited version in the source for this project [here](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/question_answer.ts).
 
-```javaScript
+```javascript
 /* eslint-disable no-undef */
 import * as ort from "onnxruntime-web";
 import { create_model_input, Feature, getBestAnswers, Answer } from "./utils/question_answer";
@@ -328,7 +325,7 @@ export async function sentiment(text: string): Promise<string> {
 Here we went over the logic needed to create custom functions in an excel add-in with JavaScript leveraging ONNX Runtime Web and open source models. From here you could take this logic and update to a specific model or use case you have. Be sure to check out the full source code which includes the tokenizers and pre/post processing to complete the above tasks.
 
 ## Additional resources
-* [Full source code for this example]()
+* [Full source code for this example](https://github.com/cassiebreviu/bert-excel-addin-ort-web)
 * [Custom functions overview](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-overview)
 * [Custom functions best practices](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-best-practices)
 * [Custom functions runtime](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-runtime)
