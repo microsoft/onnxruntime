@@ -5,7 +5,8 @@
 #include <jni.h>
 #include <string.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
-#include "orttraining/training_api/include/onnxruntime_training_c_api.h"
+#include "onnxruntime_training_c_api.h"
+#include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtTrainingSession_OrtCheckpointState.h"
 
 /*
@@ -13,7 +14,7 @@
  * Method:    loadCheckpoint
  * Signature: (JJLjava/lang/String;)J
  */
-JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_loadCheckpoint
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_loadCheckpoint
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong trainingApiHandle, jstring directory) {
   (void) jclazz; // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
@@ -36,12 +37,12 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpo
   free(newString);
   (*jniEnv)->ReleaseStringChars(jniEnv, directory, cPath);
 #else
-  const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, modelPath, NULL);
+  const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, directory, NULL);
   checkOrtStatus(jniEnv, api, trainApi->LoadCheckpoint(cPath, &checkpoint));
-  (*jniEnv)->ReleaseStringUTFChars(jniEnv, modelPath, cPath);
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, directory, cPath);
 #endif
 
-  return (jlong)session;
+  return (jlong) checkpoint;
 }
 
 /*
