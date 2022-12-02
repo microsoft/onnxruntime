@@ -779,6 +779,21 @@ TEST(QDQTransformerTests, Split) {
   };
   test_case({6, 18, 54}, 0);
 }
+TEST(QDQTransformerTests, Where) {
+  auto test_case = [&](const std::vector<int64_t>& cond_shape, const std::vector<int64_t>& x_shape,const std::vector<int64_t>& y_shape) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Where"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+    TransformerTester(BuildQDQWhereTestCase<int8_t>(cond_shape,x_shape,y_shape),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+  test_case({1},{1},{1});
+}
 
 TEST(QDQTransformerTests, Transpose) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {

@@ -301,6 +301,37 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3);
   };
 }
+template <typename InputType>
+GetQDQTestCaseFn BuildQDQWhereTestCase(
+    const std::vector<int64_t>& cond_shape,
+    const std::vector<int64_t>& x_shape,
+    const std::vector<int64_t>& y_shape
+    ) {
+  return [cond_shape,x_shape,y_shape](ModelTestBuilder& builder)
+  {
+    auto* input_cond_arg = builder.MakeInputBool(cond_shape);
+    auto* input_x_arg = builder.MakeInput<InputType>(x_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
+    auto* input_y_arg = builder.MakeInput<InputType>(y_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
+    InputType zp = std::numeric_limits<InputType>::max() / 2;
+    const float scale = 0.003f;
+    auto* dq_x_output = builder.MakeIntermediate();
+    auto* dq_y_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_x_arg, scale, zp, dq_x_output);
+    builder.AddDequantizeLinearNode<InputType>(input_y_arg, scale, zp, dq_y_output);
+    // add Where
+
+    auto* where_output = builder.MakeIntermediate();
+    builder.AddNode("Where", {input_cond_arg,dq_x_output,dq_y_output}, {where_output});
+
+    // add Q
+    auto* q_where_output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<InputType>(where_output, scale, zp, q_where_output);  // Model input (node_token_1)
+  };
+}
 
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQTransposeTestCase(
