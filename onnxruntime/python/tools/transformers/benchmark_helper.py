@@ -164,7 +164,7 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
             ), "Please install onnxruntime-directml package to test GPU inference."
 
         else:
-            assert set(onnxruntime.get_available_providers()).isdisjoint(
+            assert not set(onnxruntime.get_available_providers()).isdisjoint(
                 ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
             ), "Please install onnxruntime-gpu package, or install ROCm support, to test GPU inference."
 
