@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "gsl/gsl"
+#include "core/common/gsl.h"
+#include "core/common/narrow.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/utils.h"
@@ -103,7 +104,7 @@ struct ExtentAxisCounters {
     axis_ = indices_.size();
 
     // If a tensor has a shape, but one of the axes is 0 in size, there are no elements, so nothing to iterate
-    if (std::find(extents.cbegin(), extents.cend(), 0) != extents.cend())
+    if (std::find(extents.begin(), extents.end(), 0) != extents.end())
       running_ = false;
   }
 
@@ -207,7 +208,7 @@ struct SliceIteratorBase {
     last_batching_axis_ = dims_size - 1;
 
     // Check if inner dimension is copied as a block in its entirety
-    if (dims_size > 1 && inner_step_ == 1 && inner_extent_ == gsl::narrow<size_t>(dims[dims_size - 1])) {
+    if (dims_size > 1 && inner_step_ == 1 && inner_extent_ == narrow<size_t>(dims[dims_size - 1])) {
       for (size_t dim = dims_size - 2;; dim--) {
         if (dim < steps_size && steps[dim] != 1) {
           break;
@@ -286,7 +287,7 @@ struct SliceIteratorBase {
     auto bytes_to_copy = inner_extent_ * element_size_;
 
     if (!is_string_tensor_) {
-      memcpy(output, input_, bytes_to_copy);
+      memcpy(output, input_, onnxruntime::narrow<size_t>(bytes_to_copy));
     } else {
       const std::string* input = reinterpret_cast<const std::string*>(input_);
       std::string* out = reinterpret_cast<std::string*>(output);
@@ -305,7 +306,7 @@ struct SliceIteratorBase {
     const auto bytes_to_copy = max_copying_elements_block_ * element_size_;
     if (SolitaryInnerStep()) {
       if (!is_string_tensor_) {
-        memcpy(output, input_, bytes_to_copy);
+        memcpy(output, input_, onnxruntime::narrow<size_t>(bytes_to_copy));
       } else {
         const std::string* input = reinterpret_cast<const std::string*>(input_);
         std::string* out = reinterpret_cast<std::string*>(output);
@@ -452,7 +453,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
     } else {
       const auto element_size = src->DataType()->Size();
       const auto elements = src->Shape().Size();
-      memcpy(target, source, elements * element_size);
+      memcpy(target, source, SafeInt<size_t>(elements) * element_size);
     }
   }
 }
@@ -497,9 +498,9 @@ struct WritableSliceIterator {
       pitch *= static_cast<size_t>(dims[i]);
     }
 
-    inner_extent_ = extents_[dims.size() - 1];
+    inner_extent_ = onnxruntime::narrow<size_t>(extents_[SafeInt<size_t>(dims.size()) - 1]);
     inner_step_ = dims.size() == steps.size()
-                      ? steps[dims.size() - 1]
+                      ? onnxruntime::narrow<size_t>(steps[SafeInt<size_t>(dims.size()) - 1])
                       : 1;
   }
 

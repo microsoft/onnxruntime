@@ -166,7 +166,7 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   const auto dims = shape.GetDims();
   std::vector<int64_t> result;
   result.reserve(dims.size());
-  result.assign(dims.cbegin(), dims.cend());
+  result.assign(dims.begin(), dims.end());
   return result;
 }
 
@@ -253,7 +253,7 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 std::vector<int64_t> ApiTensor::Shape() const {
   TensorShape shape = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   const auto dims = shape.GetDims();
-  return std::vector<int64_t>{dims.cbegin(), dims.cend()};
+  return std::vector<int64_t>{dims.begin(), dims.end()};
 }
 
 size_t ApiTensor::NumElements() const {
@@ -828,14 +828,18 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
 namespace layout_transformer {
 
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
-  static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
+  static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
+    std::unordered_set<std::string_view> ort_specific_ops = {"FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+#else
     std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+#endif
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
     return ort_specific_ops;
   }();
 
-  return ort_layout_senstive_ops;
+  return ort_layout_sensitive_ops;
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
@@ -905,7 +909,18 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
+      [[maybe_unused]] auto new_node_ref =
+        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
+
+#if !defined(ORT_MINIMAL_BUILD)
+      // Set the schema if one is available. This keeps the node equivalent with the state of the original ONNX
+      // node (if possible - some replacement nodes do not have a schema).
+      //
+      Node& new_node = NodeFromApiNode(*new_node_ref);
+      // add schema if available.
+      // not guaranteed to be (compiling EP doesn't need schemas, not available in minimal build
+      graph.SetOpSchemaFromRegistryForNode(new_node);
+#endif
       modified = true;
     }
   }

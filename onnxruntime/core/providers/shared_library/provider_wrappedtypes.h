@@ -10,6 +10,9 @@ struct CPUIDInfo final {
 
   bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
   bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+  bool HasAVX512_BF16() const { return g_host->CPUIDInfo__HasAVX512_BF16(this); }
+  bool HasAMX_BF16() const { return g_host->CPUIDInfo__HasAMX_BF16(this); }
+  bool HasAVX512Skylake() const { return g_host->CPUIDInfo__HasAVX512Skylake(this); }
 
   PROVIDER_DISALLOW_ALL(CPUIDInfo)
 };
@@ -886,7 +889,7 @@ inline Status OpKernelInfo::GetAttrs(const std::string& name, TensorShapeVector&
   Status status = this->GetAttrsAsSpan<int64_t>(name, span);
   if (status.IsOK()) {
     out.reserve(span.size());
-    out.assign(span.cbegin(), span.cend());
+    out.assign(span.begin(), span.end());
   }
   return status;
 }

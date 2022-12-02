@@ -8,6 +8,7 @@
 #include <functional>
 #include <limits>
 #include <vector>
+#include <core/common/safeint.h>
 
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
@@ -39,7 +40,7 @@ static bool is_complex_valued_signal(const onnxruntime::TensorShape& shape) {
   return shape.NumDimensions() > 2 && shape[shape.NumDimensions() - 1] == 2;
 }
 
-static bool is_power_of_2(size_t size) {
+constexpr static bool is_power_of_2(size_t size) {
   unsigned n_bits = 0;
   while (size != 0) {
     n_bits += size & 1;
@@ -78,8 +79,8 @@ static inline T bit_reverse(T num, unsigned significant_bits) {
 template <typename T>
 static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
   // Calculate fundamental angular velocity
-  static const T pi = static_cast<T>(3.14159265);
-  static const T tau = 2 * pi;
+  static constexpr T pi = static_cast<T>(3.14159265);
+  static constexpr T tau = 2 * pi;
   T inverse_switch = inverse ? 1.f : -1.f;
   T angular_velocity = inverse_switch * tau / number_of_samples;
   return angular_velocity;
@@ -98,7 +99,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
                          InlinedVector<std::complex<T>>& temp_output) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
-  size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
+  size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
   unsigned significant_bits = static_cast<unsigned>(log2(dft_length));
 
   // Get data
@@ -185,9 +186,9 @@ static Status dft_naive(const Tensor* X, Tensor* Y, size_t X_offset, size_t X_st
                         int64_t axis, size_t dft_length, const Tensor* window, bool inverse) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
-  size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
+  size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
   const auto& Y_shape = Y->Shape();
-  size_t dft_output_size = static_cast<size_t>(Y_shape[axis]);
+  size_t dft_output_size = static_cast<size_t>(Y_shape[onnxruntime::narrow<size_t>(axis)]);
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
@@ -231,51 +232,51 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   const auto& Y_shape = Y->Shape();
 
   auto batch_and_signal_rank = X->Shape().NumDimensions();
-  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis]);
+  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[onnxruntime::narrow<size_t>(axis)]);
 
   auto is_input_real = X->Shape().NumDimensions() == 2 || X->Shape()[X->Shape().NumDimensions() - 1] == 1;
   auto complex_input_factor = is_input_real ? 1 : 2;
   if (X->Shape().NumDimensions() > 2) {
-    total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
+    total_dfts /= onnxruntime::narrow<size_t>(X->Shape()[X->Shape().NumDimensions() - 1]);
     batch_and_signal_rank -= 1;
   }
 
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++) {
     size_t X_offset = 0;
-    size_t X_stride = X_shape.SizeFromDimension(axis + 1) / complex_input_factor;
+    size_t X_stride = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1) / complex_input_factor);
     size_t cumulative_packed_stride = total_dfts;
     size_t temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
       if (r == static_cast<size_t>(axis)) {
         continue;
       }
-      cumulative_packed_stride /= X_shape[r];
+      cumulative_packed_stride /= onnxruntime::narrow<size_t>(X_shape[r]);
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
-      X_offset += index * X_shape.SizeFromDimension(r + 1) / complex_input_factor;
+      X_offset += index * SafeInt<size_t>(X_shape.SizeFromDimension(r + 1)) / complex_input_factor;
     }
 
     size_t Y_offset = 0;
-    size_t Y_stride = Y_shape.SizeFromDimension(axis + 1) / 2;
+    size_t Y_stride = onnxruntime::narrow<size_t>(Y_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1) / 2);
     cumulative_packed_stride = total_dfts;
     temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
       if (r == static_cast<size_t>(axis)) {
         continue;
       }
-      cumulative_packed_stride /= X_shape[r];
+      cumulative_packed_stride /= onnxruntime::narrow<size_t>(X_shape[r]);
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
-      Y_offset += index * Y_shape.SizeFromDimension(r + 1) / 2;
+      Y_offset += index * SafeInt<size_t>(Y_shape.SizeFromDimension(r + 1)) / 2;
     }
 
-    if (is_power_of_2(dft_length)) {
-      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, dft_length, window,
+    if (is_power_of_2(onnxruntime::narrow<size_t>(dft_length))) {
+      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, onnxruntime::narrow<size_t>(dft_length), window,
                                             is_onesided, inverse, V, temp_output)));
     } else {
       ORT_RETURN_IF_ERROR(
-          (dft_naive<T, U>(X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, dft_length, window, inverse)));
+          (dft_naive<T, U>(X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, onnxruntime::narrow<size_t>(dft_length), window, inverse)));
     }
   }
 
@@ -291,7 +292,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto is_complex_valued = is_complex_valued_signal(X_shape);
   axis = HandleNegativeAxis(axis, X_shape.NumDimensions());
 
-  int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
+  int64_t number_of_samples = static_cast<int64_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
   if (dft_length) {
     const auto& dft_length_shape = dft_length->Shape();
     ORT_RETURN_IF(!dft_length_shape.IsScalar(), "dft_length must be a scalar value.");
@@ -310,7 +311,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   } else {
     Y_shape[Y_shape.NumDimensions() - 1] = 2;
   }
-  Y_shape[axis] = dft_output_size;
+  Y_shape[onnxruntime::narrow<size_t>(axis)] = dft_output_size;
   auto Y = ctx->Output(0, Y_shape);
 
   // Get data type
@@ -411,7 +412,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 
   // Calculate the number of dfts to run
   const auto n_dfts =
-      static_cast<int64_t>(std::floor((signal_size - window_size) / static_cast<float>(frame_step)) + 1);
+      static_cast<int64_t>(std::floor((signal_size - window_size) / static_cast<float>(frame_step))) + 1;
 
   // Calculate the output spectra length (onesided will return only the unique values)
   // note: x >> 1 === std::floor(x / 2.f)
@@ -426,7 +427,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   auto* signal_data = const_cast<U*>(reinterpret_cast<const U*>(signal->DataRaw()));
 
   // Define tensor shapes for each dft run
-  const int64_t output_components = 2;
+  constexpr int64_t output_components = 2;
   auto dft_input_shape = onnxruntime::TensorShape({1, window_size, signal_components});
   auto dft_output_shape = onnxruntime::TensorShape({1, dft_output_size, output_components});
 

@@ -66,8 +66,11 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuantizeBFP">com.microsoft.QuantizeBFP</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.QuantizeWithOrder">com.microsoft.QuantizeWithOrder</a>
+  * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
+  * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
@@ -85,14 +88,32 @@ Do not modify directly.*
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
-  Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
-  The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
-  or (batch_size, sequence_length, past_sequence_length + sequence_length) with value 0 for masked and 1 otherwise,
-  we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
-  where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
-  left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
-  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
-  and present state are optional. Present state could appear in output even when past state is not in input.
+  Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+  
+  The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+  is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+  and v_hidden_size is that of V.
+  
+  The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
+  or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
+  we support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+  where value is actual sequence length excluding padding. When input has left-side padding, mask_index has
+  shape (2 * batch_size), where the values are the exclusive end positions followed by the inclusive start positions.
+  
+  When unidirectional is 1, each token only attends to previous tokens.
+  
+  Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
+  
+  When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
+  and input is the query after projection. The bias is included for performance consideration.
+  
+  The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+  
+  When there is past state, hidden dimension for Q, K and V shall be the same.
+  
+  The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+  For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
+  For cross attention, query and key might have different lengths.
 
 #### Version
 
@@ -104,35 +125,39 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
-<dd>Hidden layer sizes of Q, K, V paths in Attention</dd>
+<dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 6)
+#### Inputs (3 - 8)
 
 <dl>
-<dt><tt>input</tt> : T</dt>
-<dd>3D input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
-<dt><tt>weight</tt> : T</dt>
-<dd>2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size</dd>
+<dt><tt>input</tt> (optional) : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
+<dt><tt>weights</tt> (optional) : T</dt>
+<dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
 <dt><tt>past</tt> (optional) : T</dt>
-<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)</dd>
 <dt><tt>extra_add</tt> (optional) : T</dt>
-<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).</dd>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Input for key with shape (batch_size, kv_sequence_length, hidden_size). Required when weights is not available.</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). Required when weights is not available.</dd>
 </dl>
 
 #### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
-<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
+<dd>past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints
@@ -381,6 +406,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
+<dt><tt>vocab_size</tt> : int</dt>
+<dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
 #### Inputs (5 - 10)
@@ -1288,7 +1315,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>mask</tt> (optional) : T1</dt>
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
 <dt><tt>position_ids</tt> (optional) : T1</dt>
-<dd>2D position ids with shape (batch_size, sequence_length)</dd>
+<dd>2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)</dd>
 </dl>
 
 #### Outputs (2 - 3)
@@ -1683,7 +1710,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (2 - 6)
+#### Inputs (2 - 7)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -1698,6 +1725,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : I</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>attention_mask</tt> (optional) : I</dt>
+<dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 </dl>
 
 #### Outputs
@@ -3452,6 +3481,43 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.QuickGelu"></a><a name="com.microsoft.quickgelu">**com.microsoft.QuickGelu**</a>
+
+  Compute x * Sigmoid(alpha * x).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Alpha value.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>The input data as Tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>The output.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Range"></a><a name="com.microsoft.range">**com.microsoft.Range**</a>
 
   Creates a sequence of numbers that begins at `start` and extends by increments of `delta`
@@ -3528,6 +3594,89 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input type to 8-bit integer tensor.</dd>
 <dt><tt>T2</tt> : tensor(int32), tensor(uint32)</dt>
 <dd>Constrain output data type to 32-bit integer tensor.T2 must be tensor(uint32) when T1 is tensor(uint8),or must be tensor(int32) when T1 is tensor(int8).</dd>
+</dl>
+
+
+### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
+
+  Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
+  
+  The input has padding with shape (batch_size, sequence_length, hidden_size). This will generate two outputs:
+  output has shape (total_tokens, hidden_size); token_offset with shape (batch_size, sequence_length).
+  
+  token_offset has offsets of all non-padding tokens first, then offset of all padding tokens. It is
+  a list of batch_size * sequence_length elements, which is reshaped to 2D for convenience of shape inference.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>sequence_token_count</tt> : M</dt>
+<dd>Number of non-padding tokens in each sequence with shape (batch_size).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (total_tokens, hidden_size)</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of non-padding tokens, and those of padding tokens. Its shape is (batch_size, sequence_length)</dd>
+<dt><tt>cumulated_seq_len</tt> : M</dt>
+<dd>Cumulated sequence lengths. Its shape is (batch_size + 1)</dd>
+<dt><tt>max_seq_len</tt> : M</dt>
+<dd>Max sequence length without padding. Its shape is (1)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain sequence_token_count and token_offset to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.RestorePadding"></a><a name="com.microsoft.restorepadding">**com.microsoft.RestorePadding**</a>
+
+  Restore paddings and fill padding with zeros.
+  
+  The input has padding with shape (total_tokens, hidden_size) and token_offset with shape (batch_size, sequence_length).
+  The output has shape (batch_size, sequence_length, hidden_size).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (total_tokens, hidden_size)</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 

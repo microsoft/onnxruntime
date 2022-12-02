@@ -5,7 +5,7 @@
 
 #include <string>
 #include <vector>
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"

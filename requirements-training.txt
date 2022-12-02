@@ -4,6 +4,6 @@ h5py
 numpy >= 1.16.6
 onnx
 packaging
-protobuf >= 3.12.2, <= 3.20.1
+protobuf
 sympy
 setuptools>=41.4.0

@@ -74,6 +74,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Squeeze", GetSqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Sigmoid", GetSigmoidGradient);
+  REGISTER_GRADIENT_BUILDER("QuickGelu", GetQuickGeluGradient);
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("LogSoftmax", GetLogSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);

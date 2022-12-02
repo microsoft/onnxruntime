@@ -75,7 +75,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
     for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
       std::wstring outputName = _winml::Strings::WStringFromString(name);
-      
+
       // find the output descriptor
       ILearningModelFeatureDescriptor outputDescriptor = nullptr;
       for (const auto& descriptor : outputFeatureDescriptors) {
@@ -118,9 +118,9 @@ TEST_P(ModelTest, Run) {
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl()));
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(m_deviceKind));
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
-  WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
   for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
     // Load and bind inputs
+    WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
     onnxruntime::test::HeapBuffer inputHolder;
     std::unordered_map<std::string, Ort::Value> inputFeeds;
     WINML_EXPECT_NO_THROW(m_testCase->LoadTestData(i, inputHolder, inputFeeds, true));
@@ -129,6 +129,8 @@ TEST_P(ModelTest, Run) {
     // evaluate
     LearningModelEvaluationResult results = nullptr;
     WINML_EXPECT_NO_THROW(results = session.Evaluate(binding, L"Testing"));
+    binding.Clear();
+    binding = nullptr;
 
     // Load expected outputs
     onnxruntime::test::HeapBuffer outputHolder;
@@ -230,7 +232,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
 // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
 allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
-  
+
   WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, TestTolerances(1e-3, 1e-3, {}, {}),
                                   allDisabledTests,
                                   [&tests](std::unique_ptr<ITestCase> l) {
@@ -248,7 +250,7 @@ bool ShouldSkipTestOnGpuAdapterDxgi(std::string& testName) {
   while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
     DXGI_ADAPTER_DESC1 pDesc;
     WINML_EXPECT_HRESULT_SUCCEEDED(spAdapter->GetDesc1(&pDesc));
-    
+
     // Check if WARP adapter
     // see here for documentation on filtering WARP adapter:
     // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
@@ -281,7 +283,7 @@ bool ShouldSkipTestOnGpuAdapterDxcore(std::string& testName) {
   WINML_EXPECT_HRESULT_SUCCEEDED(spFactory->CreateAdapterList(1, gpuFilter, IID_PPV_ARGS(spAdapterList.put())));
 
   winrt::com_ptr<IDXCoreAdapter> firstHardwareAdapter;
-  
+
   // select first hardware adapter
   for (uint32_t i = 0; i < spAdapterList->GetAdapterCount(); i++) {
     winrt::com_ptr<IDXCoreAdapter> spCurrAdapter;
@@ -365,6 +367,13 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // The desired naming of the test is like this <model_name>_<opset>_<CPU/GPU>
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
   name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
+
+  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
+  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
+  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
+  if (source != "models"){
+    name += "_" + source;
+  }
 
   std::replace_if(name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
 

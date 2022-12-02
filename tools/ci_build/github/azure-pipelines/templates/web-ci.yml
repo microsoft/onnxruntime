@@ -71,7 +71,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
-      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
+      ExtraBuildArgs: '--skip_tests --enable_wasm_api_exception_catching --disable_rtti $(ExtraBuildArgs)'
       PoolName: ${{ parameters.PoolName }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:

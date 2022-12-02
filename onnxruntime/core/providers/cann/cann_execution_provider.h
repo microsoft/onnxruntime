@@ -15,6 +15,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_inc.h"
+#include "core/providers/cann/cann_utils.h"
 
 namespace onnxruntime {
 
@@ -35,6 +36,24 @@ class CANNExecutionProvider : public IExecutionProvider {
       return nullptr;
 
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU),
+                                        count_or_bytes);
+  }
+
+  template <typename T>
+  Status Fill(Tensor* y, void* addr) const {
+    return cann::Fill<T>(y, addr, stream_);
+  }
+
+  template <typename T>
+  Status Broadcast(const Tensor* x, Tensor* y, void* addr) const {
+    return cann::Broadcast<T>(x, y, addr, stream_);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
