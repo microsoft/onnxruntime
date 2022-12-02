@@ -65,6 +65,10 @@ jobs:
   pool: ${{ parameters.MachinePool }}
   timeoutInMinutes:  300
   steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.7'
@@ -72,7 +76,7 @@ jobs:
       architecture: ${{ parameters.buildArch }}
 
   - template: download-deps.yml
-      
+
   - task: PythonScript@0
     displayName: 'Update deps.txt'
     inputs:
@@ -116,15 +120,13 @@ jobs:
     displayName: 'Install python modules'
 
   - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
-      - powershell: |
-         $Env:USE_MSVC_STATIC_RUNTIME=1
-         $Env:ONNX_ML=1
-         $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
-         python setup.py bdist_wheel
-         python -m pip uninstall -y onnx -qq
-         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      - task: PowerShell@2
         displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }}
+
 
       #Build.py disables running training python frontend tests on Windows, so here we don't install pytorch.
       - ${{ if eq(parameters.isTraining, true) }}:
