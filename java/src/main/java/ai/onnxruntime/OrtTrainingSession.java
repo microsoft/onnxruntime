@@ -46,7 +46,7 @@ public final class OrtTrainingSession implements AutoCloseable {
     private boolean closed = false;
 
     OrtTrainingSession(OrtEnvironment env, OrtAllocator allocator, OrtSession.SessionOptions options, OrtCheckpointState checkpoint, String trainPath, String evalPath, String optimizerPath) throws OrtException {
-        this(createTrainingSession(OnnxRuntime.ortTrainingApiHandle,env.nativeHandle,options.nativeHandle,checkpoint.nativeHandle,trainPath,evalPath,optimizerPath),allocator,trainPath,evalPath,optimizerPath);
+        this(createTrainingSession(OnnxRuntime.ortApiHandle,OnnxRuntime.ortTrainingApiHandle,env.nativeHandle,options.nativeHandle,checkpoint.nativeHandle,trainPath,evalPath,optimizerPath),allocator,trainPath,evalPath,optimizerPath);
     }
 
     /**
@@ -67,11 +67,11 @@ public final class OrtTrainingSession implements AutoCloseable {
         this.trainOutputNames =
                 new LinkedHashSet<>(
                         Arrays.asList(
-                                getTrainOutputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+                                getTrainOutputNames(OnnxRuntime.ortApiHandle, OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
         this.evalOutputNames =
                 new LinkedHashSet<>(
                         Arrays.asList(
-                                getEvalOutputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+                                getEvalOutputNames(OnnxRuntime.ortApiHandle, OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
     }
 
     /** \brief Create a training session that can be used to begin or resume training.
@@ -96,7 +96,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
      _Outptr_ OrtTrainingSession** out);
      */
-    private static native long createTrainingSession(long trainingHandle, long envHandle, long optionsHandle, long checkpointHandle, String trainPath, String evalPath, String optimizerPath);
+    private static native long createTrainingSession(long apiHandle, long trainingHandle, long envHandle, long optionsHandle, long checkpointHandle, String trainPath, String evalPath, String optimizerPath);
 
     /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
     private void checkClosed() {
@@ -143,10 +143,10 @@ public final class OrtTrainingSession implements AutoCloseable {
     public void saveCheckpoint(Path outputPath, boolean saveOptimizer) throws OrtException {
         checkClosed();
         String outputStr = outputPath.toString();
-        saveCheckpoint(OnnxRuntime.ortTrainingApiHandle, nativeHandle, outputStr, saveOptimizer);
+        saveCheckpoint(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, outputStr, saveOptimizer);
     }
 
-    private native void saveCheckpoint(long trainingHandle, long nativeHandle, String path, boolean saveOptimizer) throws OrtException;
+    private native void saveCheckpoint(long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer) throws OrtException;
 
     /** \brief Retrieves the number of user outputs in the training model.
      *
@@ -161,7 +161,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
      ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
      */
-    private native String[] getTrainOutputNames(long trainingApiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
+    private native String[] getTrainOutputNames(long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
 
     /** \brief Retrieves the number of user outputs in the eval model.
      *
@@ -176,7 +176,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      ORT_API2_STATUS(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
      ORT_API2_STATUS(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
      */
-    private native String[] getEvalOutputNames(long trainingApiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
+    private native String[] getEvalOutputNames(long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
 
     /** \brief Reset the training model gradients to zero lazily.
      *
@@ -196,10 +196,10 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     public void resetGrad() throws OrtException {
         checkClosed();
-        resetGrad(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+        resetGrad(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
     }
 
-    private native void resetGrad(long trainingHandle, long nativeHandle) throws OrtException;
+    private native void resetGrad(long apiHandle, long trainingHandle, long nativeHandle) throws OrtException;
 
     /** \brief Computes the outputs and the gradients for the training model for the given inputs
      *
@@ -439,10 +439,10 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     public void setLearningRate(float learningRate) throws OrtException {
         checkClosed();
-        setLearningRate(OnnxRuntime.ortTrainingApiHandle, nativeHandle, learningRate);
+        setLearningRate(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, learningRate);
     }
 
-    private native void setLearningRate(long trainingApiHandle, long nativeHandle, float learningRate) throws OrtException;
+    private native void setLearningRate(long apiHandle, long trainingApiHandle, long nativeHandle, float learningRate) throws OrtException;
 
     /** \brief Gets the current learning rate for this training session.
      *
@@ -463,10 +463,10 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     public float getLearningRate() throws OrtException {
         checkClosed();
-        return getLearningRate(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+        return getLearningRate(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
     }
 
-    private native float getLearningRate(long trainingApiHandle, long nativeHandle);
+    private native float getLearningRate(long apiHandle, long trainingApiHandle, long nativeHandle);
 
     /** \brief Performs the weight updates for the trainable parameters using the optimizer model.
      *
@@ -494,10 +494,10 @@ public final class OrtTrainingSession implements AutoCloseable {
     public void optimizerStep(OrtSession.RunOptions runOptions) throws OrtException {
         checkClosed();
         long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
-        optimizerStep(OnnxRuntime.ortTrainingApiHandle, nativeHandle, runOptionsHandle);
+        optimizerStep(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, runOptionsHandle);
     }
 
-    private native void optimizerStep(long trainingApiHandle, long nativeHandle, long runOptionsHandle) throws OrtException;
+    private native void optimizerStep(long apiHandle, long trainingApiHandle, long nativeHandle, long runOptionsHandle) throws OrtException;
 
     /** \brief Registers the use of the Linear learning rate scheduler for the training session.
      *
@@ -525,10 +525,10 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the native call failed.
      */
     public void registerLinearLRScheduler(long warmupSteps, long totalSteps, float initialLearningRate) throws OrtException {
-        registerLinearLRScheduler(OnnxRuntime.ortTrainingApiHandle, nativeHandle, warmupSteps, totalSteps, initialLearningRate);
+        registerLinearLRScheduler(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, warmupSteps, totalSteps, initialLearningRate);
     }
 
-    private native void registerLinearLRScheduler(long trainingApiHandle, long nativeHandle, long warmupSteps, long totalSteps, float initialLearningRate) throws OrtException;
+    private native void registerLinearLRScheduler(long apiHandle, long trainingApiHandle, long nativeHandle, long warmupSteps, long totalSteps, float initialLearningRate) throws OrtException;
 
     /** \brief Update the learning rate based on the registered learing rate scheduler.
      *
@@ -551,10 +551,10 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     public void schedulerStep() throws OrtException {
         checkClosed();
-        schedulerStep(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+        schedulerStep(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
     }
 
-    private native void schedulerStep(long trainingApiHandle, long nativeHandle) throws OrtException;
+    private native void schedulerStep(long apiHandle, long trainingApiHandle, long nativeHandle) throws OrtException;
 
     /** \brief Retrieves the size of all the parameters.
      *
@@ -580,10 +580,10 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     public long getParametersSize(boolean trainableOnly) throws OrtException {
         checkClosed();
-        return getParametersSize(OnnxRuntime.ortTrainingApiHandle, nativeHandle, trainableOnly);
+        return getParametersSize(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, trainableOnly);
     }
 
-    private native long getParametersSize(long trainingApiHandle, long nativeHandle, boolean trainableOnly) throws OrtException;
+    private native long getParametersSize(long apiHandle, long trainingApiHandle, long nativeHandle, boolean trainableOnly) throws OrtException;
 
     /** \brief Copy parameters onto contiguous buffer held by parameters_buffer
      *
@@ -657,10 +657,10 @@ public final class OrtTrainingSession implements AutoCloseable {
             throw new IllegalArgumentException("Requires at least one output name");
         }
         String outputStr = outputPath.toString();
-        exportModelForInference(OnnxRuntime.ortTrainingApiHandle, nativeHandle, outputStr, outputNames);
+        exportModelForInference(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, outputStr, outputNames);
     }
 
-    private native void exportModelForInference(long trainingApiHandle, long nativeHandle, String outputPath, String[] outputNames) throws OrtException;
+    private native void exportModelForInference(long apiHandle, long trainingApiHandle, long nativeHandle, String outputPath, String[] outputNames) throws OrtException;
 
     /**
      * Wrapper class for the checkpoint state.
