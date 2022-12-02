@@ -225,7 +225,6 @@ The `answers` are then returned back to the `functions.ts` `question`, the resul
 ```javascript
 export async function question(question: string, context: string): Promise<string> {
   const result = await inferenceQuestion(question, context);
-  //
   if (result.length > 0) {
     console.log(result[0].text);
     return result[0].text.toString();
@@ -238,11 +237,11 @@ That is a breakdown for the `ORT.Question()` custom function, next we will break
 
 ## The `InferenceSentiment.ts` file
 
-The `InferenceSentiment.ts` is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](). Let's jump in and learn how this part works.
+The `InferenceSentiment.ts` is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
 
 - First lets import the packages needed. As you will see in this tutorial the `bertProcessing` function will create our model input.  `bert_tokenizer` is the JavaScript tokenizer for BERT models. `onnxruntime-web` enables inference in JavaScript on the browser.
 
-```javaScript
+```javascript
 /* eslint-disable no-undef */
 import * as bertProcessing from "./bertProcessing";
 import * as ort from "onnxruntime-web";
