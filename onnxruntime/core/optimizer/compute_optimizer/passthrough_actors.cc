@@ -459,7 +459,6 @@ bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
     }
 
     ORT_THROW("Unexpected return value from SimplePassThroughActor::PreCheck");
-    return std::nullopt;
   };
 
   propagate_input_config.clear();

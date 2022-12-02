@@ -30,6 +30,7 @@
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/temp_dir.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
@@ -282,7 +283,9 @@ TEST(ComputationReductionTests, GatherND_E2E) {
   }
 
   // check result diff after the re-order
-  auto new_model_uri = "computation_reduction_transformer_after.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "computation_reduction_transformer_after.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   InputContainer input_container;
@@ -397,7 +400,9 @@ TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnBatchDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_matmul_scalar_batch_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_matmul_scalar_batch_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -501,7 +506,9 @@ TEST(ComputationReductionTests, GatherMatMul_SlicingOnBatchDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_matmul_batch_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_matmul_batch_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -597,7 +604,9 @@ TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnLastDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_matmul_scalar_last_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_matmul_scalar_last_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -693,7 +702,9 @@ TEST(ComputationReductionTests, GatherMatMul_SlicingOnLastDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_matmul_last_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_matmul_last_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -789,7 +800,9 @@ TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_matmul_scalar_second_last_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_matmul_scalar_second_last_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -885,7 +898,9 @@ TEST(ComputationReductionTests, GatherMatMul_SlicingOnSecondLastDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_matmul_second_last_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_matmul_second_last_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -977,7 +992,9 @@ TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnBatchDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_reshape_scalar_batch_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_reshape_scalar_batch_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1069,7 +1086,9 @@ TEST(ComputationReductionTests, GatherReshape_SlicingOnBatchDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_reshape_batch_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_reshape_batch_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1160,7 +1179,9 @@ TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_reshape_scalar_seqlen_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_reshape_scalar_seqlen_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1252,7 +1273,9 @@ TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_reshape_seqlen_dim_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_reshape_seqlen_dim_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1344,7 +1367,9 @@ TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim2) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_reshape_seqlen_dim2_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_reshape_seqlen_dim2_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
@@ -1484,7 +1509,9 @@ TEST(ComputationReductionTests, GatherRobertaE2E) {
   }
 
   // Check result diff after the re-order
-  auto new_model_uri = "gather_roberta_e2e_optimized.onnx";
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
+  PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
+                                                         "gather_roberta_e2e_optimized.onnx")};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
 
   int64_t batch_size = 8;
