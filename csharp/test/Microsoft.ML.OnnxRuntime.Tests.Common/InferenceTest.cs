@@ -28,8 +28,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestSessionOptions()
         {
             // get instance to setup logging
-            var ortEnvInstance = OrtEnv.Instance();
-
+            using(var ortEnvInstance = OrtEnv.Instance())
             using (SessionOptions opt = new SessionOptions())
             {
                 Assert.NotNull(opt);
@@ -191,42 +190,156 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("MyLogTag", opt.LogId);
             }
         }
+        
+        [Fact(DisplayName = "TestThreadingOptions")]
+        public void TestThreadingOptions()
+        {
+            using (var opt = new ThreadingOptions())
+            {
+                Assert.NotNull(opt);
+
+                //verify default options
+                Assert.True(opt.GlobalSpinControl);
+                Assert.Equal(0, opt.GlobalInterOpNumThreads);
+                Assert.Equal(0, opt.GlobalIntraOpNumThreads);
+
+                opt.GlobalSpinControl = false;
+                Assert.False(opt.GlobalSpinControl);
+
+                opt.GlobalInterOpNumThreads = 1;
+                Assert.Equal(1, opt.GlobalInterOpNumThreads);
+
+                opt.GlobalIntraOpNumThreads = 1;
+                Assert.Equal(1, opt.GlobalIntraOpNumThreads);
+                
+                opt.SetGlobalDenormalAsZero();
+            }
+        }
 
         [Fact(DisplayName = "EnablingAndDisablingTelemetryEventCollection")]
         public void EnablingAndDisablingTelemetryEventCollection()
         {
-            var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.DisableTelemetryEvents();
+            using (var ortEnvInstance = OrtEnv.Instance())
+            {
+                ortEnvInstance.DisableTelemetryEvents();
 
-            // no-op on non-Windows builds
-            // may be no-op on certain Windows builds based on build configuration
+                // no-op on non-Windows builds
+                // may be no-op on certain Windows builds based on build configuration
 
-            ortEnvInstance.EnableTelemetryEvents();
+                ortEnvInstance.EnableTelemetryEvents();
+            }
         }
 
         [Fact(DisplayName = "GetAvailableProviders")]
         public void GetAvailableProviders()
         {
-            var ortEnvInstance = OrtEnv.Instance();
-            string[] providers = ortEnvInstance.GetAvailableProviders();
+            using (var ortEnvInstance = OrtEnv.Instance())
+            {
+                string[] providers = ortEnvInstance.GetAvailableProviders();
 
-            Assert.True(providers.Length > 0);
-            Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
+                Assert.True(providers.Length > 0);
+                Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
 
 #if USE_CUDA
-            Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
+                Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
 #endif
 #if USE_ROCM
-            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
+                Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
 #endif
+            }
         }
 
         [Fact(DisplayName = "TestUpdatingEnvWithCustomLogLevel")]
         public void TestUpdatingEnvWithCustomLogLevel()
         {
-            var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
-            Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
+            using (var ortEnvInstance = OrtEnv.Instance())
+            {
+                ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
+                Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
+            }
+        }
+        
+        [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptions")]
+        public void TestUpdatingEnvWithThreadingOptions()
+        {
+            using (var opt = new ThreadingOptions())
+            using (var env = OrtEnv.GetEnvironment(opt))
+            {
+                Assert.NotNull(env);
+            }
+        }
+        
+        [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptionsMultipleTimesExpectException")]
+        public void TestUpdateEnvMultipleTimesExpectException()
+        {
+            using (var opt = new ThreadingOptions())
+            using (var env = OrtEnv.GetEnvironment(opt))
+            {
+                Assert.NotNull(env);
+                Assert.Throws<InvalidOperationException>(() => OrtEnv.GetEnvironment(opt));
+            }
+        }
+        
+        [Fact(DisplayName = "TestCanReleaseAndRecreateOrtEnv")]
+        public void TestCanReleaseAndRecreateOrtEnv()
+        {
+            using (var opt = new ThreadingOptions())
+            {
+                Assert.NotNull(opt);
+                using (var env = OrtEnv.GetEnvironment(opt))
+                {
+                    Assert.NotNull(env);
+                }
+                using (var env = OrtEnv.GetEnvironment(opt))
+                {
+                    Assert.NotNull(env);
+                }
+            }
+        }
+        
+        [Fact(DisplayName = "CanCreateAndDisposeSessionWithModelAndEnv")]
+        public void CanCreateAndDisposeSessionWithModelAndEnv()
+        {
+            using (var opt = new ThreadingOptions
+                   {
+                       GlobalSpinControl = false,
+                       GlobalInterOpNumThreads = 1,
+                       GlobalIntraOpNumThreads = 1
+                   })
+            using (var env = OrtEnv.GetEnvironment(opt))
+            {
+                    
+                var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+                using (var sessionOptions = new SessionOptions()) 
+                using (var session = new InferenceSession(model, sessionOptions, env))
+                {
+                    Assert.NotNull(session);
+                    Assert.NotNull(session.InputMetadata);
+                    Assert.Equal(1, session.InputMetadata.Count); // 1 input node
+                    Assert.True(session.InputMetadata.ContainsKey("data_0")); // input node name
+                    Assert.Equal(typeof(float), session.InputMetadata["data_0"].ElementType);
+                    Assert.True(session.InputMetadata["data_0"].IsTensor);
+                    var expectedInputDimensions = new int[] {1, 3, 224, 224};
+                    Assert.Equal(expectedInputDimensions.Length, session.InputMetadata["data_0"].Dimensions.Length);
+                    for (int i = 0; i < expectedInputDimensions.Length; i++)
+                    {
+                        Assert.Equal(expectedInputDimensions[i], session.InputMetadata["data_0"].Dimensions[i]);
+                    }
+
+                    Assert.NotNull(session.OutputMetadata);
+                    Assert.Equal(1, session.OutputMetadata.Count); // 1 output node
+                    Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output node name
+                    Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].ElementType);
+                    Assert.True(session.OutputMetadata["softmaxout_1"].IsTensor);
+                    var expectedOutputDimensions = new int[] {1, 1000, 1, 1};
+                    Assert.Equal(expectedOutputDimensions.Length,
+                        session.OutputMetadata["softmaxout_1"].Dimensions.Length);
+                    for (int i = 0; i < expectedOutputDimensions.Length; i++)
+                    {
+                        Assert.Equal(expectedOutputDimensions[i], session.OutputMetadata["softmaxout_1"].Dimensions[i]);
+                    }
+                }
+            }
         }
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModel")]
@@ -1824,8 +1937,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
                                                    OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default))
             using (var arenaCfg = new OrtArenaCfg(0, -1, -1, -1))
+            using (var env = OrtEnv.Instance())
             {
-                var env = OrtEnv.Instance();
                 // Create and register the arena based allocator
                 env.CreateAndRegisterAllocator(memInfo, arenaCfg);
 
