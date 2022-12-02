@@ -132,17 +132,17 @@ export async function inferenceQuestion(question: string, context: string): Prom
 - Next we encode the `question` and `context` using the `create_model_input` function from the `question_answer.ts`. This returns the `Feature`.
 
 ```javascript
-  //get encoded ids from text tokenizer
+  // Get encoded ids from text tokenizer.
   const encoded: Feature = await create_model_input(question, context);
   console.log("encoded", encoded);
 ```
 ```javascript
   export interface Feature {
-  input_ids: Array<any>;
-  input_mask: Array<any>;
-  segment_ids: Array<any>;
-  origTokens: Token[];
-  tokenToOrigMap: { [key: number]: number };
+    input_ids: Array<any>;
+    input_mask: Array<any>;
+    segment_ids: Array<any>;
+    origTokens: Token[];
+    tokenToOrigMap: { [key: number]: number };
 }
 ```
 - Now that we have the `encoded` `Feature`, we need to create arrays (`input_ids`, `attention_mask`, and `token_type_ids`) of type `BigInt` to create `ort.Tensor` input.
@@ -175,14 +175,8 @@ export async function inferenceQuestion(question: string, context: string): Prom
 ```javascript
   const sequence_length = input_ids.length;
   var input_ids_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(input_ids), [1, sequence_length]);
-  var attention_mask_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(attention_mask), [
-    1,
-    sequence_length,
-  ]);
-  var token_type_ids_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(token_type_ids), [
-    1,
-    sequence_length,
-  ]);
+  var attention_mask_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(attention_mask), [ 1, sequence_length]);
+  var token_type_ids_tensor: ort.Tensor = new ort.Tensor("int64", BigInt64Array.from(token_type_ids), [ 1, sequence_length]);
 ```
  - We are ready to run inference! Here we create the `OnnxValueMapType` (input object) and `FetchesType` (return labels). You can send in the object and string array without declaring the type however adding the types are useful.
 
@@ -196,7 +190,7 @@ export async function inferenceQuestion(question: string, context: string): Prom
   const output = await session.run(model_input, output_names);
   const result_length = output["start_logits"].data.length;
 ```
-- Next loop through the result and create a number array from the resulting `start_logits` and `end_logits`.
+- Next loop through the result and create a `number` array from the resulting `start_logits` and `end_logits`.
 
 ```javascript
   const start_logits: number[] = Array(); 
@@ -211,7 +205,7 @@ export async function inferenceQuestion(question: string, context: string): Prom
   }
 ```
 
-- Lastly we will call `getBestAnswers` from `question_answer.ts`. This will take the result, original tokens, token map and original context sentence and does the post processing to get the answer from the inference result. 
+- Lastly we will call [`getBestAnswers`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/question_answer.ts#L142) from `question_answer.ts`. This will take result and do the post processing to get the answer from the inference result. 
 
 ```javascript
   const answers: Answer[] = getBestAnswers(
