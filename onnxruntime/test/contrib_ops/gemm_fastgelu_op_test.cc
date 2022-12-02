@@ -38,8 +38,15 @@ static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const s
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+  tester.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+
+  execution_providers.clear();
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+  tester.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 #endif
 
@@ -226,8 +233,15 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBias_bfloat16) {
   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+  tester.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+
+  execution_providers.clear();
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+  tester.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 #endif
 
