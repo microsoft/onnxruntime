@@ -6,7 +6,8 @@
 using ONNXDimension = ONNX_NAMESPACE::TensorShapeProto_Dimension;
 using TensorShapeProto = ONNX_NAMESPACE::TensorShapeProto;
 
-#define NEED_LOG_DEBUG_INFO 1
+// Uncomment for debugging
+// #define NEED_LOG_DEBUG_INFO 1
 
 #ifdef NEED_LOG_DEBUG_INFO
 #define LOG_DEBUG_INFO(logger, message) LOGS(logger, WARNING) << message
