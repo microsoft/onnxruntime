@@ -45,7 +45,11 @@ Now that we know what custom functions are lets look at how we can create functi
 
 - Install ONNX Runtime `npm install onnxruntime-web --save`
 
-- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. 
+- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. This will start Excel web and sideload the add-in to the spreadsheet that is provided in the command.
+
+```cmd
+npm run start:web -- --document {url}
+```
 
 ## The `manifest.xml` file
 
@@ -220,7 +224,7 @@ export async function inferenceQuestion(question: string, context: string): Prom
 }
 ```
 
-The `answers` are then returned back to the `functions.ts` `question`, the resulting string is returned and populated into the excel cell.
+- The `answers` are then returned back to the `functions.ts` `question`, the resulting string is returned and populated into the excel cell.
 
 ```javascript
 export async function question(question: string, context: string): Promise<string> {
@@ -231,6 +235,11 @@ export async function question(question: string, context: string): Promise<strin
   }
   return "Unable to find answer";
 }
+```
+- Now you can run the below command to build and side load the add-in to your excel spreadsheet!
+
+```cmd
+npm run start:web -- --document {url}
 ```
 
 That is a breakdown for the `ORT.Question()` custom function, next we will breakdown how the `ORT.Sentiment()` is implemented.
@@ -311,6 +320,12 @@ export async function sentiment(text: string): Promise<string> {
   console.log(result[1][0]);
   return result[1][0].toString();
 }
+```
+
+- Now you can run the below command to build and side load the add-in to your excel spreadsheet!
+
+```cmd
+npm run start:web -- --document {url}
 ```
 
 ## Conclusion
