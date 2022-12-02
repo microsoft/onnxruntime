@@ -35,12 +35,21 @@ class ComputeOptimizer : public GraphTransformer {
 namespace optimizer {
 namespace compute_optimizer {
 
+using OPSET_VERSION_LIST = std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>;
+const OPSET_VERSION_LIST opset_1{1};
+const OPSET_VERSION_LIST opset_13_1{13, 1};
+const OPSET_VERSION_LIST opset_13_9_1{13, 9, 1};
+const OPSET_VERSION_LIST opset_13_11_1{13, 11, 1};
+const OPSET_VERSION_LIST opset_13_9_6_1{13, 9, 6, 1};
+const OPSET_VERSION_LIST opset_14_13_5_1{14, 13, 5, 1};
+const OPSET_VERSION_LIST opset_14_13_7_6_1{14, 13, 7, 6, 1};
+const OPSET_VERSION_LIST opset_13_12_10_7_6_1{13, 12, 10, 7, 6, 1};
+
 /**
  * @brief Functor to trigger the optimization search for a given slicing node
  *   (for example Gather/GatherND node).
  */
 struct SliceOperationReorderHandle {
-  using OPSET_VERSION_LIST = std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>;
   /**
    * @brief Pass through configuration for specific operator.
    *
@@ -66,15 +75,6 @@ struct SliceOperationReorderHandle {
   static std::string GetFullQualifiedOpName(const std::string& op_type, const std::string& domain) {
     return domain + "::" + op_type;
   }
-
-  constexpr static const OPSET_VERSION_LIST opset_1 = {1};
-  constexpr static const OPSET_VERSION_LIST opset_13_1 = {13, 1};
-  constexpr static const OPSET_VERSION_LIST opset_13_9_1 = {13, 9, 1};
-  constexpr static const OPSET_VERSION_LIST opset_13_11_1 = {13, 11, 1};
-  constexpr static const OPSET_VERSION_LIST opset_13_9_6_1 = {13, 9, 6, 1};
-  constexpr static const OPSET_VERSION_LIST opset_14_13_5_1 = {14, 13, 5, 1};
-  constexpr static const OPSET_VERSION_LIST opset_14_13_7_6_1 = {14, 13, 7, 6, 1};
-  constexpr static const OPSET_VERSION_LIST opset_13_12_10_7_6_1 = {13, 12, 10, 7, 6, 1};
 
   static std::unordered_map<std::string, OpPassThroughConfig>& GetOpPassThroughConfigMap() {
     static std::unordered_map<std::string, OpPassThroughConfig> allowed_passthrough_ops;
