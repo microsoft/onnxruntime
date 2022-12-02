@@ -14,9 +14,16 @@ In this tutorial we will look at how we can use a custom excel function to imple
 
 NOTE: this plugin currently doesn't work in the client version of excel. 
 
-Example template output:
+Example:
 
-<img src="../../../images/ort-web-demo.gif" width="100%" height="100%" alt="Image of browser inferencing on sample images."/>
+<div class="embed-container">
+  <iframe
+      src="https://www.youtube.com/embed/wuSxWGY_Sjg"
+      width="560" height="315"
+      frameborder="0"
+      allowfullscreen="true">
+  </iframe>
+</div>
 
 ## Contents
 {: .no_toc }
