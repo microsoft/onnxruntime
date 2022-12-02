@@ -325,9 +325,16 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+#ifdef ENABLE_STREAM
   std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
 
   void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
+
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
+#endif
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   void
   IncrementGraphExecutionCounter() {
@@ -338,10 +345,6 @@ class SessionState {
     return graph_executions_counter_;
   }
 #endif
-
-  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
-    return *stream_handles_registry_;
-  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -546,11 +549,14 @@ class SessionState {
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
 #endif
+
+#ifdef ENABLE_STREAM
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 
   // lock for the device stream pool
   mutable OrtMutex device_stream_pool_mutex_;
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+#endif
 };
 
 }  // namespace onnxruntime

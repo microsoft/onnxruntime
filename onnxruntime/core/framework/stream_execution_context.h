@@ -58,14 +58,16 @@ class StreamExecutionContext {
 
   StreamExecutionContext(const SessionState& sess_state,
                          int32_t num_streams,
+#ifdef ENABLE_STREAM
                          gsl::span<const size_t> notification_owners,
+                         size_t num_barriers,
+                         const DeviceStreamCollection& device_stream_map,
+#endif
                          gsl::span<const int> feed_mlvalue_idxs,
                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                         size_t num_barriers,
                          const logging::Logger& sess_logger,
-                         const DeviceStreamCollection& device_stream_map,
                          bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
@@ -150,13 +152,7 @@ class StreamExecutionContext {
 
   const logging::Logger* logger_;
 
-  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications_;
-
   std::unique_ptr<std::atomic_int[]> release_plan_;
-
-  const DeviceStreamCollection& device_stream_map_;
-
-  std::vector<CountDownBarrier> count_down_barriers_;
 
   CountDownBarrier remain_tasks_;
 
@@ -171,8 +167,14 @@ class StreamExecutionContext {
   // Should we deprecate it?
   const InlinedHashSet<NodeIndex>* node_to_execute_{nullptr};
 #endif
-
   const bool single_thread_mode_;
+
+#ifdef ENABLE_STREAM
+  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications_;
+  const DeviceStreamCollection& device_stream_map_;
+
+  std::vector<CountDownBarrier> count_down_barriers_;
+#endif
 };
 
 using NotificationIndex = size_t;

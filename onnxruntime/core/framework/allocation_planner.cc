@@ -145,7 +145,10 @@ class PlannerImpl {
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
-  Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
+  Status CreatePlan(
+#ifdef ENABLE_STREAM
+                    const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
                     const std::string& partition_config_file,
                     const logging::Logger& logger);
 
@@ -1721,8 +1724,7 @@ class PlannerImpl {
     num_logic_streams_ = 1;
   }
 
-  Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
-                            const IStreamCommandHandleRegistry& /*stream_handle_registry*/) {
+  Status BuildExecutionPlan(const ExecutionProviders& execution_providers) {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
     ORT_ENFORCE(num_logic_streams_ == 1 && !stream_nodes_[0].empty());
@@ -2099,7 +2101,10 @@ class PlannerImpl {
 #endif
 };
 
-Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
+Status PlannerImpl::CreatePlan(
+#ifdef ENABLE_STREAM
+                               const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
   // 1. partition graph into streams
@@ -2115,7 +2120,11 @@ Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
+#ifdef ENABLE_STREAM
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
+#else
+  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
+#endif
 
   // build value_node_map
   for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
@@ -2169,7 +2178,9 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
+#ifdef ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
     const std::string& partition_config_file,
     const logging::Logger& logger,
     std::optional<SequentialExecutionPlan>& plan) {
@@ -2181,9 +2192,10 @@ Status SequentialPlanner::CreatePlan(
                       outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
-  return planner.CreatePlan(stream_handle_registry,
-                            /*provider_stream_map,
-                            op_stream_map,*/
+  return planner.CreatePlan(
+#ifdef ENABLE_STREAM
+                            stream_handle_registry,
+#endif
                             partition_config_file,
                             logger);
 }

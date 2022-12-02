@@ -27,7 +27,7 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
-
+#ifdef ENABLE_STREAM
 static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
   if (allocator->Info().alloc_type == OrtArenaAllocator) {
     BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
@@ -35,6 +35,7 @@ static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
   }
   return nullptr;
 }
+#endif
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
@@ -555,6 +556,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (!alloc) alloc = GetAllocator(location);
   Stream* current_stream = GetValueStream(ort_value_index);
   if (current_stream) {
+#ifdef ENABLE_STREAM
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
     if (stream_aware_alloc) {
       size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
@@ -566,6 +568,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     } else {
       Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
     }
+#else
+    ORT_THROW("Ort value is associated with a Stream but Stream is not enabled in the build.");
+#endif
   } else {
     Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
   }

@@ -8,17 +8,17 @@
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
-
+#ifdef ENABLE_STREAM
 StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                 int32_t num_streams,
                                                 gsl::span<const size_t> notification_owners,
+                                                size_t num_barriers,
+                                                const DeviceStreamCollection& device_stream_map,
                                                 gsl::span<const int> feed_mlvalue_idxs,
                                                 gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                                 std::vector<OrtValue>& fetches,
                                                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                size_t num_barriers,
                                                 const logging::Logger& sess_logger,
-                                                const DeviceStreamCollection& device_stream_map,
                                                 bool single_thread_mode) : session_state_(&sess_state),
                                                                            frame_(feed_mlvalue_idxs,
                                                                                   feeds,
@@ -28,9 +28,9 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                                                   sess_state,
                                                                                   device_stream_map.GetStreams()),
                                                                            logger_(&sess_logger),
+                                                                           single_thread_mode_(single_thread_mode),
                                                                            device_stream_map_(device_stream_map),
-                                                                           count_down_barriers_(num_barriers),
-                                                                           single_thread_mode_(single_thread_mode) {
+                                                                           count_down_barriers_(num_barriers) {
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto* stream = device_stream_map_.GetStream(notification_owners[i]);
@@ -62,12 +62,6 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
   }
 }
 
-const SessionState& StreamExecutionContext ::GetSessionState() const { return *session_state_; }
-
-const logging::Logger& StreamExecutionContext ::GetLogger() const { return *logger_; }
-
-ExecutionFrame& StreamExecutionContext ::GetExecutionFrame() { return frame_; }
-
 synchronize::Notification* StreamExecutionContext ::GetNotification(size_t idx) { return notifications_[idx].get(); }
 
 bool StreamExecutionContext ::DecCountDownBarrier(size_t barrier_id) {
@@ -78,6 +72,61 @@ Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
   ORT_ENFORCE(idx < device_stream_map_.NumStreams());
   return device_stream_map_.GetStream(idx);
 }
+
+#else
+StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
+                                                int32_t num_streams,
+                                                gsl::span<const int> feed_mlvalue_idxs,
+                                                gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                                std::vector<OrtValue>& fetches,
+                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                                const logging::Logger& sess_logger,
+                                                bool single_thread_mode) : session_state_(&sess_state),
+                                                                           frame_(feed_mlvalue_idxs,
+                                                                                  feeds,
+                                                                                  fetch_mlvalue_idxs,
+                                                                                  fetches,
+                                                                                  fetch_allocators,
+                                                                                  sess_state,
+                                                                                  {}),
+                                                                           logger_(&sess_logger),
+                                                                           single_thread_mode_(single_thread_mode) {
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26409 26400)
+#endif
+  std::atomic_int* p_release_plan_buffer = new std::atomic_int[sess_state.GetExecutionPlan()->release_actions.size()];
+  release_plan_ = std::unique_ptr<std::atomic_int[]>(p_release_plan_buffer);
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+  // init remain task to number of streams
+  remain_tasks_.Set(num_streams);
+  // generate release plan (the ref counts)
+  auto& release_actions = sess_state.GetExecutionPlan()->release_actions;
+  for (size_t i = 0; i < release_actions.size(); ++i) {
+    release_plan_[i] = static_cast<int>(release_actions[i].ref_count);
+  }
+}
+
+synchronize::Notification* StreamExecutionContext ::GetNotification(size_t /*idx*/) { 
+    ORT_THROW("Try to get notification in a build which doesn't enable Stream!"); 
+}
+
+bool StreamExecutionContext ::DecCountDownBarrier(size_t /*barrier_id*/) {
+    ORT_THROW("Try to decrease barrier in a build which doesn't enable Stream!");
+}
+
+Stream* StreamExecutionContext ::GetDeviceStream(size_t /*idx*/) {
+    return nullptr;
+}
+#endif
+
+const SessionState& StreamExecutionContext ::GetSessionState() const { return *session_state_; }
+
+const logging::Logger& StreamExecutionContext ::GetLogger() const { return *logger_; }
+
+ExecutionFrame& StreamExecutionContext ::GetExecutionFrame() { return frame_; }
 
 const Status& StreamExecutionContext ::TaskStatus() const {
   return task_status_;
