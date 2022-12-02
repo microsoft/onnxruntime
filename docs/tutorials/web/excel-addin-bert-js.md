@@ -326,5 +326,4 @@ Here we went over the logic needed to create custom functions in an excel add-in
 * More Office Add-ins samples at [OfficeDev on Github](https://github.com/officedev)
 * [Excel Custom function Quickstart](https://learn.microsoft.com//office/dev/add-ins/quickstarts/excel-custom-functions-quickstart?tabs=excel-online)
 * [Publish Add-ins in VS Code](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish-add-in-vs-code#using-visual-studio-code-to-publish)
-* For more detailed information about custom functions in Excel, see [Custom functions overview](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-overview)
 * For debugging information see [Custom functions debugging](https://aka.ms/custom-functions-debug). For general information on debugging task panes and other Office Add-in parts, see [Test and debug Office Add-ins](https://docs.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins).
