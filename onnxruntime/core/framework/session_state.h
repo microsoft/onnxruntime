@@ -150,14 +150,14 @@ class SessionState {
    * execution frame to setup the appropriate OrtValue vectors.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
-  const InlinedHashMap<int, OrtValue>& GetInitializedTensors() const;
+  const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
    * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
    * and cannot be overridden at runtime.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
-  const InlinedHashMap<int, OrtValue>& GetConstantInitializedTensors() const;
+  const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
@@ -451,9 +451,9 @@ class SessionState {
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
-  InlinedHashMap<int, OrtValue> initialized_tensors_;  // key is ort_value_index
+  std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
-  InlinedHashMap<int, OrtValue> constant_initialized_tensors_;
+  std::unordered_map<int, OrtValue> constant_initialized_tensors_;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor
