@@ -1581,6 +1581,10 @@ def benchmark_model_on_ep(
         options = onnxruntime.SessionOptions()
         options.graph_optimization_level = get_graph_opt_level(args.graph_enablement)
 
+        # Use dynamic cost model when parallelizing tasks in order to reduce inference latency variance.
+        # See: https://onnxruntime.ai/docs/performance/tune-performance.html#i-am-seeing-high-latency-variance
+        options.add_session_config_entry("session.dynamic_block_base", "4")
+
         # create onnxruntime inference session
         try:
             sess, second_creation_time = create_session(model_path, providers, provider_options, options)
@@ -1651,6 +1655,10 @@ def validate_model_on_ep(
     options.enable_profiling = True
     options.profile_file_prefix = f"ort_profile_{model_name}_{exec_provider}"
     options.graph_optimization_level = get_graph_opt_level(args.graph_enablement)
+
+    # Use dynamic cost model when parallelizing tasks in order to reduce inference latency variance.
+    # See: https://onnxruntime.ai/docs/performance/tune-performance.html#i-am-seeing-high-latency-variance
+    options.add_session_config_entry("session.dynamic_block_base", "4")
 
     providers = ep_to_provider_list[exec_provider]
     provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
