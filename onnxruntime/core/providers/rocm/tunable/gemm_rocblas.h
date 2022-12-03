@@ -142,35 +142,14 @@ public:
     return Status::OK();
   }
 
-  virtual int FindFastest(const GemmParams<T>* params) override {
-    // This check shouldn't be necessary, but it's there just to be safe
-    auto it = this->kernel_map_.find(params->Signature());
-    if (it != this->kernel_map_.end()) {
-      return it->second;
+protected:
+  void GetCandidatesForParams(const GemmParams<T>* params, std::vector<Op<GemmParams<T>>>** candidates) {
+    auto solution_indices = this->GetSolutions(params);
+    candidate_ops_.clear();
+    for (auto solution_idx : solution_indices) {
+      candidate_ops_.emplace_back(Op<GemmParams<T>>{IndexedRocBlasGemmOp{solution_idx}});
     }
-
-    auto op_sig = OpSignature();
-    auto param_sig = params->Signature();
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
-
-    RocblasHandleStreamGuard guard(params->handle, params->stream);
-    auto solution_indices = GetSolutions(params);
-
-    std::vector<Op<GemmParams<T>>> ops;
-    for (auto solution_index : solution_indices) {
-      ops.emplace_back(Op<GemmParams<T>>(IndexedRocBlasGemmOp<T>(solution_index)));
-    }
-
-    // include the default RocBlas implementation as well
-    ops.emplace_back(Op<GemmParams<T>>(IndexedRocBlasGemmOp<T>()));
-
-    auto best_solution_idx = std::max(0, TunableOp<GemmParams<T>>::FindFastestImpl(ops, params));
-
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
-
-    this->ops_.emplace_back(Op<GemmParams<T>>(IndexedRocBlasGemmOp<T>(best_solution_idx)));
-    this->kernel_map_[params->Signature()] = this->ops_.size() - 1;
-    return static_cast<int>(this->ops_.size()) - 1;
+    *candidates = &candidate_ops_;
   }
 
 private:
@@ -217,9 +196,11 @@ private:
 
     return solutions;
   }
+
+  std::vector<Op<GemmParams<T>>> candidate_ops_;
 };
 
-# else /* #if defined USE_ROCBLAS_EXTENSION_API */
+#endif /* #if defined USE_ROCBLAS_EXTENSION_API */
 
 template <typename T>
 Status RocBlasGemmOp(const GemmParams<T>* params) {
@@ -238,8 +219,6 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
       &(params->beta),
       params->c, params->ldc));
 }
-
-#endif /* #if defined USE_ROCBLAS_EXTENSION_API */
 
 }  // namespace internal
 }  // namespace blas

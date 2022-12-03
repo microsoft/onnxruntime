@@ -214,40 +214,41 @@ class TunableOp {
 #endif
   }
 
-  virtual int FindFastest(const ParamsT* params) {
+  int FindFastest(const ParamsT* params) {
     auto op_sig = OpSignature();
     auto param_sig = params->Signature();
     LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
-    int id = FindFastestImpl(this->ops_, params);
+    auto min_time = std::numeric_limits<double>::infinity();
+    int id = -1;
+
+    std::vector<Op<ParamsT>>* candidates = nullptr;
+    GetCandidateOpsForParams(params, &candidates);
+    ORT_ENFORCE(candidates != nullptr, (std::string)"No candidates found for params: " + param_sig);
+
+    for (size_t i = 0; i < candidates->size(); i++) {
+      if (!IsSupported((*candidates)[i], params)) {
+        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
+        continue;
+      }
+
+      WarmUp((*candidates)[i], params);
+      auto time = Profile((*candidates)[i], params);
+      if (time < min_time) {
+        min_time = time;
+        id = static_cast<int>(i);
+      }
+    }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
     LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
 
- protected:
-  int FindFastestImpl(std::vector<Op<ParamsT>>& ops, const ParamsT* params) {
-    int result = -1;
-    auto min_time = std::numeric_limits<double>::infinity();
-    auto param_sig = params->Signature();
-    auto op_sig = OpSignature();
-    for (size_t i = 0; i < ops.size(); i++) {
-      if (!IsSupported(ops[i], params)) {
-        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
-        continue;
-      }
-
-      WarmUp(ops[i], params);
-      auto time = Profile(ops[i], params);
-      if (time < min_time) {
-        min_time = time;
-        result = static_cast<int>(i);
-      }
-    }
-    return result;
+protected:
+  virtual void GetCandidateOpsForParams(const ParamsT* params, std::vector<Op<ParamsT>>** candidates) {
+    *candidates = &ops_;
   }
 
-protected:
   std::vector<Op<ParamsT>> ops_;
   // mapping from Signature to best impl
   std::unordered_map<std::string, int> kernel_map_;

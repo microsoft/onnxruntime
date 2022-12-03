@@ -36,10 +36,9 @@ template <typename T, typename ALayout, typename BLayout>
 class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
+    this->ops_.emplace_back(RocBlasGemmOp<T>);
   #if defined USE_ROCBLAS_EXTENSION_API
     this->ops_.emplace_back(Op<GemmParams<T>>{RocBlasGemmTunableOp<T>{}});
-  #else
-    this->ops_.emplace_back(RocBlasGemmOp<T>);
   #endif
 
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
