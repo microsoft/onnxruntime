@@ -138,7 +138,15 @@ def create_ort_session(onnx_model_path, use_gpu=True):
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     sess_options.intra_op_num_threads = 2
     sess_options.log_severity_level = 2
-    execution_providers = ["CPUExecutionProvider"] if not use_gpu else ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    execution_providers = ["CPUExecutionProvider"]
+
+    if use_gpu:
+        if torch.version.cuda:
+            execution_providers.append("CUDAExecutionProvider")
+        elif torch.version.hip:
+            execution_providers.append("MIGraphXExecutionProvider")
+            execution_providers.append("ROCMExecutionProvider")
+
     return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
 

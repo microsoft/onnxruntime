@@ -27,8 +27,9 @@ static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE"
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
-static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
-static const std::string kContextMemorySharingEnable = "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
+static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
+static const std::string kContextMemorySharingEnable= "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
+static const std::string kLayerNormFP32Fallback= "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -168,6 +169,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int device_id_;
   AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
+  bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length
