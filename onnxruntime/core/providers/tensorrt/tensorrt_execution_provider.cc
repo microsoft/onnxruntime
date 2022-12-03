@@ -736,7 +736,6 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
   meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
-  std::cout << "meta_def->name(): " << meta_def->name() << std::endl;//slx
 
   // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
@@ -1052,22 +1051,23 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
   // Get ModelPath
-  const auto& path_string = graph.ModelPath().ToPathString();
-  std::string model_name;
+  const auto& model_path = graph.ModelPath();
+  const auto& path_string = model_path.ToPathString();
+  std::string model_name = ToUTF8String(model_path.GetComponents().back().c_str());
 #ifdef _WIN32
   wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
-  model_name = path_string.substr(path_string.find_last_of("/\\") + 1);
 #else
   strcpy(model_path_, path_string.c_str());
-  model_name = path_string.substr(path_string.find_last_of("/") + 1);
 #endif
-  model_name = model_name.substr(0, model_name.size() - 5);
-
+  //model_name = path_string.substr(path_string.find_last_of("/\\") + 1);
+  //model_name = path_string.substr(path_string.find_last_of("/") + 1);
+  model_name = model_name.substr(0, model_name.find_last_of("."));
+		
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
   SubGraphCollection_t supported_nodes_vector;
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  std::string trt_node_list_name = "trt_nodes_list_" + graph.Name() + "_" + model_name + ".txt";
+  const std::string trt_node_list_name = GetCachePath(cache_path_, "trt_nodes_list_" + graph.Name() + "_" + model_name + ".txt");
   if (!side_load_engine_) {
     std::vector<size_t> nodes_vector(number_of_ort_nodes);
     std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
@@ -1170,9 +1170,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     ReadSupportedList(trt_node_list_name, supported_nodes_vector);
   }
 
-  std::cout << "path_string: " << path_string << ", model_name: " << model_name << std::endl;//slx
+  LOGS_DEFAULT(INFO) << "[TensorRT EP] model path: " << path_string;
+  LOGS_DEFAULT(INFO) << "[TensorRT EP] model_name: " << model_name;
+
   // Detect and remove cycles from supported node list
-  std::cout << "DetectTensorRTGraphCycles: " << std::endl;//slx
   DetectTensorRTGraphCycles(supported_nodes_vector, graph);
 
   // Consolidate supported node list
@@ -1192,7 +1193,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
-  std::cout << "final GetSubGraph: " << std::endl;//slx
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
@@ -1305,7 +1305,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       trt_node_name_with_precision += "_fp16_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
     } else if (fp16_enable_) {
-      trt_config->setFlags(nvinfer1::BuilderFlag::kFP16 | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
+      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
       trt_node_name_with_precision += "_fp16";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
     } else if (int8_enable_) {
@@ -1758,7 +1758,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (trt_state->fp16_enable && trt_state->int8_enable) {
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
         } else if (trt_state->fp16_enable) {
-          trt_config->setFlags(nvinfer1::BuilderFlag::kFP16 | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
+          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
         } else if (trt_state->int8_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }

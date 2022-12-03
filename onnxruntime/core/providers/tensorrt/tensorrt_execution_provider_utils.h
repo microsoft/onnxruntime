@@ -41,7 +41,6 @@ bool ReadSupportedList(const std::string file_name, std::vector<std::pair<std::v
   }
 
   std::string line;
-  //char delim = ' ';
   while (std::getline(infile, line)) {
     std::istringstream in_line(line);
     int index;
@@ -50,9 +49,6 @@ bool ReadSupportedList(const std::string file_name, std::vector<std::pair<std::v
       in_line >> index;
       node_list.push_back(index);            
     }
-    for (auto idx : node_list)
-      std::cout << idx << " ";
-    std::cout << std::endl;
     supported_nodes_vector.push_back({node_list, true});
   }
   infile.close();
@@ -253,81 +249,77 @@ class TRTModelMetadefIdGenerator {
       cur_graph = cur_graph->ParentGraph();
     }
 
-    uint32_t instance_hash[4] = {0, 0, 0, 0};
-
     const Graph& main_graph = *cur_graph;
+    uint32_t hash[4] = {0, 0, 0, 0};
 
-    // hash the bytes in the Graph instance. we can't just use the address as a new Graph instance may use
-    // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
-    // fingerprint for the instance that can use used as the key to the hash of the graph name/inputs&outputs/metadata.
-    MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
-    HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
+    auto hash_str = [&hash](const std::string& str) {
+      MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+    };
 
-    // if we've already hashed this main graph instance use the cached value
-    auto entry = trt_main_graph_hash_.find(graph_instance_hash);
-    if (entry != trt_main_graph_hash_.cend()) {
-      model_hash = entry->second;
+    // Use model name instead of path to avoid cache regeneration if path changes
+    const auto& model_path = main_graph.ModelPath();
+    if (!model_path.IsEmpty()) {
+      // get model name
+      PathString leaf = model_path.GetComponents().back();
+      std::string model_name = ToUTF8String(leaf.c_str());
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
+      // ensure enough characters are hashed in case model names are short or are similar
+      int32_t path_length = gsl::narrow_cast<int32_t>(model_name.size());
+      int32_t string_length = 0;
+      constexpr int32_t hash_string_length = 500;
+      while (string_length < hash_string_length) {
+        hash_str(model_name);
+        string_length += path_length;
+      }
     } else {
-      uint32_t hash[4] = {0, 0, 0, 0};
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+    }
 
-      // Use graph name instead of path to avoid cache regeneration if path changes
-      const auto& model_name_str = main_graph.Name();
-      if (!model_name_str.empty()) {
-        MurmurHash3::x86_128(model_name_str.data(), gsl::narrow_cast<int32_t>(model_name_str.size()), hash[0], &hash);
-      }
+    // fingerprint the main graph by hashing graph inputs
+    for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
+      hash_str(node_arg->Name());
+    }
 
-      auto hash_str = [&hash](const std::string& str) {
-        MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
-      };
-
-      // fingerprint the main graph by hashing graph inputs
-      for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
-        hash_str(node_arg->Name());
-      }
-
-      // hashing output of each node
-      const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
-      std::vector<size_t> nodes_vector(number_of_ort_nodes);
-      std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-      const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
-      for (const auto& index : nodes_vector) {
-        const auto& node = graph_viewer.GetNode(node_index[index]);
-        for (const auto* node_arg : node->OutputDefs()) {
-          if (node_arg->Exists()) {
-            hash_str(node_arg->Name());
-          }
+    // hashing output of each node
+    const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
+    std::vector<size_t> nodes_vector(number_of_ort_nodes);
+    std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+    const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
+    for (const auto& index : nodes_vector) {
+      const auto& node = graph_viewer.GetNode(node_index[index]);
+      for (const auto* node_arg : node->OutputDefs()) {
+        if (node_arg->Exists()) {
+          hash_str(node_arg->Name());
         }
       }
+    }
 
 #ifdef __linux__
-      hash_str("LINUX");
+    hash_str("LINUX");
 #elif defined(_WIN32)
-      hash_str("WINDOWS");
+    hash_str("WINDOWS");
 #endif
 
 #ifdef ORT_VERSION
-      hash_str(ORT_VERSION);
+    hash_str(ORT_VERSION);
 #endif
 
 #ifdef CUDA_VERSION
-      hash_str(std::to_string(CUDA_VERSION));
+    hash_str(std::to_string(CUDA_VERSION));
 #endif
 
 #if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
-      std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
-      hash_str(TRT_VERSION);
+    std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+    hash_str(TRT_VERSION);
 #endif
 
-      model_hash = hash[0] | (uint64_t(hash[1]) << 32);
-      trt_main_graph_hash_[graph_instance_hash] = model_hash;
-    }
+    model_hash = hash[0] | (uint64_t(hash[1]) << 32);
 
     // return the current unique id, and increment to update
     return trt_model_metadef_id_[model_hash]++;
   }
 
  private:
-  std::unordered_map<HashValue, HashValue> trt_main_graph_hash_;  // map graph instance hash to model contents hash
   std::unordered_map<HashValue, int> trt_model_metadef_id_;       // current unique id for model
 };
 
