@@ -72,6 +72,7 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   bool enable_memory_reuse_ = true;
 };
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 // Given a graph with node placement information, partition the nodes into multiple sequence.
 // Each sequence can be executed in-dependently. The nodes in each sequence are executed in order,
 // but we can't assume any execution order between sequences, unless there is a data dependency.
@@ -105,6 +106,7 @@ class IGraphPartitioner {
   std::string configuration_file_{};
   int devices_ = 0;
 };
+#endif
 
 class SequentialPlanner {
  public:
