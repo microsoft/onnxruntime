@@ -55,6 +55,7 @@ namespace transformers {
 
 void GreedySearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
+  parameters_.vocab_size = (parameters_.vocab_size == 0 ? -1 : parameters_.vocab_size);
 
   // Check model_type 0 (GPT-2) and 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == 0 || parameters_.model_type == 1);
