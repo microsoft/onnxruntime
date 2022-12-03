@@ -1736,7 +1736,6 @@ class PlannerImpl {
     // 2. add steps to the execution plan
     for (auto node_index : stream_nodes_[0]) {
       execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
-      std::cout << "SINGLE STREAM" << std::endl;
     }
     return Status::OK();
   }
