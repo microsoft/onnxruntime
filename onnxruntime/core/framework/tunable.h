@@ -250,10 +250,10 @@ protected:
   }
 
   std::vector<Op<ParamsT>> ops_;
-  // mapping from Signature to best impl
-  std::unordered_map<std::string, int> kernel_map_;
 
  private:
+  // mapping from Signature to best impl
+  std::unordered_map<std::string, int> kernel_map_;
   // the default impl to use when tuning is disabled
   int default_id_{0};
   bool tuning_{false};
