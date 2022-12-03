@@ -783,7 +783,7 @@ TEST(QDQTransformerTests, Where) {
   auto test_case = [&](const std::vector<int64_t>& cond_shape, const std::vector<int64_t>& x_shape,const std::vector<int64_t>& y_shape) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["Where"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearWhere"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };

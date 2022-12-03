@@ -214,8 +214,6 @@ class ConvSelector : public BaseSelector {
 class WhereSelector : public BaseSelector {
 public:
   WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
-
-//  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
