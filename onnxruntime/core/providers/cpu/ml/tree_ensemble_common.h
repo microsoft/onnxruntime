@@ -86,7 +86,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKernelInfo& info) {
   std::vector<ThresholdType> base_values_as_tensor, nodes_hitrates_as_tensor,
-      nodes_values_as_tensor, target_weights_as_tensor;
+                             nodes_values_as_tensor, target_weights_as_tensor;
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates_as_tensor", nodes_hitrates_as_tensor));
@@ -122,30 +122,31 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKe
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
-Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(int parallel_tree,
-                                                                      int parallel_tree_N,
-                                                                      int parallel_N,
-                                                                      const std::string& aggregate_function,
-                                                                      const std::vector<float>& base_values,
-                                                                      const std::vector<ThresholdType>& base_values_as_tensor,
-                                                                      int64_t n_targets_or_classes,
-                                                                      const std::vector<int64_t>& nodes_falsenodeids,
-                                                                      const std::vector<int64_t>& nodes_featureids,
-                                                                      const std::vector<float>& nodes_hitrates,
-                                                                      const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
-                                                                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
-                                                                      const std::vector<std::string>& nodes_modes,
-                                                                      const std::vector<int64_t>& nodes_nodeids,
-                                                                      const std::vector<int64_t>& nodes_treeids,
-                                                                      const std::vector<int64_t>& nodes_truenodeids,
-                                                                      const std::vector<float>& nodes_values,
-                                                                      const std::vector<ThresholdType>& nodes_values_as_tensor,
-                                                                      const std::string& post_transform,
-                                                                      const std::vector<int64_t>& target_class_ids,
-                                                                      const std::vector<int64_t>& target_class_nodeids,
-                                                                      const std::vector<int64_t>& target_class_treeids,
-                                                                      const std::vector<float>& target_class_weights,
-                                                                      const std::vector<ThresholdType>& target_class_weights_as_tensor) {
+Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
+                                            int parallel_tree,
+                                            int parallel_tree_N,
+                                            int parallel_N,
+                                            const std::string& aggregate_function,
+                                            const std::vector<float>& base_values,
+                                            const std::vector<ThresholdType>& base_values_as_tensor,
+                                            int64_t n_targets_or_classes,
+                                            const std::vector<int64_t>& nodes_falsenodeids,
+                                            const std::vector<int64_t>& nodes_featureids,
+                                            const std::vector<float>& nodes_hitrates,
+                                            const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
+                                            const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                                            const std::vector<std::string>& nodes_modes,
+                                            const std::vector<int64_t>& nodes_nodeids,
+                                            const std::vector<int64_t>& nodes_treeids,
+                                            const std::vector<int64_t>& nodes_truenodeids,
+                                            const std::vector<float>& nodes_values,
+                                            const std::vector<ThresholdType>& nodes_values_as_tensor,
+                                            const std::string& post_transform,
+                                            const std::vector<int64_t>& target_class_ids,
+                                            const std::vector<int64_t>& target_class_nodeids,
+                                            const std::vector<int64_t>& target_class_treeids,
+                                            const std::vector<float>& target_class_weights,
+                                            const std::vector<ThresholdType>& target_class_weights_as_tensor) {
   parallel_tree_ = parallel_tree;
   parallel_tree_N_ = parallel_tree_N;
   parallel_N_ = parallel_N;
@@ -708,7 +709,7 @@ class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<InputType, Thresh
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(const OpKernelInfo& info) {
   std::vector<ThresholdType> base_values_as_tensor, nodes_hitrates_as_tensor,
-      nodes_values_as_tensor, class_weights_as_tensor;
+                             nodes_values_as_tensor, class_weights_as_tensor;
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates_as_tensor", nodes_hitrates_as_tensor));
@@ -745,56 +746,58 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
-Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(int parallel_tree,
-                                                                                int parallel_tree_N,
-                                                                                int parallel_N,
-                                                                                const std::string& aggregate_function,
-                                                                                const std::vector<float>& base_values,
-                                                                                const std::vector<ThresholdType>& base_values_as_tensor,
-                                                                                const std::vector<int64_t>& nodes_falsenodeids,
-                                                                                const std::vector<int64_t>& nodes_featureids,
-                                                                                const std::vector<float>& nodes_hitrates,
-                                                                                const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
-                                                                                const std::vector<int64_t>& nodes_missing_value_tracks_true,
-                                                                                const std::vector<std::string>& nodes_modes,
-                                                                                const std::vector<int64_t>& nodes_nodeids,
-                                                                                const std::vector<int64_t>& nodes_treeids,
-                                                                                const std::vector<int64_t>& nodes_truenodeids,
-                                                                                const std::vector<float>& nodes_values,
-                                                                                const std::vector<ThresholdType>& nodes_values_as_tensor,
-                                                                                const std::string& post_transform,
-                                                                                const std::vector<int64_t>& class_ids,
-                                                                                const std::vector<int64_t>& class_nodeids,
-                                                                                const std::vector<int64_t>& class_treeids,
-                                                                                const std::vector<float>& class_weights,
-                                                                                const std::vector<ThresholdType>& class_weights_as_tensor,
-                                                                                const std::vector<std::string>& classlabels_strings,
-                                                                                const std::vector<int64_t>& classlabels_int64s) {
-  auto status = TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(parallel_tree,
-                                                                               parallel_tree_N,
-                                                                               parallel_N,
-                                                                               aggregate_function,
-                                                                               base_values,
-                                                                               base_values_as_tensor,
-                                                                               classlabels_strings.empty() ? classlabels_int64s.size()
-                                                                                                           : classlabels_strings.size(),
-                                                                               nodes_falsenodeids,
-                                                                               nodes_featureids,
-                                                                               nodes_hitrates,
-                                                                               nodes_hitrates_as_tensor,
-                                                                               nodes_missing_value_tracks_true,
-                                                                               nodes_modes,
-                                                                               nodes_nodeids,
-                                                                               nodes_treeids,
-                                                                               nodes_truenodeids,
-                                                                               nodes_values,
-                                                                               nodes_values_as_tensor,
-                                                                               post_transform,
-                                                                               class_ids,
-                                                                               class_nodeids,
-                                                                               class_treeids,
-                                                                               class_weights,
-                                                                               class_weights_as_tensor);
+Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
+                                                      int parallel_tree,
+                                                      int parallel_tree_N,
+                                                      int parallel_N,
+                                                      const std::string& aggregate_function,
+                                                      const std::vector<float>& base_values,
+                                                      const std::vector<ThresholdType>& base_values_as_tensor,
+                                                      const std::vector<int64_t>& nodes_falsenodeids,
+                                                      const std::vector<int64_t>& nodes_featureids,
+                                                      const std::vector<float>& nodes_hitrates,
+                                                      const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
+                                                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                                                      const std::vector<std::string>& nodes_modes,
+                                                      const std::vector<int64_t>& nodes_nodeids,
+                                                      const std::vector<int64_t>& nodes_treeids,
+                                                      const std::vector<int64_t>& nodes_truenodeids,
+                                                      const std::vector<float>& nodes_values,
+                                                      const std::vector<ThresholdType>& nodes_values_as_tensor,
+                                                      const std::string& post_transform,
+                                                      const std::vector<int64_t>& class_ids,
+                                                      const std::vector<int64_t>& class_nodeids,
+                                                      const std::vector<int64_t>& class_treeids,
+                                                      const std::vector<float>& class_weights,
+                                                      const std::vector<ThresholdType>& class_weights_as_tensor,
+                                                      const std::vector<std::string>& classlabels_strings,
+                                                      const std::vector<int64_t>& classlabels_int64s) {
+  auto status = TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
+                                                     parallel_tree,
+                                                     parallel_tree_N,
+                                                     parallel_N,
+                                                     aggregate_function,
+                                                     base_values,
+                                                     base_values_as_tensor,
+                                                     classlabels_strings.empty() ? classlabels_int64s.size()
+                                                                                 : classlabels_strings.size(),
+                                                     nodes_falsenodeids,
+                                                     nodes_featureids,
+                                                     nodes_hitrates,
+                                                     nodes_hitrates_as_tensor,
+                                                     nodes_missing_value_tracks_true,
+                                                     nodes_modes,
+                                                     nodes_nodeids,
+                                                     nodes_treeids,
+                                                     nodes_truenodeids,
+                                                     nodes_values,
+                                                     nodes_values_as_tensor,
+                                                     post_transform,
+                                                     class_ids,
+                                                     class_nodeids,
+                                                     class_treeids,
+                                                     class_weights,
+                                                     class_weights_as_tensor);
   ORT_RETURN_IF_ERROR(status);
 
   classlabels_strings_ = classlabels_strings;
