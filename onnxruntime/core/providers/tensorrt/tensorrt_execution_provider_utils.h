@@ -217,7 +217,7 @@ class TRTModelIdGenerator {
       MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
     };
 
-    // Use graph name instead of path to avoid cache regeneration if path changes
+    // Use model name instead of path to avoid cache regeneration if path changes
     const auto& model_path = main_graph.ModelPath();
     if (!model_path.IsEmpty()) {
       // Get model name
