@@ -43,10 +43,11 @@ Now that we know what custom functions are lets look at how we can create functi
 
 - Install ONNX Runtime `npm install onnxruntime-web --save`
 
-- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
+- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. Replace "{url}" with the URL of an Excel document on your OneDrive or a SharePoint library to which you have permissions. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
 
 ```bash
 // Command to run on the web.
+// Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
 
@@ -239,6 +240,7 @@ export async function question(question: string, context: string): Promise<strin
 
 ```bash
 // Command to run on the web.
+// Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
 
@@ -326,6 +328,7 @@ export async function sentiment(text: string): Promise<string> {
 
 ```bash
 // Command to run on the web.
+// Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
 
