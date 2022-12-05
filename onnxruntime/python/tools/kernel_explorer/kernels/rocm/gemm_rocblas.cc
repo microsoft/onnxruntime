@@ -14,6 +14,7 @@
 #include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_ke.h"
 
 using namespace onnxruntime::rocm::tunable::blas;
 using namespace onnxruntime::rocm::tunable::blas::internal;
@@ -75,6 +76,64 @@ class RocBlasGemm : public IKernelExplorer {
 
   ParamsT params_{};
   OpT op_{RocBlasGemmOp<T>};
+};
+
+template <typename T>
+class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
+ public:
+  RocBlasBatchedGemm(BlasOp opa, BlasOp opb,
+                     int64_t m, int64_t n, int64_t k,
+                     double alpha,
+                     std::vector<DeviceArray>& as, int64_t lda,
+                     std::vector<DeviceArray>& bs, int64_t ldb,
+                     double beta,
+                     std::vector<DeviceArray>& cs, int64_t ldc,
+                     int64_t batch) {
+    this->CopyAsBsCsPointersToDevice(as, bs, cs, batch);
+    ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.stream = this->Stream();
+    params_.handle = rocblas_handle_;
+    params_.opa = opa;
+    params_.opb = opb;
+    params_.m = m;
+    params_.n = n;
+    params_.k = k;
+    params_.alpha = alpha;
+    params_.as = const_cast<const T**>(this->dev_as_.get());
+    params_.lda = lda;
+    params_.bs = const_cast<const T**>(this->dev_bs_.get());
+    params_.ldb = ldb;
+    params_.beta = beta;
+    params_.cs = this->dev_cs_.get();
+    params_.ldc = ldc;
+    params_.batch = batch;
+  }
+
+  ~RocBlasBatchedGemm() {
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
+    rocblas_handle_ = nullptr;
+  }
+
+  void Run() override {
+    ORT_THROW_IF_ERROR(op_(&params_));
+  }
+
+  std::vector<std::string> ListOps() const {
+    return {"Rocblas"};
+  }
+
+  bool SelectOp(const std::string& name) {
+    return name == "Rocblas";
+  }
+
+ private:
+  rocblas_handle rocblas_handle_;
+
+  using ParamsT = BatchedGemmParams<T>;
+  using OpT = rocm::tunable::Op<ParamsT>;
+
+  ParamsT params_{};
+  OpT op_{RocBlasBatchedGemmOp<T>};
 };
 
 template <typename T>
@@ -154,6 +213,16 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
                     double,                                    \
                     DeviceArray&, int64_t>())
 
+#define REGISTER_BATCHED_GEMM(dtype)                           \
+  REGISTER_OP_COMMON(RocBlasBatchedGemm, dtype)                \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
+                    double,                                    \
+                    std::vector<DeviceArray>&, int64_t,        \
+                    std::vector<DeviceArray>&, int64_t,        \
+                    double,                                    \
+                    std::vector<DeviceArray>&, int64_t,        \
+                    int64_t>())
+
 #define REGISTER_STRIDED_BATCHED_GEMM(dtype)                   \
   REGISTER_OP_COMMON(RocBlasStridedBatchedGemm, dtype)         \
       .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
@@ -167,6 +236,9 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
 void InitRocBlasGemm(py::module mod) {
   REGISTER_GEMM(float);
   REGISTER_GEMM(half);
+
+  REGISTER_BATCHED_GEMM(float);
+  REGISTER_BATCHED_GEMM(half);
 
   REGISTER_STRIDED_BATCHED_GEMM(float);
   REGISTER_STRIDED_BATCHED_GEMM(half);

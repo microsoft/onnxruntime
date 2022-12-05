@@ -14,6 +14,7 @@
 #include "core/providers/rocm/tunable/gemm_tunable.cuh"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_ke.h"
 
 using namespace onnxruntime::rocm::tunable::blas;
 using namespace onnxruntime::rocm::tunable::blas::internal;
@@ -76,19 +77,21 @@ class GemmTunable : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 };
 
-#if 0
 template <typename T, typename ALayout, typename BLayout>
-class BatchedGemmTunable : public IKernelExplorer {
+class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
  public:
   BatchedGemmTunable(BlasOp opa, BlasOp opb,
                      int64_t m, int64_t n, int64_t k,
                      double alpha,
-                     DeviceArray& as, int64_t lda,
-                     DeviceArray& bs, int64_t ldb,
+                     std::vector<DeviceArray>& as, int64_t lda,
+                     std::vector<DeviceArray>& bs, int64_t ldb,
                      double beta,
-                     DeviceArray& cs, int64_t ldc) {
+                     std::vector<DeviceArray>& cs, int64_t ldc,
+                     int64_t batch) {
+    this->CopyAsBsCsPointersToDevice(as, bs, cs, batch);
+
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    params_.stream = Stream();
+    params_.stream = this->Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
     params_.opb = opb;
@@ -96,13 +99,14 @@ class BatchedGemmTunable : public IKernelExplorer {
     params_.n = n;
     params_.k = k;
     params_.alpha = alpha;
-    params_.a = static_cast<T*>(a.ptr());
+    params_.as = const_cast<const T**>(this->dev_as_.get());
     params_.lda = lda;
-    params_.b = static_cast<T*>(b.ptr());
+    params_.bs = const_cast<const T**>(this->dev_bs_.get());
     params_.ldb = ldb;
     params_.beta = beta;
-    params_.c = static_cast<T*>(c.ptr());
+    params_.cs = this->dev_cs_.get();
     params_.ldc = ldc;
+    params_.batch = batch;
 
     op_.EnableTuning();
   }
@@ -132,7 +136,6 @@ class BatchedGemmTunable : public IKernelExplorer {
   BatchedGemmTunableOp<T, ALayout, BLayout> op_{};
   rocblas_handle rocblas_handle_;
 };
-#endif
 
 template <typename T, typename ALayout, typename BLayout>
 class StridedBatchedGemmTunable : public IKernelExplorer {
@@ -218,6 +221,22 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
   REGISTER_GEMM(dtype, Col, Row, "TN");      \
   REGISTER_GEMM(dtype, Col, Col, "TT");
 
+#define REGISTER_BATCHED_GEMM(dtype, alayout, blayout, layout_string)            \
+  REGISTER_OP_COMMON(BatchedGemmTunable, dtype, alayout, blayout, layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                   \
+                    double,                                                      \
+                    std::vector<DeviceArray>&, int64_t,                          \
+                    std::vector<DeviceArray>&, int64_t,                          \
+                    double,                                                      \
+                    std::vector<DeviceArray>&, int64_t,                          \
+                    int64_t>())
+
+#define REGISTER_BATCHED_GEMM_FOR_ALL_TRANSAB(dtype) \
+  REGISTER_BATCHED_GEMM(dtype, Row, Row, "NN");      \
+  REGISTER_BATCHED_GEMM(dtype, Row, Col, "NT");      \
+  REGISTER_BATCHED_GEMM(dtype, Col, Row, "TN");      \
+  REGISTER_BATCHED_GEMM(dtype, Col, Col, "TT");
+
 #define REGISTER_STRIDED_BATCHED_GEMM(dtype, alayout, blayout, layout_string)           \
   REGISTER_OP_COMMON(StridedBatchedGemmTunable, dtype, alayout, blayout, layout_string) \
       .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                          \
@@ -237,6 +256,9 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
 void InitTunableGemm(py::module m) {
   REGISTER_GEMM_FOR_ALL_TRANSAB(float);
   REGISTER_GEMM_FOR_ALL_TRANSAB(half);
+
+  REGISTER_BATCHED_GEMM_FOR_ALL_TRANSAB(float);
+  REGISTER_BATCHED_GEMM_FOR_ALL_TRANSAB(half);
 
   REGISTER_STRIDED_BATCHED_GEMM_FOR_ALL_TRANSAB(float);
   REGISTER_STRIDED_BATCHED_GEMM_FOR_ALL_TRANSAB(half);
