@@ -195,11 +195,13 @@ const InlinedHashMap<std::string, OpInfo> kSupportedOps{
                    [](const Graph&, const Node&, const StringVec& inputs, StringMap&, StringMap&) {
                      return FormatString("aten::div(%s, %s)", inputs[0].c_str(), inputs[1].c_str());
                    })},
-    {"Where", OpInfo("Where", OpSetV9, kOnnxDomain, false, {0, 1, 2}, default_is_supported,
-                     [](const Graph&, const Node&, const StringVec& inputs, StringMap&, StringMap&) {
-                       return FormatString("aten::where(%s, %s, %s)", inputs[0].c_str(), inputs[1].c_str(),
-                                           inputs[2].c_str());
-                     })},
+    // Where's 1st input is bool but PyTorch's DLPack doesn't support bool so extra aten::to will be introduced.
+    // Profling result also shows that Where cannot be fused with other Ops for most of the time.
+    // {"Where", OpInfo("Where", OpSetV9, kOnnxDomain, false, {0, 1, 2}, default_is_supported,
+    //                  [](const Graph&, const Node&, const StringVec& inputs, StringMap&, StringMap&) {
+    //                    return FormatString("aten::where(%s, %s, %s)", inputs[0].c_str(), inputs[1].c_str(),
+    //                                        inputs[2].c_str());
+    //                  })},
     {"Cast", OpInfo(
                  "Cast", OpSetV13, kOnnxDomain, false, {0},
                  [](const Graph&, const Node& node) {
