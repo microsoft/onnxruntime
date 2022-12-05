@@ -17,7 +17,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -56,7 +56,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/_deps
         rm -f $(Build.BinariesDirectory)/Release/models
         rm -rf $(Build.BinariesDirectory)/Release/_deps
         cd $(Build.BinariesDirectory)/Release

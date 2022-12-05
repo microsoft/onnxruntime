@@ -44,6 +44,8 @@ struct TensorResources {
     WINML_CATCH_ALL_COM
   }
 
+  virtual ~TensorResources() {}
+
   // Theses are access directly by TensorMemoryBufferReference<T> and TensorBase
   std::shared_ptr<_winml::Tensor<T>> cpu_resource_;
   winrt::com_ptr<ID3D12Resource> gpu_resource_;
