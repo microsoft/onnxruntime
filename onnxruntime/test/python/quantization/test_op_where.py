@@ -54,6 +54,7 @@ class TestWhereModel(unittest.TestCase):
         save(model, model_path)
 
     def quantize_where_test(self, activation_type, weight_type, extra_options={}):
+
         model_fp32_path = "where_fp32.onnx"
         input_shape = [2, 2]
         self.construct_model(model_fp32_path, input_shape)
@@ -68,8 +69,8 @@ class TestWhereModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = f"where_{activation_type_str}{weight_type_str}.onnx"
-        model_uint8_qdq_path = f"where_{activation_type_str}{weight_type_str}_qdq.onnx"
+        model_uint8_path = f"where_{activation_type_str}{weight_type_str}_{'QNoInCk' if extra_options['ForceQuantizeNoInputCheck'] else 'NoQNoInCk'}.onnx"
+        model_uint8_qdq_path = f"where_{activation_type_str}{weight_type_str}_{'QNoInCk' if extra_options['ForceQuantizeNoInputCheck'] else 'NoQNoInCk'}_qdq.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()
@@ -86,6 +87,10 @@ class TestWhereModel(unittest.TestCase):
             "QLinearWhere": 1,
             "QuantizeLinear": 2,
             "DequantizeLinear": 1,
+        } if extra_options['ForceQuantizeNoInputCheck'] else {
+            "Where": 1,
+            "QuantizeLinear": 0,
+            "DequantizeLinear": 0,
         }
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         qnode_io_qtypes = {
@@ -113,6 +118,10 @@ class TestWhereModel(unittest.TestCase):
             "Where": 1,
             "QuantizeLinear": 3,
             "DequantizeLinear": 3,
+        } if extra_options['ForceQuantizeNoInputCheck'] else {
+            "Where": 1,
+            "QuantizeLinear": 0,
+            "DequantizeLinear": 0,
         }
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
         qnode_io_qtypes = {
@@ -127,6 +136,10 @@ class TestWhereModel(unittest.TestCase):
 
     def test_quantize_where_u8u8(self):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": True})
+        print(__name__)
+
+    def test_quantize_where_u8u8_no_ForceQuantizeNoInputCheck(self):
+        self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": False})
         print(__name__)
 
 
