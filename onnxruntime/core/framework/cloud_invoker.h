@@ -25,7 +25,7 @@ class CloudEndPointInvoker {
 
   static std::unique_ptr<CloudEndPointInvoker> CreateInvoker(const CloudEndPointConfig& config);
   virtual void Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const noexcept = 0;
-  const onnxruntime::Status& GetStaus() const { return status_; }
+  onnxruntime::Status GetStaus() const { return status_; }
 
  protected:
   bool ReadConfig(const char* config_name, bool& config_val, bool required = true);
@@ -47,7 +47,7 @@ class CloudEndPointInvoker {
     return {};
   }
   void Send(gsl::span<const OrtValue>, std::vector<OrtValue>&){};
-  const onnxruntime::Status& GetStaus() const {
+  onnxruntime::Status GetStaus() const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED);
   }
 };

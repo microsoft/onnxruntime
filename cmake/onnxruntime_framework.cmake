@@ -94,8 +94,8 @@ if (onnxruntime_USE_CLOUD)
   else()
 
     ExternalProject_Add(triton
-                        GIT_REPOSITORY https://github.com/RandySheriffH/triton_client.git
-                        GIT_TAG buildfree
+                        GIT_REPOSITORY https://github.com/triton-inference-server/client.git
+                        GIT_TAG main
                         PREFIX triton
                         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                         INSTALL_COMMAND ""
