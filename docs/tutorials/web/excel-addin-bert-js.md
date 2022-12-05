@@ -37,21 +37,20 @@ In this tutorial we will look at how we can create custom excel functions (`ORT.
 
 Excel has many native functions like `SUM()` that you are likely familiar with. Custom functions are a useful tool to create and add new functions to Excel by defining those functions in JavaScript as part of an add-in. These functions can be accessed within Excel just as you would any native function in Excel.
 
-## Creating the Custom Function project with the Yeoman CLI
+## Creating the Custom Function project
 
 Now that we know what custom functions are lets look at how we can create functions that will inference a model locally to get the sentiment text in a cell or extract information from a cell by asking a question and the answer being returned to the cell.
 
-- The first thing we need to do is create the template project from the Yeoman cli. Follow the steps [here to create the base project](https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions?source=recommendations&tabs=excel-online#create-a-custom-functions-project).
+- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman cli. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions?source=recommendations&tabs=excel-online#create-a-custom-functions-project).
 
-- Install ONNX Runtime `npm install onnxruntime-web --save`
-
-- Once you have followed the steps to create the base project and tested that it works, then its time to start updating it for our custom function logic. You can run the project with the below command. Replace "{url}" with the URL of an Excel document on your OneDrive or a SharePoint library to which you have permissions. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
+- Once you clone the project then you can run the project with the below command. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
 
 ```bash
 // Command to run on the web.
 // Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
+- NOTE: that you may need to `Enable Developer Mode` when prompted and accept the certificate for the side loaded add-in when you run the project for the first time.
 
 ## The `manifest.xml` file
 
@@ -339,11 +338,7 @@ npm run start:web -- --document {url}
 Here we went over the logic needed to create custom functions in an excel add-in with JavaScript leveraging ONNX Runtime Web and open source models. From here you could take this logic and update to a specific model or use case you have. Be sure to check out the full source code which includes the tokenizers and pre/post processing to complete the above tasks.
 
 ## Additional resources
-* [Full source code for this example](https://github.com/cassiebreviu/bert-excel-addin-ort-web)
-* [Custom functions overview](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-overview)
-* [Custom functions runtime](https://docs.microsoft.com/office/dev/add-ins/excel/custom-functions-runtime)
-* [Office Add-ins documentation](https://docs.microsoft.com/office/dev/add-ins/overview/office-add-ins)
-* More Office Add-ins samples at [OfficeDev on Github](https://github.com/officedev)
-* [Excel Custom function Quickstart](https://learn.microsoft.com//office/dev/add-ins/quickstarts/excel-custom-functions-quickstart?tabs=excel-online)
 * [Publish Add-ins in VS Code](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish-add-in-vs-code#using-visual-studio-code-to-publish)
-* For debugging information see [Custom functions debugging](https://aka.ms/custom-functions-debug). For general information on debugging task panes and other Office Add-in parts, see [Test and debug Office Add-ins](https://docs.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins).
+* [Full source code for this example](https://github.com/cassiebreviu/bert-excel-addin-ort-web)
+* [Office Add-ins documentation](https://docs.microsoft.com/office/dev/add-ins/overview/office-add-ins)
+* [Excel Custom function Quickstart](https://learn.microsoft.com//office/dev/add-ins/quickstarts/excel-custom-functions-quickstart?tabs=excel-online)
