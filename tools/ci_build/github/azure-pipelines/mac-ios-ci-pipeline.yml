@@ -12,10 +12,7 @@ jobs:
   timeoutInMinutes: 150
   steps:
     - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.BinariesDirectory)/protobuf_install
+        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
       displayName: Build Host Protoc
 
     - script: |
