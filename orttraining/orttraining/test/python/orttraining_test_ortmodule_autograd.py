@@ -1274,6 +1274,7 @@ def test_pythonop_training_mode():
     check_pythonop_training_mode(ortmodule, is_eval_mode=True)
 
 
+@pytest.mark.skip(reason="TODO(yangu): need fix this test run random segment fault.")
 def test_python_op_save_input_for_backward():
     class GeLUFunctionTakeActivationInput(torch.autograd.Function):
         @staticmethod

@@ -674,4 +674,8 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #endif
 #endif
+
+#if defined(USE_CANN)
+RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+#endif
 }  // namespace onnxruntime

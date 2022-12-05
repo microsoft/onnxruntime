@@ -211,10 +211,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
 
           // validate scale and zero points
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
 
           if (getAttribute(ctx, "channels_last", 0) == 0) {
             ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
