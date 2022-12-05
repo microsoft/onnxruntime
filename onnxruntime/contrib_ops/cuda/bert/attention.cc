@@ -122,7 +122,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   cublasHandle_t cublas = GetCublasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
-  IAllocatorUniquePtr<T> gemm_buffer;
+  IAllocatorUniquePtr<void> gemm_buffer;
   if (weights != nullptr) {
     // Use GEMM for fully connection.
     int m = batch_size * sequence_length;
@@ -130,7 +130,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     int k = parameters.input_hidden_size;
     size_t gemm_buffer_size = static_cast<size_t>(batch_size) * sequence_length * n * element_size;
     gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size, OrtStream(context));
-
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT one = ToCudaType<T>::FromFloat(1.0f);
     CudaT zero = ToCudaType<T>::FromFloat(0.0f);
