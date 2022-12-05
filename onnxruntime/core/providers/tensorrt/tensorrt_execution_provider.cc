@@ -731,7 +731,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Generate unique kernel name for TRT subgraph
   HashValue model_hash = 0;
-  int id = TRTGenerateMetaDefId(graph, model_hash);
+  int id = TRTGenerateModelId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
@@ -1059,8 +1059,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 #else
   strcpy(model_path_, path_string.c_str());
 #endif
-  //model_name = path_string.substr(path_string.find_last_of("/\\") + 1);
-  //model_name = path_string.substr(path_string.find_last_of("/") + 1);
   model_name = model_name.substr(0, model_name.find_last_of("."));
 		
   // Get supported node list from TensorRT parser
@@ -1267,20 +1265,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
       }
     }
-    // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
-    if (fp16_enable_ && layer_norm_fp32_fallback_) {
-      for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
-        auto layer = trt_network->getLayer(idx);
-        auto next_layer = trt_network->getLayer(idx + 1);
-        if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow";
-          layer->setPrecision(nvinfer1::DataType::kFLOAT);
-          next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
-          layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
-          next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
-        }
-      }
-    }
 
     if (int8_enable_) {
       if (!trt_builder->platformHasFastInt8()) {
@@ -1347,6 +1331,23 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       has_dynamic_shape = true;
     } else {
       trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+
+      // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
+      if (fp16_enable_ && layer_norm_fp32_fallback_) {
+        for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
+          auto layer = trt_network->getLayer(idx);
+          auto next_layer = trt_network->getLayer(idx + 1);
+          if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow";
+            layer->setPrecision(nvinfer1::DataType::kFLOAT);
+            next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
+            layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+            next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+          }
+        }
+      }
+
+      // Initialize shape range
       for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_network->getInput(i);
         if (input != nullptr) {//slx

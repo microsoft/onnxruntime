@@ -238,7 +238,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 }
 
 // Helper class to generate engine id via model name/model content/env metadata
-class TRTModelMetadefIdGenerator {
+class TRTModelIdGenerator {
  public:
   int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
     model_hash = 0;
@@ -259,18 +259,18 @@ class TRTModelMetadefIdGenerator {
     // Use model name instead of path to avoid cache regeneration if path changes
     const auto& model_path = main_graph.ModelPath();
     if (!model_path.IsEmpty()) {
-      // get model name
+      // Get model name
       PathString leaf = model_path.GetComponents().back();
       std::string model_name = ToUTF8String(leaf.c_str());
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
-      // ensure enough characters are hashed in case model names are short or are similar
-      int32_t path_length = gsl::narrow_cast<int32_t>(model_name.size());
-      int32_t string_length = 0;
+      // Ensure enough characters are hashed in case model names are too short
+      int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
       constexpr int32_t hash_string_length = 500;
-      while (string_length < hash_string_length) {
-        hash_str(model_name);
-        string_length += path_length;
+      std::string repeat_model_name = model_name;
+      for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+        repeat_model_name += model_name;
       }
+      hash_str(repeat_model_name);
     } else {
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
     }
@@ -316,21 +316,21 @@ class TRTModelMetadefIdGenerator {
     model_hash = hash[0] | (uint64_t(hash[1]) << 32);
 
     // return the current unique id, and increment to update
-    return trt_model_metadef_id_[model_hash]++;
+    return trt_model_id_[model_hash]++;
   }
 
  private:
-  std::unordered_map<HashValue, int> trt_model_metadef_id_;       // current unique id for model
+  std::unordered_map<HashValue, int> trt_model_id_;       // current unique id for model
 };
 
-std::unique_ptr<TRTModelMetadefIdGenerator> trt_metadef_id_generator_ = std::make_unique<TRTModelMetadefIdGenerator>();
+std::unique_ptr<TRTModelIdGenerator> trt_model_id_generator_ = std::make_unique<TRTModelIdGenerator>();
 
 // Calll TRTGenerateMetaDefId to generate hash id for TRT engine cache
-int TRTGenerateMetaDefId(const GraphViewer& graph_viewer, HashValue& model_hash) {
+int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
-  return trt_metadef_id_generator_->TRTGenerateId(graph_viewer, model_hash);
+  return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
 }
 }
