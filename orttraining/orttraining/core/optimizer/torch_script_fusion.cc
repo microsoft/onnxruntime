@@ -378,6 +378,20 @@ bool TorchScriptFusion::IsSupportedNode(const Graph& graph, const Node& node) co
     return false;
   }
 
+  // PyTorch's DLPack doesn't support bool for now.
+  for (auto& input : node.InputDefs()) {
+    const TypeProto* type = input->TypeAsProto();
+    if (!type || type->tensor_type().elem_type() == TensorProto_DataType_BOOL) {
+      return false;
+    }
+  }
+  for (auto& output : node.OutputDefs()) {
+    const TypeProto* type = output->TypeAsProto();
+    if (!type || type->tensor_type().elem_type() == TensorProto_DataType_BOOL) {
+      return false;
+    }
+  }
+
   const auto& op_info = kSupportedOps.at(op_type);
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, op_info.op_type_, op_info.supported_versions_,
                                                         op_info.domain_) &&
@@ -556,7 +570,8 @@ Status TorchScriptFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     Node& fused_node = graph.AddNode(graph.GenerateNodeName("TorchScript"), "TorchScript",
                                      "Fused nodes for TorchScript", input_args, output_args, {}, kMSDomain);
     std::string graph_ir = GetGraphIR(graph_input_names, graph_input_types, graph_output_names, constants, irs);
-    std::cout << "[GRAPH] key: " << HashScript(graph_ir) << std::endl << graph_ir << std::endl;
+    std::cout << "[GRAPH] key: " << HashScript(graph_ir) << ", name: " << fused_node.Name() << std::endl
+              << graph_ir << std::endl;
     fused_node.AddAttribute("key", HashScript(graph_ir));
     fused_node.AddAttribute("script", graph_ir);
     if (!cpu_inputs.empty()) {
