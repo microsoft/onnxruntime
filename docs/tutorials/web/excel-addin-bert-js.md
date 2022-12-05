@@ -50,7 +50,9 @@ Now that we know what custom functions are lets look at how we can create functi
 // Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
-- NOTE: that you may need to `Enable Developer Mode` when prompted and accept the certificate for the side loaded add-in when you run the project for the first time.
+- NOTE: You may need to `Enable Developer Mode` when prompted and accept the certificate for the side loaded add-in when you run the project for the first time.
+
+Now we are ready to jump into the code!
 
 ## The `manifest.xml` file
 
