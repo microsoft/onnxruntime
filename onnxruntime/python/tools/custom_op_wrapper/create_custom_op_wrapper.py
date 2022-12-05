@@ -9,13 +9,13 @@ attributes.
 
 Example:
 
-python3 .\create_custom_op_wrapper.py --domain "test.domain" \
-        --inputs "input0;FLOAT;1,10" "input1;FLOAT;1,10,10" \
-        --outputs "output0;STRING;10" \
-        --attribute_data xml googlenet-v1.xml \
-        --attribute_data bin googlenet-v1.bin \
-        -o .\test_model.onnx \
-        -n my_custom_op
+python3 create_custom_op_wrapper.py --domain "test.domain"
+        --custom_op_name my_custom_op
+        --inputs "input0;FLOAT;1,10" "input1;FLOAT;1,10,10"
+        --outputs "output0;STRING;10"
+        --attribute_data xml googlenet-v1.xml
+        --attribute_data bin googlenet-v1.bin
+        -o test_model.onnx
 """
 
 import argparse
@@ -74,14 +74,8 @@ def parse_shape(shape_str: str) -> Optional[List[int]]:
 
 
 class ParseIOInfoAction(argparse.Action):
-    def __call__(
-        self: argparse.Action,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        io_strs: List[str],
-        opt_str: str,
-    ):
-        is_input = opt_str == "-i" or opt_str == "--inputs"
+    def __call__(self, parser, namespace, io_strs, opt_str):
+        is_input = opt_str == "--inputs"
         io_meta_name = "input" if is_input else "output"
         ios = []
 
@@ -206,11 +200,11 @@ def get_attributes(attr_data_info: List[List[str]]):
 
         if not os.path.exists(filepath):
             print(f"[ERROR] attribute file '{info[1]}' does not exist.", file=sys.stderr)
-            exit(1)
+            sys.exit(1)
 
         data = ""
-        with open(filepath, "rb") as fd:
-            data = fd.read()
+        with open(filepath, "rb") as file_desc:
+            data = file_desc.read()
 
         attrs[info[0]] = data
 
@@ -253,7 +247,7 @@ def main():
             f"[ERROR] Invalid output model name '{output_model_path}'. Must end in '.onnx'",
             file=sys.stderr,
         )
-        exit(1)
+        sys.exit(1)
 
     graph_def = helper.make_graph([custom_op_node], graph_name, inputs, outputs)
     model_def = helper.make_model(
