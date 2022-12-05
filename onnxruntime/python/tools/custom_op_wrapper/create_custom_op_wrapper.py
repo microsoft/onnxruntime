@@ -64,9 +64,17 @@ class IOInfo:
     shape: List[int]
 
 
+def str_is_int(string: str) -> bool:
+    try:
+        int(string)
+        return True
+    except ValueError:
+        return False
+
+
 def parse_shape(shape_str: str) -> Optional[List[int]]:
     try:
-        shape = [int(s) for s in shape_str.split(",")]
+        shape = [int(s) if str_is_int(s) else s for s in shape_str.split(",")]
     except ValueError:
         shape = None
 
