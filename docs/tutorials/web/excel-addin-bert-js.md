@@ -28,8 +28,10 @@ In this tutorial we will look at how we can create custom excel functions (`ORT.
 {:toc}
 
 ## Prerequisites
-
-- [See the prerequisites from this tutorial](https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions?source=recommendations&tabs=excel-windows#prerequisites)
+- [Node.js](https://nodejs.org/en/)
+- [The latest version of Yeoman and the Yeoman generator for Office Add-ins](https://learn.microsoft.com/office/dev/add-ins/develop/yeoman-generator-overview)
+- Office connected to a Microsoft 365 subscription (including Office on the web). If you don't already have Office, you can join the [Microsoft 365 developer program to get a free](https://developer.microsoft.com/office/dev-program), 90-day renewable Microsoft 365 subscription to use during development.
+- [See this tutorial for more information](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions?source=recommendations&tabs=excel-windows#prerequisites)
 
 ## What are Custom Functions?
 
