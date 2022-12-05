@@ -79,6 +79,7 @@ struct OperatorRegistrationInformation
     std::optional<uint32_t> requiredInputCountForDmlGraphSupport;
 
     MLOperatorSupportQueryFunction supportQueryFunction;
+    bool allowDynamicInputShapes = false;
 };
 
 DML_OP_EXTERN_CREATION_FUNCTION(Copy);
@@ -233,6 +234,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Erf);
 DML_OP_EXTERN_CREATION_FUNCTION(Where);
 DML_OP_EXTERN_CREATION_FUNCTION(Shrink);
 DML_OP_EXTERN_CREATION_FUNCTION(Gelu);
+DML_OP_EXTERN_CREATION_FUNCTION(BiasGelu);
 DML_OP_EXTERN_CREATION_FUNCTION(OneHot);
 DML_OP_EXTERN_CREATION_FUNCTION(EyeLike);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxUnpool);
@@ -265,6 +267,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 DML_OP_EXTERN_CREATION_FUNCTION(Shape);
 DML_OP_EXTERN_CREATION_FUNCTION(Size);
 DML_OP_EXTERN_CREATION_FUNCTION(Attention);
+DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -281,6 +284,7 @@ constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
+constexpr static std::array<const char*, 2> typeNameListLayerNormContrib = { "T", "V" };
 constexpr static std::array<const char*, 3> typeNameListThree = { "T1", "T2", "T3" };
 constexpr static std::array<const char*, 4> typeNameListFour = { "T1", "T2", "T3", "T4" };
 constexpr static std::array<const char*, 2> typeNameListTopK = { "T", "I" };
@@ -338,6 +342,7 @@ constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListInteger8 = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalizationContrib = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
@@ -372,6 +377,9 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 // Define a single row of OperatorRegistrationInformation.
 #define REG_INFO(version, operatorName, ...) \
     #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__,
+
+#define REG_INFO_DYNAMIC_OUTPUTS(version, operatorName, ...) \
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, nullptr, false, ##__VA_ARGS__,
 
 // Versioned operator
 #define REG_INFO_VER(version, operatorName, ...) \
@@ -422,7 +430,6 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},  // v9 just removes 'spatial' attribute.
     {REG_INFO(     14,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v14 adds training_mode attribute
     {REG_INFO(     15,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v15 adds differing types for scale and bias vs input.
-    {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNorm,          supportedTypeListLayerNormalization,    DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO_VER( 17,  LayerNormalization,                 typeNameListLayerNorm,          supportedTypeListLayerNormalization,    DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO(      7,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -700,6 +707,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     15,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
     {REG_INFO(      7,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO(     13,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
+    {REG_INFO_DYNAMIC_OUTPUTS( 9,  NonZero,                 typeNameListDefault,            supportedTypeListFloat16to32Ints8to32,  DmlGraphSupport::NotSupported)},
+    {REG_INFO_DYNAMIC_OUTPUTS(13,  NonZero,                 typeNameListDefault,            supportedTypeListFloat16to32Ints8to32,  DmlGraphSupport::NotSupported)},
 
     // DmlFused operators
     {REG_INFO_MSDML(1,  DmlFusedConv,                       typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -714,6 +723,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 
     // Contrib operators
     {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  BiasGelu,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearSigmoid,                     typeNameListDefault,            supportedTypeListQLinearSigmoid,        DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQLinearSigmoid)},
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
@@ -737,6 +747,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
 };
 
 template<typename T>
@@ -765,8 +776,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         // The graph must be configured with operators from only the legacy DML API, or only the new DML API
         bool kernelSupportsGraph = !bool(information.dmlGraphSupport & DmlGraphSupport::NotSupported);
 
-        desc.options = information.shapeInferenceFunction ?
-            MLOperatorKernelOptions::None : MLOperatorKernelOptions::AllowDynamicInputShapes;
+        desc.options = information.allowDynamicInputShapes ?
+            MLOperatorKernelOptions::AllowDynamicInputShapes : MLOperatorKernelOptions::None;
 
         desc.minimumOperatorSetVersion = information.sinceVersion;
 

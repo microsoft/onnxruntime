@@ -3843,7 +3843,7 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
   } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
     auto schema_key = GenerateSchemaKey(sub_graph);
-    if (!reusable_fused_schema_map_.contains(schema_key)) {
+    if (reusable_fused_schema_map_.count(schema_key) == 0) {
       fused_schemas_containers_.push_back(
           function_utils::CreateSchema(*this, sub_graph, /*allow_aggregated_tensor_type=*/true));
       reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
