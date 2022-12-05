@@ -31,3 +31,5 @@ def load_aten_op_executor_cpp_extension():
     _C.register_aten_op_executor(
         str(aten_op_executor.is_tensor_argument_address()), str(aten_op_executor.execute_aten_operator_address())
     )
+
+    _C.register_torch_script_executor(str(aten_op_executor.execute_torch_script_address()))

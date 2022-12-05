@@ -32,6 +32,8 @@
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
+#include "orttraining/training_ops/cpu/torch/torch_script_executor.h"
+
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
 
@@ -493,6 +495,14 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 #else
         return false;
 #endif
+  });
+
+  m.def("register_torch_script_executor", [](const std::string& torch_script_executor_address_str) -> void {
+    size_t torch_script_executor_address_int;
+    ORT_THROW_IF_ERROR(
+        ParseStringWithClassicLocale(torch_script_executor_address_str, torch_script_executor_address_int));
+    void* p_torch_script_executor = reinterpret_cast<void*>(torch_script_executor_address_int);
+    contrib::torch::TorchScriptExecutor::Instance().Initialize(p_torch_script_executor);
   });
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");

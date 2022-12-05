@@ -195,6 +195,8 @@ struct ProviderHostCPU {
   // From aten_op.h
   virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
   virtual Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
+
+  virtual Status contrib__TorchScript__Compute(const contrib::TorchScript* p, OpKernelContext* p_ctx) = 0;
 #endif
 #endif
 };

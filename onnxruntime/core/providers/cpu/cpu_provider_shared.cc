@@ -46,6 +46,7 @@
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#include "orttraining/training_ops/cpu/torch/torch_script_op.h"
 #endif
 
 #include "cpu_provider_shared.h"
@@ -278,6 +279,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims)
       override {
     return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims);
+  }
+
+  Status contrib__TorchScript__Compute(const contrib::TorchScript* p, OpKernelContext* p_ctx) override {
+    return p->TorchScript::Compute(p_ctx);
   }
 #endif
 #endif

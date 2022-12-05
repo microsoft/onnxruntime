@@ -71,6 +71,9 @@
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#ifdef USE_CUDA
+#include "orttraining/core/optimizer/torch_script_fusion.h"
+#endif  // USE_CUDA
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -272,11 +275,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_rocm_eps));
+#if !defined(ENABLE_TRAINING) || !defined(USE_CUDA)
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
+#endif
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
 #ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
+#ifndef USE_CUDA
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
+#endif
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
 #endif
 
@@ -306,6 +313,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
 
 #ifdef ENABLE_TRAINING
+#ifdef USE_CUDA
+      transformers.emplace_back(
+          std::make_unique<TorchScriptFusion>(InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
+#endif  // USE_CUDA
+
       // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.
       // Known issue: after mmeory optimization is completed, if some fusion happens, it is possible that the
       // node priority got changed. This may disorder the execution order of nodes to recompute.

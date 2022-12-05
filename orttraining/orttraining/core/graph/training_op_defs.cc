@@ -3834,6 +3834,21 @@ Return true if all elements are true and false otherwise.
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TorchScript)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("key", "Hash key of Torch script operator.", AttributeProto::INT)
+      .Attr("script", "Script of Torch script operator.", AttributeProto::STRING)
+      .Attr("cpu_inputs", "Indices of CPU inputs.", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Input(0, "inputs", "Torch script inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "Torch script outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+                      "Allow inputs and outputs to be any kind of tensor.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternal)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

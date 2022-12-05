@@ -775,6 +775,18 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
 
     return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index);
   }
+#ifdef ENABLE_TRAINING
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "TorchScript") {
+    const auto& attrs = node.GetAttributes();
+    if (attrs.find("cpu_inputs") != attrs.end() && utils::HasInts(attrs.at("cpu_inputs"))) {
+      for (auto cpu_input : attrs.at("cpu_inputs").ints()) {
+        if (cpu_input == static_cast<int64_t>(index)) {
+          return true;
+        }
+      }
+    }
+  }
+#endif
 #else
   ORT_UNUSED_PARAMETER(node);
 #endif

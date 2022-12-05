@@ -172,6 +172,7 @@ class Group;
 class PassThrough;
 class YieldOp;
 class AdamWOptimizerBase;
+class TorchScript;
 }  // namespace contrib
 
 class UnsqueezeBase;

@@ -3,6 +3,7 @@
 
 #include <torch/torch.h>
 #include <ATen/DLConvertor.h>
+#include <torch/csrc/jit/ir/irparser.h>
 #include <unordered_map>
 #include <vector>
 
@@ -200,10 +201,61 @@ void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t 
   }
 }
 
+class GraphExecutorCache {
+ public:
+  static GraphExecutorCache& Instance() {
+    static GraphExecutorCache instance;
+    return instance;
+  }
+
+  torch::jit::GraphExecutor& GetGraphExecutor(const int64_t key, const std::string& script) {
+    if (graph_executors_.find(key) == graph_executors_.end()) {
+      auto graph = std::make_shared<torch::jit::Graph>();
+      torch::jit::parseIR(script, &*graph);
+      graph_executors_.emplace(key, torch::jit::GraphExecutor(graph, std::to_string(key)));
+    }
+    return graph_executors_.at(key);
+  }
+
+ private:
+  GraphExecutorCache() = default;
+  std::unordered_map<int64_t, torch::jit::GraphExecutor> graph_executors_;
+};
+
+void ExecuteTorchScript(const int64_t key, const char* script, size_t input_size, DLManagedTensor** dlpack_inputs,
+                        size_t output_size, DLManagedTensor** dlpack_outputs) {
+  std::vector<c10::IValue> arguments;
+  for (size_t i = 0; i < input_size; ++i) {
+    at::Tensor tensor = at::fromDLPack(dlpack_inputs[i]);
+    if (dlpack_inputs[i]->dl_tensor.device.device_type == DLDeviceType::kDLCPU) {
+      // Only support int[] for now (For Reshape's 2nd input).
+      TORCH_INTERNAL_ASSERT(dlpack_inputs[i]->dl_tensor.dtype.code == DLDataTypeCode::kDLInt &&
+                            dlpack_inputs[i]->dl_tensor.dtype.bits == 64);
+      arguments.emplace_back(ToListIValue<int64_t, int64_t>(dlpack_inputs[i], false));
+    } else {
+      arguments.emplace_back(c10::IValue(tensor));
+    }
+  }
+
+  torch::jit::Stack stack;
+  for (size_t i = 0; i < arguments.size(); i++) {
+    torch::jit::push(stack, arguments[i]);
+  }
+
+  GraphExecutorCache::Instance().GetGraphExecutor(key, script).run(stack);
+  size_t output_index = 0;
+  for (const auto& ret : torch::jit::pop(stack, output_size)) {
+    const auto& tensor = ret.toTensor();
+    dlpack_outputs[output_index++] = at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous());
+  }
+}
+
 size_t is_tensor_argument_address() { return reinterpret_cast<size_t>(&IsTensorArgument); }
 size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
+size_t execute_torch_script_address() { return reinterpret_cast<size_t>(&ExecuteTorchScript); }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("is_tensor_argument_address", &is_tensor_argument_address, "Address of tensor argument check.");
   m.def("execute_aten_operator_address", &execute_aten_operator_address, "Address of Aten operator executor");
+  m.def("execute_torch_script_address", &execute_torch_script_address, "Address of TorchScript executor");
 }
