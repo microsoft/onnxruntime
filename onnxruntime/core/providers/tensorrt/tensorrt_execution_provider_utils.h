@@ -227,8 +227,11 @@ class TRTModelIdGenerator {
       // Ensure enough characters are hashed in case model names are too short
       int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
       constexpr int32_t hash_string_length = 500;
-      std::string repeat_name = std::string(hash_string_length / model_name_length + 1, model_name);
-      hash_str(repeat_name);
+      std::string repeat_model_name = model_name;
+      for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+        repeat_model_name += model_name;
+      }
+      hash_str(repeat_model_name);
     } else {
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
     }
