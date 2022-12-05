@@ -30,8 +30,6 @@ In this tutorial we will look at how we can create custom excel functions (`ORT.
 ## Prerequisites
 
 - [See the prerequisites from this tutorial](https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions?source=recommendations&tabs=excel-windows#prerequisites)
-- [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html#:~:text=ONNX%20Runtime%20Web%20You%20can%20install%20and%20import,syntax%20%28recommended%29%20import%20%2A%20as%20ort%20from%20%27onnxruntime-web%27%3B)
-- This plugin currently doesn't work in the client version of excel.
 
 ## What are Custom Functions?
 
