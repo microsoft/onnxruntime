@@ -14,7 +14,7 @@ namespace onnxruntime {
 #define TEMP_CUSTOM_OP_NUM_INPUTS 20
 #define TEMP_CUSTOM_OP_NUM_OUTPUTS TEMP_CUSTOM_OP_NUM_INPUTS
 
-int CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain);
+common::Status CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain);
 
 struct TensorRTCustomKernel {
   TensorRTCustomKernel(const OrtKernelInfo* /*info*/, void* compute_stream)

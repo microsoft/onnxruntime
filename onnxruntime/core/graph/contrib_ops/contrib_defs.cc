@@ -2347,6 +2347,10 @@ void RegisterContribSchemas() {
         detection_classes_shape.add_dim()->set_dim_value(max_output_boxes);
         updateOutputShape(ctx, 3, detection_classes_shape);
       });
+  
+  // Move the support of TRT plugins to use custom ops instead in TRT EP repos.
+  // Following TRT related schema op definitions will not be built into ORT core since TENSORRT_PLUGINS_CONTRIB_OPS is not defined.
+  #ifdef TENSORRT_PLUGINS_CONTRIB_OPS
 
   static const char* MultilevelCropAndResize_TRT_ver1_doc =
       R"DOC(Multilevel Crop and Resize TensorRT Plugin.)DOC";
@@ -2442,7 +2446,6 @@ void RegisterContribSchemas() {
         output_shape.add_dim()->set_dim_value(pooled_size);
         updateOutputShape(ctx, 0, output_shape);
       });
-  /*
   static const char* DisentangledAttention_TRT_ver1_doc =
       R"DOC(Disentangled Attention TensorRT Plugin.)DOC";
 
@@ -2482,7 +2485,7 @@ void RegisterContribSchemas() {
         propagateShapeFromInputToOutput(ctx, 0, 0);
       });
 
-      */
+  #endif
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
       .SetDomain(kMSDomain)

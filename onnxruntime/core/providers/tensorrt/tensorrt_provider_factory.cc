@@ -50,7 +50,10 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
-    CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+    common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "Can't successfully get TRT plugins from TRT plugin registration.";
+    }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -77,7 +80,10 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
-    CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+    common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "Can't successfully get TRT plugins from TRT plugin registration.";
+    }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
