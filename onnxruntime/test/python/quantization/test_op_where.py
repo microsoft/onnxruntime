@@ -83,15 +83,19 @@ class TestWhereModel(unittest.TestCase):
             weight_type=weight_type,
             extra_options=extra_options,
         )
-        qnode_counts = {
-            "QLinearWhere": 1,
-            "QuantizeLinear": 2,
-            "DequantizeLinear": 1,
-        } if extra_options['ForceQuantizeNoInputCheck'] else {
-            "Where": 1,
-            "QuantizeLinear": 0,
-            "DequantizeLinear": 0,
-        }
+        qnode_counts = (
+            {
+                "QLinearWhere": 1,
+                "QuantizeLinear": 2,
+                "DequantizeLinear": 1,
+            }
+            if extra_options["ForceQuantizeNoInputCheck"]
+            else {
+                "Where": 1,
+                "QuantizeLinear": 0,
+                "DequantizeLinear": 0,
+            }
+        )
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         qnode_io_qtypes = {
             "QuantizeLinear": [
@@ -114,15 +118,19 @@ class TestWhereModel(unittest.TestCase):
             weight_type=weight_type,
             extra_options=extra_options,
         )
-        qdqnode_counts = {
-            "Where": 1,
-            "QuantizeLinear": 3,
-            "DequantizeLinear": 3,
-        } if extra_options['ForceQuantizeNoInputCheck'] else {
-            "Where": 1,
-            "QuantizeLinear": 0,
-            "DequantizeLinear": 0,
-        }
+        qdqnode_counts = (
+            {
+                "Where": 1,
+                "QuantizeLinear": 3,
+                "DequantizeLinear": 3,
+            }
+            if extra_options["ForceQuantizeNoInputCheck"]
+            else {
+                "Where": 1,
+                "QuantizeLinear": 0,
+                "DequantizeLinear": 0,
+            }
+        )
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
         qnode_io_qtypes = {
             "QuantizeLinear": [
