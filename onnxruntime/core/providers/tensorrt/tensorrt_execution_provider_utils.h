@@ -199,7 +199,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 }
 
 // Helper class to generate engine id via model name/model content/env metadata
-class TRTModelMetadefIdGenerator {
+class TRTModelIdGenerator {
  public:
   int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
     model_hash = 0;
@@ -274,21 +274,21 @@ class TRTModelMetadefIdGenerator {
     model_hash = hash[0] | (uint64_t(hash[1]) << 32);
 
     // return the current unique id, and increment to update
-    return trt_model_metadef_id_[model_hash]++;
+    return trt_model_id_[model_hash]++;
   }
 
  private:
-  std::unordered_map<HashValue, int> trt_model_metadef_id_;       // current unique id for model
+  std::unordered_map<HashValue, int> trt_model_id_;       // current unique id for model
 };
 
-std::unique_ptr<TRTModelMetadefIdGenerator> trt_metadef_id_generator_ = std::make_unique<TRTModelMetadefIdGenerator>();
+std::unique_ptr<TRTModelIdGenerator> trt_model_id_generator_ = std::make_unique<TRTModelIdGenerator>();
 
 // Calll TRTGenerateMetaDefId to generate hash id for TRT engine cache
-int TRTGenerateMetaDefId(const GraphViewer& graph_viewer, HashValue& model_hash) {
+int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
-  return trt_metadef_id_generator_->TRTGenerateId(graph_viewer, model_hash);
+  return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
 }
 }
