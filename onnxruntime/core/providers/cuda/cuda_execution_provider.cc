@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
-#include "core/common/status.h"
-#include "core/framework/session_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -287,14 +285,6 @@ std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
 #pragma warning(push)
 #pragma warning(disable : 26816)
 #endif
-
-common::Status CUDAExecutionProvider::ValidateSessionOptions(const SessionOptions& so) const {
-  if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Parallel execution mode is incompatible with CUDA execution provider ",
-                           "Please set the execution mode as sequential for this session ");
-  }
-  return Status::OK();
-}
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();

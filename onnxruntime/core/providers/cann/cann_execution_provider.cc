@@ -4,7 +4,6 @@
 
 #include <utility>
 #include "core/providers/shared_library/provider_api.h"
-#include "core/framework/session_options.h"
 #include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
@@ -1153,15 +1152,6 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 
     InsertAllocator(cann_cpu_alloc);
   }
-}
-
-common::Status CANNExecutionProvider::ValidateSessionOptions(const SessionOptions& so) const {
-  if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Parallel execution mode is incompatible with CANN execution provider "
-                           "Please set the execution mode as sequential for this session .");
-  }
-  return Status::OK();
 }
 
 }  // namespace onnxruntime

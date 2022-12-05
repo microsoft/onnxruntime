@@ -2060,6 +2060,29 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 
 #ifdef USE_CUDA
 
+TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+  auto status = session_object.Initialize();
+
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& so_queried = session_object.GetSessionOptions();
+
+  // execution mode is sequential since we have registered the CUDA EP
+  // (which isn't supported by the parallel execution mode)
+  ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+}
+
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtArenaCfg arena_cfg;
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested

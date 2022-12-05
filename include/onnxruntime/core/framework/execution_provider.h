@@ -19,7 +19,6 @@ struct ComputeCapability;
 class KernelRegistry;
 struct KernelCreateInfo;
 class Node;
-struct SessionOptions;
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -300,19 +299,6 @@ class IExecutionProvider {
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
-
-  /** Some session option values (default or user provided) may not work with some EPs.
-   * The EP should check and assure the SessionOptions object fit its implementation to avoid potential crash.
-   * we would rather throw errors to user and remind of setting appropriate config.
-   *
-   * @param session_options The SessionOptions object to be altered.
-   * @return Status indicating whether the SessionOptions object is valid for the EP or not.
-   * The EP should return an error if it's incompatible with the SessionOptions that specifies
-   * which option is problematic so the user knows what needs to be fixed
-   */
-  virtual common::Status ValidateSessionOptions(const SessionOptions& /*session_options*/) const {
-    return Status::OK();
-  }
 
  private:
   const std::string type_;

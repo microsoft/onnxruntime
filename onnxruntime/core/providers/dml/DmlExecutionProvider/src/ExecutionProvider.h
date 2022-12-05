@@ -169,7 +169,6 @@ namespace Dml
         }
 
         onnxruntime::common::Status OnSessionInitializationEnd();
-        onnxruntime::common::Status ValidateSessionOptions(const onnxruntime::SessionOptions& so) const;
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -281,11 +280,6 @@ namespace Dml
             // to overlap other work.
             m_impl->Flush();
             return Status::OK();
-        }
-
-        virtual onnxruntime::common::Status ValidateSessionOptions(const onnxruntime::SessionOptions& so) const final override
-        {
-            return m_impl->ValidateSessionOptions(so);
         }
 
         void Flush()

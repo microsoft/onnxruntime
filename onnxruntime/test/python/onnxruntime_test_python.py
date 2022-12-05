@@ -1374,33 +1374,6 @@ class TestInferenceSession(unittest.TestCase):
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
-    def testValidateSessionOptionsWithEPs(self):
-        sess_option = onnxrt.SessionOptions()
-        has_dml = "DmlExecutionProvider" in onnxrt.get_available_providers()
-        has_cuda = "CUDAExecutionProvider" in onnxrt.get_available_providers()
-        # DmlExecutionProvider doesn't compatible with enable_mem_pattern as True
-        # DmlExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
-        # XnnpackExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
-        # CUDAExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
-
-        def exception_test(ep_name, sess_option, err_msg="Parallel execution mode is incompatible with"):
-            try:
-                onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=sess_option)
-            except Fail as onnxruntime_error:
-                if str(onnxruntime_error).startswith("[ONNXRuntimeError] : 1 : FAIL : " + err_msg):
-                    pass
-                else:
-                    raise onnxruntime_error
-
-        if has_cuda:
-            sess_option.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
-            exception_test("CUDAExecutionProvider", sess_option)
-
-        if has_dml:
-            sess_option.enable_mem_pattern = False
-            sess_option.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
-            exception_test("DmlExecutionProvider", sess_option)
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

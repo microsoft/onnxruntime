@@ -14,7 +14,6 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
-#include "core/framework/session_options.h"
 
 #include "xnnpack_init.h"
 
@@ -129,19 +128,6 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
     // otherwise, the pthreadpool will be starved and harm performance a lot.
     xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
   }
-}
-
-common::Status XnnpackExecutionProvider::ValidateSessionOptions(const SessionOptions& so) const {
-  if (so.intra_op_param.allow_spinning && so.intra_op_param.thread_pool_size > 1) {
-    LOGS_DEFAULT(WARNING)
-        << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
-           "If ORT's thread pool size is > 1 and spinning is enabled, "
-           "there will be contention between the two thread pools, and performance will suffer."
-           "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
-           "or the ORT intra-op threadpool size to 1 and try again.";
-  }
-
-  return Status::OK();
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator

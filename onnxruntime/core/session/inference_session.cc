@@ -486,7 +486,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
-  // modify the default behaviors
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
     // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
@@ -495,16 +494,51 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           << "So disabling it for this session since it uses the DML Execution Provider.";
       session_options_.enable_mem_pattern = false;
     }
+
+    // Parallel execution mode does not support DML EP
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the DML Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
+
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
   }
 
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
+    // Parallel execution mode does not support the CUDA EP
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the CUDA Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+
     auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
     if (trt_ep) {
       ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
     }
   }
 
-  ORT_RETURN_IF_ERROR(p_exec_provider->ValidateSessionOptions(session_options_));
+  if (provider_type == onnxruntime::kCannExecutionProvider) {
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the CANN Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the CANN Execution Provider.";
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+  }
+
+  if (provider_type == onnxruntime::kXnnpackExecutionProvider) {
+    if (session_options_.intra_op_param.allow_spinning && session_options_.intra_op_param.thread_pool_size > 1) {
+      LOGS(*session_logger_, WARNING)
+          << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
+             "If ORT's thread pool size is > 1 and spinning is enabled, "
+             "there will be contention between the two thread pools, and performance will suffer."
+             "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
+             "or the ORT intra-op threadpool size to 1 and try again.";
+    }
+  }
 
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
