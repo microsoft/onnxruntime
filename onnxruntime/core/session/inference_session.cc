@@ -530,7 +530,9 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   if (provider_type == onnxruntime::kXnnpackExecutionProvider) {
-    if (session_options_.intra_op_param.allow_spinning && session_options_.intra_op_param.thread_pool_size > 1) {
+    bool allow_intra_op_spinning =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+    if (allow_intra_op_spinning && session_options_.intra_op_param.thread_pool_size > 1) {
       LOGS(*session_logger_, WARNING)
           << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
              "If ORT's thread pool size is > 1 and spinning is enabled, "
