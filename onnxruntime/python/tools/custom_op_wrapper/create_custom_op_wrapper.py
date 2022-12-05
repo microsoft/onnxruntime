@@ -193,6 +193,9 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def get_attributes(attr_data_info: List[List[str]]):
+    if not attr_data_info:
+        return {}
+
     attrs = {}
 
     for info in attr_data_info:
