@@ -405,7 +405,7 @@ GetQDQTestCaseFn BuildQDQWhereTestCase(
                                                    std::numeric_limits<InputType>::min(),
                                                    std::numeric_limits<InputType>::max());
     InputType zp = std::numeric_limits<InputType>::max() / 2;
-    const float scale = 0.003f;
+    constexpr float scale = 0.003f;
     auto* dq_x_output = builder.MakeIntermediate();
     auto* dq_y_output = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<InputType>(input_x_arg, scale, zp, dq_x_output);
