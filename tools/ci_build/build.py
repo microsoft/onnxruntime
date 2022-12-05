@@ -952,6 +952,10 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
+    # By default cmake does not check TLS/SSL certificates. Here we turn it on.
+    # But, in some cases you may also need to supply a CA file.
+    add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
+    add_default_definition(cmake_extra_defines, "FETCHCONTENT_QUIET", "OFF")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     if args.use_winml:
@@ -1299,7 +1303,7 @@ def generate_build_tree(
                 + os.pathsep
                 + os.environ["PATH"]
             )
-
+        preinstalled_dir = Path(build_dir) / config
         run_subprocess(
             cmake_args
             + [
@@ -1315,6 +1319,9 @@ def generate_build_tree(
                     else "OFF"
                 ),
                 "-DCMAKE_BUILD_TYPE={}".format(config),
+                "-DCMAKE_PREFIX_PATH={}/{}/installed".format(build_dir, config)
+                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                else "",
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,

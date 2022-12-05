@@ -133,6 +133,8 @@ public:
         m_isClosed = true;
     }
 
+    virtual ~Closable() {}
+
 protected:
     void VerifyNotClosed() const
     {
