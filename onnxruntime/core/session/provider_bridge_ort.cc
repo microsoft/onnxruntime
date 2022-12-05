@@ -763,6 +763,7 @@ struct ProviderHostImpl : ProviderHost {
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  const Path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
 
@@ -808,6 +809,8 @@ struct ProviderHostImpl : ProviderHost {
 
   // Path (wrapped)
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
+  const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept override { return p->GetComponents(); }
+  bool Path__IsEmpty(const Path* p) noexcept override { return p->IsEmpty(); }
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }

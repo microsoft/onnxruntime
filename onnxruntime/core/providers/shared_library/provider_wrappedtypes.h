@@ -700,6 +700,7 @@ struct Graph final {
   const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
   const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  const Path& ModelPath() const { return g_host->Graph__ModelPath(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
   bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
 
@@ -746,6 +747,8 @@ struct GraphViewer final {
 
 struct Path final {
   PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
+  const std::vector<PathString>& GetComponents() const noexcept { return g_host->Path__GetComponents(this); }
+  bool IsEmpty() const noexcept { return g_host->Path__IsEmpty(this); }
 
   PROVIDER_DISALLOW_ALL(Path)
 };

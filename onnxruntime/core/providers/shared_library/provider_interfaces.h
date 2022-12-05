@@ -669,6 +669,7 @@ struct ProviderHost {
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual const Path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
 
@@ -704,6 +705,8 @@ struct ProviderHost {
 
   // Path
   virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
+  virtual const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept = 0;
+  virtual bool Path__IsEmpty(const Path* p) noexcept = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
