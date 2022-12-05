@@ -15,14 +15,13 @@ namespace onnxruntime {
 // placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
   int xnn_thread_pool_size{0};
+  const SessionOptions* session_options{nullptr};
   XnnpackExecutionProviderInfo() = default;
 
-  XnnpackExecutionProviderInfo(const ProviderOptions& po, const SessionOptions* sess_option) {
+  XnnpackExecutionProviderInfo(const ProviderOptions& po, const SessionOptions* sess_option)
+      : session_options(sess_option) {
     if (auto it = po.find("intra_op_num_threads"); it != po.end()) {
       xnn_thread_pool_size = std::stoi(it->second);
-    }
-    else if(sess_option && sess_option->intra_op_param.thread_pool_size > 0) {
-      xnn_thread_pool_size = sess_option->intra_op_param.thread_pool_size;
     }
   }
 };

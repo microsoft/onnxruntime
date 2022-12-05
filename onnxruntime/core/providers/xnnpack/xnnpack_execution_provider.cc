@@ -123,10 +123,14 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  if (info.xnn_thread_pool_size > 1) {
-    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
-    // otherwise, the pthreadpool will be starved and harm performance a lot.
-    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  int xnn_thread_pool_size = info.xnn_thread_pool_size;
+  if (xnn_thread_pool_size == 0 && (info.session_options && info.session_options->intra_op_param.thread_pool_size > 0)) {
+    xnn_thread_pool_size = info.session_options->intra_op_param.thread_pool_size;
+  }
+
+  if (xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we had better disable cpu spinning for ort-threadpool.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(xnn_thread_pool_size));
   }
 }
 
