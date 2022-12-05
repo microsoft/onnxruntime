@@ -490,7 +490,10 @@ Status GreedySearchProcessLogits(
 
   // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
   auto is_reuse_logits_buffer = (input_length == 1);
-  if (is_reuse_logits_buffer) {
+
+  // Copy over the logits data into the staging buffer, only if
+  // we do not plan to re-use the logits buffer directly
+  if (!is_reuse_logits_buffer) {
     const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
