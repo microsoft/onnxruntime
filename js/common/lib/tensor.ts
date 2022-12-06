@@ -82,9 +82,10 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {
   /**
    * creates an ImageData instance from tensor
-   * 
-   * @param inputOptions - Optional - Interface decribing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC 
-   * @param outputOptions - Optional - Interface decribing output image - Defaults: RGBA (A is set to NAN), 3 channels, 0-255, NHWC
+   *
+   * @param inputOptions - Optional - Interface decribing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface decribing output image - Defaults: RGBA (A is set to NAN), 3 channels,
+   *     0-255, NHWC
    * @returns An ImageData instance which can be used to draw on canvas
    */
   toImage(inputOptions?: TensorFromImageConfig, outputOptions?: ImageFromTensorConfig): ImageData;
@@ -242,25 +243,25 @@ export interface TensorConstructor {
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
   // #endregion
 }
-export interface TensorFromImageConfig{
+export interface TensorFromImageConfig {
   format?: 'RGB'|'RGBA'|'BGR'|'RBG';
   dataType?: 'float32'|'uint8';
   dimPlacement?: 'NHWC'|'NCHW';
   height?: number;
   width?: number;
   numberOfChannels?: 3|4;
-  normBias?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
-  normMean?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
+  normBias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+  normMean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
 }
-export interface ImageFromTensorConfig{
+export interface ImageFromTensorConfig {
   format?: 'RGB'|'RGBA'|'BGR'|'RBG';
   dataType?: 'float32'|'uint8';
   dimPlacement?: 'NHWC'|'NCHW';
   height?: number;
   width?: number;
   numberOfChannels?: 3|4;
-  normBias?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
-  normMean?: number;//Todo add support - |[number,number,number]|[number,number,number,number];
+  normBias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+  normMean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
 }
 export interface TensorFactory {
   /**
@@ -271,7 +272,8 @@ export interface TensorFactory {
    * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageData, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  fromImage(image: ImageData, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
+      Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
@@ -281,7 +283,8 @@ export interface TensorFactory {
    * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: HTMLImageElement, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  fromImage(image: HTMLImageElement, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
+      Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
@@ -291,17 +294,19 @@ export interface TensorFactory {
    * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
+      Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param image - ImageBitmap Type - since the data is stored as ImageData no need for format parameter 
+   * @param image - ImageBitmap Type - since the data is stored as ImageData no need for format parameter
    * @param inputOptions - Optional - Interface decribing input image - Defaults: RGB, 3 channels, 0-255, NHWC
    * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageBitmap, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
+  fromImage(image: ImageBitmap, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
+      Promise<Tensor>;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
