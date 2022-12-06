@@ -77,11 +77,18 @@ jobs:
      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnHtp.dll" C:\data\qnn_test_data\facedetection\facedetection_op8
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run QDQ FaceDetection model test'
+    enabled: false
 
   - script: |
      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\MobileNet\mobilenetv2-1.0
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run MobileNetV2 model test'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnHtp.dll" C:\data\qnn_test_data\MobileNet\mobilenetv2-1.0_add_transpose_quant
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run quantized MobileNetV2 model test'
+    enabled: false
 
   - script: |
      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" C:\data\qnn_test_data\StyleGAN\block_1024_simp
@@ -92,7 +99,11 @@ jobs:
     displayName: 'Create Artifact'
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-      Contents: '**'
+      Contents: |
+         *.exe
+         *.dll
+         *.pdb
+         !Qnn*.dll
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
       CleanTargetFolder: true
       OverWrite: true

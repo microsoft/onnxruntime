@@ -6,7 +6,6 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
-#include <limits>
 #ifdef _WIN32
 #include "getopt.h"
 #else
@@ -43,7 +42,6 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
       "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
-      "\t-t: Set maximum threshold so that the tests don't fail due to diff\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -67,17 +65,18 @@ void usage() {
       OrtGetApiBase()->GetVersionString());
 }
 
-static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool set_infinite_threshold = false) {
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino) {
   TestTolerances::Map absolute_overrides;
   TestTolerances::Map relative_overrides;
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
     // Ignore diff for QNN non-CPU runtime backend
-    const double absolute = set_infinite_threshold ? std::numeric_limits<double>::max() : 1e-3;
+    const double absolute = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    const double relative = set_infinite_threshold ? std::numeric_limits<double>::max() : (enable_cuda ? 0.017 : (enable_openvino ? 0.009 : 1e-3));
+    const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                  : 1e-3;
     return TestTolerances(absolute, relative, absolute_overrides, relative_overrides);
   }
   const auto overrides_json = nlohmann::json::parse(
@@ -153,20 +152,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
-  bool set_infinite_threshold = false;
+
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvto:d:i:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:i:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
           break;
         case 'v':
           verbose_logging_required = true;
-          break;
-        case 't':
-          set_infinite_threshold = true;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -679,7 +675,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino, set_infinite_threshold),
+              LoadTestTolerances(enable_cuda, enable_openvino),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
