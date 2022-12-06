@@ -7,37 +7,24 @@
 
 namespace onnxruntime {
 
-#ifdef USE_CLOUD
-
 common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::span<const int>,
                                       gsl::span<const OrtValue> feeds, gsl::span<const int>,
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, CustomAllocator>&,
                                       const logging::Logger&) {
-  CloudEndPointInvoker* invoker = session_state.GetCloudInvoker();
-  if (invoker) {
-    if (invoker->GetStaus().IsOK()) {
-      invoker->Send(feeds, fetches);
-      return invoker->GetStaus();
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get cloud endpoint invoker");
+  InlinedVector<std::string> input_names;
+  for (const auto& input : session_state.GetGraphViewer().GetInputs()) {
+    input_names.push_back(input->Name());
   }
-  const auto& invoker_status = invoker->GetStaus();
-  if (!invoker_status.IsOK()) return invoker_status;
-  return onnxruntime::Status::OK();
+  InlinedVector<std::string> output_names;
+  for (const auto& output : session_state.GetGraphViewer().GetOutputs()) {
+    output_names.push_back(output->Name());
+  }
+  auto invoker = CloudEndPointInvoker::CreateInvoker(session_state.GetSessionOption().config_options.configurations);
+  if (invoker) {
+    return invoker->Send(run_options_, input_names, feeds, output_names, fetches);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create cloud endpoint invoker");
+  }
 }
-
-#else
-
-common::Status CloudExecutor::Execute(const SessionState&, gsl::span<const int>,
-                                      gsl::span<const OrtValue>, gsl::span<const int>,
-                                      std::vector<OrtValue>&,
-                                      const std::unordered_map<size_t, CustomAllocator>&,
-                                      const logging::Logger&) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CloudExecutor::Execute not implemented");
-}
-
-#endif
-
 }  // namespace onnxruntime

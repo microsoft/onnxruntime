@@ -60,8 +60,15 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler);
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
 
@@ -128,8 +135,15 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler);
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
 
@@ -184,8 +198,15 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler);
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -240,8 +261,15 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler);
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 

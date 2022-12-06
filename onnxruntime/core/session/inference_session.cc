@@ -1324,20 +1324,15 @@ common::Status InferenceSession::Initialize() {
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
-        session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
         GetIntraOpThreadPoolToUse(),
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse,
+        session_options_,
+        //session_options_.use_deterministic_compute,
+        //session_options_.enable_mem_reuse,
         prepacked_weights_container_);
-
-    const auto* cloud_ep = execution_providers_.Get(onnxruntime::kCloudExecutionProvider);
-    if (cloud_ep) {
-      session_state_->SetCloudInvoker(session_options_.config_options.configurations);
-    }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -1472,7 +1467,6 @@ common::Status InferenceSession::Initialize() {
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                             session_options_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
@@ -1979,9 +1973,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   GetExecutionMode(run_options),
-                                                   run_options.terminate, run_logger,
-                                                   run_options.only_execute_path_to_fetches));
+                                                   session_options_.execution_mode,
+                                                   run_options, run_logger));
     }
     ORT_CATCH(const std::exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {

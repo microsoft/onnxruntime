@@ -88,26 +88,29 @@ class SessionState {
  public:
   SessionState(Graph& graph,
                const ExecutionProviders& execution_providers,
-               bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
-               bool use_deterministic_compute = false,
-               bool enable_mem_reuse = true,
+               const SessionOptions& sess_options,
+               //bool use_deterministic_compute = false,
+               //bool enable_mem_reuse = true,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr)
       : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
         profiler_(profiler),
-        enable_mem_pattern_(enable_mem_pattern),
         thread_pool_(thread_pool),
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse),
+        sess_options_(sess_options),
+        //use_deterministic_compute_(use_deterministic_compute),
+        //enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
+    enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
+                          sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
+
     SetupAllocators();
   }
 
@@ -235,7 +238,7 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> tensor_inputs,
                                        MemoryPatternGroup mem_patterns) const;
 
-  bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
+  bool GetUseDeterministicCompute() const { return sess_options_.use_deterministic_compute; }
 
   /**
   Get enable memory pattern flag
@@ -307,7 +310,6 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
-                              const SessionOptions& session_options = {},
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
@@ -341,13 +343,7 @@ class SessionState {
   }
 #endif
 
-  CloudEndPointInvoker* GetCloudInvoker() const {
-    return cloud_invoker_.get();
-  }
-
-  void SetCloudInvoker(const CloudEndPointConfig& config) {
-    cloud_invoker_ = CloudEndPointInvoker::CreateInvoker(config);
-  }
+  const SessionOptions& GetSessionOption() const { return sess_options_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -509,8 +505,11 @@ class SessionState {
 
   const DataTransferManager& data_transfer_mgr_;
 
-  bool use_deterministic_compute_;
-  bool enable_mem_reuse_;
+  const SessionOptions& sess_options_;
+
+  //bool use_deterministic_compute_;
+  //bool enable_mem_reuse_;
+
   std::optional<NodeIndexInfo> node_index_info_;
 
   // Container to store pre-packed weights to share between sessions.
@@ -552,8 +551,6 @@ class SessionState {
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
 #endif
-
-  std::unique_ptr<CloudEndPointInvoker> cloud_invoker_;
 };
 
 }  // namespace onnxruntime

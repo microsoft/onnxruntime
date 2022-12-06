@@ -726,7 +726,7 @@ Status SessionState::UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> ten
 
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
 
-bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
+bool SessionState::GetEnableMemoryReuse() const { return sess_options_.enable_mem_reuse; }
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
@@ -909,9 +909,9 @@ Status SessionState::CreateSubgraphSessionState() {
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state =
-          std::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
+          std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_);
+                                         logger_, profiler_, sess_options_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1038,7 +1038,6 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
-                                          const SessionOptions& session_options,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1051,7 +1050,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
-  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
+  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
                                   remove_initializers, constant_initializers_use_count);
 }
 

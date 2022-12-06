@@ -85,7 +85,7 @@ if (onnxruntime_USE_CLOUD)
 
     ExternalProject_Add(triton
                         GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                        GIT_TAG main
+                        GIT_TAG r22.12
                         PREFIX triton
                         CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=x64-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                         INSTALL_COMMAND ""
@@ -95,7 +95,7 @@ if (onnxruntime_USE_CLOUD)
 
     ExternalProject_Add(triton
                         GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                        GIT_TAG main
+                        GIT_TAG r22.12
                         PREFIX triton
                         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                         INSTALL_COMMAND ""
@@ -116,7 +116,8 @@ if (onnxruntime_USE_CLOUD)
 
   if (WIN32)
 
-    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32)
+	link_directories(${VCPKG_SRC}/installed/x64-windows/lib)
+    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32 zlib)
 
   else()
 

@@ -530,7 +530,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   IExecutor* p_exec = nullptr;
   std::optional<SequentialExecutor> seq_executor;
   std::optional<ParallelExecutor> par_executor;
-  std::optional<CloudExecutor> cloud_executor;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     seq_executor.emplace(terminate_flag, only_execute_path_to_fetches);
     p_exec = &seq_executor.value();
@@ -544,9 +543,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       par_executor.emplace(session_state, terminate_flag);
       p_exec = &par_executor.value();
     }
-  } else if (execution_mode == ExecutionMode::ORT_CLOUD) {
-    cloud_executor.emplace();
-    p_exec = &cloud_executor.value();
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -617,6 +613,34 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                  execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
 
   return status;
+}
+
+common::Status ExecuteGraph(const SessionState& session_state,
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                            ExecutionMode execution_mode, const RunOptions& run_options,
+                            const logging::Logger& logger) {
+#ifdef USE_CLOUD
+  if (run_options.config_options.configurations.count("use_cloud") &&
+      run_options.config_options.configurations.at("use_cloud") != "0") {
+    if (!session_state.GetExecutionProviders().Get(onnxruntime::kCloudExecutionProvider)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CloudEP not enabled to do inferencing");
+    }
+    CloudExecutor cloud_executor(run_options.config_options.configurations);
+    const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
+    return cloud_executor.Execute(session_state,
+                                  feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+                                  feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
+                                  logger);
+  }
+#endif
+  return ExecuteGraph(session_state,
+                      feeds_fetches_manager,
+                      feeds, fetches,
+                      execution_mode,
+                      run_options.terminate,
+                      logger,
+                      run_options.only_execute_path_to_fetches);
 }
 
 #ifdef ENABLE_TRAINING

@@ -3,12 +3,11 @@
 
 #pragma once
 #include "core/framework/iexecutor.h"
-
 namespace onnxruntime {
 
 class CloudExecutor : public onnxruntime::IExecutor {
  public:
-  CloudExecutor() = default;
+  CloudExecutor(const std::unordered_map<std::string, std::string>& run_options) : run_options_(run_options){};
   ~CloudExecutor() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CloudExecutor);
 
@@ -17,6 +16,8 @@ class CloudExecutor : public onnxruntime::IExecutor {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
-};
 
+ private:
+  const std::unordered_map<std::string, std::string>& run_options_;
+};
 }  // namespace onnxruntime
