@@ -19,8 +19,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
-//todo - find a better place for cloud exector
+#ifdef USE_CLOUD
 #include "core/framework/cloud_executor.h"
+#endif
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
 #endif

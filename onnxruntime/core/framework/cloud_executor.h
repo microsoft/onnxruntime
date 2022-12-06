@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#ifdef USE_CLOUD
 #include "core/framework/iexecutor.h"
 namespace onnxruntime {
 
@@ -21,3 +23,4 @@ class CloudExecutor : public onnxruntime::IExecutor {
   const std::unordered_map<std::string, std::string>& run_options_;
 };
 }  // namespace onnxruntime
+#endif

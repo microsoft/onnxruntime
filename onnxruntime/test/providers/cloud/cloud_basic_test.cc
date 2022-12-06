@@ -16,7 +16,7 @@ namespace test {
 TEST(CloudEP, TestSessionCreation) {
   const auto* ort_model_path = ORT_TSTR("testdata/mul_1.onnx");
   Ort::SessionOptions so;
-  so.AddConfigEntry("endpoint_type", "triton");
+  so.AddConfigEntry("cloud.endpoint_type", "triton");
   onnxruntime::ProviderOptions options;
   so.AppendExecutionProvider("CLOUD", options);
   EXPECT_NO_THROW((Ort::Session{*ort_env, ort_model_path, so}));
@@ -46,7 +46,7 @@ TEST(CloudEP, TestSessionRunMissingConfig) {
 TEST(CloudEP, TestSessionRunMissingEP) {
   const auto* ort_model_path = ORT_TSTR("testdata/mul_1.onnx");
   Ort::SessionOptions so;
-  so.AddConfigEntry("endpoint_type", "triton");
+  so.AddConfigEntry("cloud.endpoint_type", "triton");
   Ort::Session sess(*ort_env, ort_model_path, so);
 
   float raw_inputs[] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};

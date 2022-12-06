@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #ifdef USE_CLOUD
-
 #include "http_client.h"
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
@@ -254,7 +253,5 @@ std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const 
   }
   return {};
 }
-
 }  // namespace onnxruntime
-
 #endif

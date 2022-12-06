@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#ifdef USE_CLOUD
 #include <memory>
 #include "gsl/gsl"
 #include "core/framework/tensor.h"
@@ -37,3 +38,4 @@ class CloudEndPointInvoker {
   mutable onnxruntime::Status status_ = onnxruntime::Status::OK();
 };
 }  // namespace onnxruntime
+#endif

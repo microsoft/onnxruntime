@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CLOUD
 #include "core/framework/cloud_executor.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/session_state.h"
@@ -28,3 +29,4 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
   }
 }
 }  // namespace onnxruntime
+#endif
