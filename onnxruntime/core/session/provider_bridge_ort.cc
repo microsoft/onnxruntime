@@ -31,7 +31,6 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
-#include "core/session/onnxruntime_cxx_api.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP

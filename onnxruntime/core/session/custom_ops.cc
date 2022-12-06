@@ -168,6 +168,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
       size_t type_id_counter = 0;
+      bool all_type_support_flag = false;
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
@@ -185,7 +186,10 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
         } else if (ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL == type) {
           schema.Input(i, "Input" + std::to_string(i), "", "T", option);
-          if (i == 0) { schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types"); }
+          if (i == 0) { 
+              schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+              all_type_support_flag = true;
+          }
         } else {
           schema.Input(i, "Input" + std::to_string(i), "",
                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
@@ -214,6 +218,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option);
         } else if (ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL == type) {
           schema.Output(i, "Input" + std::to_string(i), "", "T", option);
+          if (!all_type_support_flag) {
+            schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+          }
         } else {
           schema.Output(i, "Output" + std::to_string(i), "",
                         DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
