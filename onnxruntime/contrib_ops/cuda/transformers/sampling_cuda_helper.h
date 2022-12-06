@@ -5,6 +5,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "core/providers/cuda/math/softmax.h"
 
 #ifdef DEBUG_GENERATION
 #include <iostream>
