@@ -747,5 +747,78 @@ TEST(SliceTest, CoalesceDims) {
   RunSliceTest<float>({1, 1, 1}, {1.f}, {0}, {std::numeric_limits<int64_t>::max()}, {1}, {}, {1, 1, 1}, {1.f}, true);
 }
 
+using namespace ONNX_NAMESPACE;
+
+class IdentitySliceIdentityOpTester : public OpTester {
+public:
+    IdentitySliceIdentityOpTester(const RunOptions& /*options*/, int opset_version = 10)
+        : OpTester("Slice", opset_version) {
+    }
+
+protected:
+    void AddNodes(onnxruntime::Graph& graph,
+        std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+        std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+        std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
+        ASSERT_EQ(graph_input_defs.size(), 3u);
+        ASSERT_EQ(graph_output_defs.size(), 1u);
+
+
+        std::vector<NodeArg*> inputs;
+        std::vector<NodeArg*> outputs;
+
+        TypeProto float_type;
+        float_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+        // add Identity node so that Slice input does not flow from graph input
+        {
+            auto& identity_out = graph.GetOrCreateNodeArg("identity_0_out", &float_type);
+
+            inputs = { graph_input_defs[0] };
+            outputs = { &identity_out };
+
+            auto& identity_node = graph.AddNode("identity-0", "Identity", "Identity", inputs, outputs);
+        }
+
+        // add Slice node
+        {
+            auto& slice_out = graph.GetOrCreateNodeArg("slice_out", &float_type);
+
+            inputs = { &graph.GetOrCreateNodeArg("identity_0_out", &float_type), graph_input_defs[1],
+                graph_input_defs[2] };
+            outputs = { &slice_out};
+
+            auto& split_node = graph.AddNode("slice", "Slice", "Identity Slicing", inputs, outputs);
+
+        }
+
+
+        // add Identity node so that Slice output does not flow into graph output
+        {
+
+            inputs = { &graph.GetOrCreateNodeArg("slice_out", &float_type) };
+            outputs = { graph_output_defs[0] };
+
+            auto& identity_node = graph.AddNode("identity-1", "Identity", "Identity", inputs, outputs);
+        }
+    }
+};
+
+TEST(SliceTest, OutputAndInputShapesAreSameAndReUseInputBuffer) {
+    std::vector<int64_t> input_dims = { 6 };
+    auto input_vals = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
+    std::initializer_list<int64_t> starts = { 0 };
+    std::initializer_list<int64_t> ends = { 6 };
+
+    RunOptions options{};
+    IdentitySliceIdentityOpTester test{ options, 10 };
+
+    test.AddInput<float>("data", input_dims, input_vals);
+    test.AddInput<int64_t>("starts", { static_cast<int64_t>(starts.size()) }, starts);
+    test.AddInput<int64_t>("ends", { static_cast<int64_t>(ends.size()) }, ends);
+
+        test.AddOutput<float>("data_out", input_dims, input_vals);
+        test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime

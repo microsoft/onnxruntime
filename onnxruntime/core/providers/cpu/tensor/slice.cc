@@ -42,13 +42,16 @@ using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuE
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
+        .MayInplace(0, 0)
         .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
@@ -58,6 +61,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
+        .MayInplace(0, 0)
         .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
@@ -66,6 +70,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
+        .MayInplace(0, 0)
         .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
@@ -232,8 +237,20 @@ static Status SliceImpl(OpKernelContext* ctx,
   auto& output_tensor = *ctx->Output(0, output_shape);
 
   // output tensor's size is 0, nothing to fill - return
-  if (output_shape.Size() == 0)
+  if (output_shape.Size() == 0) {
     return Status::OK();
+  }
+
+  // If the Slice operation is Identity-like, just copy
+  // the input buffer into the output buffer and return
+  // without invoking any of the Slice kernel's machinery
+  if (output_shape == input_tensor.Shape()) {
+    // CopyCpuTensor will only make the copy of the
+    // data pointers of the source and destination
+    // tensors are different.
+    CopyCpuTensor(&input_tensor, &output_tensor);
+    return Status::OK();
+  }
 
   // use MutableDataRaw as actual data type in tensor may not match as we templatize on data size
   T* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
@@ -244,7 +261,7 @@ static Status SliceImpl(OpKernelContext* ctx,
       output = slice_input_iterator.CopyContiguousInnermostAxes(output);
     }
 
-     ORT_ENFORCE(output == output_end);
+    ORT_ENFORCE(output == output_end);
   };
 
   if (compute_metadata.p_flattened_input_dims_) {

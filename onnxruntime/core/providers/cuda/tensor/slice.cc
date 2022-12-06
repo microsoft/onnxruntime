@@ -17,6 +17,7 @@ namespace cuda {
       TIND,                                                              \
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
+          .MayInplace(0, 0)                                              \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), \
       Slice<false>);
 
@@ -34,6 +35,7 @@ REGISTER_VERSIONED_TYPED_SLICE(int64_t)
           .InputMemoryType(OrtMemTypeCPUInput, 2)                       \
           .InputMemoryType(OrtMemTypeCPUInput, 3)                       \
           .InputMemoryType(OrtMemTypeCPUInput, 4)                       \
+          .MayInplace(0, 0)                                             \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
@@ -53,6 +55,7 @@ REGISTER_V10_TYPED_SLICE(int64_t)
           .InputMemoryType(OrtMemTypeCPUInput, 2)                       \
           .InputMemoryType(OrtMemTypeCPUInput, 3)                       \
           .InputMemoryType(OrtMemTypeCPUInput, 4)                       \
+          .MayInplace(0, 0)                                             \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
@@ -72,6 +75,7 @@ REGISTER_V12_TYPED_SLICE(int64_t)
           .InputMemoryType(OrtMemTypeCPUInput, 2)                       \
           .InputMemoryType(OrtMemTypeCPUInput, 3)                       \
           .InputMemoryType(OrtMemTypeCPUInput, 4)                       \
+          .MayInplace(0, 0)                                             \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
@@ -84,11 +88,24 @@ static Status SliceImpCore(cudaStream_t stream,
                            size_t element_size, size_t dimension_count,
                            const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer,
                            const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
-                           const TensorShape& output_shape) {
+                           const TensorShape& output_shape,
+                           const TensorShape& input_shape) {
+  // Nothing to fill in the output buffer - return early
   if (output_shape.Size() == 0) {
     return Status::OK();
   }
 
+  // If the Slice operation is Identity-like, just copy
+  // the input buffer into the output buffer and return
+  // without invoking any of the Slice kernel's machinery
+  if (input_shape == output_shape) {
+    if (input_data != output_data) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, output_shape.Size() * element_size,
+                                           cudaMemcpyDeviceToDevice, stream));
+    }
+
+    return Status::OK();
+  }
   return SliceImpl(stream,
                    element_size,
                    gsl::narrow_cast<int32_t>(dimension_count),
@@ -157,7 +174,8 @@ Status Impl(cudaStream_t stream,
                                    steps_buffer,
                                    input_strides,
                                    output_strides,
-                                   output_shape));
+                                   output_shape,
+                                   input_shape));
 
   return Status::OK();
 }
@@ -223,6 +241,11 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
 
+  // Sanity check - ensure that we don't accidentally just enable support
+  // for string type for this kernel.
+  // We have logic in `SliceImpCore()` that can't handle string types just yet.
+  ORT_ENFORCE(!input_tensor->IsDataTypeString());
+
   return SliceImpCore(Stream(),
                       input_tensor->DataRaw(),
                       output_tensor->MutableDataRaw(),
@@ -232,7 +255,8 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
                       steps_buffer,
                       input_strides,
                       output_strides,
-                      output_shape);
+                      output_shape,
+                      input_tensor->Shape());
 }
 
 }  // namespace cuda
