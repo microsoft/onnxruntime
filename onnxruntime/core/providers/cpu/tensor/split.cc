@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include "core/providers/cpu/tensor/split.h"
 
 #include "core/common/gsl.h"
@@ -57,13 +58,13 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
   auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
-  const int64_t split_dim_size = input_dims[axis];
+  const int64_t split_dim_size = input_dims[onnxruntime::narrow<size_t>(axis)];
 
-  before_dims = narrow<int>(input_shape.SizeToDimension(axis));
-  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis));
+  before_dims = narrow<int>(input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1));
 
   if (split_sizes.empty()) {
     // equal split based on number of outputs
@@ -166,7 +167,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
     auto split_size = narrow<int>(split_sizes[i]);
-    output_dimensions[axis] = split_size;
+    output_dimensions[onnxruntime::narrow<size_t>(axis)] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
     T* output_data = output->MutableData<T>();

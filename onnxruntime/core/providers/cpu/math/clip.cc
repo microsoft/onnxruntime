@@ -70,8 +70,8 @@ template <typename T>
 Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   Tensor* Y = ctx->Output(0, X->Shape());
-  EigenVectorMap<T>(Y->MutableData<T>(), Y->Shape().Size()) =
-      ConstEigenVectorMap<T>(X->Data<T>(), X->Shape().Size())
+  EigenVectorMap<T>(Y->MutableData<T>(), onnxruntime::narrow<size_t>(Y->Shape().Size()) ) =
+      ConstEigenVectorMap<T>(X->Data<T>(), onnxruntime::narrow<size_t>(X->Shape().Size()) )
           .cwiseMax(this->min_)
           .cwiseMin(this->max_);
   return Status::OK();
@@ -91,8 +91,8 @@ struct Clip::ComputeImpl {
       max_val = *(max->Data<T>());
     }
 
-    EigenVectorMap<T>(Y->MutableData<T>(), Y->Shape().Size()) =
-        ConstEigenVectorMap<T>(X->Data<T>(), X->Shape().Size())
+    EigenVectorMap<T>(Y->MutableData<T>(), onnxruntime::narrow<size_t>(Y->Shape().Size()) ) =
+        ConstEigenVectorMap<T>(X->Data<T>(), onnxruntime::narrow<size_t>(X->Shape().Size()) )
             .cwiseMax(min_val)
             .cwiseMin(max_val);
   }

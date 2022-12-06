@@ -255,6 +255,7 @@ TEST_P(ModelTest, Run) {
       {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
       {"ResNet50-qdq", "failed in training", {"opset12"}},
       {"ResNet50_int8", "failed in training", {"opset12"}},
+      {"ResNet50-int8", "failed in training", {"opset12"}},
       {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
       {"SSD-int8", "failed in training", {"opset12"}},
       {"VGG 16-int8", "failed in training", {"opset12"}},
@@ -667,9 +668,9 @@ TEST_P(ModelTest, Run) {
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptionsV2 params{0, 0,       nullptr, 1000, 1, 1 << 30,
+          OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0,       0,    0, 0,       0, nullptr, 0, nullptr, 0, 0};
+                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
           ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
         } else {
           OrtTensorRTProviderOptionsV2* ep_option;
@@ -1070,7 +1071,12 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("mask_rcnn"),
                                                     ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512")};
+                                                    ORT_TSTR("zfnet512"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC-12"),
+                                                    ORT_TSTR("FCN ResNet-101"),
+                                                    ORT_TSTR("SSD")
+    };
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 

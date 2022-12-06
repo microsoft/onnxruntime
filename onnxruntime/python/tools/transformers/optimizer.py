@@ -70,9 +70,13 @@ def optimize_by_onnxruntime(
         optimized_model_path (str): the path of optimized model
     """
     assert opt_level in [1, 2, 99]
+    from torch import version as torch_version
+
     import onnxruntime
 
-    if use_gpu and "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+    if use_gpu and not set(onnxruntime.get_available_providers()).isdisjoint(
+        ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+    ):
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
@@ -99,13 +103,21 @@ def optimize_by_onnxruntime(
             onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs
         )
     else:
-        session = onnxruntime.InferenceSession(
-            onnx_model_path, sess_options, providers=["CUDAExecutionProvider"], **kwargs
+        gpu_ep = []
+
+        if torch_version.cuda:
+            gpu_ep.append("CUDAExecutionProvider")
+        elif torch_version.hip:
+            gpu_ep.append("MIGraphXExecutionProvider")
+            gpu_ep.append("ROCMExecutionProvider")
+
+        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
+        assert set(onnxruntime.get_available_providers()).isdisjoint(
+            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
-        assert "CUDAExecutionProvider" in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
-    logger.debug("Save optimized model by onnxruntime to {}".format(optimized_model_path))
+    logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
     return optimized_model_path
 
 

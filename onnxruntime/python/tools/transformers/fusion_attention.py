@@ -103,6 +103,37 @@ class FusionAttention(Fusion):
         self.num_heads_warning = True
         self.hidden_size_warning = True
 
+    def get_num_heads_and_hidden_size_from_concat(self, concat: NodeProto) -> Tuple[int, int]:
+        """
+        Detect num_heads and hidden_size from Concat node in the following subgraph:
+
+        SkipLayerNormalization or EmbedLayerNormalization
+                        /            \
+                     MatMul         Shape
+                        |             |
+                       Add       Gather(indices=0)
+                         \            |
+                          \       Unsqueeze
+                           \          |
+                            \       Concat (*, -1, 12, 64)
+                             \      /
+                              Reshape
+                                 |
+                             Transpose
+        """
+        if len(concat.input) == 4:
+            num_heads = self.model.get_constant_value(concat.input[2])
+            head_size = self.model.get_constant_value(concat.input[3])
+            if (
+                isinstance(num_heads, np.ndarray)
+                and num_heads.size == 1
+                and isinstance(head_size, np.ndarray)
+                and head_size.size == 1
+            ):
+                return num_heads[0], num_heads[0] * head_size[0]
+
+        return self.num_heads, self.hidden_size
+
     def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """Detect num_heads and hidden_size from a reshape node.
 
@@ -112,10 +143,12 @@ class FusionAttention(Fusion):
         Returns:
             Tuple[int, int]: num_heads and hidden_size
         """
-
         # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
         q_shape = self.model.get_initializer(reshape_q.input[1])
         if q_shape is None:
+            concat = self.model.get_parent(reshape_q, 1)
+            if concat is not None and concat.op_type == "Concat":
+                return self.get_num_heads_and_hidden_size_from_concat(concat)
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 

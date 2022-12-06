@@ -33,8 +33,8 @@ BUILDS = [
 
 JS_FILES = [
     {"dir": "wasm", "file_name": "ort-wasm.js"},
-    {"dir": "wasm_threaded", "file_name": "ort-wasm-threaded.worker.js"},
-    {"dir": "wasm_threaded", "file_name": "ort-wasm-threaded.js"},
+    {"dir": "wasm_SIMD_threaded", "file_name": "ort-wasm-simd-threaded.worker.js"},
+    {"dir": "wasm_SIMD_threaded", "file_name": "ort-wasm-simd-threaded.js"},
 ]
 
 NPM_BUILD_DIR = [

@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "OperatorHelper.h"
+#include "core/providers/common.h"
 
 namespace OperatorHelper
 {
@@ -426,9 +427,10 @@ namespace OperatorHelper
             std::fill(args.windowSize, args.windowSize + spatialDimensionCount, 1);
         }
 
-        std::string autoPad = kernelInfo.GetOptionalAttribute<std::string>(AttrName::AutoPad, AttrValue::NotSet);
+        std::string autoPadStr = kernelInfo.GetOptionalAttribute<std::string>(AttrName::AutoPad, AttrValue::NotSet);
+        auto autoPad = onnxruntime::StringToAutoPadType(autoPadStr);
 
-        if (autoPad == AttrValue::NotSet)
+        if (autoPad == onnxruntime::AutoPadType::NOTSET)
         {
             // Use the pad values in the pads argument.
             std::vector<int> pads = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::Pads);
@@ -444,7 +446,7 @@ namespace OperatorHelper
             std::copy(pads.begin(), pads.begin() + spatialDimensionCount, args.startPadding);
             std::copy(pads.begin() + spatialDimensionCount, pads.begin() + spatialDimensionCount * 2, args.endPadding);
         }
-        else if (autoPad == AttrValue::Valid)
+        else if (autoPad == onnxruntime::AutoPadType::VALID)
         {
             std::fill(args.startPadding, args.startPadding + spatialDimensionCount, 0);
             std::fill(args.endPadding, args.endPadding + spatialDimensionCount, 0);
@@ -452,8 +454,8 @@ namespace OperatorHelper
         else
         {
             args.autoPad = true;
-            args.autoPadSameUpper = autoPad == AttrValue::SameUpper;
-            assert(args.autoPadSameUpper || autoPad == AttrValue::SameLower);
+            args.autoPadSameUpper = autoPad == onnxruntime::AutoPadType::SAME_UPPER;
+            assert(args.autoPadSameUpper || autoPad == onnxruntime::AutoPadType::SAME_LOWER);
         }
 
         if (kernelInfo.HasAttribute(AttrName::OutputPadding, MLOperatorAttributeType::IntArray))
@@ -2050,7 +2052,10 @@ namespace OperatorHelper
     {
         if (opsetVersion >= 13) // Axes are a dynamic input parameter.
         {
-            ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            if (kernelInformation.IsInputValid(1))
+            {
+                ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            }
         }
         else // Axes were a constant attribute parameter.
         {
@@ -2485,6 +2490,42 @@ namespace OperatorHelper
             outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(4))); // running_variance.shape = input_variance.shape
         }
         return outputDimensionsList;
+    }
+
+    void ShapeHelper::Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+        )
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetOutputCount() == 1);
+
+        std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
+        const uint32_t inputDimCount = static_cast<uint32_t>(inputShape.size());
+
+        const auto& attributes = kernelInformation.GetAttributes();
+        const int64_t startIndex = attributes.template GetOptionalAttribute<int64_t>(AttrName::Start, 0);
+        const int64_t endIndex = attributes.template GetOptionalAttribute<int64_t>(AttrName::End, inputDimCount);
+
+        // Compute the starting and ending indices for the slice
+        int64_t trueStart = startIndex < 0 ? startIndex + inputDimCount : startIndex;
+        trueStart = std::clamp<int64_t>(trueStart, 0, inputDimCount);
+
+        int64_t trueEnd = endIndex < 0 ? endIndex + inputDimCount : endIndex;
+        trueEnd = std::clamp<int64_t>(trueEnd, 0, inputDimCount);
+
+        m_sliceStart = static_cast<uint32_t>(trueStart);
+        m_sliceEnd = std::max<uint32_t>(static_cast<uint32_t>(trueEnd), m_sliceStart);
+    }
+
+    std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        return { EdgeShapes({m_sliceEnd - m_sliceStart}) };
+    }
+
+    std::vector<EdgeShapes> SizeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        return { EdgeShapes({}) };
     }
 
 } // namespace OperatorHelper

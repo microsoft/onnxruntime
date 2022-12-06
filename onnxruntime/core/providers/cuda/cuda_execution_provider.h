@@ -126,6 +126,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
+  void EnableTunableOp();
+  void DisableTunableOp();
+  bool IsTunableOpEnabled() const;
+
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000

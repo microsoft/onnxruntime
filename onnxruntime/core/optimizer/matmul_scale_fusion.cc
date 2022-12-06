@@ -254,6 +254,13 @@ Status ProcessNode(
       kMSDomain);
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
+#ifdef USE_ROCM
+    // forward the __backwardpass, if present
+    auto& attrs = node.GetAttributes();
+    if (attrs.count("__backwardpass")) {
+      matmul_scale_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
+    }
+#endif
 
   {
     InlinedVector<std::reference_wrapper<Node>> nodes_to_remove{node};
