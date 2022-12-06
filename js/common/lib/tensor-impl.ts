@@ -168,6 +168,7 @@ export class Tensor implements TensorInterface {
   // #endregion
   /**
    * Create a new tensor object from image object
+   *
    * @param buffer - Extracted image buffer data - assuming RGBA format
    * @param imageFormat - input image configuration - required configurations height, width, format
    * @param tensorFormat - output tensor configuration - Default is RGB format
@@ -347,11 +348,11 @@ export class Tensor implements TensorInterface {
 
     } else if (isImageBitmap) {
       // ImageBitmap - image object - format must be provided by user
-      if (inputOptions !== undefined) {
-        if (inputOptions.format !== undefined) {
-          throw new Error('Image input config format must be defined for ImageBitmap');
-        }
+      if (inputOptions === undefined) {
         throw new Error('Please provide image config with format for Imagebitmap');
+      }
+      if (inputOptions.format !== undefined) {
+        throw new Error('Image input config format must be defined for ImageBitmap');
       }
 
       const pixels2DContext = document.createElement('canvas').getContext('2d');
@@ -363,13 +364,13 @@ export class Tensor implements TensorInterface {
         data = pixels2DContext.getImageData(0, 0, width, height).data;
         if (inputOptions !== undefined) {
           // using square brackets to avoid TS error - type 'never'
-          if (inputOptions['height'] !== undefined && inputOptions['height'] !== height) {
+          if (inputOptions.height !== undefined && inputOptions.height !== height) {
             throw new Error('Image input config height doesn\'t match ImageBitmap height');
           } else {
             imageConfig.height = height;
           }
           // using square brackets to avoid TS error - type 'never'
-          if (inputOptions['width'] !== undefined && inputOptions['width'] !== width) {
+          if (inputOptions.width !== undefined && inputOptions.width !== width) {
             throw new Error('Image input config width doesn\'t match ImageBitmap width');
           } else {
             imageConfig.width = width;
@@ -401,13 +402,13 @@ export class Tensor implements TensorInterface {
           const img = context.getImageData(0, 0, canvas.width, canvas.height);
           if (inputOptions !== undefined) {
             // using square brackets to avoid TS error - type 'never'
-            if (inputOptions['height'] !== undefined && inputOptions['height'] !== canvas.height) {
+            if (inputOptions.height !== undefined && inputOptions.height !== canvas.height) {
               throw new Error('Image input config height doesn\'t match ImageBitmap height');
             } else {
               imageConfig.height = canvas.height;
             }
             // using square brackets to avoid TS error - type 'never'
-            if (inputOptions['width'] !== undefined && inputOptions['width'] !== canvas.width) {
+            if (inputOptions.width !== undefined && inputOptions.width !== canvas.width) {
               throw new Error('Image input config width doesn\'t match ImageBitmap width');
             } else {
               imageConfig.width = canvas.width;
@@ -443,7 +444,8 @@ export class Tensor implements TensorInterface {
           tensorFormat !== undefined ? (tensorFormat.format !== undefined ? tensorFormat.format : 'RGB') : 'RGB';
       const normMean =
           tensorFormat !== undefined ? (tensorFormat.normMean !== undefined ? tensorFormat.normMean : 255) : 255;
-      let normBias = tensorFormat !== undefined ? (tensorFormat.normBias !== undefined ? tensorFormat.normBias : 0) : 0;
+      const normBias =
+          tensorFormat !== undefined ? (tensorFormat.normBias !== undefined ? tensorFormat.normBias : 0) : 0;
       const offset = height * width;
 
       if (tensorFormat !== undefined) {
@@ -460,7 +462,8 @@ export class Tensor implements TensorInterface {
       }
 
       // Default pointer assignments
-      let step = 4, rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
+      const step = 4;
+      let rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
       let rTensorPointer = 0, gTensorPointer = offset, bTensorPointer = offset * 2, aTensorPointer = -1;
 
       // Updating the pointer assignments based on the input image format
