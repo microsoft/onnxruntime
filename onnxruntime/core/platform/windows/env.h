@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "core/platform/env.h"
 #include "core/platform/windows/telemetry.h"
+#include "core/common/inlined_containers.h"
 #include <Windows.h>
 
 namespace onnxruntime {
@@ -23,14 +24,20 @@ namespace onnxruntime {
 /*
 Logical processor information:
 1. its belonging group;
-2. its id within that belonging group;
+2. its id within that belonging group.
+{-1,-1} stands for an invalid processor info
 */
 struct ProcessorInfo {
-  int group_id;
-  int local_processor_id;
+  int group_id = -1;
+  int local_processor_id = -1;
 };
 
-using GlobalProcessorInfoMap = std::unordered_map<int, ProcessorInfo>;
+/*
+GlobalProcessorInfoMap is a map between global processor id
+and pair<groupid, local processor id>, the latter is required
+to be present during affinity setup.
+*/
+using GlobalProcessorInfoMap = InlinedHashMap<int, ProcessorInfo>;
 
 class WindowsEnv : public Env {
  public:
@@ -80,7 +87,7 @@ class WindowsEnv : public Env {
 
  protected:
   /*
-  * "cores_" host all cores dicoverred in a windows system.
+  * "cores_" host all physical cores dicoverred in a windows system.
   * Every LogicalProcessors represent a core of logical processors.
   * Specifically, LogicalProcessors is a vector of global processor id.
   * E.g.

@@ -242,9 +242,9 @@ class PosixThread : public EnvThread {
         }
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (0 == ret) {
-          LOGS_DEFAULT(INFO) << "pthread_setaffinity_np succeed for thread: " << syscall(SYS_gettid)
-                             << ", index: " << p->index
-                             << ", mask: " << *p->affinity;
+          LOGS_DEFAULT(VERBOSE) << "pthread_setaffinity_np succeed for thread: " << syscall(SYS_gettid)
+                                << ", index: " << p->index
+                                << ", mask: " << *p->affinity;
         } else {
           auto [err_no, err_msg] = GetSystemError(ret);
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)

@@ -603,6 +603,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
                               {2, 3},
                               {4, 5},
                               {6, 7}};
+  // test single group
   test::CpuInfo cpu_info_single = {cpu_group};
   test::WindowsEnvTester win_env;
   win_env.SetCpuInfo(cpu_info_single);
@@ -614,6 +615,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
       ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
     }
   }
+  // test two groups
   test::CpuInfo cpu_info_double = {cpu_group, cpu_group};
   win_env.SetCpuInfo(cpu_info_double);
   default_affinities = win_env.GetDefaultThreadAffinities();

@@ -16,33 +16,50 @@
 namespace onnxruntime {
 namespace concurrency {
 
-// extract affinity from affinity string
-// processor id in affinity string starts from 1
+// Extract affinity from affinity string.
+// Processor id from affinity string starts from 1,
+// but internally, processor id starts from 0, so here we minus the id by 1
 std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affinity_str) {
-  std::vector<LogicalProcessors> logical_processors_vector;
-  auto affinities = utils::SplitString(affinity_str, ";");
-  for (const auto& affinity : affinities) {
-    LogicalProcessors logical_processors;
-    auto processor_interval = utils::SplitString(affinity, "-");
-    if (processor_interval.size() == 2) {
-      auto processor_from = std::stoi(processor_interval[0].data());
-      auto processor_to = std::stoi(processor_interval[1].data());
-      ORT_ENFORCE(processor_from > 0 && processor_to > 0,
-                  std::string{"Processor id must starts from 1: "} + affinity.data());
-      ORT_ENFORCE(processor_from <= processor_to,
-                  std::string{"Invalid processor interval: "} + affinity.data());
-      logical_processors.resize(static_cast<size_t>(1ULL + processor_to - processor_from));
-      std::iota(logical_processors.begin(), logical_processors.end(), processor_from - 1);
-    } else {
-      for (const auto& processor_str : utils::SplitString(affinity, ",")) {
-        auto processor_id = std::stoi(processor_str.data());
-        ORT_ENFORCE(processor_id > 0, std::string{"Processor id must starts from 1: "} + affinity.data());
-        logical_processors.push_back(processor_id - 1);
+  ORT_TRY {
+    std::vector<LogicalProcessors> logical_processors_vector;
+    auto affinities = utils::SplitString(affinity_str, ";");
+
+    for (const auto& affinity : affinities) {
+      LogicalProcessors logical_processors;
+      auto processor_interval = utils::SplitString(affinity, "-");
+
+      if (processor_interval.size() == 2) {
+        auto processor_from = std::stoi(std::string{processor_interval[0]});
+        auto processor_to = std::stoi(std::string{processor_interval[1]});
+
+        ORT_ENFORCE(processor_from > 0 && processor_to > 0,
+                    std::string{"Processor id must start from 1: "} + std::string{affinity});
+        ORT_ENFORCE(processor_from <= processor_to,
+                    std::string{"Invalid processor interval: "} + std::string{affinity});
+
+        logical_processors.resize(static_cast<size_t>(1ULL + processor_to - processor_from));
+        std::iota(logical_processors.begin(), logical_processors.end(), processor_from - 1);
+
+      } else {
+        for (const auto& processor_str : utils::SplitString(affinity, ",")) {
+          auto processor_id = std::stoi(std::string{processor_str});
+          ORT_ENFORCE(processor_id > 0, std::string{"Processor id must start from 1: "} + std::string{affinity});
+          logical_processors.push_back(processor_id - 1);
+        }
       }
+      logical_processors_vector.push_back(std::move(logical_processors));
     }
-    logical_processors_vector.push_back(std::move(logical_processors));
+    return logical_processors_vector;
   }
-  return logical_processors_vector;
+  ORT_CATCH(const std::invalid_argument&) {
+    LOGS_DEFAULT(ERROR) << "Found invalid processor id in affinity string: "
+                        << affinity_str << ", skip affinity setting";
+  }
+  ORT_CATCH(const std::out_of_range&) {
+    LOGS_DEFAULT(ERROR) << "Found out-of-range processor id in affinity string: "
+                        << affinity_str << ", skip affinity setting";
+  }
+  ORT_THROW("Failed to read affinities from affinity string");
 }
 
 static std::unique_ptr<ThreadPool>
@@ -62,9 +79,13 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     }
   } else if (!options.affinity_str.empty()) {
     to.affinities = ReadThreadAffinityConfig(options.affinity_str);
+    // Limiting the number of affinities to be of thread_pool_size - 1,
+    // for that fact that the main thread is a special "member" of the threadpool,
+    // which onnxruntime has no control.
     ORT_ENFORCE(to.affinities.size() == static_cast<size_t>(options.thread_pool_size) - 1,
-                "Number of affinities must equal to thread pool size minus one");
-    // prepend an empty affinity as placeholder for the main thread
+                "Number of affinities must be equal to thread_pool_size minus one");
+    // prepend an empty affinity as placeholder for the main thread,
+    // which will be dropped later during threadpool creation
     to.affinities.insert(to.affinities.begin(), LogicalProcessors{});
   }
 

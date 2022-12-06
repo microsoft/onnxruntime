@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <thread>
+#include <climits>
 #include <process.h>
 #include <fcntl.h>
 #include <io.h>
@@ -159,15 +160,16 @@ class WindowsThread : public EnvThread {
       if (p->affinity.has_value() && !p->affinity->empty()) {
         int group_id = -1;
         KAFFINITY mask = 0;
-        KAFFINITY bit = 1;
+        constexpr KAFFINITY bit = 1;
         const WindowsEnv& env = WindowsEnv::Instance();
         for (auto global_processor_id : *p->affinity) {
           auto processor_info = env.GetProcessorAffinityMask(global_processor_id);
-          if (processor_info.local_processor_id > -1) {
+          if (processor_info.local_processor_id > -1 &&
+              processor_info.local_processor_id < sizeof(KAFFINITY) * CHAR_BIT) {
             mask |= bit << processor_info.local_processor_id;
           } else {
             LOGS_DEFAULT(ERROR) << "Cannot set affinity for thread " << GetCurrentThreadId()
-                                << ", processor " << global_processor_id << " not found";
+                                << ", processor " << global_processor_id << " does not exist";
             group_id = -1;
             mask = 0;
             break;
@@ -176,7 +178,8 @@ class WindowsThread : public EnvThread {
             group_id = processor_info.group_id;
           } else if (group_id != processor_info.group_id) {
             LOGS_DEFAULT(ERROR) << "Cannot set cross-group affinity for thread "
-                                << GetCurrentThreadId();
+                                << GetCurrentThreadId() << ", first on group "
+                                << group_id << ", then on " << processor_info.group_id;
             group_id = -1;
             mask = 0;
             break;
@@ -188,9 +191,9 @@ class WindowsThread : public EnvThread {
           thread_affinity.Group = static_cast<WORD>(group_id);
           thread_affinity.Mask = mask;
           if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
-            LOGS_DEFAULT(INFO) << "SetThreadAffinityMask done for thread: " << GetCurrentThreadId()
-                               << ", group_id: " << static_cast<int>(thread_affinity.Group)
-                               << ", mask: " << thread_affinity.Mask;
+            LOGS_DEFAULT(VERBOSE) << "SetThreadAffinityMask done for thread: " << GetCurrentThreadId()
+                                  << ", group_id: " << thread_affinity.Group
+                                  << ", mask: " << thread_affinity.Mask;
           } else {
             const auto error_code = GetLastError();
             LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
@@ -366,11 +369,6 @@ Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, c
 
   return Status::OK();
 }
-
-/**
-  Status MapFileIntoMemory(_In_z_ const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
-  }*/
 
 Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                                      FileOffsetType offset,
@@ -772,6 +770,10 @@ std::string WindowsEnv::GetEnvironmentVar(const std::string& var_name) const {
   return std::string();
 }
 
+/*
+Read logical processor info from the map.
+{-1,-1} stands for failure.
+*/
 ProcessorInfo WindowsEnv::GetProcessorAffinityMask(int global_processor_id) const {
   if (global_processor_info_map_.count(global_processor_id)) {
     return global_processor_info_map_.at(global_processor_id);
@@ -793,6 +795,10 @@ void WindowsEnv::InitializeCpuInfo() {
   GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &returnLength);
   auto last_error = GetLastError();
   if (last_error != ERROR_INSUFFICIENT_BUFFER) {
+    const auto error_code = GetLastError();
+    LOGS_DEFAULT(ERROR) << "Failed to calculate byte size for saving cpu info on windows"
+                        << ", error code: " << error_code
+                        << ", error msg: " << std::system_category().message(error_code);
     return;
   }
 
@@ -800,36 +806,52 @@ void WindowsEnv::InitializeCpuInfo() {
   SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
 
   if (!GetLogicalProcessorInformationEx(RelationProcessorCore, processorInfos, &returnLength)) {
+    const auto error_code = GetLastError();
+    LOGS_DEFAULT(ERROR) << "Failed to fetch cpu info on windows"
+                        << ", error code: " << error_code
+                        << ", error msg: " << std::system_category().message(error_code);
     return;
   }
 
+  int core_id = 0;
   int global_processor_id = 0;
   const BYTE* iter = reinterpret_cast<const BYTE*>(processorInfos);
   const BYTE* end = iter + returnLength;
+  std::stringstream log_stream;
+
   while (iter < end) {
     auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
     auto size = processor_info->Size;
+
+    //Discoverred a phyical core and it belongs exclusively to a single group
     if (processor_info->Relationship == RelationProcessorCore &&
         processor_info->Processor.GroupCount == 1) {
-      LogicalProcessors logical_processors;
-      KAFFINITY bit = 1;
+      log_stream << std::endl
+                 << "core " << core_id + 1 << " consist of logical processors: ";
+      LogicalProcessors core_global_proc_ids;
+      constexpr KAFFINITY bit = 1;
+      constexpr int id_upper_bound = sizeof(KAFFINITY) * CHAR_BIT;
       const auto& group_mask = processor_info->Processor.GroupMask[0];
-      for (int logcal_proessor_id = 0; logcal_proessor_id < sizeof(KAFFINITY) * 8; ++logcal_proessor_id) {
-        if (group_mask.Mask & (bit << logcal_proessor_id)) {
-          logical_processors.push_back(global_processor_id);
+      for (int logical_proessor_id = 0; logical_proessor_id < id_upper_bound; ++logical_proessor_id) {
+        if (group_mask.Mask & (bit << logical_proessor_id)) {
+          log_stream << global_processor_id + 1 << " ";
+          core_global_proc_ids.push_back(global_processor_id);
           /*
           * Build up a map between global processor id and local processor id.
-          * The map helps to bridge between ort API and windows affinity API.
-          * We need local processor id to build an affinity mask that is specific to a certain group.
+          * The map helps to bridge between ort API and windows affinity API -
+          * we need local processor id to build an affinity mask for a particular group.
           */
-          global_processor_info_map_[global_processor_id] = {static_cast<int>(group_mask.Group), logcal_proessor_id};
+          global_processor_info_map_[global_processor_id] = {static_cast<int>(group_mask.Group), logical_proessor_id};
           global_processor_id++;
         }
       }
-      cores_.push_back(std::move(logical_processors));
+      cores_.push_back(std::move(core_global_proc_ids));
+      core_id++;
     }
     iter += size;
   }
-}
 
+  LOGS_DEFAULT(VERBOSE) << "Found total " << cores_.size() << " core(s) from windows system:";
+  LOGS_DEFAULT(VERBOSE) << log_stream.str();
+}
 }  // namespace onnxruntime

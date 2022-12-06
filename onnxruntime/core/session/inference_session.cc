@@ -309,6 +309,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         bool allow_inter_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.inter_op_param;
+        to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
         std::basic_stringstream<ORTCHAR_T> ss;
         if (to.name) {
           ss << to.name << ORT_TSTR("-");
