@@ -93,7 +93,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
   free(buffer);
 }
 
-bool CudaProfiler::StartProfiling() {
+bool CudaProfiler::StartProfiling(TimePoint /* profiling_start_time */) {
   if (!enabled.test_and_set()) {
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER) == CUPTI_SUCCESS &&
@@ -146,7 +146,7 @@ void CudaProfiler::EndProfiling(TimePoint start_time, Events& events) {
         for (auto& evt_iter : map_iter.second) {
           evt_iter.args["op_name"] = insert_iter->args["op_name"];
         }
-        insert_iter = events.insert(insert_iter+1, map_iter.second.begin(), map_iter.second.end());
+        insert_iter = events.insert(insert_iter + 1, map_iter.second.begin(), map_iter.second.end());
       } else {
         insert_iter = events.insert(insert_iter, map_iter.second.begin(), map_iter.second.end());
       }
@@ -197,7 +197,7 @@ void CudaProfiler::Clear() {
   }
 }
 
-#else // for cuda 10.x, no profiling
+#else  // for cuda 10.x, no profiling
 
 void CUPTIAPI CudaProfiler::BufferRequested(uint8_t**, size_t*, size_t*) {}
 void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t) {}

@@ -87,7 +87,8 @@ bool GetProviderInstanceHash(const std::string& type,
              (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
              (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
              (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-             (static_cast<size_t>(info.has_user_compute_stream) << 22);
+             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
+             std::hash<cuda::TunableOpInfo>{}(info.tunable_op);
       return true;
     }
 #endif

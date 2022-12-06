@@ -5,6 +5,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include <unordered_set>
+#include "dnnl.hpp"
 
 namespace onnxruntime {
 
@@ -28,6 +29,7 @@ enum ORT_DataType : int {
   type_complex128 = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128,
   type_bfloat16 = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
 };
+
 /**
  * Pure virtual base class
  *
@@ -95,7 +97,7 @@ class DnnlDefaultNodeCapability : public DnnlNodeCapability {
 * DnnlDefaultMultiInputNodeCapability({T1, T2});
 *
 * The number of inputs and the number of unordered_sets must match. For this reason
-* this capability class is not sutable for nodes that may have a varible number of
+* this capability class is not suitable for nodes that may have a variable number of
 * inputs.
 *
 * All types for all inputs must be specified.
@@ -114,7 +116,7 @@ class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
 };
 /*
  * Works similar to the `DnnlDefaultMultiInputNodeCapability` class except that this
- * will check the input of all input nodes and supports optional inputs with different 
+ * will check the input of all input nodes and supports optional inputs with different
  * supported datatypes by using the input position to evaluate if the node is supported.
  *
  * Example usage:
@@ -126,9 +128,9 @@ class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
  * DnnlDefaultOptionalMultiInputNodeCapability(rules)
  *
  * In general node_data consist of a tuple that has:
- * (INPUT_POS, <IsThisInputMandatory?(true or false)>, {list, of, suppurted, types})
+ * (INPUT_POS, <IsThisInputMandatory?(true or false)>, {list, of, supported, types})
  *
- * We always asume that the input 0 of the map corresponds to the node input with index 0,
+ * We always assume that the input 0 of the map corresponds to the node input with index 0,
  * so if a node has M mandatory inputs and O optional, the map should contain the first
  * N inputs followed by the other M optional.
  *
@@ -176,7 +178,7 @@ class DnnlPoolNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlBatchNormalizationNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlBatchNormalizationNodeCapability() : DnnlDefaultNodeCapability({type_float32, type_bfloat16}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -191,7 +193,7 @@ class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -204,12 +206,22 @@ class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlMatMulNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlMatMulNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a LRN op is supported by DnnlExecutionProvider
+ */
+class DnnlLRNNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlLRNNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+ private:
 };
 
 /**
@@ -227,7 +239,7 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
 };
 
 /**
- * Decide if aSum op is supported by DnnlExecutionProvider
+ * Decide if a Sum op is supported by DnnlExecutionProvider
  * OneDNN does not support Numpy-style broadcasting for 'Sum'
  */
 class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
@@ -236,7 +248,7 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
   // Onnx reports support for float, float16, bfloat16, and double
   // Onnxruntime only has unittests for float and double.
   // To enable float16 and bfloat16 we will should add tests to verify those data types.
-  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({type_float32 /*, type_float16, type_bfloat16, type_int8, type_uint8*/}) {}
+  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({type_float32, type_bfloat16 /*, type_float16, type_int8, type_uint8*/}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -249,19 +261,20 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({type_int8, type_uint8, type_float32}) {}
-
+  DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_int8, type_uint8, type_float32}) {}
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+  bool IsBF16Supported(const Node* node) const;
 };
 
 /**
 * Decide if an Elementwise op is supported by DnnlExecutionProvider
 * Elementwise ops are:
-* Abs, Elu, Exp, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+* Abs, BiasGelu, Elu, Exp, FastGelu, Gelu, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+* BiasGelu has a Bias input but the capabilities can be discovered using the Elementwise check.
 */
 class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlElementwiseCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlElementwiseCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -274,7 +287,7 @@ class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlReduceNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlReduceNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlReduceNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -287,8 +300,8 @@ class DnnlReduceNodeCapability : public DnnlDefaultNodeCapability {
 class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
  public:
   DnnlPowNodeCapability()
-    : DnnlDefaultMultiInputNodeCapability({/*T */{type_float32},
-                                           /*T1*/{type_uint8, type_int8, type_int32, type_float32}}) {}
+    : DnnlDefaultMultiInputNodeCapability({/*T */{type_bfloat16, type_float32},
+                                             /*T1*/ {type_bfloat16, type_uint8, type_int8, type_int32, type_float32}}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -301,7 +314,7 @@ class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
  */
 class DnnlGemmNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlGemmNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlGemmNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
@@ -354,7 +367,7 @@ class DnnlSqueezeNodeCapability : public DnnlDefaultNodeCapability {
 
 class DnnlErfNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlErfNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  DnnlErfNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
@@ -441,5 +454,20 @@ class DnnlSkipLayerNormalizationNodeCapability : public DnnlLayerNormalizationNo
                                                                                     type_float16}) {}
 };
 
-                                 
+class DnnlConcatNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlConcatNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool AreAllInputsOfSameType(const Node* node) const;
+  bool AreAxisAndDimensionsSupported(const Node* node) const;
+};
+
 }  // namespace onnxruntime

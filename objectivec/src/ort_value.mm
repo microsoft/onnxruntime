@@ -5,8 +5,6 @@
 
 #include <optional>
 
-#include "safeint/SafeInt.hpp"
-
 #import "src/cxx_api.h"
 #import "src/error_utils.h"
 #import "src/ort_enums_internal.h"
@@ -44,6 +42,12 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
   }
 
   return result;
+}
+
+// out = a * b
+// returns true iff the result does not overflow
+bool SafeMultiply(size_t a, size_t b, size_t& out) {
+  return !__builtin_mul_overflow(a, b, &out);
 }
 
 }  // namespace

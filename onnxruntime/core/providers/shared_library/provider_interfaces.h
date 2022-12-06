@@ -30,6 +30,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class PhiloxGenerator;
+class RandomGenerator;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
@@ -247,6 +248,9 @@ struct ProviderHost {
   virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
   virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
   virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512_BF16(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAMX_BF16(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512Skylake(const CPUIDInfo* p) = 0;
 
   // logging::Logger
   virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
@@ -867,6 +871,10 @@ struct ProviderHost {
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 #endif
+#endif
+
+#if defined(USE_CANN)
+  virtual RandomGenerator& RandomGenerator__Default() = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;

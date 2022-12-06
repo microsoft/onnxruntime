@@ -21,12 +21,12 @@ FetchContent_Declare(
     abseil_cpp
     PREFIX "${CMAKE_CURRENT_BINARY_DIR}/abseil-cpp"
     BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/abseil-cpp"
-    URL https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.zip
-    URL_HASH SHA1=ce61532df974d00025b1220408ce1c900d81baf2
+    URL ${DEP_URL_abseil_cpp}
+    URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
 )
 
-FetchContent_MakeAvailable(abseil_cpp)
+onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
 set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
 message(STATUS "Abseil source dir:" ${ABSEIL_SOURCE_DIR})
@@ -37,4 +37,10 @@ if (GDK_PLATFORM)
   # to only include partitions that are known to support it (e.g. DESKTOP). As a workaround we
   # tell Abseil to pretend we're building an APP.
   target_compile_definitions(absl_symbolize PRIVATE WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
+endif()
+
+if(NOT onnxruntime_DISABLE_ABSEIL)
+  set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
+    absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
+    absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
 endif()

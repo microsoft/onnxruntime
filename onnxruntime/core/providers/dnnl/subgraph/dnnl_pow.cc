@@ -36,6 +36,10 @@ void DnnlPow::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       beta = static_cast<float>(*(uint8_t*)exponent_src_mem.get_data_handle());
       break;
     }
+    case dnnl::memory::data_type::bf16: {
+      beta = static_cast<float>(*(BFloat16*)exponent_src_mem.get_data_handle());
+      break;
+    }
     default:
       ORT_THROW("Pow exponent data type not supported");
   }

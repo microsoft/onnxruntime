@@ -1272,3 +1272,65 @@ def test_pythonop_training_mode():
     ortmodule = ORTModule(TestModel(output_size)).eval()
     _ = ortmodule(torch.randn(output_size, dtype=torch.float))
     check_pythonop_training_mode(ortmodule, is_eval_mode=True)
+
+
+@pytest.mark.skip(reason="TODO(yangu): need fix this test run random segment fault.")
+def test_python_op_save_input_for_backward():
+    class GeLUFunctionTakeActivationInput(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            (x,) = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            g = ff * grad_output
+            return g
+
+    class TestLayer(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.relu = GeLUFunctionTakeActivationInput.apply
+            self._output_size = output_size
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+            self.w = Parameter(
+                torch.empty(output_size, output_size, device=torch.cuda.current_device(), dtype=torch.float)
+            )
+            with torch.no_grad():
+                self.bias.uniform_()
+                self.w.uniform_()
+
+        def forward(self, model_input):
+            activation0 = torch.add(model_input, 0.4)
+            activation1 = activation0.view(self._output_size, -1)
+            activation2 = torch.add(self.relu(activation1), self.bias)
+            activation3 = torch.mul(activation2, 0.3)
+            activation3 = torch.matmul(self.w, activation3)
+            activation4 = torch.div(activation3, 1000)
+            return activation4
+
+    class TestModule(torch.nn.Module):
+        def __init__(self, output_size) -> None:
+            super().__init__()
+            self.layers = torch.nn.ModuleList([TestLayer(output_size) for i in range(10)])
+
+        def forward(self, x):
+            # ModuleList can act as an iterable, or be indexed using ints
+            for layer in self.layers:
+                x = x.view(-1)
+                x = torch.nn.functional.relu(layer(x))
+            return x
+
+    output_size = 1024
+
+    def model_builder():
+        return TestModule(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, output_size, dtype=torch.float).requires_grad_()
+
+    label_input = torch.ones([output_size])
+    run_training_test_and_compare(model_builder, input_generator, label_input)
