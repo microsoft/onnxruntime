@@ -220,6 +220,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           schema.Output(i, "Input" + std::to_string(i), "", "T", option);
           if (!all_type_support_flag) {
             schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+            all_type_support_flag = true;
           }
         } else {
           schema.Output(i, "Output" + std::to_string(i), "",
