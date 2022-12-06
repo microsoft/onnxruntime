@@ -184,7 +184,7 @@ namespace detail {
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void OrtRelease(Ort##NAME* ptr) { GetApi().Release##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { if (&GetApi()) GetApi().Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(MemoryInfo);
@@ -366,9 +366,9 @@ struct Env : detail::Base<OrtEnv> {
 
   Env& EnableTelemetryEvents();   ///< Wraps OrtApi::EnableTelemetryEvents
   Env& DisableTelemetryEvents();  ///< Wraps OrtApi::DisableTelemetryEvents
-  
-  Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel 
-  
+
+  Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel
+
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
