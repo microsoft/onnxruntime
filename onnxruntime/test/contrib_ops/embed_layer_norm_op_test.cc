@@ -17,7 +17,7 @@ static void RunTest(const embedlayernorm::OpData& data,
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_dml = DefaultCudaExecutionProvider().get() != nullptr;
+  bool enable_dml = DefaultDmlExecutionProvider().get() != nullptr;
   bool enable_cpu = !use_float16;
 
   if (enable_cpu || enable_cuda || enable_dml) {

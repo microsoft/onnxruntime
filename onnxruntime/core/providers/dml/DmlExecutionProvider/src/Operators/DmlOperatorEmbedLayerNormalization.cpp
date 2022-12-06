@@ -18,12 +18,6 @@ public:
         DmlOperator::Initialize(kernelCreationContext, kernelInputIndices, kernelOutputIndices);
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
 
-        int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-        uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
-        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
-        std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
-
         assert(m_inputTensorDescs.size() == 9);
         assert(m_outputTensorDescs.size() == 3);
 
@@ -69,11 +63,13 @@ public:
         DML_OPERATOR_DESC wordEmbeddingGatherOpDesc = { DML_OPERATOR_GATHER, &wordEmbeddingGatherDesc };
 
         // Gather the position embeddings
-        TensorDesc positionIdsTensorDesc(indicesDataType, m_inputTensorDescs[0].GetSizes());
+        std::optional<std::vector<uint32_t>> positionIdsStrides;
         if (positionIdsDesc.Desc && m_inputTensorDescs[8].GetSizes()[2] == 1 || !positionIdsDesc.Desc)
         {
-            positionIdsTensorDesc.SetStrides(std::vector<uint32_t>({0, 0, 0, 1}));
+            positionIdsStrides = std::vector<uint32_t>({0, 0, 0, 1});
         }
+
+        TensorDesc positionIdsTensorDesc(indicesDataType, m_inputTensorDescs[0].GetSizes(), std::move(positionIdsStrides));
         DML_TENSOR_DESC positionIdsDmlTensorDesc = positionIdsTensorDesc.GetDmlDesc();
 
         DML_GATHER_OPERATOR_DESC positionEmbeddingGatherDesc = {};
@@ -101,13 +97,15 @@ public:
         DML_OPERATOR_DESC embeddingsAddOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD, &embeddingsAddDesc };
 
         // Execute MVN
+        std::vector<uint32_t> mvnReductionAxes({m_inputTensorDescs[0].GetDimensionCount() - 1});
+
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc = {};
         mvnDesc.InputTensor = &gatheredDmlTensorDesc;
         mvnDesc.ScaleTensor = &gammaDesc;
         mvnDesc.BiasTensor = &betaDesc;
         mvnDesc.OutputTensor = &outputDesc;
-        mvnDesc.Axes = onnxAxes.data();
-        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
+        mvnDesc.Axes = mvnReductionAxes.data();
+        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(mvnReductionAxes.size());
         mvnDesc.NormalizeVariance = true;
         mvnDesc.Epsilon = epsilon;
         mvnDesc.FusedActivation = nullptr;
