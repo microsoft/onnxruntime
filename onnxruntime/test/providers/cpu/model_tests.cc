@@ -254,6 +254,7 @@ TEST_P(ModelTest, Run) {
       {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
       {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
       {"ResNet50-qdq", "failed in training", {"opset12"}},
+      {"ResNet50_int8", "failed in training", {"opset12"}},
       {"ResNet50-int8", "failed in training", {"opset12"}},
       {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
       {"SSD-int8", "failed in training", {"opset12"}},
