@@ -61,7 +61,7 @@ class IOInfo:
     index: int
     name: str
     elem_type: TensorProto.DataType
-    shape: List[int]
+    shape: List[int | str]
 
 
 def str_is_int(string: str) -> bool:
@@ -72,7 +72,7 @@ def str_is_int(string: str) -> bool:
         return False
 
 
-def parse_shape(shape_str: str) -> Optional[List[int]]:
+def parse_shape(shape_str: str) -> Optional[List[int | str]]:
     try:
         shape = [int(s) if str_is_int(s) else s for s in shape_str.split(",")]
     except ValueError:
@@ -88,6 +88,8 @@ class ParseIOInfoAction(argparse.Action):
         ios = []
 
         for io_idx, io_str in enumerate(io_strs):
+            comp_strs = []
+
             try:
                 comp_strs = io_str.split(";")
             except ValueError:
