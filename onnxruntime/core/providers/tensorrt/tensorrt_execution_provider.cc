@@ -9,6 +9,7 @@
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "tensorrt_execution_provider_custom_ops.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -254,17 +255,6 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
 auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
 #endif
 
-void ReleaseTensorRTCustomOpDomain(OrtProviderCustomOpDomain* domain) {
-  if (domain != nullptr) {
-    for (auto ptr : domain->custom_ops_) {
-      if (ptr != nullptr) {
-        delete ptr;
-      }
-    }
-    delete domain;
-  }
-}
-
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
 
@@ -464,7 +454,8 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
-  ReleaseTensorRTCustomOpDomain(info_.custom_op_domain_ptr);
+  //ReleaseTensorRTCustomOpDomain(info_.custom_op_domain_ptr);
+  ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {

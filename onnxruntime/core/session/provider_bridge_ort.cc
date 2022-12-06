@@ -1252,6 +1252,10 @@ void TensorrtProviderGetCustomOpDomain(IExecutionProviderFactory* factory, OrtPr
   s_library_tensorrt.Get().GetCustomOpDomain(factory, domain);
 }
 
+void TensorrtProviderGetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtProviderCustomOpDomain*>& custom_op_domains_ptr) {
+  s_library_tensorrt.Get().GetCustomOpDomainList(factory, custom_op_domains_ptr);
+}
+
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
@@ -1526,10 +1530,19 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
+  /*
   onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
   TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
   options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
+  */
 
+  onnxruntime::OrtProviderCustomOpDomain** custom_op_domains_ptr = nullptr;
+  std::vector<onnxruntime::OrtProviderCustomOpDomain*> custom_op_domains;
+  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+
+  for (auto ptr : custom_op_domains) {
+      options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(ptr));
+  }
   return nullptr;
   API_IMPL_END
 }

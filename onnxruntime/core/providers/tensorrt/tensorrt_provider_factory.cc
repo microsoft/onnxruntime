@@ -24,14 +24,21 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-  OrtProviderCustomOpDomain* GetCustomOpDomain();
+  //OrtProviderCustomOpDomain* GetCustomOpDomain();
+  void GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
 
  private:
   TensorrtExecutionProviderInfo info_;
 };
 
+/*
 OrtProviderCustomOpDomain* TensorrtProviderFactory::GetCustomOpDomain() {
   return info_.custom_op_domain_ptr;
+}
+*/
+
+void TensorrtProviderFactory::GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) {
+  custom_op_domain_list = info_.custom_op_domain_list;
 }
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
@@ -50,7 +57,9 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
-    common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+
+    //common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+    common::Status status = CreateTensorRTCustomOpDomainList(info.custom_op_domain_list);
     if (!status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Can't successfully get TRT plugins from TRT plugin registration.";
     }
@@ -80,7 +89,9 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
-    common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+
+    //common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
+    common::Status status = CreateTensorRTCustomOpDomainList(info.custom_op_domain_list);
     if (!status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Can't successfully get TRT plugins from TRT plugin registration.";
     }
@@ -157,9 +168,16 @@ struct Tensorrt_Provider : Provider {
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
   }
   
-  void GetCustomOpDomain(IExecutionProviderFactory* factory, OrtProviderCustomOpDomain** custom_op_domain) override {
+  /*
+  void GetCustomOpDomain(IExecutionProviderFactory* factory, OrtProviderCustomOpDomain** custom_op_domain_ptr) override {
     TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
-    *custom_op_domain = trt_factory->GetCustomOpDomain();
+    *custom_op_domain_ptr = trt_factory->GetCustomOpDomain();
+  }
+  */
+
+  void GetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtProviderCustomOpDomain*>& custom_op_domains_ptr) override {
+    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
+    trt_factory->GetCustomOpDomainList(custom_op_domains_ptr);
   }
   
   void Initialize() override {
