@@ -157,7 +157,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Compress = 9;
         static const int sc_sinceVer_EyeLike = 9;
         static const int sc_sinceVer_Scatter = 9;
-        static const int sc_sinceVer_Nonzero = 9;
+        static const int sc_sinceVer_NonZero = 9;
         static const int sc_sinceVer_Shrink = 9;
         static const int sc_sinceVer_Greater = 9;
         static const int sc_sinceVer_Less = 9;
@@ -303,6 +303,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Mod = 13;
         static const int sc_sinceVer_Mul = 13;
         static const int sc_sinceVer_Neg = 13;
+        static const int sc_sinceVer_NonZero = 13;
         static const int sc_sinceVer_Pad = 13;
         static const int sc_sinceVer_Pow = 13;
         static const int sc_sinceVer_QuantizeLinear = 13;
@@ -390,6 +391,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
         static const int sc_sinceVer_QLinearAdd = 1;
         static const int sc_sinceVer_Gelu = 1;
+        static const int sc_sinceVer_BiasGelu = 1;
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
