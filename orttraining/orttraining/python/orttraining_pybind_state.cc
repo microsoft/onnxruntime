@@ -85,7 +85,6 @@ GetExecutionProvidersForTrainingApis(OrtDevice device) {
 #ifdef USE_CUDA
   if (device.Type() == OrtDevice::GPU) {
     OrtCUDAProviderOptions provider_options{};
-    provider_options.do_copy_in_default_stream = true;
     provider_options.device_id = device.Id();
 
     if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
