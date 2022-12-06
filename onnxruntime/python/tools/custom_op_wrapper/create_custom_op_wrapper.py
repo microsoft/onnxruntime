@@ -22,7 +22,7 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import onnx
 from onnx import TensorProto, helper
@@ -61,7 +61,7 @@ class IOInfo:
     index: int
     name: str
     elem_type: TensorProto.DataType
-    shape: List[int | str]
+    shape: Optional[List[Union[int, str]]]
 
 
 def str_is_int(string: str) -> bool:
@@ -72,7 +72,7 @@ def str_is_int(string: str) -> bool:
         return False
 
 
-def parse_shape(shape_str: str) -> Optional[List[int | str]]:
+def parse_shape(shape_str: str) -> Optional[List[Union[int, str]]]:
     try:
         shape = [int(s) if str_is_int(s) else s for s in shape_str.split(",")]
     except ValueError:
@@ -96,9 +96,7 @@ class ParseIOInfoAction(argparse.Action):
                 parser.error(f"{opt_str}: {io_meta_name} info must be separated by ';'")
 
             if len(comp_strs) != 3:
-                parser.error(
-                    f"{opt_str}: {io_meta_name} info must have 3 components, but provided {len(comp_strs)}."
-                )
+                parser.error(f"{opt_str}: {io_meta_name} info must have 3 components, but provided {len(comp_strs)}.")
 
             # Get io name
             io_name = comp_strs[IO_NAME_INDEX]
@@ -219,13 +217,7 @@ def get_attributes(attr_data_info: List[List[str]]):
         with open(filepath, "rb") as file_desc:
             data = file_desc.read()
 
-        tensor = helper.make_tensor(
-            name=info[0],
-            data_type=TensorProto.UINT8,
-            dims=[len(data)],
-            vals=data,
-            raw=True
-        )
+        tensor = helper.make_tensor(name=info[0], data_type=TensorProto.UINT8, dims=[len(data)], vals=data, raw=True)
 
         attrs[info[0]] = tensor
 
@@ -244,9 +236,7 @@ def main():
     outputs = []
     output_names = []
     for out in args.outputs:
-        outputs.append(
-            helper.make_tensor_value_info(out.name, out.elem_type, out.shape)
-        )
+        outputs.append(helper.make_tensor_value_info(out.name, out.elem_type, out.shape))
         output_names.append(out.name)
 
     attrs = get_attributes(args.attribute_data)
@@ -271,9 +261,7 @@ def main():
         sys.exit(1)
 
     graph_def = helper.make_graph([custom_op_node], graph_name, inputs, outputs)
-    model_def = helper.make_model(
-        graph_def, opset_imports=[helper.make_opsetid(args.domain, args.opset_version)]
-    )
+    model_def = helper.make_model(graph_def, opset_imports=[helper.make_opsetid(args.domain, args.opset_version)])
 
     onnx.checker.check_model(model_def)
     onnx.save(model_def, output_model_path)
