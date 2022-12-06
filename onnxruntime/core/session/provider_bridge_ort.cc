@@ -1544,7 +1544,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
   */
 
-  onnxruntime::OrtProviderCustomOpDomain** custom_op_domains_ptr = nullptr;
   std::vector<onnxruntime::OrtProviderCustomOpDomain*> custom_op_domains;
   TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
 
