@@ -186,7 +186,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
         } else if (ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL == type) {
           schema.Input(i, "Input" + std::to_string(i), "", "T", option);
-          if (i == 0) { 
+          if (!all_type_support_flag) { 
               schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
               all_type_support_flag = true;
           }
