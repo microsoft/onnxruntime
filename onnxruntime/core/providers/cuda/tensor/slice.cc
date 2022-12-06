@@ -89,19 +89,20 @@ static Status SliceImpCore(cudaStream_t stream,
                            const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer,
                            const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
                            const TensorShape& output_shape,
-                           const TensorShape& input_shape) {
+                           const TensorShape& input_shape,
+    bool all_steps_are_positive) {
   // Nothing to fill in the output buffer - return early
   if (output_shape.Size() == 0) {
     return Status::OK();
   }
 
-  // If the Slice operation is Identity-like, just copy
-  // the input buffer into the output buffer and return
+  // If the Slice operation is Identity-like (no reversing involved), 
+  // just copy the input buffer into the output buffer and return
   // without invoking any of the Slice kernel's machinery.
 
   // Currently, we do not support string tensors- so it is safe
   // to have the following logic.
-  if (input_shape == output_shape) {
+  if ((input_shape == output_shape) && all_steps_are_positive) {
     if (input_data != output_data) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, output_shape.Size() * element_size,
                                            cudaMemcpyDeviceToDevice, stream));
@@ -178,7 +179,8 @@ Status Impl(cudaStream_t stream,
                                    input_strides,
                                    output_strides,
                                    output_shape,
-                                   input_shape));
+                                   input_shape,
+      compute_metadata.all_steps_are_positive));
 
   return Status::OK();
 }
@@ -218,7 +220,7 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(CallSliceImp(input_tensor->DataType()->Size(), input_dimensions.size(), starts_buffer,
                                    steps_buffer, input_strides,
                                    output_strides, ctx,
-                                   output_shape));
+                                   output_shape, compute_metadata.all_steps_are_positive));
 
   return Status::OK();
 }
@@ -240,7 +242,7 @@ template <bool dynamic>
 Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
                                     const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
                                     const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
-                                    const TensorShape& output_shape) const {
+                                    const TensorShape& output_shape, bool all_steps_are_positive) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
 
@@ -254,7 +256,8 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
                       input_strides,
                       output_strides,
                       output_shape,
-                      input_tensor->Shape());
+                      input_tensor->Shape(),
+      all_steps_are_positive);
 }
 
 }  // namespace cuda

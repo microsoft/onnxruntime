@@ -111,6 +111,10 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
     if (step == 0)
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'step' value cannot be 0");
 
+    if (step < 1) {
+        compute_metadata.all_steps_are_positive = false;
+    }
+
     if (dim_value == 0) {
       // shape with empty dim. only output_dims_ matters but set everything for completeness
       compute_metadata.steps_[onnxruntime::narrow<size_t>(axis)] = step;

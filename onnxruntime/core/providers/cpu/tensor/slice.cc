@@ -241,10 +241,10 @@ static Status SliceImpl(OpKernelContext* ctx,
     return Status::OK();
   }
 
-  // If the Slice operation is Identity-like, just copy
-  // the input buffer into the output buffer and return
-  // without invoking any of the Slice kernel's machinery
-  if (output_shape == input_tensor.Shape()) {
+  // If the Slice operation is Identity-like (no reversing involved), 
+  // just copy the input buffer into the output buffer and return
+  // without invoking any of the Slice kernel's machinery.
+  if ((output_shape == input_tensor.Shape()) && compute_metadata.all_steps_are_positive) {
     // CopyCpuTensor() will only make the copy if the
     // data pointers of the source and destination
     // tensors are different.

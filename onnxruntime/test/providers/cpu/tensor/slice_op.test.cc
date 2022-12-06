@@ -763,7 +763,6 @@ class IdentitySliceIdentityOpTester : public OpTester {
                 std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                 std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                 std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
-    ASSERT_EQ(graph_input_defs.size(), 4u);
     ASSERT_EQ(graph_output_defs.size(), 1u);
 
     std::vector<NodeArg*> inputs;
@@ -789,6 +788,16 @@ class IdentitySliceIdentityOpTester : public OpTester {
 
       inputs = {&graph.GetOrCreateNodeArg("matmul_0_out", &float_type), graph_input_defs[2],
                 graph_input_defs[3]};
+
+      // include axes
+      if (graph_input_defs.size() > 4) {
+          inputs.push_back(graph_input_defs[4]);
+      }
+
+      if (graph_input_defs.size() > 5) {
+          inputs.push_back(graph_input_defs[5]);
+      }
+
       outputs = {&slice_out};
 
       auto& split_node = graph.AddNode("slice", "Slice", "Identity Slicing", inputs, outputs);
@@ -828,6 +837,37 @@ TEST(SliceTest, OutputAndInputShapesAreSameAndReUseInputBuffer) {
 
   test.AddOutput<float>("data_out", input_dims, output_vals);
   test.Run();
+}
+
+// This tests that even if the input and output buffers are the same,
+// as the stepping is in reverse, the SliceKernel should be invoked completely
+TEST(SliceTest, ReverseOutputAndInputShapesAreSameAndReUseInputBuffer) {
+    std::vector<int64_t> input_dims = { 2, 2 };
+    auto input_vals = { 0.0f, 1.0f, 2.0f, 3.0f };
+    auto output_vals = { 11.0f, 6.0f, 3.0f, 2.0f };
+
+    std::initializer_list<int64_t> starts = { -1, -1 };
+    std::initializer_list<int64_t> ends = { 1, 1 };
+    std::initializer_list<int64_t> axes = { 0, 1 };
+    std::initializer_list<int64_t> steps = { -1, -1 };
+
+    RunOptions options{};
+    IdentitySliceIdentityOpTester test{ options, 10 };
+
+    test.AddInput<float>("matmul_data_0", input_dims, input_vals);
+    test.AddInput<float>("matmul_data_1", input_dims, input_vals);
+
+    // Add starts and ends as initializers so that shape inference for Slice can
+    // happen and then MayInPlace() can be triggered when it sees that the input
+    // and output shapes are the same.
+    test.AddInput<int64_t>("starts", { static_cast<int64_t>(starts.size()) }, starts, true);
+    test.AddInput<int64_t>("ends", { static_cast<int64_t>(ends.size()) }, ends, true);
+    test.AddInput<int64_t>("axes", { static_cast<int64_t>(axes.size()) }, axes, true);
+    test.AddInput<int64_t>("steps", { static_cast<int64_t>(steps.size()) }, steps, true);
+
+
+    test.AddOutput<float>("data_out", input_dims, output_vals);
+    test.Run();
 }
 }  // namespace test
 }  // namespace onnxruntime

@@ -31,6 +31,7 @@ struct PrepareForComputeMetadata {
   TensorShapeVector* p_flattened_input_dims_ = &flattened_input_dims_;
   TensorShapeVector flattened_output_dims_;
   TensorShapeVector* p_flattened_output_dims_ = &flattened_output_dims_;
+  bool all_steps_are_positive = true;
 };
 
 }  // namespace SliceOp
