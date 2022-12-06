@@ -16,12 +16,13 @@ limitations under the License.
 
 #pragma once
 
+#include <iosfwd>
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
@@ -58,19 +59,30 @@ class EnvThread {
   OrtCustomThreadHandle custom_thread_handle = nullptr;
 };
 
+/// Type that holds a collection of logical processors IDs used for setting affinities.
+using LogicalProcessors = std::vector<int>;
+
 // Parameters that are required to create a set of threads for a thread pool
 struct ThreadOptions {
   // Stack size for a new thread. If it is 0, the operating system uses the same value as the stack that's specified for
   // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
   unsigned int stack_size = 0;
 
-  // Thread affinity means a thread can only run on the logical processors that the thread is allowed to run on.
-  // If the vector is not empty, set the affinity of each thread to just one CPU.
-  // Index is thread index, value is CPU ID, starting from zero. For example, the first thread in the pool will be bound
-  // to the logical processor with id of affinity[0]. If the vector is empty, the thread can run on all the processors
-  // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
-  // processor group [0,1,2,3] may only contain half of the physical cores.
-  std::vector<size_t> affinity;
+  // Thread affinity means a thread can only run on the logical processor(s) that the thread is allowed to run on.
+  // If the vector is not empty, then set the affinity of each thread to logical cpus ids within the LogicalProcessors.
+  // For example, the first thread in the pool will be bound to the logical processors contained in affinity[0].
+  // If the vector is empty, the thread can run on all the processors its process can run on. 
+  // NOTE: When hyperthreading is enabled, for example, on a 4 cores we would have 8 logical processors,
+  // processor group [0,1,2,3] may only occupy up some of the physical cores. There might be more than 2 logical
+  // processor per physical core on a given computer. Physical cores assigned to a given VM may contain
+  // logical processor indices that do not start with 0 and possibly go beyond the number of bits in an integer.
+  // 
+  // If the size of the TP is not specified, ORT creates thread pools with a number of threads that are equal
+  // to the number of visible physical cores. The threads affinities are set to all of the logical processors
+  // that are contained in a given physical core with the same index as the thread. ORT does not set any affinity
+  // to the thread that is considered main (the thread that initiates the creation of the TP).
+  // The process that owns the thread may consider setting its affinity.
+  std::vector<LogicalProcessors> affinity;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
@@ -80,6 +92,10 @@ struct ThreadOptions {
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
 };
+
+std::ostream& operator<<(std::ostream& os, const LogicalProcessors&);
+std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors>);
+
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
@@ -117,10 +133,14 @@ class Env {
   /// The result of Default() belongs to this library and must never be deleted.
   static Env& Default();
 
-  virtual int GetNumCpuCores() const = 0;
+  /// <summary>
+  /// The API returns the number of different physical cores on the system
+  /// </summary>
+  /// <returns>Number of physical cores</returns>
+  virtual int GetNumPhysicalCpuCores() const = 0;
 
-  // This function doesn't support systems with more than 64 logical processors
-  virtual std::vector<size_t> GetThreadAffinityMasks() const = 0;
+  // This function currently doesn't support systems with more than 64 logical processors on Windows
+  virtual std::vector<LogicalProcessors> GetThreadAffinityMasks() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
@@ -206,7 +226,7 @@ class Env {
   // library are platform-specific and are not documented here.
   //
   // global_symbols only has an effect on unix, where a value of true means to load with RTLD_GLOBAL vs RTLD_LOCAL
-  // 
+  //
   // On success, returns a handle to the library in "*handle" and returns
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the

@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "gsl/gsl"
-
 #include "core/common/basic_types.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/graph/graph.h"
 #include "core/graph/runtime_optimization_record.h"
@@ -96,7 +95,7 @@ class NodesToOptimize {
   }
 
   // outputs filtered by index. includes all variadic.
-  InlinedVector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
+  InlinedVector<Node*> Outputs(gsl::span<const int> indices, bool required = true) const;
 
   // Get the Node or Nodes (if variadic) at a specific index.
   InlinedVector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
@@ -198,7 +197,7 @@ struct NodeAndMoveInfo {
 // rest of the graph. e.g., when creating a temporary node that is used to look up a kernel def, we can set the
 // temporary node's definitions (which is all we need) without updating existing graph edges.
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions);
+                       gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions);
 
 Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
                        bool only_update_dest_definitions);

@@ -3,26 +3,26 @@
 
 # pylint: disable=missing-docstring
 # pylint: disable=C0103
-
-from distutils.version import LooseVersion
+# pylint: disable=W0212
 
 import pytest
 import torch
 
 # Import ORT modules.
 from _test_helpers import *
+from packaging.version import Version
 from torch.nn.parameter import Parameter
 
 # Import external libraries.
 import onnxruntime
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
 
 def torch_version_lower_than(v):
-    return LooseVersion(torch.__version__) < LooseVersion(v)
+    return Version(torch.__version__) < Version(v)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -1106,6 +1106,8 @@ def test_non_differentiable_autograd_function():
     run()
 
 
+# There is bug in exporter side since 1.13 that will throw "RuntimeError: _Map_base::at" for this test.
+@pytest.mark.skipif(Version(torch.__version__) >= Version("1.13.0"), reason="PyTorch 1.13+ incompatible")
 def test_checkpoint_function():
     class A(torch.nn.Module):
         # A supported module.
@@ -1208,3 +1210,127 @@ def test_skipped_autograd_function():
     assert not can_run
 
     del os.environ["ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"]
+
+
+def test_pythonop_training_mode():
+    def check_pythonop_training_mode(model, is_eval_mode):
+        ## make sure the ort's PythonOp's training_mode is correct
+        if is_eval_mode:
+            onnx_nodes = (
+                model._torch_module._execution_manager._inference_manager._onnx_models.exported_model.graph.node
+            )
+        else:
+            onnx_nodes = model._torch_module._execution_manager._training_manager._onnx_models.exported_model.graph.node
+
+        found_pythonop = False
+        for node in onnx_nodes:
+            if node.op_type == "PythonOp":
+                found_pythonop = True
+                for attr in node.attribute:
+                    if attr.name == "training_mode":
+                        if is_eval_mode:
+                            assert attr.i == 0, f"in eval mode, it shoule be 0, while it is {attr.i} now"
+                        else:
+                            assert attr.i == 1, f"in training mode, it should be 1, while it is {attr.i} now"
+
+        assert found_pythonop, "PythonOp should be found in the exported model"
+
+    class TestFunction(torch.autograd.Function):
+        @staticmethod
+        # bias is an optional argument
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            x = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            return ff * grad_output
+
+    class TestModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super(TestModel, self).__init__()
+            self.custom_fn = TestFunction.apply
+            self.bias = Parameter(torch.empty(output_size, dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            # model_input did not require_grad
+            out = self.custom_fn(model_input)
+            return out + self.bias
+
+    output_size = 1024
+    # 1 check traning mode
+    ortmodule = ORTModule(TestModel(output_size)).train()
+    _ = ortmodule(torch.randn(output_size, dtype=torch.float))
+    check_pythonop_training_mode(ortmodule, is_eval_mode=False)
+    # 2 check eval mode
+    ortmodule = ORTModule(TestModel(output_size)).eval()
+    _ = ortmodule(torch.randn(output_size, dtype=torch.float))
+    check_pythonop_training_mode(ortmodule, is_eval_mode=True)
+
+
+@pytest.mark.skip(reason="TODO(yangu): need fix this test run random segment fault.")
+def test_python_op_save_input_for_backward():
+    class GeLUFunctionTakeActivationInput(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            (x,) = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            g = ff * grad_output
+            return g
+
+    class TestLayer(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.relu = GeLUFunctionTakeActivationInput.apply
+            self._output_size = output_size
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+            self.w = Parameter(
+                torch.empty(output_size, output_size, device=torch.cuda.current_device(), dtype=torch.float)
+            )
+            with torch.no_grad():
+                self.bias.uniform_()
+                self.w.uniform_()
+
+        def forward(self, model_input):
+            activation0 = torch.add(model_input, 0.4)
+            activation1 = activation0.view(self._output_size, -1)
+            activation2 = torch.add(self.relu(activation1), self.bias)
+            activation3 = torch.mul(activation2, 0.3)
+            activation3 = torch.matmul(self.w, activation3)
+            activation4 = torch.div(activation3, 1000)
+            return activation4
+
+    class TestModule(torch.nn.Module):
+        def __init__(self, output_size) -> None:
+            super().__init__()
+            self.layers = torch.nn.ModuleList([TestLayer(output_size) for i in range(10)])
+
+        def forward(self, x):
+            # ModuleList can act as an iterable, or be indexed using ints
+            for layer in self.layers:
+                x = x.view(-1)
+                x = torch.nn.functional.relu(layer(x))
+            return x
+
+    output_size = 1024
+
+    def model_builder():
+        return TestModule(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, output_size, dtype=torch.float).requires_grad_()
+
+    label_input = torch.ones([output_size])
+    run_training_test_and_compare(model_builder, input_generator, label_input)

@@ -203,7 +203,7 @@ public class OrtSession implements AutoCloseable {
    * @throws OrtException If there was an error in native code, the input names are invalid, or if
    *     there are zero or too many inputs.
    */
-  public Result run(Map<String, OnnxTensor> inputs) throws OrtException {
+  public Result run(Map<String, ? extends OnnxTensorLike> inputs) throws OrtException {
     return run(inputs, outputNames);
   }
 
@@ -218,7 +218,8 @@ public class OrtSession implements AutoCloseable {
    * @throws OrtException If there was an error in native code, the input names are invalid, or if
    *     there are zero or too many inputs.
    */
-  public Result run(Map<String, OnnxTensor> inputs, RunOptions runOptions) throws OrtException {
+  public Result run(Map<String, ? extends OnnxTensorLike> inputs, RunOptions runOptions)
+      throws OrtException {
     return run(inputs, outputNames, runOptions);
   }
 
@@ -233,7 +234,7 @@ public class OrtSession implements AutoCloseable {
    * @throws OrtException If there was an error in native code, the input or output names are
    *     invalid, or if there are zero or too many inputs or outputs.
    */
-  public Result run(Map<String, OnnxTensor> inputs, Set<String> requestedOutputs)
+  public Result run(Map<String, ? extends OnnxTensorLike> inputs, Set<String> requestedOutputs)
       throws OrtException {
     return run(inputs, requestedOutputs, null);
   }
@@ -241,7 +242,7 @@ public class OrtSession implements AutoCloseable {
   /**
    * Scores an input feed dict, returning the map of requested inferred outputs.
    *
-   * <p>The outputs are sorted based on the supplied set traveral order.
+   * <p>The outputs are sorted based on the supplied set traversal order.
    *
    * @param inputs The inputs to score.
    * @param requestedOutputs The requested outputs.
@@ -251,10 +252,12 @@ public class OrtSession implements AutoCloseable {
    *     invalid, or if there are zero or too many inputs or outputs.
    */
   public Result run(
-      Map<String, OnnxTensor> inputs, Set<String> requestedOutputs, RunOptions runOptions)
+      Map<String, ? extends OnnxTensorLike> inputs,
+      Set<String> requestedOutputs,
+      RunOptions runOptions)
       throws OrtException {
     if (!closed) {
-      if (inputs.isEmpty() || (inputs.size() > numInputs)) {
+      if ((inputs.isEmpty() && (numInputs != 0)) || (inputs.size() > numInputs)) {
         throw new OrtException(
             "Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
       }
@@ -268,7 +271,7 @@ public class OrtSession implements AutoCloseable {
       String[] inputNamesArray = new String[inputs.size()];
       long[] inputHandles = new long[inputs.size()];
       int i = 0;
-      for (Map.Entry<String, OnnxTensor> t : inputs.entrySet()) {
+      for (Map.Entry<String, ? extends OnnxTensorLike> t : inputs.entrySet()) {
         if (inputNames.contains(t.getKey())) {
           inputNamesArray[i] = t.getKey();
           inputHandles[i] = t.getValue().getNativeHandle();

@@ -404,6 +404,13 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.AddAttribute("alpha", alpha);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
+#ifdef USE_ROCM
+    // forward the __backwardpass, if present
+    auto& attrs = node.GetAttributes();
+    if (attrs.count("__backwardpass")) {
+      matmul_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
+    }
+#endif
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
 

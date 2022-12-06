@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/label_encoder.h"
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
@@ -32,14 +32,14 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
     if (!Y.IsDataType<int64_t>())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
 
-    auto input = gsl::make_span(X.Data<std::string>(), shape.Size());
-    auto output = gsl::make_span(Y.MutableData<int64_t>(), shape.Size());
+    auto input = gsl::make_span(X.Data<std::string>(), onnxruntime::narrow<size_t>(shape.Size()));
+    auto output = gsl::make_span(Y.MutableData<int64_t>(), onnxruntime::narrow<size_t>(shape.Size()));
     auto out = output.begin();
 
     // map isn't going to change so get end() once instead of calling inside the for_each loop
     const auto map_end = string_to_int_map_.end();
 
-    std::for_each(input.cbegin(), input.cend(),
+    std::for_each(input.begin(), input.end(),
                   [&out, &map_end, this](const std::string& value) {
                     auto map_to = string_to_int_map_.find(value);
                     *out = map_to == map_end ? default_int_ : map_to->second;
@@ -49,13 +49,13 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
     if (!Y.IsDataTypeString())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
 
-    auto input = gsl::make_span(X.Data<int64_t>(), shape.Size());
-    auto output = gsl::make_span(Y.MutableData<std::string>(), shape.Size());
+    auto input = gsl::make_span(X.Data<int64_t>(), onnxruntime::narrow<size_t>(shape.Size()));
+    auto output = gsl::make_span(Y.MutableData<std::string>(), onnxruntime::narrow<size_t>(shape.Size()));
     auto out = output.begin();
 
     const auto map_end = int_to_string_map_.end();
 
-    std::for_each(input.cbegin(), input.cend(),
+    std::for_each(input.begin(), input.end(),
                   [&out, &map_end, this](const int64_t& value) {
                     auto map_to = int_to_string_map_.find(value);
                     *out = map_to == map_end ? default_string_ : map_to->second;

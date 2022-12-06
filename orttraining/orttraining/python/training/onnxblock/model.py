@@ -41,9 +41,6 @@ class Model(building_blocks.Block):
         # Build the graph outputs
         graph_utils.build_graph_outputs(accessor.global_accessor.model, output)
 
-        # validate and check the model
-        onnx.checker.check_model(accessor.global_accessor.model, True)
-
         return output
 
 
@@ -128,8 +125,5 @@ class TrainingModel(building_blocks.Block):
 
         # add gradient accumulation nodes
         graph_utils.build_gradient_accumulation_graph(accessor.global_accessor.model, all_args_requiring_gradient_names)
-
-        # validate and check the model
-        onnx.checker.check_model(accessor.global_accessor.model, True)
 
         return output

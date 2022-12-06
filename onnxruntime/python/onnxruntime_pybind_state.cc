@@ -339,6 +339,7 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
     info.cudnn_conv_algo_search = cudnn_conv_algo_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
+    info.tunable_op = tunable_op;
   }
   return info;
 }
@@ -411,6 +412,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             0,
             nullptr,
+            0,
             0,
             0};
         for (auto option : it->second) {
@@ -536,6 +538,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_context_memory_sharing_enable = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_context_memory_sharing_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_layer_norm_fp32_fallback") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_layer_norm_fp32_fallback = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_layer_norm_fp32_fallback = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -762,7 +772,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
-    return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::XnnpackProviderFactoryCreator::Create(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+        ->CreateProvider();
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
@@ -1331,6 +1344,8 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("synchronize_execution_providers", &RunOptions::synchronize_execution_providers,
+                     R"pbdoc(Synchronize execution providers after executing session.)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1549,6 +1564,22 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
         return fetches;
+      })
+      .def("run_with_ortvaluevector", [](
+        PyInferenceSession* sess,
+        RunOptions run_options,
+        const std::vector<std::string>& feed_names,
+        const std::vector<OrtValue>& feeds,
+        const std::vector<std::string>& fetch_names,
+        std::vector<OrtValue>& fetches,
+        const std::vector<OrtDevice>& fetch_devices) -> void {
+
+        {
+          // release GIL to allow multiple python threads to invoke Run() in parallel.
+          py::gil_scoped_release release;
+          OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
+        }
+
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();

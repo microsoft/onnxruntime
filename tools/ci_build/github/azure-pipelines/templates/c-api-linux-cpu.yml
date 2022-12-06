@@ -35,17 +35,9 @@ jobs:
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
-    - bash: |
-        set -euo pipefail
-        if ! which docker; then
-          sudo apt-get install apt-transport-https ca-certificates curl software-properties-common
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-          sudo add-apt-repository "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-          sudo apt-get update
-          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-          sudo chmod 666 /var/run/docker.sock
-        fi
-      displayName: Install Docker Engine
+    - checkout: self
+      clean: true
+      submodules: none
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
@@ -53,6 +45,8 @@ jobs:
         Context: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
         Repository: onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}}
+        ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+            UpdateDepsTxt: false
 
     - task: CmdLine@2
       inputs:

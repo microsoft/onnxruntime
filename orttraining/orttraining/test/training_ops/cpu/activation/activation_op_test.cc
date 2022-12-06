@@ -83,6 +83,12 @@ constexpr float SigmoidGrad(float dy, float y) {
 constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
+
+float QuickGeluGrad(float dy, float x, float alpha) {
+  float v = x * alpha;
+  float sigmoid = v >= 0 ? 1.f / (1.f + std::exp(-v)) : 1.f - 1.f / (1 + std::exp(v));
+  return dy * sigmoid * (1 + v * (1 - sigmoid));
+}
 }  // namespace
 
 TEST(GeluGradTest, Basic) {
@@ -197,6 +203,64 @@ TEST(TanhGradTest, Basic) {
         return TanhGrad(dy, y);
       },
       {}, 1, kMSDomain);
+}
+
+TEST(QuickGeluGradTest, Basic) {
+  const std::vector<float> x_vals = {-10.0f, -1.0f, 0.0f, 1.0f, 10.0f};
+  const std::vector<float> dY(5, 1.0f);
+
+  // Positive alpha.
+  {
+    constexpr float alpha = 1.702f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+    // The ifdef is to suppress a warning: "lambda capture 'alpha' is not required to be captured for this use."
+    // But on Windows it is required.
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
+  // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
+  {
+    constexpr float alpha = 1.0f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
+  // Negative alpha.
+  {
+    constexpr float alpha = -1.702f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
 }
 
 namespace {

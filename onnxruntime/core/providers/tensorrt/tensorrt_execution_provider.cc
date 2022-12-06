@@ -14,7 +14,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_runtime_api.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <unordered_map>
 #include <utility>
 #include <limits>
@@ -294,6 +294,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
     context_memory_sharing_enable_ = info.context_memory_sharing_enable;
+    if (fp16_enable_) {
+      layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
+    }
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -383,6 +386,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!context_memory_sharing_enable_env.empty()) {
       context_memory_sharing_enable_ = (std::stoi(context_memory_sharing_enable_env) == 0 ? false : true);
     }
+
+    const std::string layer_norm_fp32_fallback_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kLayerNormFP32Fallback);
+    if (!layer_norm_fp32_fallback_env.empty()) {
+      layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
+    }
   }
 
   // Validate setting
@@ -447,7 +455,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
-                        << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_;
+                        << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
+                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1230,6 +1239,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
+
+    // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
+    if (fp16_enable_ && layer_norm_fp32_fallback_) {
+      for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
+        auto layer = trt_network->getLayer(idx);
+        auto next_layer = trt_network->getLayer(idx + 1);
+        if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow";
+          layer->setPrecision(nvinfer1::DataType::kFLOAT);
+          next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
+          layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+          next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
+        }
+      }
+    }
 
     int num_inputs = trt_network->getNbInputs();
     int num_outputs = trt_network->getNbOutputs();

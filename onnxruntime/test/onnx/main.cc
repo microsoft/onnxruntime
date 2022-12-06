@@ -66,7 +66,7 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
-    const double absolute = 1e-3;
+    constexpr double absolute = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
     const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
@@ -416,7 +416,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
         auto pos = token.find("|");
         if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW(R"(Use a '|' to separate the key and value for 
+          ORT_THROW(R"(Use a '|' to separate the key and value for
 the run-time option you are trying to use.\n)");
         }
 
@@ -426,7 +426,7 @@ the run-time option you are trying to use.\n)");
         if (key == "runtime") {
           std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
           if (supported_runtime.find(value) == supported_runtime.end()) {
-            ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
+            ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
           }
         } else if (key == "priority") {
@@ -434,7 +434,7 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
         } else if (key == "buffer_type") {
           std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
           if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
-            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
+            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
         } else {

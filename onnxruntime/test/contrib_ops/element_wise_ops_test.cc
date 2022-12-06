@@ -9,6 +9,7 @@
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -112,7 +113,7 @@ TEST(BiasGeluTest, Two_One_Dim) {
   RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {4});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 TEST(BiasGeluTest, Two_One_Dim_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -146,12 +147,18 @@ TEST(BiasGeluTest, Two_One_Dim_fp16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST(BiasGeluTest, Two_One_Dim_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -178,7 +185,11 @@ TEST(BiasGeluTest, Two_One_Dim_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#elif USE_DNNL
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#elif USE_DML
+  execution_providers.push_back(DefaultDmlExecutionProvider());
+#endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif

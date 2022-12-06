@@ -603,7 +603,8 @@ at::IntArrayRef BroadcastShape(
   auto status = ComputeOutputShape(node_name, ort_tensor_lhs.Shape(), ort_tensor_rhs.Shape(), out_shape);
   CHECK_STATUS(status);
   auto out_shape_dims = out_shape.GetDims();
-  return at::IntArrayRef(&out_shape_dims[0], out_shape_dims.size());
+  return !out_shape_dims.empty() ? at::IntArrayRef(out_shape_dims.data(), out_shape_dims.size())
+                                 : at::IntArrayRef();
 }
 
 // #pragma region Hand-Implemented ATen Ops

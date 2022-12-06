@@ -112,7 +112,7 @@ class DnnlSubgraphPrimitive {
   //for memory debug purpose
   std::vector<std::pair<int,int>> items_to_print_;
   void PrintMemory(const dnnl::memory& mem);
-  
+
 };
 
 }  // namespace ort_dnnl
@@ -123,14 +123,13 @@ inline std::ostream& operator<<(std::ostream& os, const dnnl::memory::dims& dims
 }
 
 inline std::ostream& operator<<(std::ostream& os, const gsl::span<const int64_t>& span) {
-  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  std::copy(span.begin(), span.end(), std::ostream_iterator<int64_t>(os, " "));
   return os;
 }
 
 inline std::ostream& operator<<(std::ostream& os, const gsl::span<int64_t>& span) {
-  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  std::copy(span.begin(), span.end(), std::ostream_iterator<int64_t>(os, " "));
   return os;
 }
 
 }  // namespace onnxruntime
-

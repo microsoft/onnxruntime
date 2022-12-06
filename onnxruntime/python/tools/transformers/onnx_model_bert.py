@@ -12,8 +12,9 @@ from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_gemmfastgelu import FusionGemmFastGelu
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
-from fusion_options import FusionOptions
+from fusion_options import AttentionMaskFormat, FusionOptions
 from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
@@ -80,6 +81,10 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionGeluApproximation(self)
         fusion.apply()
 
+    def fuse_gemm_fast_gelu(self):
+        fusion = FusionGemmFastGelu(self)
+        fusion.apply()
+
     def fuse_add_bias_skip_layer_norm(self):
         fusion = FusionBiasSkipLayerNormalization(self)
         fusion.apply()
@@ -92,8 +97,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionShape(self)
         fusion.apply()
 
-    def fuse_embed_layer(self):
-        fusion = FusionEmbedLayerNormalization(self)
+    def fuse_embed_layer(self, use_mask_index):
+        fusion = FusionEmbedLayerNormalization(self, use_mask_index)
         fusion.apply()
 
     def fuse_layer_norm(self):
@@ -393,7 +398,8 @@ class BertOnnxModel(OnnxModel):
         self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
-            self.fuse_embed_layer()
+            use_mask_index = options.attention_mask_format == AttentionMaskFormat.MaskIndexEnd
+            self.fuse_embed_layer(use_mask_index)
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
@@ -413,6 +419,9 @@ class BertOnnxModel(OnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
+        if options is not None and options.enable_gemm_fast_gelu:
+            self.fuse_gemm_fast_gelu()
+
         self.remove_unused_constant()
 
         # Use symbolic batch dimension in input and output.
@@ -429,19 +438,18 @@ class BertOnnxModel(OnnxModel):
         ops = [
             "EmbedLayerNormalization",
             "Attention",
-            "QOrderedAttention",
             "Gelu",
-            "QOrderedGelu",
             "FastGelu",
             "BiasGelu",
+            "GemmFastGelu",
             "LayerNormalization",
-            "QOrderedLayerNormalization",
             "SkipLayerNormalization",
-            "QOrderedMatMul",
         ]
-        for op in ops:
+        q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
+        for op in ops + q_ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
+
         logger.info(f"Optimized operators:{op_count}")
         return op_count
 

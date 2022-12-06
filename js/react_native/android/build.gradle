@@ -120,9 +120,10 @@ repositories {
   }
 }
 
+def REACT_NATIVE_VERSION = new File(['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim())
+
 dependencies {
-  // noinspection GradleDynamicVersion
-  api "com.facebook.react:react-native:+"
+  api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
   androidTestImplementation "androidx.test:runner:1.1.0"
