@@ -18,8 +18,7 @@ class Conv final : public CannKernel {
     ORT_ENFORCE(pads_size % 2 == 0);
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
-  Status Prepare(OpKernelContext* ctx, CannPreparation& prepare) const;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   ConvAttributes conv_attrs_;

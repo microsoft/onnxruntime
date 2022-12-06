@@ -34,15 +34,21 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - powershell: |
-     $Env:USE_MSVC_STATIC_RUNTIME=1
-     $Env:ONNX_ML=1
-     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-     python setup.py bdist_wheel
-     python -m pip uninstall -y onnx -qq
-     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-    workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+  - template: templates/download-deps.yml
+
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
+    inputs:
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir $(Build.BinariesDirectory)/deps
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - task: PowerShell@2
     displayName: 'Install ONNX'
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+      workingDirectory: '$(Build.BinariesDirectory)'
+      arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'

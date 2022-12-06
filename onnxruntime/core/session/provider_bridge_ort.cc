@@ -317,6 +317,9 @@ struct ProviderHostImpl : ProviderHost {
   const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() override { return CPUIDInfo::GetCPUIDInfo(); }
   bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) override { return p->HasAVX2(); }
   bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) override { return p->HasAVX512f(); }
+  bool CPUIDInfo__HasAVX512_BF16(const CPUIDInfo* p) override { return p->HasAVX512_BF16(); }
+  bool CPUIDInfo__HasAMX_BF16(const CPUIDInfo* p) override { return p->HasAMX_BF16(); }
+  bool CPUIDInfo__HasAVX512Skylake(const CPUIDInfo* p) override { return p->HasAVX512Skylake(); }
 
   // logging::Logger (wrapped)
   bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) override { return p->OutputIsEnabled(severity, data_type); }
@@ -1004,6 +1007,10 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 #endif
 
+#if defined(USE_CANN)
+  RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
+#endif
+
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1236,6 +1243,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   // Add new provider option below
   // Use default value as this field is not available in OrtTensorRTProviderOptionsV
   trt_options_converted.trt_context_memory_sharing_enable = 0;
+  trt_options_converted.trt_layer_norm_fp32_fallback = 0;
   return trt_options_converted;
 }
 
@@ -1541,6 +1549,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_engine_decryption_lib_path = nullptr;
   (*out)->trt_force_sequential_engine_build = false;
   (*out)->trt_context_memory_sharing_enable = false;
+  (*out)->trt_layer_norm_fp32_fallback = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

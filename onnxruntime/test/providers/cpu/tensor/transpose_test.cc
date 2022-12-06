@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {
@@ -156,6 +158,93 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
+
+#if defined(USE_DNNL)
+TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Transpose", 13);
+  test.AddAttribute("perm", std::vector<int64_t>{1, 0});
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+  test.AddOutput<BFloat16>("transposed", {3, 2}, MakeBFloat16({1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Transpose", 13);
+  test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+  test.AddOutput<BFloat16>("transposed", {3, 2}, MakeBFloat16({1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TransposeOpTest, Transpose021_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  std::vector<int64_t> input_shape({4, 2, 3});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      1.1f, 2.1f, 3.1f,
+      4.1f, 5.1f, 6.1f,
+
+      1.2f, 2.2f, 3.2f,
+      4.2f, 5.2f, 6.2f,
+
+      1.3f, 2.3f, 3.3f,
+      4.3f, 5.3f, 6.3f};
+
+  std::vector<int64_t> perm = {0, 2, 1};
+  std::vector<int64_t> expected_shape({4, 3, 2});
+  auto expected_vals = {
+      1.0f, 4.0f,
+      2.0f, 5.0f,
+      3.0f, 6.0f,
+
+      1.1f, 4.1f,
+      2.1f, 5.1f,
+      3.1f, 6.1f,
+
+      1.2f, 4.2f,
+      2.2f, 5.2f,
+      3.2f, 6.2f,
+
+      1.3f, 4.3f,
+      2.3f, 5.3f,
+      3.3f, 6.3f};
+  OpTester test("Transpose", 13);
+  test.AddAttribute("perm", perm);
+  test.AddInput<BFloat16>("data", input_shape, FloatsToBFloat16s(input_vals));
+  test.AddOutput<BFloat16>("transposed", expected_shape, FloatsToBFloat16s(expected_vals));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 
 TEST(TransposeOpTest, TwoDim_int8) {
   std::vector<int64_t> input_shape({2, 3});
@@ -634,18 +723,37 @@ TEST(TransposeOpTest, Transpose0213_V2) {  // Will trigger Transpose4DParalleliz
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0231) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 2 and 3 into one dim
-  const std::vector<int64_t> X_dims{64, 128, 16, 64};
-  const std::vector<int64_t> perm{0, 2, 3, 1};
-  const std::vector<int64_t> Y_dims{64, 16, 64, 128};
-  TestTranspose(perm, X_dims, Y_dims);
-}
+TEST(TransposeOpTest, Transpose3DImpl) {
+  // Flattening dims 2 and 3 into one dim.
+  {
+    const std::vector<int64_t> X_dims{64, 128, 16, 64};
+    const std::vector<int64_t> perm{0, 2, 3, 1};
+    const std::vector<int64_t> Y_dims{64, 16, 64, 128};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
 
-TEST(TransposeOpTest, Transpose0312) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 1 and 2 into one dim
-  const std::vector<int64_t> X_dims{64, 16, 64, 128};
-  const std::vector<int64_t> perm{0, 3, 1, 2};
-  const std::vector<int64_t> Y_dims{64, 128, 16, 64};
-  TestTranspose(perm, X_dims, Y_dims);
+  // Flattening dims 1 and 2 into one dim.
+  {
+    const std::vector<int64_t> X_dims{64, 16, 64, 128};
+    const std::vector<int64_t> perm{0, 3, 1, 2};
+    const std::vector<int64_t> Y_dims{64, 128, 16, 64};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
+
+  // dim-1 or dim-2 is not power of 2.
+  {
+    const std::vector<int64_t> X_dims{64, 12, 128};
+    const std::vector<int64_t> perm{0, 2, 1};
+    const std::vector<int64_t> Y_dims{64, 128, 12};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
+
+  {
+    const std::vector<int64_t> X_dims{64, 99, 24};
+    const std::vector<int64_t> perm{0, 2, 1};
+    const std::vector<int64_t> Y_dims{64, 24, 99};
+    TestTranspose(perm, X_dims, Y_dims);
+  }
 }
 
 #endif

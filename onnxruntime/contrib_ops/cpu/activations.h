@@ -4,13 +4,15 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+
 #include "core/platform/threadpool.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/providers/cpu/element_wise_ranged_transform.h"
-
+using onnxruntime::narrow;
 namespace onnxruntime {
 namespace functors {
 
@@ -82,7 +84,7 @@ class Gelu : public OpKernel {
             p_output[i] = value * static_cast<T>(M_SQRT1_2);
           }
 
-          MlasComputeErf(p_output, p_output, gsl::narrow_cast<size_t>(count));
+          MlasComputeErf(p_output, p_output, narrow<size_t>(count));
 
           for (int64_t i = 0; i < count; i++) {
             p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
@@ -120,7 +122,7 @@ class QuickGelu : public OpKernel {
             p_output[i] = p_input[i] * alpha_;
           }
 
-          MlasComputeLogistic(p_output, p_output, count);
+          MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
 
           for (int64_t i = 0; i < count; i++) {
             p_output[i] = p_input[i] * p_output[i];

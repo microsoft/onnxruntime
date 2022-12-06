@@ -17,6 +17,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:
@@ -69,7 +71,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   // Release all buffers added by
   // AddDeferredReleaseCPUPtr using
   // GPU callback (so it's async).
-  Status EnqueueDeferredRelease();
+  Status EnqueueDeferredRelease(bool actually_defer = true);
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
