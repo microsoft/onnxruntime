@@ -3,6 +3,50 @@
 
 #include "precomp.h"
 
+/*
+WordEmbeddings    InputIds    SegmentEmbeddings    SegmentIds    PositionEmbeddings    PositionIds    Gamma    Beta    Mask
+     │               │              │                  │                │                   │           │        │      │
+     │               │              │                  │                │                   │           │        │      │
+     │               │              │                  │                │                   │           │        │      │
+     │               │              │                  │                │                   │           │        │      │
+     │               │              │                  │                │                   │           │        │      │          OnesConstant
+     │               │              │                  │                │                   │           │        │      │                │
+     └───────┬───────┘              └────────┬─────────┘                └─────────┬─────────┘           │        │      │                │
+             │                               │                                    │                     │        │      │                │
+             ▼                               ▼                                    ▼                     │        │      └───────┬────────┘
+          Gather                           Gather                              Gather                   │        │              │
+             │                               │                                    │                     │        │              ▼
+             │                               │                                    │                     │        │            Equals
+             │                               │                                    │                     │        │              │
+             │                               │                                    │                     │        │              │
+             │                               │                                    │                     │        │              │
+             │                               │                                    │                     │        │              │
+             └─────────────┬─────────────────┘                                    │                     │        │              │
+                           │                                                      │                     │        │              │
+                           ▼                                                      │                     │        │              │
+                          Add                                                     │                     │        │              │
+                           │                                                      │                     │        │              ▼
+                           │                                                      │                     │        │            Reduce
+                           └────────────────────────────┬─────────────────────────┘                     │        │              │
+                                                        │                                               │        │              │
+                                                        ▼                                               │        │              │
+                                                       Add   ┌──────────────────────────────────────────┘        │              │
+                                                        │    │                                                   │              │
+                           ┌────────────────────────────┤    │    ┌──────────────────────────────────────────────┘              │
+                           │                            │    │    │                                                             │
+                           │                            ▼    ▼    ▼                                                             │
+                           │                MeanVarianceNormalization                                                           │
+                           │                            │               ┌───────────────────────────────────────────────────────┘
+                           │                            │               │
+                           │                            │               │
+                           ▼                            ▼               ▼
+                      EmbeddingSum                   Output          MaskIndex
+
+ This kernel creates a DML_GRAPH, as mentioned above.
+ For reference, refer to this Doc:
+ https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.EmbedLayerNormalization
+ */
+
 namespace Dml
 {
 
