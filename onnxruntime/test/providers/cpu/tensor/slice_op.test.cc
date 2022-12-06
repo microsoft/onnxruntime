@@ -706,7 +706,7 @@ TEST(SliceTest, Slice5D_CopyAxis2LargeBlock) {
                       {1, 2, 2, 2, 2},
                       {5.f, 6.f, 7.f, 8.f,
                        -1.f, -2.f, -3.f, -4.f,
-                        5.f, 6.f, 7.f, 8.f,
+                       5.f, 6.f, 7.f, 8.f,
                        -1.f, -2.f, -3.f, -4.f},
                       true,
                       {});
@@ -747,78 +747,84 @@ TEST(SliceTest, CoalesceDims) {
   RunSliceTest<float>({1, 1, 1}, {1.f}, {0}, {std::numeric_limits<int64_t>::max()}, {1}, {}, {1, 1, 1}, {1.f}, true);
 }
 
-using namespace ONNX_NAMESPACE;
-
+// Constructs a simple graph like this:
+// MatMul -> Slice -> Identity
+// The Slice is placed in the middle so that it doesn't consume
+// graph inputs and doesn't produce graph outputs.
+// This is to test the MayInPlace() code path of Slice.
 class IdentitySliceIdentityOpTester : public OpTester {
-public:
-    IdentitySliceIdentityOpTester(const RunOptions& /*options*/, int opset_version = 10)
-        : OpTester("Slice", opset_version) {
+ public:
+  IdentitySliceIdentityOpTester(const RunOptions& /*options*/, int opset_version = 10)
+      : OpTester("Slice", opset_version) {
+  }
+
+ protected:
+  void AddNodes(onnxruntime::Graph& graph,
+                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
+    ASSERT_EQ(graph_input_defs.size(), 4u);
+    ASSERT_EQ(graph_output_defs.size(), 1u);
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    ONNX_NAMESPACE::TypeProto float_type;
+    float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+    // add MatMul node so that Slice input does not flow from graph input
+    {
+      auto& matmul_out = graph.GetOrCreateNodeArg("matmul_0_out", &float_type);
+
+      inputs = {graph_input_defs[0], graph_input_defs[1]};
+      outputs = {&matmul_out};
+
+      auto& matmul_node = graph.AddNode("matmul-0", "MatMul", "MatMul", inputs, outputs);
     }
 
-protected:
-    void AddNodes(onnxruntime::Graph& graph,
-        std::vector<onnxruntime::NodeArg*>& graph_input_defs,
-        std::vector<onnxruntime::NodeArg*>& graph_output_defs,
-        std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
-        ASSERT_EQ(graph_input_defs.size(), 3u);
-        ASSERT_EQ(graph_output_defs.size(), 1u);
+    // add Slice node
+    {
+      auto& slice_out = graph.GetOrCreateNodeArg("slice_out", &float_type);
 
+      inputs = {&graph.GetOrCreateNodeArg("matmul_0_out", &float_type), graph_input_defs[2],
+                graph_input_defs[3]};
+      outputs = {&slice_out};
 
-        std::vector<NodeArg*> inputs;
-        std::vector<NodeArg*> outputs;
-
-        TypeProto float_type;
-        float_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-
-        // add Identity node so that Slice input does not flow from graph input
-        {
-            auto& identity_out = graph.GetOrCreateNodeArg("identity_0_out", &float_type);
-
-            inputs = { graph_input_defs[0] };
-            outputs = { &identity_out };
-
-            auto& identity_node = graph.AddNode("identity-0", "Identity", "Identity", inputs, outputs);
-        }
-
-        // add Slice node
-        {
-            auto& slice_out = graph.GetOrCreateNodeArg("slice_out", &float_type);
-
-            inputs = { &graph.GetOrCreateNodeArg("identity_0_out", &float_type), graph_input_defs[1],
-                graph_input_defs[2] };
-            outputs = { &slice_out};
-
-            auto& split_node = graph.AddNode("slice", "Slice", "Identity Slicing", inputs, outputs);
-
-        }
-
-
-        // add Identity node so that Slice output does not flow into graph output
-        {
-
-            inputs = { &graph.GetOrCreateNodeArg("slice_out", &float_type) };
-            outputs = { graph_output_defs[0] };
-
-            auto& identity_node = graph.AddNode("identity-1", "Identity", "Identity", inputs, outputs);
-        }
+      auto& split_node = graph.AddNode("slice", "Slice", "Identity Slicing", inputs, outputs);
     }
+
+    // add Identity node so that Slice output does not flow into graph output
+    {
+      inputs = {&graph.GetOrCreateNodeArg("slice_out", &float_type)};
+      outputs = {graph_output_defs[0]};
+
+      auto& identity_node = graph.AddNode("identity-0", "Identity", "Identity", inputs, outputs);
+    }
+  }
 };
 
 TEST(SliceTest, OutputAndInputShapesAreSameAndReUseInputBuffer) {
-    std::vector<int64_t> input_dims = { 6 };
-    auto input_vals = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
-    std::initializer_list<int64_t> starts = { 0 };
-    std::initializer_list<int64_t> ends = { 6 };
+  std::vector<int64_t> input_dims = {2, 2};
+  auto input_vals = {0.0f, 1.0f, 2.0f, 3.0f};
+  auto output_vals = {2.0f, 3.0f, 6.0f, 11.0f};
 
-    RunOptions options{};
-    IdentitySliceIdentityOpTester test{ options, 10 };
+  std::initializer_list<int64_t> starts = {0, 0};
+  std::initializer_list<int64_t> ends = {2, 2};
 
-    test.AddInput<float>("data", input_dims, input_vals);
-    test.AddInput<int64_t>("starts", { static_cast<int64_t>(starts.size()) }, starts);
-    test.AddInput<int64_t>("ends", { static_cast<int64_t>(ends.size()) }, ends);
+  RunOptions options{};
+  IdentitySliceIdentityOpTester test{options, 10};
 
-        test.AddOutput<float>("data_out", input_dims, input_vals);
-        test.Run();
+  test.AddInput<float>("matmul_data_0", input_dims, input_vals);
+  test.AddInput<float>("matmul_data_1", input_dims, input_vals);
+
+  // Add starts and ends as initializers so that shape inference for Slice can
+  // happen and then MayInPlace() can be triggered when it sees that the input
+  // and output shapes are the same.
+  test.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts, true);
+  test.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends, true);
+
+  test.AddOutput<float>("data_out", input_dims, output_vals);
+  test.Run();
 }
 }  // namespace test
 }  // namespace onnxruntime
