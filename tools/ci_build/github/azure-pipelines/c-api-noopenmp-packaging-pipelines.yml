@@ -93,7 +93,7 @@ jobs:
 
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-tensorrt8-winbuild-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     job_name_suffix: gpu
@@ -108,7 +108,7 @@ jobs:
 
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-tensorrt8-winbuild-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     job_name_suffix: tensorrt
@@ -116,7 +116,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -294,11 +294,11 @@ jobs:
       Steps:
       - script: |
           tools/ci_build/get_docker_image.py \
-            --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4 \
+            --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5 \
             --context tools/ci_build/github/linux/docker \
             --docker-build-args "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )" \
             --container-registry onnxruntimebuildcache \
-            --repository onnxruntimecuda116xtrt84build
+            --repository onnxruntimecuda116xtrt85build
         displayName: "Getonnxruntimecuda116xtrt84build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4"
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime
       ContainerRegistry: onnxruntimebuildcache
@@ -351,7 +351,7 @@ jobs:
     inputs:
       script: |
         docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
-        --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda116xtrt84build \
+        --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda116xtrt85build \
         /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
