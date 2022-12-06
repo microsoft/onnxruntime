@@ -9,11 +9,13 @@
 
 namespace onnxruntime {
 namespace {
+
 template <typename T, typename R>
 using EnableIfEigenScalar = typename std::enable_if<std::is_arithmetic<T>::value, R>::type;
 
 template <typename T, typename R>
 using EnableIfEigenNotScalar = typename std::enable_if<!std::is_arithmetic<T>::value, R>::type;
+
 template <typename T>
 ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
@@ -241,8 +243,8 @@ namespace contrib {
 
 QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
   size_t input_def_count = info.node().InputDefs().size();
-  ORT_ENFORCE(input_def_count == expected_input_count,
-              "There must be ", expected_input_count, " inputs! (condition, x, x_scale, x_zero_point, y, y_scale, y_zero_point, z_scale, z_zero_point)");
+  ORT_ENFORCE(input_def_count == kExpected_input_count,
+              "There must be ", kExpected_input_count, " inputs! (condition, x, x_scale, x_zero_point, y, y_scale, y_zero_point, z_scale, z_zero_point)");
   const Tensor* tensor_x_scale = nullptr;
   const Tensor* tensor_x_zero_point = nullptr;
   const Tensor* tensor_y_scale = nullptr;

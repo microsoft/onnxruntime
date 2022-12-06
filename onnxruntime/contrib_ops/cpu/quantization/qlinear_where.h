@@ -19,7 +19,7 @@ class QLinearWhere final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  const size_t expected_input_count = 9;
+  constexpr static size_t kExpected_input_count = 9;
   std::vector<uint8_t> y_fixed_lookup_table_;
   std::vector<uint8_t> x_fixed_lookup_table_;
   bool is_x_dynamic_ = true;
