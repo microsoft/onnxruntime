@@ -34,7 +34,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -133,7 +133,7 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
 Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
-                                                    const std::vector<std::string>& input_names,
+                                                    std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
                                                     bool is_quantized_model,
                                                     bool do_op_validation) const {
@@ -202,9 +202,9 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                     qnn_def::package_name,
                                                     qnn_node_type,
-                                                    input_names,
+                                                    std::move(input_names),
                                                     {output_name},
-                                                    param_tensor_names,
+                                                    std::move(param_tensor_names),
                                                     do_op_validation),
                     "Failed to add node.");
 

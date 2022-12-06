@@ -31,7 +31,7 @@ class SliceOpBuilder : public BaseOpBuilder {
 
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -171,7 +171,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
 Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                    const NodeUnit& node_unit,
-                                                   const std::vector<std::string>& input_names,
+                                                   std::vector<std::string>&& input_names,
                                                    const logging::Logger& logger,
                                                    bool is_quantized_model,
                                                    bool do_op_validation) const {
@@ -191,12 +191,12 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   std::string param_tensor_name(ranges_paramwrapper.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(ranges_paramwrapper));
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper,
-                      node_unit,
-                      input_names,
-                      {param_tensor_name},
-                      logger,
-                      is_quantized_model,
-                      do_op_validation));
+                                     node_unit,
+                                     std::move(input_names),
+                                     {param_tensor_name},
+                                     logger,
+                                     is_quantized_model,
+                                     do_op_validation));
   return Status::OK();
 }
 

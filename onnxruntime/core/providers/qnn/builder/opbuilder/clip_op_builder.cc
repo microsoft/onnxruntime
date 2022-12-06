@@ -28,7 +28,7 @@ class ClipOpBuilder : public BaseOpBuilder {
 
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -122,7 +122,7 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
 Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
-                                                  const std::vector<std::string>& input_names,
+                                                  std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
@@ -141,7 +141,9 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   param_tensor_names.push_back(max_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, param_tensor_names,
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                     std::move(input_names),
+                                     std::move(param_tensor_names),
                                      logger, is_quantized_model, do_op_validation));
 
   return Status::OK();

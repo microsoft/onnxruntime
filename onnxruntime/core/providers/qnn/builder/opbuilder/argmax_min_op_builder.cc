@@ -19,7 +19,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -27,7 +27,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
 
 Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                        const NodeUnit& node_unit,
-                                                       const std::vector<std::string>& input_names,
+                                                       std::vector<std::string>&& input_names,
                                                        const logging::Logger& logger,
                                                        bool is_quantized_model,
                                                        bool do_op_validation) const {
@@ -52,7 +52,9 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, param_tensor_names,
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                     std::move(input_names),
+                                     std::move(param_tensor_names),
                                      logger, is_quantized_model, do_op_validation));
 
   return Status::OK();

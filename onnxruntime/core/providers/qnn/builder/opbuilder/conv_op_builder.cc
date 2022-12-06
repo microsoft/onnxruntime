@@ -33,7 +33,7 @@ class ConvOpBuilder : public BaseOpBuilder {
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -223,7 +223,7 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
 Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
-                                                  const std::vector<std::string>& input_names,
+                                                  std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
@@ -365,15 +365,13 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, qnn_data_type, output_quantize_param,
                                         std::move(output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-  std::vector<std::string> output_names;
-  output_names.push_back(output_name);
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                     qnn_def::package_name,
                                                     output_node_type,
-                                                    input_names,
-                                                    output_names,
-                                                    param_tensor_names
+                                                    std::move(input_names),
+                                                    {output_name},
+                                                    std::move(param_tensor_names)
                                                     ),
                     "Failed to add node.");
 

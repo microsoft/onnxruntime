@@ -29,7 +29,7 @@ class SplitOpBuilder : public BaseOpBuilder {
 
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -91,7 +91,7 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
 Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                    const NodeUnit& node_unit,
-                                                   const std::vector<std::string>& input_names,
+                                                   std::vector<std::string>&& input_names,
                                                    const logging::Logger& logger,
                                                    bool is_quantized_model,
                                                    bool do_op_validation) const {
@@ -156,7 +156,9 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   param_tensor_names.push_back(split_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(split_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, param_tensor_names,
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                     std::move(input_names),
+                                     std::move(param_tensor_names),
                                      logger, is_quantized_model, do_op_validation));
 
   return Status::OK();

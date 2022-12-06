@@ -80,18 +80,23 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
       }
     };
 
-    // Is quantized model, is Q/DQ singel node, Qnn support Quantize & Dequantize op
+    // Is NPU backend, is single node, case by case
+    // Q/DQ nodes -- supported
+    // Transpose nodes -- supported
     if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (IsQdqNode(node_unit)) {
-        LOGS(logger, VERBOSE) << "Single Q/DQ node is supported in QDQ model. Node name: " << node_unit.Name()
-                              << " is supported in QDQ model.";
+      if (IsQdqNode(node_unit)) { // Qnn has Quantize & Dequantize Op 
+        LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
-      } else {
-        LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported in QDQ model. Node name: " << node_unit.Name()
-                              << " Op type: " << node_unit.OpType();
-        // TODO: still can support it for some ops like Transpose.
-        return false;
       }
+      // Tranpose only chagne the data layout, still support it
+      if ("Transpose" == node_unit.OpType()) {
+        LOGS(logger, VERBOSE) << "Single Transpose node is supported for NPU backend. Node name: " << node_unit.Name();
+        return true;
+      }
+
+      LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported for NPU backend. Node name: " << node_unit.Name()
+                            << " Op type: " << node_unit.OpType();
+      return false;
     }
 
     // Non-NPU backend, quantized model not supported, but a QDQ node encountered

@@ -213,11 +213,11 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
   out << " quantizationEncoding=" << quantize_params.quantizationEncoding;
   if (quantize_params.encodingDefinition == QNN_DEFINITION_IMPL_GENERATED ||
       quantize_params.encodingDefinition == QNN_DEFINITION_DEFINED) {
-    out << " encoding=" << quantize_params.quantizationEncoding;
     if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
       out << " scale=" << quantize_params.scaleOffsetEncoding.scale;
       out << " offset=" << quantize_params.scaleOffsetEncoding.offset;
     } else {
+      out << " encoding not supported.";
     }
   }
   return out;

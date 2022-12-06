@@ -57,10 +57,12 @@ class QnnModelWrapper {
   bool CreateQnnNode(const std::string& name,
                      const std::string& package_name,
                      const std::string& type,
-                     const std::vector<std::string>& input_names,
-                     const std::vector<std::string>& output_names,
-                     const std::vector<std::string>& param_tensor_names,
+                     std::vector<std::string>&& input_names,
+                     std::vector<std::string>&& output_names,
+                     std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
+
+  bool ComposeQnnGraph();
 
   Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
 
@@ -202,6 +204,7 @@ class QnnModelWrapper {
   std::unordered_map<std::string, QnnTensorWrapper> model_tensors_map_;
   // All QnnParamWrapper for the graph
   std::unordered_map<std::string, QnnParamWrapper> model_params_map_;
+  std::vector<QnnOpProperty> qnn_op_property_list_;
   // <tensor_name, qnn_tensor_created> -- true means qnn tensor created in qnn graph
   // it includs normal qnn_tensors and qnn_tensors inside param_tensors
   std::unordered_map<std::string, bool> tensor_created_map_;

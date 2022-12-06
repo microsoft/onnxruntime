@@ -167,50 +167,94 @@ bool QnnModelWrapper::CreateQnnParamTensors(const std::string& qnn_node_name,
 bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
                                     const std::string& package_name,
                                     const std::string& qnn_node_type,
-                                    const std::vector<std::string>& input_names,
-                                    const std::vector<std::string>& output_names,
-                                    const std::vector<std::string>& param_tensor_names,
+                                    std::vector<std::string>&& input_names,
+                                    std::vector<std::string>&& output_names,
+                                    std::vector<std::string>&& param_tensor_names,
                                     bool do_op_validation) {
-  std::vector<Qnn_Tensor_t> input_tensors;
-  std::vector<Qnn_Tensor_t> output_tensors;
-  std::vector<Qnn_Param_t> params;
-  if (!CreateQnnInputOutputTensors(qnn_node_name, input_names, input_tensors, do_op_validation)) {
-    return false;
-  }
-
-  if (!CreateQnnInputOutputTensors(qnn_node_name, output_names, output_tensors, do_op_validation)) {
-    return false;
-  }
-
-  if (!CreateQnnParamTensors(qnn_node_name, param_tensor_names, params, do_op_validation)) {
-    return false;
-  }
-
-  QnnOpConfigWrapper op_config_wrapper(qnn_node_name,
-                                       package_name,
-                                       qnn_node_type,
-                                       std::move(input_tensors),
-                                       std::move(output_tensors),
-                                       std::move(params));
-
-  using namespace onnxruntime::qnn::utils;
-  LOGS(logger_, VERBOSE) << op_config_wrapper;
-
-  bool rt;
-  std::string error_msg;
   if (do_op_validation) {
-    rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, qnn_node_name, error_msg);
+    std::vector<Qnn_Tensor_t> input_tensors;
+    std::vector<Qnn_Tensor_t> output_tensors;
+    std::vector<Qnn_Param_t> params;
+    if (!CreateQnnInputOutputTensors(qnn_node_name, input_names, input_tensors, do_op_validation)) {
+      return false;
+    }
+
+    if (!CreateQnnInputOutputTensors(qnn_node_name, output_names, output_tensors, do_op_validation)) {
+      return false;
+    }
+
+    if (!CreateQnnParamTensors(qnn_node_name, param_tensor_names, params, do_op_validation)) {
+      return false;
+    }
+
+    QnnOpConfigWrapper op_config_wrapper(qnn_node_name,
+                                         package_name,
+                                         qnn_node_type,
+                                         std::move(input_tensors),
+                                         std::move(output_tensors),
+                                         std::move(params));
+
+    using namespace onnxruntime::qnn::utils;
+    LOGS(logger_, VERBOSE) << op_config_wrapper;
+
+    std::string error_msg;
+    bool rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, qnn_node_name, error_msg);
     if (!rt) {
       LOGS(logger_, WARNING) << error_msg;
     }
     return rt;
+  } else {
+    QnnOpProperty qnn_op(qnn_node_name, package_name, qnn_node_type,
+                         std::move(input_names), std::move(output_names), std::move(param_tensor_names));
+    qnn_op_property_list_.push_back(std::move(qnn_op));
+    return true;
   }
 
-  rt = op_config_wrapper.CreateQnnGraphOp(qnn_interface_, graph_, qnn_node_name, error_msg);
-  if (!rt) {
-    LOGS(logger_, WARNING) << error_msg;
+  return true;
+}
+
+bool QnnModelWrapper::ComposeQnnGraph() {
+  LOGS(logger_, VERBOSE) << "Compose Qnn Graph.";
+  //ORT_RETURN_IF(qnn_op_property_list_.empty(), "Empty Qnn op list, no graph to compose.");
+  if (qnn_op_property_list_.empty()) {
+    return false;
   }
-  return rt;
+
+  for (const auto& op_property : qnn_op_property_list_) {
+    std::vector<Qnn_Tensor_t> input_tensors;
+    std::vector<Qnn_Tensor_t> output_tensors;
+    std::vector<Qnn_Param_t> params;
+    if (!CreateQnnInputOutputTensors(op_property.GetNodeName(), op_property.GetInputNames(), input_tensors)) {
+      return false;
+    }
+
+    if (!CreateQnnInputOutputTensors(op_property.GetNodeName(), op_property.GetOutputNames(), output_tensors)) {
+      return false;
+    }
+
+    if (!CreateQnnParamTensors(op_property.GetNodeName(), op_property.GetParamTensorNames(), params)) {
+      return false;
+    }
+
+    QnnOpConfigWrapper op_config_wrapper(op_property.GetNodeName(),
+                                         op_property.GetPackageName(),
+                                         op_property.GetNodeType(),
+                                         std::move(input_tensors),
+                                         std::move(output_tensors),
+                                         std::move(params));
+
+    using namespace onnxruntime::qnn::utils;
+    LOGS(logger_, VERBOSE) << op_config_wrapper;
+
+    std::string error_msg;
+    bool rt = op_config_wrapper.CreateQnnGraphOp(qnn_interface_, graph_, op_property.GetNodeName(), error_msg);
+    if (!rt) {
+      LOGS(logger_, ERROR) << error_msg;
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape) {

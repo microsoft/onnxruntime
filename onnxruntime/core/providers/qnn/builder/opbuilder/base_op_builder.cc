@@ -39,7 +39,7 @@ Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger,
                                     is_quantized_model, input_names, do_op_validation));
 
-  ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, input_names,
+  ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
                                                   logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
@@ -150,7 +150,7 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
 Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
-                                                  const std::vector<std::string>& input_names,
+                                                  std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
@@ -158,14 +158,15 @@ Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, {}, logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
+                                     logger, is_quantized_model, do_op_validation));
   return Status::OK();
 }
 
 Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
-                                     const std::vector<std::string>& param_tensor_names,
+                                     std::vector<std::string>&& input_names,
+                                     std::vector<std::string>&& param_tensor_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const {
@@ -208,9 +209,9 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                     qnn_def::package_name,
                                                     GetQnnOpType(node_unit.OpType()),
-                                                    input_names,
-                                                    output_names,
-                                                    param_tensor_names,
+                                                    std::move(input_names),
+                                                    std::move(output_names),
+                                                    std::move(param_tensor_names),
                                                     do_op_validation),
                     "Failed to add node.");
 

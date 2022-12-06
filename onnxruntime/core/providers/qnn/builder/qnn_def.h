@@ -318,6 +318,45 @@ class QnnOpConfigWrapper {
   Qnn_OpConfig_t op_config_ = QNN_OPCONFIG_INIT;
 };
 
+class QnnOpProperty {
+ public:
+  QnnOpProperty(const std::string& node_name,
+                const std::string& package_name,
+                const std::string& node_type,
+                std::vector<std::string>&& input_names,
+                std::vector<std::string>&& outputs_names,
+                std::vector<std::string>&& param_tensor_names) : qnn_node_name_(node_name),
+                                                                 package_name_(package_name),
+                                                                 qnn_node_type_(node_type),
+                                                                 input_names_(std::move(input_names)),
+                                                                 output_names_(std::move(outputs_names)),
+                                                                 param_tensor_names_(std::move(param_tensor_names)) {}
+
+  const std::string& GetNodeName() const { return qnn_node_name_; }
+  const std::string& GetPackageName() const { return package_name_; }
+  const std::string& GetNodeType() const { return qnn_node_type_; }
+  const std::vector<std::string>& GetInputNames() const { return input_names_; }
+  const std::vector<std::string>& GetOutputNames() const { return output_names_; }
+  const std::vector<std::string>& GetParamTensorNames() const { return param_tensor_names_; }
+  QnnOpProperty(QnnOpProperty&& other) noexcept {
+    std::swap(qnn_node_name_, other.qnn_node_name_);
+    std::swap(package_name_, other.package_name_);
+    std::swap(qnn_node_type_, other.qnn_node_type_);
+    std::swap(input_names_, other.input_names_);
+    std::swap(output_names_, other.output_names_);
+    std::swap(param_tensor_names_, other.param_tensor_names_);
+  }
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnOpProperty);
+
+ private:
+  std::string qnn_node_name_;
+  std::string package_name_;
+  std::string qnn_node_type_;
+  std::vector<std::string> input_names_;
+  std::vector<std::string> output_names_;
+  std::vector<std::string> param_tensor_names_;
+};
+
 class GraphInfo {
  public:
   GraphInfo(Qnn_GraphHandle_t graph,

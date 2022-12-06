@@ -22,7 +22,7 @@ class GatherOpBuilder : public BaseOpBuilder {
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -30,7 +30,7 @@ class GatherOpBuilder : public BaseOpBuilder {
 
 Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
-                                                    const std::vector<std::string>& input_names,
+                                                    std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
                                                     bool is_quantized_model,
                                                     bool do_op_validation) const {
@@ -98,9 +98,9 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                     qnn_def::package_name,
                                                     GetQnnOpType(node_unit.OpType()),
-                                                    input_names,
+                                                    std::move(input_names),
                                                     {gather_output_name},
-                                                    param_tensor_names,
+                                                    std::move(param_tensor_names),
                                                     do_op_validation),
                     "Failed to add node.");
 

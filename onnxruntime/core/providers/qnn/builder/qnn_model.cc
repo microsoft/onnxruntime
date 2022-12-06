@@ -137,6 +137,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
   }
 
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");
+
   rt = GetGraphInfoFromModel(qnn_model_wrapper);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetGraphInfoFromModel failed.");

@@ -41,15 +41,15 @@ class BaseOpBuilder : public IOpBuilder {
 
   virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
-                                             const std::vector<std::string>& input_names,
+                                             std::vector<std::string>&& input_names,
                                              const logging::Logger& logger,
                                              bool is_quantized_model,
                                              bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
   virtual Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                 const NodeUnit& node_unit,
-                                const std::vector<std::string>& input_names,
-                                const std::vector<std::string>& param_tensor_names,
+                                std::vector<std::string>&& input_names,
+                                std::vector<std::string>&& param_tensor_names,
                                 const logging::Logger& logger,
                                 bool is_quantized_model,
                                 bool do_op_validation) const ORT_MUST_USE_RESULT;

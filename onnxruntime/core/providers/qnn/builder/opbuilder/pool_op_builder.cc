@@ -27,7 +27,7 @@ class PoolOpBuilder : public BaseOpBuilder {
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
-                                     const std::vector<std::string>& input_names,
+                                     std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
@@ -128,7 +128,7 @@ Status PoolOpBuilder::SetParamForMaxPool(const NodeAttrHelper& node_helper,
 
 Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
-                                                  const std::vector<std::string>& input_names,
+                                                  std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
@@ -203,7 +203,9 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
   }
   this->output_count_ = 1;
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, input_names, param_tensor_names,
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                     std::move(input_names),
+                                     std::move(param_tensor_names),
                                      logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
