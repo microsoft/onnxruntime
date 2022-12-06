@@ -7,7 +7,7 @@
 #include "core/framework/sparse_tensor.h"
 #endif
 #include "core/framework/ortdevice.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #include "core/framework/copy.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
