@@ -142,6 +142,7 @@ public:
   }
 
   Status IsSupported(const GemmParams<T>* params) {
+    ORT_UNUSED_PARAMETER(params);
     return Status::OK();
   }
 
