@@ -505,11 +505,12 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
       SliceInfo info = gather_queue.front();
       Node* gather_node = info.GetNode();
       gather_queue.pop_front();
-      const Node* slice_input_data_producer = graph.GetProducerNode(gather_node->MutableInputDefs()[0]->Name());
+      Node* slice_input_data_producer =
+          graph.GetMutableProducerNode(gather_node->MutableInputDefs()[0]->Name());
       if (slice_input_data_producer == nullptr) {
         break;
       }
-      Node* input_node = const_cast<Node*>(slice_input_data_producer);
+      Node* input_node = slice_input_data_producer;
       if (graph.GetConsumerNodes(input_node->MutableOutputDefs()[0]->Name()).size() > 1) {
         LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_node->Name() + " since multiple consumer found");
         continue;
