@@ -15,6 +15,7 @@
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -142,10 +143,16 @@ class TunableOp {
 
   void EnableTuning() {
     tuning_ = true;
+    for (auto sub_op_ptr : tunable_sub_ops_) {
+      sub_op_ptr->EnableTuning();
+    }
   }
 
   void DisableTuning() {
     tuning_ = false;
+    for (auto sub_op_ptr : tunable_sub_ops_) {
+      sub_op_ptr->DisableTuning();
+    }
   }
 
   // We might want to do some tricks to the `params`, e.g., some op will use a buffer for input and output at the same
@@ -167,6 +174,19 @@ class TunableOp {
   void SetDefaultId(int id) {
     ORT_ENFORCE(id < static_cast<int>(ops_.size()), "TunableOp id out of bound");
     default_id_ = id;
+  }
+
+  void RegisterTunableSubOp(TunableOp<ParamsT, TimerT>* op_ptr) {
+    tunable_sub_ops_.insert(op_ptr);
+    if (tuning_) {
+      op_ptr->EnableTuning();
+    } else {
+      op_ptr->DisableTuning();
+    }
+  }
+
+  void DeregisterTunableSubOp(TunableOp<ParamsT, TimerT>* op_ptr) {
+    tunable_sub_ops_.erase(op_ptr);
   }
 
  private:
@@ -214,39 +234,37 @@ class TunableOp {
 #endif
   }
 
-  int FindFastest(const ParamsT* params) {
+protected:
+  virtual int FindFastest(const ParamsT* params) {
+    return FindFastestImpl(params, ops_);
+  }
+
+  int FindFastestImpl(const ParamsT* params, const std::vector<Op<ParamsT>>& candidates) {
     auto op_sig = OpSignature();
     auto param_sig = params->Signature();
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
+    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
 
-    std::vector<Op<ParamsT>>* candidates = nullptr;
-    GetCandidateOpsForParams(params, &candidates);
-    ORT_ENFORCE(candidates != nullptr, (std::string)"No candidates found for params: " + param_sig);
-
-    for (size_t i = 0; i < candidates->size(); i++) {
-      if (!IsSupported((*candidates)[i], params)) {
-        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
+    for (size_t i = 0; i < candidates.size(); i++) {
+      auto& candidate = const_cast<Op<ParamsT>&>(candidates[i]);
+      if (!IsSupported(candidate, params)) {
+        LOGS_DEFAULT(VERBOSE) << "FindFastestImpl found unsupported " << op_sig
+                              << '(' << param_sig << ") id=" << i;
         continue;
       }
 
-      WarmUp((*candidates)[i], params);
-      auto time = Profile((*candidates)[i], params);
+      WarmUp(candidate, params);
+      auto time = Profile(candidate, params);
       if (time < min_time) {
         min_time = time;
         id = static_cast<int>(i);
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
+    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
-  }
-
-protected:
-  virtual void GetCandidateOpsForParams(const ParamsT* params, std::vector<Op<ParamsT>>** candidates) {
-    *candidates = &ops_;
   }
 
   std::vector<Op<ParamsT>> ops_;
@@ -257,6 +275,8 @@ protected:
   // the default impl to use when tuning is disabled
   int default_id_{0};
   bool tuning_{false};
+  // Registered tunable sub-ops for nested tuning
+  std::unordered_set<TunableOp<ParamsT, TimerT>*> tunable_sub_ops_;
 };
 
 }  // namespace tunable

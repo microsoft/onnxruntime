@@ -136,18 +136,27 @@ template <typename T>
 class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>>
 {
 public:
+  RocBlasGemmTunableOp() {
+    // Ensure that the default implementation is always present
+    this->ops_.emplace_back(IndexedRocBlasGemmOp<T>{0});
+  }
+
   Status IsSupported(const GemmParams<T>* params) {
     return Status::OK();
   }
 
 protected:
-  void GetCandidatesForParams(const GemmParams<T>* params, std::vector<Op<GemmParams<T>>>** candidates) {
+  virtual int FindFastest(const GemmParams<T>* params) override {
     auto solution_indices = this->GetSolutions(params);
-    candidate_ops_.clear();
-    for (auto solution_idx : solution_indices) {
-      candidate_ops_.emplace_back(Op<GemmParams<T>>{IndexedRocBlasGemmOp{solution_idx}});
+    std::vector<Op<GemmParams<T>>> candidates;
+    for (int solution_idx : solution_indices) {
+      candidates.emplace_back(IndexedRocBlasGemmOp<T>{solution_idx});
     }
-    *candidates = &candidate_ops_;
+
+    auto id = this->FindFastestImpl(params, candidates);
+    // memoize the result
+    this->ops_.emplace_back(std::move(candidates[id]));
+    return this->ops_.size() - 1;
   }
 
 private:
@@ -194,8 +203,6 @@ private:
 
     return solutions;
   }
-
-  std::vector<Op<GemmParams<T>>> candidate_ops_;
 };
 
 #endif /* #if defined USE_ROCBLAS_EXTENSION_API */

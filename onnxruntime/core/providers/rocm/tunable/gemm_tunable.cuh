@@ -37,8 +37,14 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->ops_.emplace_back(RocBlasGemmOp<T>);
+
   #if defined USE_ROCBLAS_EXTENSION_API
-    this->ops_.emplace_back(Op<GemmParams<T>>{RocBlasGemmTunableOp<T>{}});
+    this->ops_.emplace_back(
+      [this](const GemmParams<T>* params){
+        return rocblas_gemm_tunable_op_(params);
+      }
+    );
+    this->RegisterTunableSubOp(&rocblas_gemm_tunable_op_);
   #endif
 
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
@@ -71,6 +77,11 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
       delete params;
     }
   }
+
+private:
+#ifdef USE_ROCBLAS_EXTENSION_API
+  RocBlasGemmTunableOp<T> rocblas_gemm_tunable_op_;
+#endif
 };
 
 }  // namespace internal
