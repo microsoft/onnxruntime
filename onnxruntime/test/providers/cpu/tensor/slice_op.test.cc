@@ -780,6 +780,7 @@ class IdentitySliceIdentityOpTester : public OpTester {
       outputs = {&matmul_out};
 
       auto& matmul_node = graph.AddNode("matmul-0", "MatMul", "MatMul", inputs, outputs);
+      ORT_UNUSED_PARAMETER(matmul_node);   // Silence warning about unused var
     }
 
     // add Slice node
@@ -791,6 +792,7 @@ class IdentitySliceIdentityOpTester : public OpTester {
       outputs = {&slice_out};
 
       auto& split_node = graph.AddNode("slice", "Slice", "Identity Slicing", inputs, outputs);
+      ORT_UNUSED_PARAMETER(split_node);   // Silence warning about unused var
     }
 
     // add Identity node so that Slice output does not flow into graph output
@@ -799,6 +801,7 @@ class IdentitySliceIdentityOpTester : public OpTester {
       outputs = {graph_output_defs[0]};
 
       auto& identity_node = graph.AddNode("identity-0", "Identity", "Identity", inputs, outputs);
+      ORT_UNUSED_PARAMETER(identity_node);  // Silence warning about unused var
     }
   }
 };
