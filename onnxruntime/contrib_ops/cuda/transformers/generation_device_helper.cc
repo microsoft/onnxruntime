@@ -16,6 +16,7 @@
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
+#include "sampling_cuda_helper.h"
 
 #ifdef DEBUG_GENERATION
 #include <iostream>
@@ -455,7 +456,7 @@ template <typename T>
 Status GreedySearchProcessLogits(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IGreedySearchState<T>* greedy_state,      // state
-    transformers::ISamplingCudaState<T>* sampling_state, // buffers
+    transformers::ISamplingCudaState<T>* sampling_state,    // buffers
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -563,136 +564,8 @@ Status GreedySearchProcessLogits(
   ORT_UNUSED_PARAMETER(output_scores);
 
   if (do_sampling) {
-    gsl::span<int>& d_index_in = sampling_state->d_index_in;
-    gsl::span<int>& d_offset = sampling_state->d_offset;
-
-    BufferUniquePtr& storage_buffer = sampling_state->storage_buffer;
-    size_t& temp_storage_bytes = sampling_state->temp_storage_bytes;
-    if (step == 1) {
-      temp_storage_bytes = cuda::GetTempStorageSize<CudaT>(reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                                           d_index_in.data(),
-                                                           d_offset.data(),
-                                                           parameters->batch_size * parameters->vocab_size,
-                                                           parameters->batch_size,
-                                                           cuda_stream);
-
-      cuda::LaunchSetupParamsKernel(d_index_in.data(),
-                                    d_offset.data(),
-                                    parameters->batch_size,
-                                    parameters->vocab_size,
-                                    cuda_stream);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("d_offset_buffer", d_offset.data(), batch_size + 1, 1);
-#endif
-
-      void* temp_storage = allocator->Alloc(sampling_state->temp_storage_bytes);
-      BufferUniquePtr temp_storage_buffer(temp_storage, BufferDeleter(allocator));
-      storage_buffer = std::move(temp_storage_buffer);
-    }
-
-    gsl::span<T>& d_sorted_score = sampling_state->d_sorted_score;
-    gsl::span<int>& d_index_out = sampling_state->d_index_out;
-
-#ifdef DEBUG_GENERATION
-    dumper->Print("temp_storage_bytes", temp_storage_bytes, true);
-#endif
-
-    cuda::LaunchSortPairsDescending<CudaT>(storage_buffer.get(),
-                                           temp_storage_bytes,
-                                           reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                           reinterpret_cast<CudaT*>(d_sorted_score.data()),
-                                           d_index_in.data(),
-                                           d_index_out.data(),
-                                           parameters->batch_size * parameters->vocab_size,
-                                           parameters->batch_size,
-                                           d_offset.data(),
-                                           cuda_stream);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("d_sorted_score_buffer", reinterpret_cast<T*>(d_sorted_score.data()), batch_size, vocab_size);
-  dumper->Print("d_index_buffer_in", d_index_in.data(), batch_size, vocab_size);
-  dumper->Print("d_index_buffer_out", d_index_out.data(), batch_size, vocab_size);
-#endif
-
-    gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-    dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
-                                                                   d_sorted_softmaxed_score.data(),
-                                                                   reinterpret_cast<CudaT*>(d_sorted_score.data()),
-                                                                   parameters->vocab_size,
-                                                                   parameters->vocab_size,
-                                                                   parameters->batch_size);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("d_sorted_softmaxed_score_buffer", d_sorted_softmaxed_score.data(), batch_size, vocab_size);
-#endif
-
-    cuda::LaunchFilterLogitsKernel<CudaT>(d_sorted_softmaxed_score.data(),
-                                          d_index_out.data(),
-                                          reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                          parameters->top_p,
-                                          parameters->filter_value,
-                                          parameters->batch_size,
-                                          parameters->vocab_size,
-                                          cuda_stream);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("next_token_scores after filtering logits", reinterpret_cast<T*>(next_token_scores.data()), batch_size, vocab_size);
-#endif
-
-    // bugbug: actually we can only do softmax at the very beginning and sort the softmaxed scores.
-    // Not sure if the order change will affect the result.
-    gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-    dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
-                                                                   d_softmaxed_score.data(),
-                                                                   reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                                                   parameters->vocab_size,
-                                                                   parameters->vocab_size,
-                                                                   parameters->batch_size);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("d_softmaxed_score_buffer", d_softmaxed_score.data(), batch_size, vocab_size);
-#endif
-
-    // multinomial sampling
-    gsl::span<float>& d_sampled = sampling_state->d_sampled;
-    gsl::span<float>& h_sampled_all = sampling_state->h_sampled_all;
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_sampled.data(),
-                                         h_sampled_all.data() + (step - 1) * parameters->batch_size,
-                                         sizeof(float) * parameters->batch_size,
-                                         cudaMemcpyHostToDevice,
-                                         cuda_stream));
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("d_sampled", d_sampled.data(), batch_size, 1);
-#endif
-
-    gsl::span<int64_t>& d_indices = sampling_state->d_indices;
-    cuda::TorchMultinomialKernelLauncher(d_softmaxed_score.data(),
-                                         d_sampled.data(),
-                                         d_indices.data(),
-                                         parameters->batch_size,
-                                         parameters->vocab_size,
-                                         presence_mask.data(),
-                                         cuda_stream);
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("d_indices", d_indices.data(), batch_size, 1);
-#endif
-
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
-                                         d_indices.data(),
-                                         greedy_state->next_tokens_cpu.size_bytes(),
-                                         cudaMemcpyDeviceToHost,
-                                         cuda_stream));
-
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sampling_state->h_softmaxed_score.data(),
-                                         d_softmaxed_score.data(),
-                                         sampling_state->h_softmaxed_score.size_bytes(),
-                                         cudaMemcpyDeviceToHost,
-                                         cuda_stream));
-
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    SamplingCudaHelper::TopPSamplingCuda<T> top_p_sampler(allocator, cuda_stream, sampling_state, greedy_state, parameters);
+    ORT_RETURN_IF_ERROR(top_p_sampler.Sample(step, next_token_scores));
   } else {
     // next_tokens = torch.argmax(scores, dim=-1)
     int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
@@ -865,6 +738,7 @@ Status UpdateGptFeeds(
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
   const auto& mask_dims = old_mask.Get<Tensor>().Shape().GetDims();
+
   if (mask_dims.size() == 2) {
     const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
     int64_t mask_dims[] = {batch_beam_size, current_length};
