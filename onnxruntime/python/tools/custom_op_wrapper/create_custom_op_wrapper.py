@@ -213,11 +213,19 @@ def get_attributes(attr_data_info: List[List[str]]):
             print(f"[ERROR] attribute file '{info[1]}' does not exist.", file=sys.stderr)
             sys.exit(1)
 
-        data = ""
+        data = b""
         with open(filepath, "rb") as file_desc:
             data = file_desc.read()
 
-        attrs[info[0]] = data
+        tensor = helper.make_tensor(
+            name=info[0],
+            data_type=TensorProto.UINT8,
+            dims=[len(data)],
+            vals=data,
+            raw=True
+        )
+
+        attrs[info[0]] = tensor
 
     return attrs
 
