@@ -192,7 +192,7 @@ jobs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
       platform: 'Any CPU'
-      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }}'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   # C# test isn't launched by build.py, so models link has to be added.
@@ -208,7 +208,7 @@ jobs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
           configuration: '${{ parameters.BuildConfig }}'
-          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }} --blame'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - ${{ if eq(parameters.EnablePython, true) }}:
