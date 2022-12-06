@@ -94,8 +94,6 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
-               //bool use_deterministic_compute = false,
-               //bool enable_mem_reuse = true,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr)
       : graph_(graph),
         execution_providers_(execution_providers),
@@ -105,8 +103,6 @@ class SessionState {
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
         sess_options_(sess_options),
-        //use_deterministic_compute_(use_deterministic_compute),
-        //enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
     enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                           sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
@@ -506,9 +502,6 @@ class SessionState {
   const DataTransferManager& data_transfer_mgr_;
 
   const SessionOptions& sess_options_;
-
-  //bool use_deterministic_compute_;
-  //bool enable_mem_reuse_;
 
   std::optional<NodeIndexInfo> node_index_info_;
 

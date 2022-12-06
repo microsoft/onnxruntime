@@ -309,7 +309,6 @@ typedef enum GraphOptimizationLevel {
 typedef enum ExecutionMode {
   ORT_SEQUENTIAL = 0,
   ORT_PARALLEL = 1,
-  ORT_CLOUD = 2,
 } ExecutionMode;
 
 /** \brief Language projection identifiers

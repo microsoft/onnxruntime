@@ -1330,8 +1330,6 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_,
-        //session_options_.use_deterministic_compute,
-        //session_options_.enable_mem_reuse,
         prepacked_weights_container_);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
