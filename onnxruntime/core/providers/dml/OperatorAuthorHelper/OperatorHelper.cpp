@@ -2528,4 +2528,32 @@ namespace OperatorHelper
         return { EdgeShapes({}) };
     }
 
+    std::vector<EdgeShapes> EmbedLayerNormalizationHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 3);
+
+        // input_ids and word_embedding are 2D tensors
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputTensorShape(0).size() == 2);
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputTensorShape(2).size() == 2);
+
+        auto inputIdsShape = shapeInfo.GetInputTensorShape(0);
+        auto wordEmbeddingShape = shapeInfo.GetInputTensorShape(2);
+        uint32_t batchSize = inputIdsShape[0];
+        uint32_t sequenceLength = inputIdsShape[1];
+        uint32_t hiddenSize = wordEmbeddingShape[1];
+
+        std::vector<EdgeShapes> outputShapes;
+        outputShapes.reserve(3);
+
+        outputShapes.push_back(EdgeShapes({batchSize, sequenceLength, hiddenSize}));
+        outputShapes.push_back(EdgeShapes({batchSize}));
+
+        if (shapeInfo.GetOutputCount() == 3)
+        {
+            outputShapes.push_back(EdgeShapes({batchSize, sequenceLength, hiddenSize}));
+        }
+
+        return outputShapes;
+    }
+
 } // namespace OperatorHelper

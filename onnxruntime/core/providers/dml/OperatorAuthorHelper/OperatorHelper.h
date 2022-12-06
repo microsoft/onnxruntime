@@ -1383,6 +1383,19 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class EmbedLayerNormalizationHelper
+{
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+
+public:
+    template <typename Info_t, typename Shape_t>
+    EmbedLayerNormalizationHelper(const Info_t& info, const Shape_t& shapeInfo) { }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1405,6 +1418,7 @@ using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_EmbedLayerNormalization = EmbedLayerNormalizationHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
