@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+#ifdef ENABLE_TRAINING
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4244)
@@ -81,12 +84,12 @@ void SingleOpDefaultValidationFunc(Graph& graph, std::string op_type) {
   ASSERT_FALSE(gathernd_node == nullptr);
 }
 
-TEST(ComputationReductionTests, GatherND_Gelu) {
+TEST(ComputeOptimizerTests, GatherND_Gelu) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   GatherNDComputationReductionTest("Gelu", *logger, SingleOpDefaultValidationFunc);
 }
 
-TEST(ComputationReductionTests, GatherND_Add) {
+TEST(ComputeOptimizerTests, GatherND_Add) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   GatherNDComputationReductionTest("Add", *logger, [](Graph& graph, std::string op_type) -> void {
     GraphViewer graph_viewer(graph);
@@ -112,12 +115,12 @@ TEST(ComputationReductionTests, GatherND_Add) {
     EXPECT_TRUE(found_gathernd_around_graph_output); });
 }
 
-TEST(ComputationReductionTests, GatherND_LayerNormalization) {
+TEST(ComputeOptimizerTests, GatherND_LayerNormalization) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   GatherNDComputationReductionTest("LayerNormalization", *logger, SingleOpDefaultValidationFunc);
 }
 
-TEST(ComputationReductionTests, GatherND_MatMul) {
+TEST(ComputeOptimizerTests, GatherND_MatMul) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   GatherNDComputationReductionTest("MatMul", *logger, SingleOpDefaultValidationFunc);
 }
@@ -246,7 +249,7 @@ static void RunModelWithData(const PathString& model_uri, const std::string sess
   ASSERT_TRUE(st.IsOK()) << "RunModelWithData  run graph failed with error: " << st.ErrorMessage();
 }
 
-TEST(ComputationReductionTests, GatherND_E2E) {
+TEST(ComputeOptimizerTests, GatherND_E2E) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gathernd/e2e.onnx";
   std::shared_ptr<Model> model;
@@ -339,7 +342,7 @@ TEST(ComputationReductionTests, GatherND_E2E) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnBatchDim) {
+TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_batch_dim.onnx";
   std::shared_ptr<Model> model;
@@ -445,7 +448,7 @@ TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnBatchDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatMul_SlicingOnBatchDim) {
+TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_batch_dim.onnx";
   std::shared_ptr<Model> model;
@@ -551,7 +554,7 @@ TEST(ComputationReductionTests, GatherMatMul_SlicingOnBatchDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnLastDim) {
+TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -649,7 +652,7 @@ TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatMul_SlicingOnLastDim) {
+TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -747,7 +750,7 @@ TEST(ComputationReductionTests, GatherMatMul_SlicingOnLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
+TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_scalar_second_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -846,7 +849,7 @@ TEST(ComputationReductionTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherMatMul_SlicingOnSecondLastDim) {
+TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_matmul_second_last_dim.onnx";
   std::shared_ptr<Model> model;
@@ -944,7 +947,7 @@ TEST(ComputationReductionTests, GatherMatMul_SlicingOnSecondLastDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnBatchDim) {
+TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_scalar_batch_dim.onnx";
   std::shared_ptr<Model> model;
@@ -1037,7 +1040,7 @@ TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnBatchDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherReshape_SlicingOnBatchDim) {
+TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_batch_dim.onnx";
   std::shared_ptr<Model> model;
@@ -1131,7 +1134,7 @@ TEST(ComputationReductionTests, GatherReshape_SlicingOnBatchDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
+TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_scalar_seqlen_dim.onnx";
   std::shared_ptr<Model> model;
@@ -1224,7 +1227,7 @@ TEST(ComputationReductionTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim) {
+TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_seqlen_dim.onnx";
   std::shared_ptr<Model> model;
@@ -1318,7 +1321,7 @@ TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim) {
   }
 }
 
-TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim2) {
+TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim2) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_reshape_seqlen_dim2.onnx";
   std::shared_ptr<Model> model;
@@ -1412,7 +1415,7 @@ TEST(ComputationReductionTests, GatherReshape_SlicingOnSeqlenDim2) {
   }
 }
 
-TEST(ComputationReductionTests, GatherRobertaE2E) {
+TEST(ComputeOptimizerTests, GatherRobertaE2E) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   // Be noted, all dropout have ratio be 0.0, to make it easier to compare when running with session.
   // This did not affect the transformer tests, because we did not remove the Dropout of ratio 0. in the middle.
@@ -1589,3 +1592,5 @@ TEST(ComputationReductionTests, GatherRobertaE2E) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif

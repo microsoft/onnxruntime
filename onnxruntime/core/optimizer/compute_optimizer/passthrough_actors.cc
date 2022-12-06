@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING
 #include <onnx/defs/attr_proto_util.h>
 
 #include "core/common/safeint.h"
@@ -14,9 +15,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 using ONNXDimension = ONNX_NAMESPACE::TensorShapeProto_Dimension;
 using TensorShapeProto = ONNX_NAMESPACE::TensorShapeProto;
-namespace onnxruntime {
-namespace optimizer {
-namespace compute_optimizer {
+namespace onnxruntime::optimizer::compute_optimizer {
 
 enum class DimCompareRet {
   ExactEqual = 0,
@@ -790,6 +789,6 @@ bool MatMulPassThroughActor::PostProcess(Graph& graph, Node& current_node, int c
   return true;
 }
 
-}  // namespace compute_optimizer
-}  // namespace optimizer
-}  // namespace onnxruntime
+}  // namespace onnxruntime::optimizer::compute_optimizer
+
+#endif

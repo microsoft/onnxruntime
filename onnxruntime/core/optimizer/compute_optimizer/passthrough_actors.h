@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING
 #pragma once
 
 using ONNXDimension = ONNX_NAMESPACE::TensorShapeProto_Dimension;
@@ -18,9 +19,7 @@ using TensorShapeProto = ONNX_NAMESPACE::TensorShapeProto;
   } while (0)
 #endif
 
-namespace onnxruntime {
-namespace optimizer {
-namespace compute_optimizer {
+namespace onnxruntime::optimizer::compute_optimizer {
 
 /**
  * @brief Struct to hold the information of the slicing operations.
@@ -366,6 +365,6 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
                                        const std::unordered_map<int, SliceInfo>& new_gather_infos,
                                        const logging::Logger& logger);
 
-}  // namespace compute_optimizer
-}  // namespace optimizer
-}  // namespace onnxruntime
+}  // namespace onnxruntime::optimizer::compute_optimizer
+
+#endif
