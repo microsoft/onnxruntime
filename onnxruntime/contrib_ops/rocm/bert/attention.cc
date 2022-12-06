@@ -5,6 +5,7 @@
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/tunable/gemm.h"
 
 using namespace onnxruntime::rocm;
 using namespace ::onnxruntime::common;
@@ -87,23 +88,30 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size, context->GetComputeStream());
 
   typedef typename ToHipType<T>::MappedType HipT;
-  HipT one = ToHipType<T>::FromFloat(1.0f);
-  HipT zero = ToHipType<T>::FromFloat(0.0f);
+  namespace blas = rocm::tunable::blas;
 
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
-      rocblas, rocblas_operation_none, rocblas_operation_none, n, m, 1, &one,
+  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
+      IsTunableOpEnabled(), Stream(context), rocblas,
+      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+      n, m, 1,
+      /*alpha=*/1.0f,
       reinterpret_cast<const HipT*>(bias->Data<T>()), n,
       GetConstOnes<HipT>(m, Stream(context)), 1,
-      &zero, reinterpret_cast<HipT*>(gemm_buffer.get()), n));
+      /*beta=*/0.0f,
+      reinterpret_cast<HipT*>(gemm_buffer.get()), n));
 
-  // Gemm, note that ROCM assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
-      rocblas, rocblas_operation_none, rocblas_operation_none, n, m, k, &one,
+  // result(N, M) = 1 * weights x input + 1 x B.
+  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
+      this->IsTunableOpEnabled(), this->Stream(context), rocblas,
+      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+      n, m, k,
+      /*alpha=*/1.0f,
       reinterpret_cast<const HipT*>(weights->Data<T>()), n,
       reinterpret_cast<const HipT*>(input->Data<T>()), k,
-      &one, reinterpret_cast<HipT*>(gemm_buffer.get()), n));
+      /*beta=*/1.0f,
+      reinterpret_cast<HipT*>(gemm_buffer.get()), n));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size,
                                                    sequence_length, past_sequence_length);
@@ -111,6 +119,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
       device_prop,
+      IsTunableOpEnabled(),
       Stream(context),
       rocblas,
       element_size,
