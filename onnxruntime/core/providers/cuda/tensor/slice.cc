@@ -97,7 +97,10 @@ static Status SliceImpCore(cudaStream_t stream,
 
   // If the Slice operation is Identity-like, just copy
   // the input buffer into the output buffer and return
-  // without invoking any of the Slice kernel's machinery
+  // without invoking any of the Slice kernel's machinery.
+
+  // Currently, we do not support string tensors- so it is safe
+  // to have the following logic.
   if (input_shape == output_shape) {
     if (input_data != output_data) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, output_shape.Size() * element_size,
@@ -240,11 +243,6 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
                                     const TensorShape& output_shape) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
-
-  // Sanity check - ensure that we don't accidentally just enable support
-  // for string type for this kernel.
-  // We have logic in `SliceImpCore()` that can't handle string types just yet.
-  ORT_ENFORCE(!input_tensor->IsDataTypeString());
 
   return SliceImpCore(Stream(),
                       input_tensor->DataRaw(),

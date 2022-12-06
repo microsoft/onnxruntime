@@ -245,7 +245,7 @@ static Status SliceImpl(OpKernelContext* ctx,
   // the input buffer into the output buffer and return
   // without invoking any of the Slice kernel's machinery
   if (output_shape == input_tensor.Shape()) {
-    // CopyCpuTensor will only make the copy of the
+    // CopyCpuTensor() will only make the copy if the
     // data pointers of the source and destination
     // tensors are different.
     CopyCpuTensor(&input_tensor, &output_tensor);
