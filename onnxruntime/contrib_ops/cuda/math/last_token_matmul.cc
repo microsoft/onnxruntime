@@ -52,6 +52,9 @@ Status LastTokenMatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // We only need to slice out the last token per batch if the sequence length
   // is greater than 1
+  // TODO (hasesh): Explore using the CUDA Slice kernel for the following Slice operation
+  // We are slicing using cudaMemcpy's in a loop, possible Slice kernel is better for
+  // some batch sizes.
   if (sequence_length != 1) {
     constexpr size_t element_size = sizeof(T);
     size_t sliced_input_buffer_size = static_cast<size_t>(batch_size) * hidden_dim * element_size;
