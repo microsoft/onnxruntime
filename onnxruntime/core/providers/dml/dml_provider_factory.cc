@@ -159,7 +159,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   ComPtr<IDMLDevice> dml_device;
   ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
                                    flags,
-                                   DML_FEATURE_LEVEL_2_0,
+                                   static_cast<DML_FEATURE_LEVEL>(DML_TARGET_VERSION),
                                    IID_PPV_ARGS(&dml_device)));
 
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
