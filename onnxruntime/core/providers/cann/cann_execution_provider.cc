@@ -3,7 +3,15 @@
 // Licensed under the MIT License.
 
 #include <utility>
+#include <fstream>
+#include <algorithm>
+#include <iterator>
+#include <map>
+#include <unordered_set>
+
 #include "core/providers/shared_library/provider_api.h"
+#define ORT_API_MANUAL_INIT
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
@@ -12,9 +20,16 @@
 #include "core/providers/cann/cann_fwd.h"
 #include "core/providers/cann/npu_data_transfer.h"
 
+using onnxruntime::cann::BuildONNXModel;
+using onnxruntime::cann::CannModelPreparation;
+using onnxruntime::cann::ParserONNXModel;
+using onnxruntime::cann::SupportONNXModel;
 using onnxruntime::common::Status;
 
 namespace onnxruntime {
+
+// Models can only be parsed and built serially in the same process
+OrtMutex g_mutex;
 
 class Memcpy final : public OpKernel {
  public:
@@ -994,9 +1009,14 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
 }  // namespace cann
 
 CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCannExecutionProvider}, info_{info} {
+    : IExecutionProvider{onnxruntime::kCannExecutionProvider, true}, info_{info} {
+  InitProviderOrtApi();
+
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
   CANN_CALL_THROW(aclrtCreateStream(&stream_));
+
+  soc_name_ = aclrtGetSocName();
+  ORT_ENFORCE(soc_name_ != nullptr, "aclrtGetSocName return nullptr");
 }
 
 CANNExecutionProvider::~CANNExecutionProvider() {
@@ -1021,10 +1041,10 @@ Status CANNExecutionProvider::OnRunEnd(bool sync_stream) {
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
 void InitializeRegistry() {
+  CANN_CALL_THROW(aclInit(nullptr));
+
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cann::RegisterCANNKernels(*s_kernel_registry));
-
-  CANN_CALL_THROW(aclInit(nullptr));
 }
 
 void DeleteRegistry() {
@@ -1042,42 +1062,360 @@ std::unique_ptr<onnxruntime::IDataTransfer> CANNExecutionProvider::GetDataTransf
                                                         info_.do_copy_in_default_stream);
 }
 
-std::vector<std::unique_ptr<ComputeCapability>>
-CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const IKernelLookup& kernel_lookup) const {
-  InlinedVector<NodeIndex> candidates;
-  for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
-    const auto* p_node = graph.GetNode(node_index);
-    if (p_node == nullptr)
-      continue;
-
-    const auto& node = *p_node;
-    if (!node.GetExecutionProviderType().empty()) {
-      continue;
-    }
-
-    const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
-    if (cann_kernel_def == nullptr) {
-      LOGS_DEFAULT(INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
-                         << " node name: " << node.Name();
-      continue;
-    }
-
-    candidates.push_back(node.Index());
+std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
+    const std::vector<std::size_t>& graph_nodes_index,
+    const GraphViewer& graph_viewer) const {
+  std::unordered_set<size_t> node_set;
+  node_set.reserve(graph_nodes_index.size());
+  for (const auto& index : graph_nodes_index) {
+    node_set.insert(index);
   }
 
-  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-  for (auto& node_index : candidates) {
-    if (cpu_nodes.count(node_index) > 0)
-      continue;
+  // Get parent graph output names
+  std::vector<std::string> graph_output_names;
+  for (const auto* output_arg : graph_viewer.GetOutputs()) {
+    graph_output_names.push_back(output_arg->Name());
+  }
 
-    auto sub_graph = IndexedSubGraph::Create();
-    sub_graph->Nodes().push_back(node_index);
-    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+  // Find inputs and outputs of the subgraph
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_set<const NodeArg*> erased;
+  int input_order = 0;
+  int output_order = 0;
+
+  for (const auto& index : graph_nodes_index) {
+    sub_graph->Nodes().push_back(index);
+    const auto& node = graph_viewer.GetNode(index);
+    for (const auto& input : node->InputDefs()) {
+      const auto& it = fused_outputs.find(input);
+      if (it != fused_outputs.end()) {
+        fused_outputs.erase(it);
+        erased.insert(input);
+      } else if (erased.find(input) == erased.end() && !graph_viewer.GetAllInitializedTensors().count(input->Name())) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        fused_inputs[input] = input_order++;
+      }
+    }
+
+    for (const auto& input : node->ImplicitInputDefs()) {
+      const auto& it = fused_outputs.find(input);
+      if (it != fused_outputs.end()) {
+        fused_outputs.erase(it);
+        erased.insert(input);
+      } else if (erased.find(input) == erased.end() && !graph_viewer.GetAllInitializedTensors().count(input->Name())) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        fused_inputs[input] = input_order++;
+      }
+    }
+
+    // For output searching, there are two special cases,
+    // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
+    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
+    // to the output list
+    // The other one is, if subgraph's node output is parent graph's output. the node output should
+    // be also added to the subgraph's output list
+    if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
+      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        const auto& node_idx = it->GetNode().Index();
+        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        if (node_set.find(node_idx) != node_set.end()) {
+          const auto& iter = fused_inputs.find(output);
+          if (iter != fused_inputs.end()) {
+            fused_inputs.erase(iter);
+            erased.insert(output);
+          } else if (erased.find(output) == erased.end()) {
+            auto it = std::find(graph_output_names.begin(), graph_output_names.end(), output->Name());
+            if (it != graph_output_names.end()) {
+              graph_outputs_to_add[output] = output_order;
+            }
+            fused_outputs[output] = output_order++;
+          }
+        } else {
+          fused_outputs_to_add[output] = output_order++;
+        }
+      }
+    } else {
+      for (const auto& output : node->OutputDefs()) {
+        const auto& it = fused_inputs.find(output);
+        if (it != fused_inputs.end()) {
+          fused_inputs.erase(it);
+          erased.insert(output);
+        } else {
+          // Only when output is neither in input list nor erased list, add the output to output list
+          if (erased.find(output) == erased.end()) {
+            auto it = std::find(graph_output_names.begin(), graph_output_names.end(), output->Name());
+            if (it != graph_output_names.end()) {
+              graph_outputs_to_add[output] = output_order;
+            }
+            fused_outputs[output] = output_order++;
+          }
+        }
+      }
+    }
+  }
+
+  fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
+  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
+
+  // Sort inputs and outputs by the order they were added
+  std::multimap<int, const NodeArg*> inputs, outputs;
+  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
+    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+  }
+
+  for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
+    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+  }
+
+  // It is possible that an output of an node is put bebind the output of an later
+  // node in the graph output list. So we should sort the output name according
+  // to the graph output names
+  std::vector<std::string> output_names;
+  std::unordered_set<std::string> graph_out_names;
+  for (const auto& output : outputs) {
+    if (output.second->Exists()) {
+      auto name = output.second->Name();
+      if (std::find(graph_output_names.begin(), graph_output_names.end(), name) == graph_output_names.end()) {
+        output_names.push_back(name);
+      } else {
+        graph_out_names.insert(name);
+      }
+    }
+  }
+
+  for (auto& name : graph_output_names) {
+    if (std::find(graph_out_names.begin(), graph_out_names.end(), name) != graph_out_names.end())
+      output_names.push_back(name);
+  }
+
+  // Generate unique kernel name for CANN subgraph
+  HashValue model_hash = 0;
+  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  auto meta_def = IndexedSubGraph_MetaDef::Create();
+  meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
+
+  // Assign inputs and outputs to subgraph's meta_def
+  for (const auto& input : inputs) {
+    if (input.second->Exists()) {
+      meta_def->inputs().push_back(input.second->Name());
+    }
+  }
+
+  for (const auto& output : output_names) {
+    meta_def->outputs().push_back(output);
+  }
+
+  meta_def->domain() = kMSDomain;
+  meta_def->since_version() = 1;
+  sub_graph->SetMetaDef(std::move(meta_def));
+
+  return sub_graph;
+}
+
+std::vector<std::vector<NodeIndex>>
+GetSubGraphPartition(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
+  std::vector<std::vector<NodeIndex>> partitions;
+
+  if (topological_order.size() == unsupported_nodes.size())
+    return partitions;
+
+  auto prev = topological_order.begin();
+  for (const auto& node : unsupported_nodes) {
+    auto next = std::find(prev, topological_order.end(), node);
+    std::vector<NodeIndex> partition{prev, next};
+    if (!partition.empty()) {
+      partitions.push_back(std::move(partition));
+    }
+
+    prev = ++next;
+  }
+
+  std::vector<NodeIndex> partition{prev, topological_order.end()};
+  if (!partition.empty()) {
+    partitions.push_back(std::move(partition));
+  }
+
+  return partitions;
+}
+
+std::vector<std::unique_ptr<ComputeCapability>>
+CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                                     const IKernelLookup& kernel_lookup) const {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // TODO(FFFrog): Feature Enhancement
+  // After the subgraph is divided, the remaining single operators should first fall back to
+  // the single operator operation mode of CANN
+  if (info_.enable_cann_graph) {
+    std::vector<NodeIndex>&& unsupported_nodes = SupportONNXModel(graph_viewer);
+
+    if (unsupported_nodes.empty()) {
+      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    } else {
+      auto partitions = GetSubGraphPartition(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+
+      for (const auto& partition : partitions) {
+        auto sub_graph = GetSubGraph(partition, graph_viewer);
+        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      }
+    }
+  } else {
+    InlinedVector<NodeIndex> candidates;
+
+    for (auto& node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const auto* p_node = graph_viewer.GetNode(node_index);
+      if (p_node == nullptr)
+        continue;
+
+      const auto& node = *p_node;
+      if (!node.GetExecutionProviderType().empty()) {
+        continue;
+      }
+
+      const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
+      if (cann_kernel_def == nullptr) {
+        LOGS_DEFAULT(INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
+                           << " node name: " << node.Name();
+        continue;
+      }
+
+      candidates.push_back(node.Index());
+    }
+
+    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates);
+    for (auto& node_index : candidates) {
+      if (cpu_nodes.count(node_index) > 0)
+        continue;
+
+      auto sub_graph = IndexedSubGraph::Create();
+      sub_graph->Nodes().push_back(node_index);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    }
   }
 
   return result;
+}
+
+Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+
+    const std::string node_name = fused_node.Name();
+
+    std::unordered_map<size_t, std::string> names2index;
+    const auto& input_defs = fused_node.InputDefs();
+    names2index.reserve(input_defs.size());
+    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+      names2index[i] = input_defs[i]->Name();
+    }
+    names_[node_name] = names2index;
+
+    std::string string_model;
+    auto model = graph_body_viewer.CreateModel(*GetLogger(), true);
+    auto model_proto = model->ToProto();
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model_proto->SerializeToString(string_model);
+    models_[node_name] = string_model;
+
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+      std::unique_ptr<CannFuncState> p = std::make_unique<CannFuncState>();
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name};
+      *state = p.release();
+      return 0;
+    };
+
+    compute_info.release_state_func = [](FunctionState state) {
+      if (state)
+        delete static_cast<CannFuncState*>(state);
+    };
+
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
+
+      CannFuncState* cann_state = reinterpret_cast<CannFuncState*>(state);
+      std::string& string_model = models_[cann_state->node_name];
+      std::unordered_map<size_t, std::string>& names2index = names_[cann_state->node_name];
+
+      std::string input_shape = [&ctx, &names2index]() -> std::string {
+        std::string res;
+        for (size_t i = 0; i < ctx.GetInputCount(); i++) {
+          auto&& shape = ctx.GetInput(i).GetTensorTypeAndShapeInfo().GetShape();
+          auto name = names2index[i];
+
+          std::string s = name + ":";
+          for (auto& d : shape) {
+            s += std::to_string(d) + ",";
+          }
+          s[s.length() - 1] = ';';
+          res += s;
+        }
+
+        return res.substr(0, res.length() - 1);
+      }();
+
+      // Since the name of the input tensor of the sub-graph may exceed the maximum length required by Linux,
+      // and may also contain various special characters, such as "/". So, it is reasonable to convert it to HashValue.
+      HashValue hash;
+      cann::GenerateHashValue(input_shape, hash);
+      std::string filename = cann_state->node_name + "_" + std::to_string(hash);
+      std::string filename_with_suffix = filename + ".om";
+
+      uint32_t modelID;
+      {
+        std::lock_guard<OrtMutex> lock(g_mutex);
+
+        if (cann::FileExist(filename_with_suffix)) {
+          CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
+        } else {
+          ge::Graph graph{cann_state->node_name.c_str()};
+          ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
+
+          ge::ModelBufferData model;
+          ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, model));
+
+          CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
+        }
+      }
+
+      CannModelPreparation prepare(modelID);
+
+      ORT_TRY {
+        for (size_t i = 0; i < aclmdlGetNumInputs(prepare.modelDesc_); i++) {
+          auto input = ctx.GetInput(i);
+          CANN_MODEL_PREPARE_INPUTBUFFER(prepare,
+                                         const_cast<void*>(input.GetTensorRawData()),
+                                         aclmdlGetInputSizeByIndex(prepare.modelDesc_, i));
+        }
+
+        for (size_t i = 0; i < aclmdlGetNumOutputs(prepare.modelDesc_); i++) {
+          aclmdlIODims dims;
+          CANN_CALL_THROW(aclmdlGetOutputDims(prepare.modelDesc_, i, &dims));
+          std::vector<int64_t> vec{dims.dims, dims.dims + dims.dimCount};
+          auto output = ctx.GetOutput(i, vec);
+          CANN_MODEL_PREPARE_OUTPUTBUFFER(prepare,
+                                          const_cast<void*>(output.GetTensorRawData()),
+                                          aclmdlGetOutputSizeByIndex(prepare.modelDesc_, i));
+        }
+      }
+      ORT_CATCH(const std::exception& e) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
+      }
+
+      CANN_RETURN_IF_ERROR(aclmdlExecuteAsync(modelID, prepare.inputSet_, prepare.outputSet_, stream_));
+
+      return Status::OK();
+    };
+
+    node_compute_funcs.push_back(compute_info);
+  }
+
+  return Status::OK();
 }
 
 AllocatorPtr CANNExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {

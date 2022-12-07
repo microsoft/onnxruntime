@@ -674,7 +674,7 @@ struct ProviderHost {
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
-  virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
+  virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger, bool is_domain_onnx_only) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
   virtual const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
@@ -875,6 +875,7 @@ struct ProviderHost {
 
 #if defined(USE_CANN)
   virtual RandomGenerator& RandomGenerator__Default() = 0;
+  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;

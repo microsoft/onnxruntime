@@ -28,6 +28,7 @@
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
+#include "core/framework/murmurhash3.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -768,10 +769,15 @@ struct ProviderHostImpl : ProviderHost {
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
-  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
+  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger, bool is_domain_onnx_only) override {
+    std::unordered_map<std::string, int> domain_to_version_map;
+    if (is_domain_onnx_only)
+      domain_to_version_map[kOnnxDomain] = graph_viewer->DomainToVersionMap().at(kOnnxDomain);
+    else
+      domain_to_version_map = graph_viewer->DomainToVersionMap();
     return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
-                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), domain_to_version_map,
 #else
                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
 #endif  // ORT_MINIMAL_BUILD
@@ -1009,6 +1015,9 @@ struct ProviderHostImpl : ProviderHost {
 
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
+  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
+    MurmurHash3::x86_128(key, len, seed, out);
+  }
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
@@ -1770,8 +1779,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   (*out)->npu_mem_limit = SIZE_MAX;
   (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   (*out)->do_copy_in_default_stream = 1;
+  (*out)->enable_cann_graph = 1;
   (*out)->default_memory_arena_cfg = nullptr;
-  (*out)->max_opqueue_num = 10000;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1815,7 +1824,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
   API_IMPL_BEGIN
 #ifdef USE_CANN
   onnxruntime::ProviderOptions options =
-    onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
+      onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
 

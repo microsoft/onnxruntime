@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
@@ -673,5 +674,8 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
 #endif
 }  // namespace onnxruntime

@@ -709,7 +709,7 @@ struct Graph final {
 struct GraphViewer final {
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
-  std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
+  std::unique_ptr<Model> CreateModel(const logging::Logger& logger, bool is_onnx_domain_only = false) const { return g_host->GraphViewer__CreateModel(this, logger, is_onnx_domain_only); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
   const Path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }

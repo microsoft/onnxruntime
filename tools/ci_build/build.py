@@ -2009,6 +2009,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 )
 
                 if not args.skip_onnx_tests:
+                    # Disable python onnx tests for CANN EP, because many tests are
+                    # not supported yet.
+                    if args.use_cann:
+                        return
+
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
                         run_subprocess([sys.executable, "onnx_backend_test_series.py"], cwd=cwd, dll_path=dll_path)
