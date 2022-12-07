@@ -149,7 +149,7 @@ class SymbolicShapeInference:
             "Identity": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
-            "LastTokenMatMul": self._infer_LastTokenMatMul,
+            "GatherLastToken": self._infer_GatherLastToken,
             "MatMul": self._infer_MatMul,
             "MatMulInteger16": self._infer_MatMulInteger,
             "MaxPool": self._infer_Pool,
@@ -431,7 +431,7 @@ class SymbolicShapeInference:
             "LayerNormalization",
             "LongformerAttention",
             "SkipLayerNormalization",
-            "LastTokenMatMul",
+            "GatherLastToken",
             "PythonOp",
         ]
 
@@ -715,13 +715,11 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
-    def _compute_lasttokenmatmul_shape(self, node, output_dtype=None):
-        lhs_shape = self._get_shape(node, 0)
-        rhs_shape = self._get_shape(node, 1)
-        lhs_rank = len(lhs_shape)
-        rhs_rank = len(rhs_shape)
-        assert lhs_rank == 3 and rhs_rank == 2
-        new_shape = [lhs_shape[0]] + [1] + [rhs_shape[1]]
+    def _compute_gatherlasttoken_shape(self, node, output_dtype=None):
+        input_shape = self._get_shape(node, 0)
+        input_rank = len(input_shape)
+        assert input_rank == 3
+        new_shape = [input_shape[0]] + [1] + [input_shape[2]]
         if output_dtype is None:
             # infer output_dtype from input type when not specified
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
@@ -1146,8 +1144,8 @@ class SymbolicShapeInference:
     def _infer_MatMul(self, node):
         self._compute_matmul_shape(node)
 
-    def _infer_LastTokenMatMul(self, node):
-        self._compute_lasttokenmatmul_shape(node)
+    def _infer_GatherLastToken(self, node):
+        self._compute_gatherlasttoken_shape(node)
 
     def _infer_MatMulInteger(self, node):
         self._compute_matmul_shape(node, onnx.TensorProto.INT32)

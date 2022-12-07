@@ -42,7 +42,7 @@ import onnx
 import torch
 from benchmark_helper import Precision
 from fusion_utils import NumpyHelper
-from onnx import GraphProto, ModelProto, TensorProto
+from onnx import GraphProto, helper, ModelProto, TensorProto
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -191,7 +191,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "project the encoding of the last token in the batched sequence onto the  "
         "vocab space instead of projecting the encodings of the entire batched sequence",
     )
-    output_group.set_defaults(enable_last_token_logits_matmul=True)
+    output_group.set_defaults(append_gather_last_token_before_logits_matmul=True)
 
     output_group.add_argument(
         "-i",
@@ -528,11 +528,26 @@ def append_gather_last_token_before_logits_matmul(onnx_path: str, use_external_d
     if matmul_node.op_type != "MatMul":
         return False
 
-    # TODO(hasesh): Do we want to enforce that the first input to the MatMul is 3D
-    # and the second input to the MatMul is 2D before going ahead with the switch ?
+    # Append GatherLastToken node to the graph such that
+    # it consumes the input to the logits MatMul
+    gather_last_token_output_name = "edge_modified_" + matmul_node.input[0]
+    gather_last_token_node = helper.make_node(
+        "GatherLastToken",
+        inputs=[matmul_node.input[0]],
+        outputs=[gather_last_token_output_name],
+        name=decoder_model.create_node_name("GatherLastToken", "GatherLastToken"),
+        doc_string="",
+        domain="com.microsoft",
+    )
 
-    matmul_node.op_type = "LastTokenMatMul"
-    matmul_node.domain = "com.microsoft"
+    decoder_model.add_node(gather_last_token_node)
+
+    # Adjust the input to the logits MatMul such that it consumes
+    # the output of GatherLastToken
+    decoder_model.replace_node_input(matmul_node, matmul_node.input[0], gather_last_token_output_name)
+
+    # Topologically sort the updated graph
+    decoder_model.topological_sort()
 
     # Save the model
     OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
@@ -969,25 +984,30 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             )
 
     # We only want to project the encoding of the last token in the batched sequence
-    # onto the vocabulary space. We hence replace the MatMul operator with a customized
-    # operator that does just that.
-    # NOTE: We currently only support this for fp16/fp32 GPT2 BeamSearch.
+    # onto the vocabulary space. We hence append GatherLastToken before the MatMul operator.
+    # NOTE: We currently only support this for fp16/fp32 GPT2 GreedySearch/BeamSearch.
     # This can be expanded to other models/decoding strategies/data types later
-    appended_gather_last_token_before_logits_matmul = False
-    if args.enable_last_token_logits_matmul and is_gpt2 and generation_type == GenerationType.BEAMSEARCH:
+    gather_last_token_appended_before_logits_matmul = False
+    if (
+        args.append_gather_last_token_before_logits_matmul
+        and is_gpt2
+        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
+    ):
         logger.info(
-            f"Replace logits MatMul with LastTokenMatMul on {args.decoder_onnx}. " "The file will be overwritten."
+            f"Appending GatherLastToken before logits MatMul on {args.decoder_onnx}. " "The file will be overwritten."
         )
-        appended_gather_last_token_before_logits_matmul = append_gather_last_token_before_logits_matmul(args.decoder_onnx, args.use_external_data_format)
-        if not appended_gather_last_token_before_logits_matmul:
+        gather_last_token_appended_before_logits_matmul = append_gather_last_token_before_logits_matmul(
+            args.decoder_onnx, args.use_external_data_format
+        )
+        if not gather_last_token_appended_before_logits_matmul:
             logger.warning(
-                "Tried and failed to replace logits MatMul with LastTokenMatMul. Performance may be sub-optimal for this MatMul"
+                "Tried and failed to append GatherLastToken before logits. Performance may be sub-optimal for this model"
             )
 
     # If the user explicitly requests running shape inference or if we padded/mutated
     # weight(s)/node(s) in the decoder subgraph, we want to re-run shape inference
     # to capture the new shapes
-    if last_token_logits_matmul_enabled or logits_matmul_weight_padded or args.run_shape_inference:
+    if gather_last_token_appended_before_logits_matmul or logits_matmul_weight_padded or args.run_shape_inference:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
 
