@@ -109,20 +109,20 @@ class TemperatureLogitsProcessor : public ILogitsProcessor<T> {
   float temperature_;
 };
 
-template <typename T>
-class TopPLogitsProcessor : public ILogitsProcessor<T> {
- public:
-  TopPLogitsProcessor(float top_p, float filter_value,
-                      onnxruntime::concurrency::ThreadPool* thread_pool);
+// template <typename T>
+// class TopPLogitsProcessor : public ILogitsProcessor<T> {
+//  public:
+//   TopPLogitsProcessor(float top_p, float filter_value,
+//                       onnxruntime::concurrency::ThreadPool* thread_pool);
 
-  void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores) override;
+//   void Process(const ISequences* sequences,
+//                NextTokenScores<T>& next_token_scores) override;
 
- private:
-  float top_p_;
-  float filter_value_;
-  onnxruntime::concurrency::ThreadPool* thread_pool_;
-};
+//  private:
+//   float top_p_;
+//   float filter_value_;
+//   onnxruntime::concurrency::ThreadPool* thread_pool_;
+// };
 
 template <typename T>
 class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
@@ -141,15 +141,14 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
-  void Init(const BeamSearchParameters& parameters, onnxruntime::concurrency::ThreadPool* thread_pool);
-  void Init(const GreedySearchParameters& parameters, onnxruntime::concurrency::ThreadPool* thread_pool);
-  void Init(const SamplingParameters& parameters, onnxruntime::concurrency::ThreadPool* thread_pool);
+  void Init(const BeamSearchParameters& parameters);
+  void Init(const GreedySearchParameters& parameters);
+  void Init(const SamplingParameters& parameters);
   void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
 
  private:
   template<typename GenerationParametersT>
-  void LogitsProcessorInitImpl(const GenerationParametersT& parameters,
-                               onnxruntime::concurrency::ThreadPool* thread_pool) {
+  void LogitsProcessorInitImpl(const GenerationParametersT& parameters) {
     processor_list_.clear();
 
     if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
@@ -189,13 +188,6 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(temperature_processor_.get());
     }
 
-    if (parameters.top_p > 0) {
-      top_p_processor_ = std::make_unique<TopPLogitsProcessor<float>>(parameters.top_p,
-                                                                      parameters.filter_value,
-                                                                      thread_pool);
-      processor_list_.push_back(top_p_processor_.get());
-    }
-
     if (!parameters.presence_mask.empty()) {
       presence_penalty_processor_ = std::make_unique<
                                      PresencePenaltyLogitsProcessor<float>
@@ -218,7 +210,6 @@ class LogitsProcessorList : public ILogitsProcessorList {
   std::unique_ptr<PrefixVocabMaskLogitsProcessor<float>> prefix_vocab_mask_processor_;
   std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
   std::unique_ptr<TemperatureLogitsProcessor<float>> temperature_processor_;
-  std::unique_ptr<TopPLogitsProcessor<float>> top_p_processor_;
   std::unique_ptr<PresencePenaltyLogitsProcessor<float>> presence_penalty_processor_;
 };
 

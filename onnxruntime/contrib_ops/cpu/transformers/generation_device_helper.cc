@@ -12,6 +12,7 @@
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
+#include "contrib_ops/cpu/transformers/sampling_cpu_helper.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 
@@ -138,8 +139,7 @@ Status CreateGptInputs(
   OrtValue attention_mask;
   if (attn_mask_value != nullptr) {
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
-    const TensorShape& attn_mask_shape = attn_mask.Shape(); // 2d or 4d
-    Tensor::InitOrtValue(element_type, attn_mask_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(),
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(),
                          allocator->Info(), attention_mask);
   } else {
     auto mask_type = DataTypeImpl::GetType<int32_t>();
@@ -181,12 +181,12 @@ Status CreateGptInputs(
     expanded_input_ids = std::move(input_ids);
     expanded_position_ids = std::move(position_ids);
     expanded_attention_mask = std::move(attention_mask);
-  } else {
-    // bugbug: 4d not supported here
-    ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
-    ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
-    ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
+    return Status::OK();
   }
+
+  ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
+  ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
+  ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
 
   return Status::OK();
 }
@@ -408,7 +408,7 @@ template <typename T>
 Status GreedySearchProcessLogits(
   const OrtValue& logits,                                     // logits output of subgraph
   transformers::IGreedySearchState<T>* greedy_state,          // state
-  transformers::ISamplingCudaState<T>* sampling_state,    // sampling_state
+  transformers::ISamplingState<T>* sampling_state,        // sampling_state
   transformers::ISequences* sequences,                        // sequences
   AllocatorPtr& allocator,                                    // default allocator
   onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
@@ -418,7 +418,6 @@ Status GreedySearchProcessLogits(
   int step,                                                   // iteration counter
   void* stream,                                               // cuda stream (for CUDA only)
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
-  ORT_UNUSED_PARAMETER(sampling_state);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -462,94 +461,51 @@ Status GreedySearchProcessLogits(
   constexpr unsigned top_k = 1;
 
   if (do_sampling) {
-    // bugbug: is this Softmax really needed?
-    gsl::span<T>& next_token_probs = greedy_state->next_token_probs;
-    ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_size,
-                                      vocab_size,
-                                      next_token_scores.data(),
-                                      next_token_probs.data(),
-                                      false,
-                                      thread_pool));
+    SamplingCpuHelper::TopPSamplingCpu<T> top_p_sampler(allocator,
+                                                        thread_pool,
+                                                        sampling_state,
+                                                        greedy_state,
+                                                        parameters);
+    ORT_RETURN_IF_ERROR(top_p_sampler.Sample(next_token_scores));
 
-    // torch.multinomial()
-    int64_t next_token_probs_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
-    TensorShape next_token_probs_shape(&next_token_probs_dims[0], 2);
-    auto element_type = DataTypeImpl::GetType<T>();
-    OrtValue next_token_probs_value;
-    Tensor::InitOrtValue(element_type,
-                         next_token_probs_shape,
-                         next_token_probs.data(),
-                         allocator->Info(),
-                         next_token_probs_value);
-    const Tensor& input = next_token_probs_value.Get<Tensor>();
+    return Status::OK();
+  }
+  // next_tokens = torch.argmax(scores, dim=-1)
+  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
+  TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
+  auto element_type = DataTypeImpl::GetType<T>();
+  OrtValue next_token_scores_value;
+  Tensor::InitOrtValue(element_type,
+                       next_token_scores_shape,
+                       next_token_scores.data(),
+                       allocator->Info(),
+                       next_token_scores_value);
+  const Tensor& input = next_token_scores_value.Get<Tensor>();
 
-    std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(parameters->seed)};
+  constexpr int axis = 1;
+  constexpr bool largest = true;
+  constexpr bool sorted = false;
 
-    int64_t sampled_idx_dims[] = {static_cast<int64_t>(batch_size), 1};
-    TensorShape sampled_idx_shape(&sampled_idx_dims[0], 2);
-
-    gsl::span<int64_t>& next_token_idx = greedy_state->next_tokens_cpu;
-
-    OrtValue sampled_idx_ov;
-    Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(),
-                         sampled_idx_shape,
-                         next_token_idx.data(),
-                         allocator->Info(),
-                         sampled_idx_ov);
-    Tensor* sampled_idx = sampled_idx_ov.GetMutable<Tensor>();
-
-    AllocatorPtr allocator_temp = allocator;
-    ORT_RETURN_IF_ERROR(MultinomialComputeShared<int64_t>(allocator_temp,
-                                                          input,
-                                                          batch_size,
-                                                          vocab_size,
-                                                          1,
-                                                          generator,
-                                                          *sampled_idx));
-    // TODO: update presense_mask
-
-#ifdef DEBUG_GENERATION
-    dumper->Print("sampled_idx", *sampled_idx);
-#endif
-  } else {
-    // next_tokens = torch.argmax(scores, dim=-1)
-    int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
-    TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
-    auto element_type = DataTypeImpl::GetType<T>();
-    OrtValue next_token_scores_value;
-    Tensor::InitOrtValue(element_type,
-                         next_token_scores_shape,
-                         next_token_scores.data(),
-                         allocator->Info(),
-                         next_token_scores_value);
-    const Tensor& input = next_token_scores_value.Get<Tensor>();
-
-    constexpr int axis = 1;
-    constexpr bool largest = true;
-    constexpr bool sorted = false;
-
-    Tensor topk_scores;
-    Tensor topk_indices;
-    ORT_RETURN_IF_ERROR(TopK(&input,
-                             axis,
-                             top_k,
-                             largest,
-                             sorted,
-                             allocator,
-                             stream,
-                             thread_pool,
-                             topk_scores,
-                             topk_indices));
+  Tensor topk_scores;
+  Tensor topk_indices;
+  ORT_RETURN_IF_ERROR(TopK(&input,
+                           axis,
+                           top_k,
+                           largest,
+                           sorted,
+                           allocator,
+                           stream,
+                           thread_pool,
+                           topk_scores,
+                           topk_indices));
 
 #ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", topk_scores);
     dumper->Print("topk_indices", topk_indices);
 #endif
 
-    gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
-    gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
-  }
-
+  gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
+  gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
 
 #ifdef DEBUG_GENERATION
   gsl::span<const int64_t> next_tokens(greedy_state->next_tokens_cpu.data(),
@@ -624,6 +580,7 @@ Status UpdateGptFeeds(
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
+
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
@@ -639,6 +596,7 @@ Status UpdateGptFeeds(
     input_ids_data[i] = beam_next_tokens[i];
   }
   next_inputs[0] = input_ids;
+
   if (increase_position) {
     // Update position IDs
     int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
@@ -647,24 +605,22 @@ Status UpdateGptFeeds(
     }
   }
   next_inputs[1] = position_ids;
+
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
-  const auto& mask_dims = old_mask.Get<Tensor>().Shape().GetDims();
-  if (mask_dims.size() == 2) {
-    const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
-    int64_t mask_dims[] = {batch_beam_size, current_length};
-    TensorShape mask_shape(&mask_dims[0], 2);
-    OrtValue attention_mask;
-    Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
-    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-    for (int i = 0; i < batch_beam_size; i++) {
-      for (int j = 0; j < current_length - 1; j++) {
-        mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
-      }
-      mask_data[i * current_length + current_length - 1] = 1;
+  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
+  int64_t mask_dims[] = {batch_beam_size, current_length};
+  TensorShape mask_shape(&mask_dims[0], 2);
+  OrtValue attention_mask;
+  Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
+  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int i = 0; i < batch_beam_size; i++) {
+    for (int j = 0; j < current_length - 1; j++) {
+      mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
     }
-    next_inputs[2] = attention_mask;
-  } // if mask_dims.size() == 4 do nothing
+    mask_data[i * current_length + current_length - 1] = 1;
+  }
+  next_inputs[2] = attention_mask;
 
   // Update past state
   if (num_beams == 1) {
@@ -894,7 +850,7 @@ template Status ProcessLogits<float>(
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
-    transformers::ISamplingCudaState<float>* sampling_state,
+    transformers::ISamplingState<float>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <utility>
+#include <random>
 #include "core/common/gsl.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
@@ -33,7 +34,7 @@ struct IBeamSearchState {
   gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
   gsl::span<float> remaining_scores;   // portion of scores that is available for appending next token scores.
   gsl::span<float> topk_buffer;        // temp buffer for topk computation, including:
-                                       // 1st stage needs: 
+                                       // 1st stage needs:
                                        //   temp score: (batch_size * num_beams * parts_vocab, 2 * num_beams)
                                        //   temp token: (batch_size * num_beams * parts_vocab, 2 * num_beams)
                                        // 2nd stage needs:
@@ -62,12 +63,11 @@ struct IGreedySearchState {
   gsl::span<int32_t> next_positions;    // shape (batch_size, num_beams). Next position value for position_ids.
   gsl::span<bool> eos_meet;             // shape (batch_size)
   gsl::span<T> next_token_scores;       // shape (batch_size, vocab_size)
-  gsl::span<T> next_token_probs;        // shape (batch_size, vocab_size)
   gsl::span<int32_t> next_tokens;       // shape (batch_size)
 };
 
 template <typename T>
-struct ISamplingCudaState {
+struct ISamplingState {
   gsl::span<int> d_index_in;
   gsl::span<int> d_index_out;
   gsl::span<int> d_offset;
@@ -82,6 +82,7 @@ struct ISamplingCudaState {
 
   BufferUniquePtr storage_buffer;
   size_t temp_storage_bytes;
+  std::default_random_engine generator;
 };
 
 class ISequences {

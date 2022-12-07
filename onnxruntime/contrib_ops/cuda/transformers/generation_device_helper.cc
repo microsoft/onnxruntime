@@ -456,7 +456,7 @@ template <typename T>
 Status GreedySearchProcessLogits(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IGreedySearchState<T>* greedy_state,      // state
-    transformers::ISamplingCudaState<T>* sampling_state,    // buffers
+    transformers::ISamplingState<T>* sampling_state,    // buffers
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -564,45 +564,52 @@ Status GreedySearchProcessLogits(
   ORT_UNUSED_PARAMETER(output_scores);
 
   if (do_sampling) {
-    SamplingCudaHelper::TopPSamplingCuda<T> top_p_sampler(allocator, cuda_stream, sampling_state, greedy_state, parameters);
+    // TODO: Move the ctor out of the function.
+    SamplingCudaHelper::TopPSamplingCuda<T> top_p_sampler(allocator,
+                                                          cuda_stream,
+                                                          sampling_state,
+                                                          greedy_state,
+                                                          parameters);
     ORT_RETURN_IF_ERROR(top_p_sampler.Sample(step, next_token_scores));
-  } else {
-    // next_tokens = torch.argmax(scores, dim=-1)
-    int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
-    TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
-    auto element_type = DataTypeImpl::GetType<T>();
-    OrtValue next_token_scores_value;
-    Tensor::InitOrtValue(element_type,
-                         next_token_scores_shape,
-                         next_token_scores.data(),
-                         allocator->Info(),
-                         next_token_scores_value);
-    const Tensor& input = next_token_scores_value.Get<Tensor>();
 
-    constexpr int axis = 1;
-    constexpr unsigned top_k = static_cast<unsigned>(1);
-    constexpr bool largest = true;
-    constexpr bool sorted = false;
+    return Status::OK();
+  }
 
-    auto topk_scores = Tensor::CreateDefault();
-    auto topk_indices = Tensor::CreateDefault();
-    ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                             *topk_scores, *topk_indices));
+  // next_tokens = torch.argmax(scores, dim=-1)
+  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
+  TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
+  auto element_type = DataTypeImpl::GetType<T>();
+  OrtValue next_token_scores_value;
+  Tensor::InitOrtValue(element_type,
+                       next_token_scores_shape,
+                       next_token_scores.data(),
+                       allocator->Info(),
+                       next_token_scores_value);
+  const Tensor& input = next_token_scores_value.Get<Tensor>();
+
+  constexpr int axis = 1;
+  constexpr unsigned top_k = static_cast<unsigned>(1);
+  constexpr bool largest = true;
+  constexpr bool sorted = false;
+
+  auto topk_scores = Tensor::CreateDefault();
+  auto topk_indices = Tensor::CreateDefault();
+  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
+                           *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", *(topk_scores.get()));
     dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
-    const int64_t* next_token_indices = topk_indices->Data<int64_t>();
+  const int64_t* next_token_indices = topk_indices->Data<int64_t>();
 
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
-                                         next_token_indices,
-                                         greedy_state->next_tokens_cpu.size_bytes(),
-                                         cudaMemcpyDeviceToHost,
-                                         cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-  }
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
+                                       next_token_indices,
+                                       greedy_state->next_tokens_cpu.size_bytes(),
+                                       cudaMemcpyDeviceToHost,
+                                       cuda_stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
   return Status::OK();
 }
@@ -737,23 +744,19 @@ Status UpdateGptFeeds(
 
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
-  const auto& mask_dims = old_mask.Get<Tensor>().Shape().GetDims();
+  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
+  int64_t mask_dims[] = {batch_beam_size, current_length};
+  TensorShape mask_shape(&mask_dims[0], 2);
+  OrtValue attention_mask;
+  auto mask_type = DataTypeImpl::GetType<int32_t>();
+  Tensor::InitOrtValue(mask_type, mask_shape, allocator, attention_mask);
+  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
 
-  if (mask_dims.size() == 2) {
-    const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
-    int64_t mask_dims[] = {batch_beam_size, current_length};
-    TensorShape mask_shape(&mask_dims[0], 2);
-    OrtValue attention_mask;
-    auto mask_type = DataTypeImpl::GetType<int32_t>();
-    Tensor::InitOrtValue(mask_type, mask_shape, allocator, attention_mask);
-    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  // Launch kernel to update position_ids and attention_mask for next iteration
+  cuda::LaunchUpdateGptKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length,
+                              reinterpret_cast<cudaStream_t>(stream));
 
-    // Launch kernel to update position_ids and attention_mask for next iteration
-    cuda::LaunchUpdateGptKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length,
-                                reinterpret_cast<cudaStream_t>(stream));
-
-    next_inputs[2] = attention_mask;
-  } // do nothing for mask_dims.size() == 4
+  next_inputs[2] = attention_mask;
 
   // Update past state
   if (num_beams == 1) {
@@ -914,7 +917,7 @@ template Status ProcessLogits<float>(
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
-    transformers::ISamplingCudaState<float>* sampling_state,
+    transformers::ISamplingState<float>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
@@ -981,7 +984,7 @@ template Status ProcessLogits<MLFloat16>(
 template Status GreedySearchProcessLogits<MLFloat16>(
     const OrtValue& logits,
     transformers::IGreedySearchState<MLFloat16>* greedy_state,
-    transformers::ISamplingCudaState<MLFloat16>* sampling_state,
+    transformers::ISamplingState<MLFloat16>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
