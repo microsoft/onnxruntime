@@ -104,10 +104,10 @@ class TestOpGlobalAveragePool(unittest.TestCase):
 
         quant_nodes = {
             "QLinearConv": 1,
-            "GlobalAveragePool": 1,
-            "QLinearGlobalAveragePool": 1,
-            "QuantizeLinear": 1,
-            "DequantizeLinear": 1,
+            "GlobalAveragePool": 0,
+            "QLinearGlobalAveragePool": 2,
+            "QuantizeLinear": 2,
+            "DequantizeLinear": 2,
         }
         check_op_type_count(self, model_q8_path, **quant_nodes)
         qnode_io_qtypes = {
