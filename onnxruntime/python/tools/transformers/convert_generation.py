@@ -906,14 +906,14 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # We only want to pad the logits MatMul weight in the decoder for fp16 models.
     # The inherent assumption is that fp16 models run on GPU for which all
     # dims need to be a multiple of 8 to leverage tensor cores.
-    # NOTE: We currently only support padding the MatMul logits weight for GPT2 BeamSearch.
+    # NOTE: We currently only support padding the MatMul logits weight for GPT2 GreedySearch/BeamSearch.
     # This can be expanded to other models/decoding strategies later
     logits_matmul_weight_padded = False
     if (
         args.pad_vocab_size
         and args.precision == Precision.FLOAT16
         and is_gpt2
-        and generation_type == GenerationType.BEAMSEARCH
+        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
     ):
         logger.info(
             f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
