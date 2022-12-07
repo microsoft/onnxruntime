@@ -351,6 +351,10 @@ class GPUProfilerBase : public EpProfiler {
     auto event_iter = std::make_move_iterator(events.begin());
     auto event_end = std::make_move_iterator(events.end());
     for (auto& map_iter : events_to_merge) {
+      if (map_iter.second.empty()) {
+        continue;
+      }
+
       auto ts = static_cast<long long>(map_iter.first);
 
       // find the last occurence of a matching timestamp,
@@ -364,8 +368,7 @@ class GPUProfilerBase : public EpProfiler {
         ++event_iter;
       }
 
-      uint64_t increment;
-      uint64_t last_ts;
+      int64_t origin_ts;
       bool copy_op_names = false;
       std::string op_name;
       std::string parent_name;
@@ -375,8 +378,7 @@ class GPUProfilerBase : public EpProfiler {
       if (event_iter != event_end && event_iter->ts == ts) {
         // In this particular case we have located a parent event -- in the main event stream --
         // for the GPU events. We use the timestamps from that event to adjust timestamps
-        last_ts = event_iter->ts;
-        increment = 1;
+        origin_ts = event_iter->ts + 1;
         copy_op_names = true;
         op_name = event_iter->args["op_name"];
         parent_name = event_iter->name;
@@ -385,9 +387,16 @@ class GPUProfilerBase : public EpProfiler {
       } else {
         // No parent event, let's just set the timestamp based on the
         // timestamp of the call to EpProfiler->Start()
-        last_ts = ts;
-        increment = 1;
+        origin_ts = ts;
       }
+
+      // calculate the offset from the origin to the
+      // first kernel event. Subsequent kernel event
+      // timestamps will have this offset subtracted from
+      // them to maintain relative timing between
+      // kernel events, while still roughly reconciling
+      // with the Jan 1 1970 epoch.
+      auto offset_from_origin = origin_ts - map_iter.second[0].ts;
 
       for (auto& evt : map_iter.second) {
         if (copy_op_names) {
@@ -396,8 +405,8 @@ class GPUProfilerBase : public EpProfiler {
           evt.args["op_name"] = op_name;
           evt.args["parent_name"] = parent_name;
         }
-        evt.ts = last_ts + increment;
-        increment += evt.dur;
+
+        evt.ts += offset_from_origin;
       }
 
       merged_events.insert(merged_events.end(),
