@@ -308,8 +308,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   int id2 = TRTGenerateModelId(viewer2, model_hash2);
 
   // test comparing model 1 & 2
-  ASSERT_EQ(model_hash, model_hash2) << "model1 has same graph name/nodes/env metadata as model2";
-  ASSERT_EQ(id2, 1) << "id2 should be 1 as model 1 & 2 have same hash";
+  ASSERT_EQ(id2, 0) << "id2 should be 0";
 
   // Test loading same model from different path, see if hash values are same as well
   model_path = ORT_TSTR("testdata/TRTEP_test_model/mnist.onnx");
@@ -320,7 +319,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   HashValue model_hash3;
   int id3 = TRTGenerateModelId(viewer3, model_hash3);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
-  ASSERT_EQ(id3, 2) << "id3 should be 2 as model 1 & 2 & 3 have same hash";
+  ASSERT_EQ(id3, 1) << "id3 should be 1 as model 1 & 3 have same hash";
 }
 
 // Compare on TRT subgraph id when repeatedly calling TRTGenerateModelId

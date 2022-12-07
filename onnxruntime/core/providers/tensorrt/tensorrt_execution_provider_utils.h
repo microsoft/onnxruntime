@@ -8,7 +8,8 @@
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
-#include "murmurhash3.h"
+///#include "murmurhash3.h"
+#include "core/framework/murmurhash3.h"
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
 
@@ -224,6 +225,7 @@ class TRTModelIdGenerator {
       PathString leaf = model_path.GetComponents().back();
       std::string model_name = ToUTF8String(leaf.c_str());
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
+      std::cout << "[TensorRT EP] Model name is " << model_name << std::endl;
       // Ensure enough characters are hashed in case model names are too short
       int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
       constexpr int32_t hash_string_length = 500;
@@ -234,6 +236,7 @@ class TRTModelIdGenerator {
       hash_str(repeat_model_name);
     } else {
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+      std::cout << "[TensorRT EP] Model path is empty" << std::endl;
     }
 
     // fingerprint the main graph by hashing graph inputs
@@ -286,7 +289,7 @@ class TRTModelIdGenerator {
 
 std::unique_ptr<TRTModelIdGenerator> trt_model_id_generator_ = std::make_unique<TRTModelIdGenerator>();
 
-// Calll TRTGenerateMetaDefId to generate hash id for TRT engine cache
+// Calll TRTGenerateModelId to generate hash id for TRT engine cache
 int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
