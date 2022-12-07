@@ -1224,6 +1224,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING_OPS)
+  add_compile_definitions(ENABLE_STRIDED_TENSORS)
 
   if (UNIX)
     if (EXISTS "${onnxruntime_MPI_HOME}")
