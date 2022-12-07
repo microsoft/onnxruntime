@@ -35,7 +35,9 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 const OrtDevice::DeviceType OrtDevice::CPU;
 
 namespace onnxruntime {
+#ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif
 namespace test {
 
 namespace modelbuilder {
