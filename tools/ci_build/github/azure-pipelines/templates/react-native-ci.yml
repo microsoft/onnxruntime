@@ -230,11 +230,6 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
-  - script: |
-      yarn e2e android
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: Run React Native Android e2e app
-
   - template: android-dump-logs-from-steps.yml
     parameters:
       steps:
