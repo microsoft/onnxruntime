@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {ImageFromTensorConfig, Tensor as TensorInterface, TensorFromImageConfig} from './tensor';
+/// <reference lib="dom" />
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;
@@ -258,8 +259,8 @@ export class Tensor implements TensorInterface {
   static async fromImage(
       image: HTMLImageElement, inputOptions?: ImageFromTensorConfig,
       outputOptions?: TensorFromImageConfig): Promise<Tensor>;
-  static async fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
-      Promise<Tensor>;
+  static async fromImage(
+      image: ImageBitmap, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig): Promise<Tensor>;
   static async fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
       Promise<Tensor>;
 
