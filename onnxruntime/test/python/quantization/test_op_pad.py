@@ -27,14 +27,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_pad(
-        self,
-        output_model_path,
-        pad_mode,
-        pad_input_shape,
-        pad_dims,
-        constant_value=None,
-    ):
+    def construct_model_pad(self, output_model_path, pad_mode, pad_input_shape, pad_dims, constant_value=None):
         #    (input)
         #      |
         #     Pad
@@ -45,22 +38,19 @@ class TestOpQuatizerPad(unittest.TestCase):
 
         input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, pad_input_shape)
         pad_dims_initializer = helper.make_tensor("pad_dims", TensorProto.INT64, [2 * rank], pad_dims)
+        constant_value_tensor = helper.make_tensor_value_info("padding_value", TensorProto.FLOAT, pad_input_shape)
+        initializers = [pad_dims_initializer]
+        inputs = ["input", "pad_dims", "padding_value"]
         output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))]
         output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)
 
-        inputs = ["input", "pad_dims"]
-        initializers = [pad_dims_initializer]
-        if (constant_value is not None) and (pad_mode is None or pad_mode == "constant"):
-            constant_value_tensor = helper.make_tensor("padding_value", TensorProto.FLOAT, [], [constant_value])
-            inputs.extend(["padding_value"])
-            initializers.extend([constant_value_tensor])
         kwargs = {"mode": pad_mode} if pad_mode is not None else {}
         pad_node = helper.make_node("Pad", inputs, ["output"], name="PadNode", **kwargs)
 
         graph = helper.make_graph(
             [pad_node],
             "TestOpQuantizerPad_test_model",
-            [input_tensor],
+            [input_tensor, constant_value_tensor],
             [output_tensor],
             initializer=initializers,
         )
