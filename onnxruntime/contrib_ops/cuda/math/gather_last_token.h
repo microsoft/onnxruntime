@@ -9,12 +9,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
-class LastTokenMatMul final : public onnxruntime::cuda::CudaKernel {
-  using Base = CudaKernel;
-
+class GatherLastToken final : public onnxruntime::cuda::CudaKernel {
  public:
-  explicit LastTokenMatMul(const OpKernelInfo& info)
+  explicit GatherLastToken(const OpKernelInfo& info)
       : CudaKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;

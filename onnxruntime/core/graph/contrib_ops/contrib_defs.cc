@@ -294,39 +294,28 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
-void LastTokenMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+void GatherLastTokenShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) {
+  if (!hasInputShape(ctx, 0)) {
     return;
   }
 
   const auto shape0 = getInputShape(ctx, 0);
-  const auto shape1 = getInputShape(ctx, 1);
 
-  if (shape0.dim_size() != 3 || shape1.dim_size() != 2) {
-    fail_shape_inference("First input MUST be 3D and the second input MUST be 2D.");
+  if (shape0.dim_size() != 3) {
+    fail_shape_inference("Input MUST be 3D.");
   }
 
-  // Check for compatible matrix multiply dimensions
-  {
-    auto dimL = shape0.dim(2);
-    auto dimR = shape1.dim(0);
-    if (dimL.has_dim_value() && dimR.has_dim_value() &&
-        dimL.dim_value() != dimR.dim_value()) {
-      fail_shape_inference("Incompatible dimensions for matrix multiplication");
-    }
-  }
+  ONNX_NAMESPACE::TensorShapeProto result_shape;
 
-  ONNX_NAMESPACE::TensorShapeProto resultShape;
-
-  *resultShape.add_dim() = shape0.dim(0);
+  *result_shape.add_dim() = shape0.dim(0);
 
   // The middle dim is always 1
-  resultShape.add_dim()->set_dim_value(1);
+  result_shape.add_dim()->set_dim_value(1);
 
-  *resultShape.add_dim() = shape1.dim(1);
+  *result_shape.add_dim() = shape0.dim(2);
 
-  updateOutputShape(ctx, 0, resultShape);
+  updateOutputShape(ctx, 0, result_shape);
 }
 
 // input1Idx - sparse matrix
@@ -1698,25 +1687,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMul, 1,
                                 .SetDoc(FusedMatMul_doc)
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
 
-constexpr const char* LastTokenMatMul_doc = R"DOC(
-Given a 3-D batched sequence of shape [B,S,H] (input A) and 2-D weights of shape [H, V] (input B), only the last token in the sequence
-per-batch has the MatMul operation performed on (i.e.) the effective shape of the first input is made [B, 1, H] and the output shape
-will be [B, 1, V] after the MatMul operation. The single token chosen is always the last token in the sequence. This operation is useful
-for scenarios where one would like to project only the last token's embedding onto the weight space instead of the entire sequence of tokens.
+constexpr const char* GatherLastToken_doc = R"DOC(
+Given a 3-D batched sequence of shape [B, S, H] (input A), last token from each sequence 
+in the batch is sliced out to produce an output tensor of shape [B, 1, H].
 )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(LastTokenMatMul, 1,
+ONNX_MS_OPERATOR_SET_SCHEMA(GatherLastToken, 1,
                             OpSchema()
-                                .Input(0, "A", "3-dimensional matrix A", "T")
-                                .Input(1, "B", "2-dimensional matrix B", "T")
+                                .Input(0, "X", "3-dimensional tensor X of shape [B,S,H]", "T")
                                 .Output(0, "Y",
-                                        "3-dimensional Matrix multiplication results of just the last "
-                                        "token in each batch in the provided batched sequence",
+                                        "3-dimensional tensor Y of shape [B,1,H] with the "
+                                        "last token from each sequence in the batch sliced out",
                                         "T")
                                 .TypeConstraint("T", {"tensor(float16)", "tensor(float)"},
                                                 "Constrain input and output types to float16/float32 tensors.")
-                                .SetDoc(LastTokenMatMul_doc)
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { LastTokenMatMulShapeInference(ctx); }));
+                                .SetDoc(GatherLastToken_doc)
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  GatherLastTokenShapeInference(ctx);
+                                }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SparseToDenseMatMul, 1,
                             OpSchema()
