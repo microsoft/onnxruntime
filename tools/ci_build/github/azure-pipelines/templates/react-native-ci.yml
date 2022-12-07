@@ -232,8 +232,8 @@ jobs:
 
   - script: |
       yarn e2e android
-  workingDirectory: '$(Build.SourcesDirectory)/js'
-  displayName: Run React Native Android e2e app
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: Run React Native Android e2e app
 
   - template: android-dump-logs-from-steps.yml
     parameters:
