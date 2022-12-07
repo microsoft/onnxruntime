@@ -33,14 +33,14 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     return;
 
   // OV Config
-  OVConfig config;
-  PopulateConfigValue(config);
+  ov::AnyMap device_config;
+  PopulateConfigValue(device_config);
 
   //Enable caching
   EnableCaching();
 
   //Setting OpenCL queue throttling for GPU
-  EnableGPUThrottling(config);
+  EnableGPUThrottling(device_config);
 
   #if defined(IO_BUFFER_ENABLED)
     try {
@@ -56,14 +56,14 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         #endif
         exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
       } else {
-          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
+          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
       }
     }catch (const char* msg) {
         throw(msg);
     }
   #else
   try{
-      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
+      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
   } catch (const char* msg) {
       throw(msg);
   }
@@ -93,25 +93,16 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph
   return false;
 }
 
-void BasicBackend::PopulateConfigValue(OVConfig& config) {
+void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
+  // Set inference precision if device_type != AUTO
+  if (global_context_.device_type.find("AUTO")== std::string::npos){
+    device_config.emplace(ov::hint::inference_precision(global_context_.precision_str));
+  }
   #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      config["PERF_COUNT"] = CONFIG_VALUE(YES);
+      device_config.emplace(ov::enable_profiling(true));
     }
   #endif
-    if (global_context_.device_type.find("MYRIAD") != std::string::npos) {
-      if (subgraph_context_.set_vpu_config) {
-        config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
-      }
-    if (global_context_.enable_vpu_fast_compile) {
-      config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
-      config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
-    }
-    //to check preprocessing inside model
-    #if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
-      config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
-    #endif
-  }
 }
 
 void BasicBackend::EnableCaching() {
@@ -127,10 +118,10 @@ void BasicBackend::EnableCaching() {
   }
 }
 
-void BasicBackend::EnableGPUThrottling(OVConfig& config) {
+void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
-    config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
+    device_config.insert(ov::device::properties("GPU", {{GPU_CONFIG_KEY(PLUGIN_THROTTLE), 1}}));
   }
 }
 

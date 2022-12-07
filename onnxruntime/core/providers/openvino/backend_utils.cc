@@ -102,34 +102,6 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model);
 
-    if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
-        (global_context.device_type.find("MYRIAD") == std::string::npos)) {
-      //FP16 transformations
-      try {
-        ov::pass::ConvertFP32ToFP16 pass_obj;
-        pass_obj.run_on_model(cnn_network);
-      } catch (const Exception& e) {
-              throw std::string(log_tag + " Exception while converting the model from FP32 to FP16: " + std::string(e.what()));
-          } catch (...) {
-              throw std::string(log_tag + " Exception while converting the model from FP32 to FP16");
-      }
-      cnn_network->validate_nodes_and_infer_types();
-
-      auto proc = ov::preprocess::PrePostProcessor(cnn_network);
-      for (size_t i=0; i < cnn_network->inputs().size(); i++) {
-        if(cnn_network->inputs()[i].get_element_type() == ov::element::f16) {
-          proc.input(i).tensor().set_element_type(ov::element::f32);
-          proc.input(i).preprocess().convert_element_type(ov::element::f16);
-        }
-      }
-
-      for (size_t i=0; i < cnn_network->outputs().size(); i++) {
-        if(cnn_network->outputs()[i].get_element_type() == ov::element::f16) {
-          proc.output(i).postprocess().convert_element_type(ov::element::f32);
-        }
-      }
-      cnn_network = proc.build();
-    }
     #ifndef NDEBUG
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();

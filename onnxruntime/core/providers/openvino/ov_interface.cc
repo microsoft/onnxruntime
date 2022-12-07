@@ -29,9 +29,9 @@ namespace onnxruntime {
             }
     }
 
-    OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, OVConfig config, std::string name) {
+    OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
         try {
-            auto obj = oe.compile_model(ie_cnn_network, hw_target, config);
+            auto obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
             OVExeNetwork exe(obj);
             return exe;
         } catch (const Exception& e) {
