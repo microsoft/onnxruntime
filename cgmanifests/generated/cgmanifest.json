@@ -292,7 +292,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "8de7772cc72daca8e947b79b83fea46214931604",
+          "commitHash": "80dc998efced8ceb2be59756668a7e90e8bef917",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "pybind11"

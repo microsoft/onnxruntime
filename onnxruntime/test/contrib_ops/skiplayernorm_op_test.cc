@@ -37,6 +37,7 @@ static void RunTest(
   std::vector<int64_t> output_dims = input_dims;
 
   auto rocm_ep = DefaultRocmExecutionProvider();
+  auto dml_ep = DefaultDmlExecutionProvider();
   if (!use_float16) {
     OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
     test.AddInput<float>("input", input_dims, input_data);
@@ -55,6 +56,7 @@ static void RunTest(
     test.AddOutput<float>("output", output_dims, output_data);
     test.Run();
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
+             dml_ep != nullptr ||
              rocm_ep != nullptr) {
     OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
@@ -73,7 +75,9 @@ static void RunTest(
     test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    if (rocm_ep != nullptr) {
+    if (dml_ep != nullptr) {
+        execution_providers.push_back(DefaultDmlExecutionProvider());
+    } else if (rocm_ep != nullptr) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
       execution_providers.push_back(DefaultCudaExecutionProvider());
