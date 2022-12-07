@@ -670,6 +670,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     16,  LeakyRelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  PRelu,                              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  PRelu,                              typeNameListDefault,            supportedTypeListFloat16to32SignedInts8to32, DmlGraphSupport::Supported)},
+    {REG_INFO(     16,  PRelu,                              typeNameListDefault,            supportedTypeListFloat16to32SignedInts8to32, DmlGraphSupport::Supported)},
     {REG_INFO(      7,  ThresholdedRelu,                    typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ThresholdedRelu,                    typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Elu,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
