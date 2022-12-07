@@ -40,16 +40,34 @@ Excel has many native functions like `SUM()` that you are likely familiar with. 
 
 Now that we know what custom functions are lets look at how we can create functions that will inference a model locally to get the sentiment text in a cell or extract information from a cell by asking a question and the answer being returned to the cell.
 
-- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman cli. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions).
+- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman cli. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions). Otherwise skip to the next section.
 
-- Once you clone the project then you can run the project with the below command. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
+- Run the following commands to install the packages and build the project
+
+```bash
+npm install
+npm run build
+```
+
+- The below commend will run the add-in in Excel web and side load the add-in to the spreadsheet that is provided in the command.
 
 ```bash
 // Command to run on the web.
 // Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
-- NOTE: You may need to `Enable Developer Mode` when prompted and accept the certificate for the side loaded add-in when you run the project for the first time.
+
+- Use the following command to run in the Excel client.
+```bash
+// Command to run on desktop (Windows or Mac)
+npm run start:desktop
+```
+
+- The first time you run the project there will be two prompts since you are sideloading the plugin.
+  - `Enable Developer Mode`
+  - Accept the certificate for the plugin
+
+- To access the custom function type `=ORT.Sentiment("TEXT")` and `ORT.Question("QUESTION","CONTEXT")` in an empty cell and pass in the parameters.
 
 Now we are ready to jump into the code!
 
