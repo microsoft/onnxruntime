@@ -43,9 +43,9 @@ Excel has many native functions like `SUM()` that you are likely familiar with. 
 
 Now that we know what custom functions are lets look at how we can create functions that will inference a model locally to get the sentiment text in a cell or extract information from a cell by asking a question and the answer being returned to the cell.
 
-- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman cli. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions). Otherwise skip to the next section.
+- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman CLI. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions).
 
-- Run the following commands to install the packages and build the project
+- Run the following commands to install the packages and build the project.
 
 ```bash
 npm install
@@ -61,14 +61,15 @@ npm run start:web -- --document {url}
 ```
 
 - Use the following command to run in the Excel client.
+
 ```bash
 // Command to run on desktop (Windows or Mac)
 npm run start:desktop
 ```
 
-- The first time you run the project there will be two prompts since you are sideloading the plugin.
-  - `Enable Developer Mode`
-  - Accept the certificate for the plugin
+- The first time you run the project there will be two prompts:
+  - One will ask to `Enable Developer Mode`. This is required for sideloading plugins.
+  - Next when prompted accept the certificate for the plugin service.
 
 - To access the custom function type `=ORT.Sentiment("TEXT")` and `ORT.Question("QUESTION","CONTEXT")` in an empty cell and pass in the parameters.
 
