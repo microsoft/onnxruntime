@@ -48,7 +48,7 @@ Status FakeQuant<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Fake quantize the input tensor
   // TODO(bmeswani): Add support for FakeQuantPerChannel
-  FakeQuantPerTensor(Stream(), input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_,
+  FakeQuantPerTensor(Stream(ctx), input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_,
                      quant_max_, fake_quantized_data, quantization_mask_data);
 
   return Status::OK();

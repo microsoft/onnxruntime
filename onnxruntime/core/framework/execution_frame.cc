@@ -27,7 +27,7 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
-
+#ifdef ENABLE_STREAM
 static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
   if (allocator->Info().alloc_type == OrtArenaAllocator) {
     BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
@@ -35,6 +35,7 @@ static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
   }
   return nullptr;
 }
+#endif
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
@@ -80,7 +81,7 @@ void IExecutionFrame::UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::s
 }
 
 void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
-                                    gsl::span<const OrtValue> fetches, const InlinedHashMap<int, OrtValue>& initializers) {
+                                    gsl::span<const OrtValue> fetches, const std::unordered_map<int, OrtValue>& initializers) {
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
 
   if (!fetches.empty()) {
@@ -219,7 +220,7 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
 }
 
 void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-                           const InlinedHashMap<int, OrtValue>& initializers,
+                           const std::unordered_map<int, OrtValue>& initializers,
                            const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
                            gsl::span<const OrtValue> fetches) {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
@@ -338,7 +339,7 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
 
 ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
-                               const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state,
                                gsl::span<Stream*> device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
@@ -555,6 +556,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (!alloc) alloc = GetAllocator(location);
   Stream* current_stream = GetValueStream(ort_value_index);
   if (current_stream) {
+#ifdef ENABLE_STREAM
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
     if (stream_aware_alloc) {
       size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
@@ -566,6 +568,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     } else {
       Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
     }
+#else
+    ORT_THROW("Ort value is associated with a Stream but Stream is not enabled in the build.");
+#endif
   } else {
     Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
   }

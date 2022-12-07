@@ -490,9 +490,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
+#ifdef ENABLE_STREAM
                                    const DeviceStreamCollection& device_streams,
+#endif
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
@@ -505,18 +507,30 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   }
 
   // prepare the execution context, notifications got initialized.
+#ifdef ENABLE_STREAM
   StreamExecutionContext ctx(session_state,
                              valid_streams,
                              execution_plan->notification_owners,
+                             execution_plan->num_barriers,
+                             device_streams,
                              feed_mlvalue_idxs,
                              feeds,
                              fetch_mlvalue_idxs,
                              fetches,
                              fetch_allocators,
-                             execution_plan->num_barriers,
                              logger,
-                             device_streams,
                              single_thread_mode);
+#else
+  StreamExecutionContext ctx(session_state,
+                             valid_streams,
+                             feed_mlvalue_idxs,
+                             feeds,
+                             fetch_mlvalue_idxs,
+                             fetches,
+                             fetch_allocators,
+                             logger,
+                             single_thread_mode);
+#endif
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
     auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
@@ -569,7 +583,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                           gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
-                                          const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
                                           const bool& terminate_flag,

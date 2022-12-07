@@ -21,7 +21,7 @@
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
-
+#ifdef ENABLE_STREAM
 static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
   return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
@@ -59,6 +59,7 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
   InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
 };
+#endif
 
 SessionState::SessionState(Graph& graph,
                            const ExecutionProviders& execution_providers,
@@ -81,8 +82,12 @@ SessionState::SessionState(Graph& graph,
       data_transfer_mgr_(data_transfer_mgr),
       use_deterministic_compute_(use_deterministic_compute),
       enable_mem_reuse_(enable_mem_reuse),
+#ifdef ENABLE_STREAM
       prepacked_weights_container_(prepacked_weights_container),
       stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
+#else
+      prepacked_weights_container_(prepacked_weights_container) {
+#endif
   SetupAllocators();
 }
 
@@ -279,9 +284,9 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   return Status::OK();
 }
 
-const InlinedHashMap<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
+const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
-const InlinedHashMap<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
+const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
   return constant_initialized_tensors_;
 }
 
@@ -381,7 +386,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
           do {
             int ort_value_idx;
             if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
-              InlinedHashMap<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+              std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
               if (constant_initialized_tensors.count(ort_value_idx)) {
                 bool is_packed = false;
@@ -1334,10 +1339,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // TODO: we avoid instantiate it in subgraph session state
 
   // register stream handles from EP instances
+#ifdef ENABLE_STREAM
   auto& eps = GetExecutionProviders();
   for (auto& ep : eps) {
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
+#endif 
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
@@ -1345,16 +1352,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SequentialPlannerContext context(session_options.execution_mode,
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
-  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
+  auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context,
+#ifdef ENABLE_STREAM
                                                     GetStreamHandleRegistryInstance(),
+#endif
                                                     session_options.config_options.GetConfigOrDefault(
                                                         kNodePartitionConfigFile, ""),
                                                     Logger(),
-                                                    p_seq_exec_plan_));
+                                                    p_seq_exec_plan_);
+  ORT_RETURN_IF_ERROR(status);
 
 // Record the allocation plan
 
@@ -1496,6 +1506,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   return Status::OK();
 }
 
+#ifdef ENABLE_STREAM
 static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
                                DeviceStreamCollection& device_stream_map,
                                IStreamCommandHandleRegistry& stream_handle_registry) {
@@ -1532,5 +1543,6 @@ void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCol
   std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
   device_stream_pool_.push_back(std::move(device_stream_collection));
 }
+#endif
 
 }  // namespace onnxruntime

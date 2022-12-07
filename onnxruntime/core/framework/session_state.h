@@ -150,14 +150,14 @@ class SessionState {
    * execution frame to setup the appropriate OrtValue vectors.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
-  const InlinedHashMap<int, OrtValue>& GetInitializedTensors() const;
+  const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
    * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
    * and cannot be overridden at runtime.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
-  const InlinedHashMap<int, OrtValue>& GetConstantInitializedTensors() const;
+  const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
@@ -325,9 +325,16 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+#ifdef ENABLE_STREAM
   std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
 
   void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
+
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
+#endif
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   void
   IncrementGraphExecutionCounter() {
@@ -338,10 +345,6 @@ class SessionState {
     return graph_executions_counter_;
   }
 #endif
-
-  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
-    return *stream_handles_registry_;
-  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -451,9 +454,9 @@ class SessionState {
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
-  InlinedHashMap<int, OrtValue> initialized_tensors_;  // key is ort_value_index
+  std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
-  InlinedHashMap<int, OrtValue> constant_initialized_tensors_;
+  std::unordered_map<int, OrtValue> constant_initialized_tensors_;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor
@@ -546,11 +549,14 @@ class SessionState {
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
 #endif
+
+#ifdef ENABLE_STREAM
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 
   // lock for the device stream pool
   mutable OrtMutex device_stream_pool_mutex_;
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+#endif
 };
 
 }  // namespace onnxruntime

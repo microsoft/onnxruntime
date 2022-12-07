@@ -197,7 +197,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
   std::vector<OrtValue> feeds;
   std::vector<OrtValue> fetches;
-  InlinedHashMap<size_t, IExecutor::CustomAllocator> fetch_allocators;
+  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
   feeds.resize(num_inputs);
   fetches.resize(num_variadic_outputs);

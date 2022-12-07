@@ -58,7 +58,7 @@ DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(co
 
 StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
                                                                         gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
-                                                                        const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
                                                                         const DeviceStreamCollection& device_streams) {
@@ -75,14 +75,14 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
         session_state,
         valid_streams,
         execution_plan->notification_owners,
+        execution_plan->num_barriers,
+        device_streams,
         feed_mlvalue_idxs,
         feeds,
         fetch_mlvalue_idxs,
         fetches,
         fetch_allocators,
-        execution_plan->num_barriers,
         sess_logger,
-        device_streams,
         // partial executor in training can only be run with single thread
         true);
   } else {

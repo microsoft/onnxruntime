@@ -145,9 +145,12 @@ class PlannerImpl {
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
-  Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                    const std::string& partition_config_file,
-                    const logging::Logger& logger);
+  Status CreatePlan(
+#ifdef ENABLE_STREAM
+      const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
+      const std::string& partition_config_file,
+      const logging::Logger& logger);
 
  private:
   gsl::not_null<const ISequentialPlannerContext*> context_;
@@ -990,7 +993,7 @@ class PlannerImpl {
     return true;
   }
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+#ifdef ENABLE_STREAM
   // assume we already have a baseline reuse plan (no memory reuse at all)
   // this funciton will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
@@ -1327,12 +1330,12 @@ class PlannerImpl {
     if (IsSingleStream())
       return Status::OK();
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
-#endif
-
     // restore context
     context_ = backup_context;
+
+#ifdef ENABLE_STREAM
+    ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
+#endif
 
     return Status::OK();
   }
@@ -1708,10 +1711,10 @@ class PlannerImpl {
     return Status::OK();
   }
 
-#if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
-                            const std::string& /*partition_config_file*/) {
+#ifndef ENABLE_STREAM
+  void
+  PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
+                       const std::string& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -1721,8 +1724,7 @@ class PlannerImpl {
     num_logic_streams_ = 1;
   }
 
-  Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
-                            const IStreamCommandHandleRegistry& /*stream_handle_registry*/) {
+  Status BuildExecutionPlan(const ExecutionProviders& execution_providers) {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
     ORT_ENFORCE(num_logic_streams_ == 1 && !stream_nodes_[0].empty());
@@ -1742,8 +1744,9 @@ class PlannerImpl {
 
 #else
 
-  void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                            const std::string& partition_config_file) {
+  void
+  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
+                       const std::string& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -2098,9 +2101,12 @@ class PlannerImpl {
 #endif
 };
 
-Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                               const std::string& partition_config_file,
-                               const logging::Logger& logger) {
+Status PlannerImpl::CreatePlan(
+#ifdef ENABLE_STREAM
+    const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
+    const std::string& partition_config_file,
+    const logging::Logger& logger) {
   // 1. partition graph into streams
   PartitionIntoStreams(logger, execution_providers_, partition_config_file);
 
@@ -2114,7 +2120,11 @@ Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
+#ifdef ENABLE_STREAM
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
+#else
+  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
+#endif
 
   // build value_node_map
   for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
@@ -2168,7 +2178,9 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
+#ifdef ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
     const std::string& partition_config_file,
     const logging::Logger& logger,
     std::optional<SequentialExecutionPlan>& plan) {
@@ -2180,18 +2192,20 @@ Status SequentialPlanner::CreatePlan(
                       outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
-  return planner.CreatePlan(stream_handle_registry,
-                            /*provider_stream_map,
-                            op_stream_map,*/
-                            partition_config_file,
-                            logger);
+  return planner.CreatePlan(
+#ifdef ENABLE_STREAM
+      stream_handle_registry,
+#endif
+      partition_config_file,
+      logger);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+#ifdef ENABLE_STREAM
 
-InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
+InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy>
+    IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
