@@ -83,8 +83,8 @@ export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<T
   /**
    * creates an ImageData instance from tensor
    *
-   * @param inputOptions - Optional - Interface decribing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
-   * @param outputOptions - Optional - Interface decribing output image - Defaults: RGBA (A is set to NAN), 3 channels,
+   * @param inputOptions - Optional - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface describing output image - Defaults: RGBA (A is set to NAN), 3 channels,
    *     0-255, NHWC
    * @returns An ImageData instance which can be used to draw on canvas
    */
@@ -268,8 +268,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
-   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGBA, 3 channels, 0-255, NHWC
-   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param inputOptions - Optional - Interface describing input image - Defaults: RGBA, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface describing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: ImageData, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
@@ -279,8 +279,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
-   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGBA, 3 channels, 0-255, NHWC
-   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param inputOptions - Optional - Interface describing input image - Defaults: RGBA, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface describing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: HTMLImageElement, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
@@ -290,8 +290,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - string - Asumming the string is a URL to an image
-   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGB, 3 channels, 0-255, NHWC
-   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param inputOptions - Optional - Interface describing input image - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface describing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: string, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
@@ -301,8 +301,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - ImageBitmap Type - since the data is stored as ImageData no need for format parameter
-   * @param inputOptions - Optional - Interface decribing input image - Defaults: RGB, 3 channels, 0-255, NHWC
-   * @param outputOptions - Optional - Interface decribing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param inputOptions - Optional - Interface describing input image - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param outputOptions - Optional - Interface describing output tensor - Defaults: RGB, 3 channels, 0-255, NHWC
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: ImageBitmap, inputOptions?: ImageFromTensorConfig, outputOptions?: TensorFromImageConfig):
