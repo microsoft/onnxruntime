@@ -897,6 +897,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                           model->NamedParameters(), session_option,
                           GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
                     }))
+      .def("set_learning_rate", [](onnxruntime::training::api::Optimizer* optimizer, float lr) -> void {
+        ORT_THROW_IF_ERROR(optimizer->SetLearningRate(lr));
+      })
+      .def("get_learning_rate", [](onnxruntime::training::api::Optimizer* optimizer) -> float {
+        return optimizer->GetLearningRate();
+      })
       .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
       });
