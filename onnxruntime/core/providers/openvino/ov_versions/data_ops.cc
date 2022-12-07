@@ -599,7 +599,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Reshape", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                 auto& attributes = node->GetAttributes();
                                 if (attributes.count("mode") ==1 && attributes.at("mode").s() == "linear") {
@@ -1017,7 +1017,8 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
       } else {
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
-          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+          if (utils::HasDimValue(dim) && dim.dim_value() == 0 &&
+              graph_viewer_.IsConstantInitializer(node_arg.Name(), true)) {
             if ((device_id_.find("MYRIAD") != std::string::npos) && (optype == "Resize"))
               return;
             if ((device_id_.find("GPU") != std::string::npos) && ((optype == "Expand") ||
