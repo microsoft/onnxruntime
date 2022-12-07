@@ -71,7 +71,7 @@ npm run start:desktop
   - One will ask to `Enable Developer Mode`. This is required for sideloading plugins.
   - Next when prompted accept the certificate for the plugin service.
 
-- To access the custom function type `=ORT.Sentiment("TEXT")` and `ORT.Question("QUESTION","CONTEXT")` in an empty cell and pass in the parameters.
+- To access the custom function type `=ORT.Sentiment("TEXT")` and `=ORT.Question("QUESTION","CONTEXT")` in an empty cell and pass in the parameters.
 
 Now we are ready to jump into the code!
 
@@ -248,7 +248,7 @@ export async function inferenceQuestion(question: string, context: string): Prom
 }
 ```
 
-- The `answers` are then returned back to the `functions.ts` `question`, the resulting string is returned and populated into the excel cell.
+- The `answers` are then returned back to the `functions.ts` `question`, the resulting string is returned and populated into the Excel cell.
 
 ```javascript
 export async function question(question: string, context: string): Promise<string> {
@@ -260,7 +260,7 @@ export async function question(question: string, context: string): Promise<strin
   return "Unable to find answer";
 }
 ```
-- Now you can run the below command to build and side load the add-in to your excel spreadsheet!
+- Now you can run the below command to build and side load the add-in to your Excel spreadsheet!
 
 ```bash
 // Command to run on the web.
@@ -272,7 +272,7 @@ That is a breakdown for the `ORT.Question()` custom function, next we will break
 
 ## The `inferenceSentiment.ts` file
 
-The [`inferenceSentiment.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/inferenceSentiment.ts) is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
+The [`inferenceSentiment.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/inferenceSentiment.ts) is the logic to inference and get sentiment for text in an Excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
 
 - First lets import the packages needed. As you will see in this tutorial the `bertProcessing` function will create our model input.  `bert_tokenizer` is the JavaScript tokenizer for BERT models. `onnxruntime-web` enables inference in JavaScript on the browser.
 
@@ -338,7 +338,7 @@ export async function inferenceSentiment(text: string) {
 }
 
 ```
-- The `result_list` is returned and parsed to return the top result to the excel cell.
+- The `result_list` is returned and parsed to return the top result to the Excel cell.
 
 ```javascript
 export async function sentiment(text: string): Promise<string> {
@@ -348,7 +348,7 @@ export async function sentiment(text: string): Promise<string> {
 }
 ```
 
-- Now you can run the below command to build and side load the add-in to your excel spreadsheet!
+- Now you can run the below command to build and side load the add-in to your Excel spreadsheet!
 
 ```bash
 // Command to run on the web.
@@ -358,7 +358,7 @@ npm run start:web -- --document {url}
 
 ## Conclusion
 
-Here we went over the logic needed to create custom functions in an excel add-in with JavaScript leveraging ONNX Runtime Web and open source models. From here you could take this logic and update to a specific model or use case you have. Be sure to check out the full source code which includes the tokenizers and pre/post processing to complete the above tasks.
+Here we went over the logic needed to create custom functions in an Excel add-in with JavaScript leveraging ONNX Runtime Web and open source models. From here you could take this logic and update to a specific model or use case you have. Be sure to check out the full source code which includes the tokenizers and pre/post processing to complete the above tasks.
 
 ## Additional resources
 * [Publish Add-ins in VS Code](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish-add-in-vs-code#using-visual-studio-code-to-publish)
