@@ -370,6 +370,11 @@ namespace OperatorHelper
         static const int sc_sinceVer_Shape = 15;
     } // namespace OnnxOperatorSet15
 
+    namespace OnnxOperatorSet16
+    {
+        static const int sc_sinceVer_Identity = 16;
+    } // namespace OnnxOperatorSet16
+
     namespace OnnxOperatorSet17
     {
         static const int sc_sinceVer_LayerNormalization = 17;
