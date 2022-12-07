@@ -24,6 +24,7 @@ microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becd
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.0.3.zip;e4f37b93b2da78a5816c2495603a4188d316214b
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
 onnx;https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip;edc8e1338c02f3ab222f3d803a24e17608c13895
+#Branch name: 8.4-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/87c7a70688fd98fb355b8976f41425b40e4fe52f.zip;b97d112d9d6efa180c9b94e05268f2ff3294a534
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip;b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
 psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
