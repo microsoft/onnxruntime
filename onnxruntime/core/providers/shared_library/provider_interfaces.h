@@ -880,12 +880,12 @@ struct ProviderHost {
   virtual RandomGenerator& RandomGenerator__Default() = 0;
 #endif
 
-  virtual ProviderHostCPU& GetProviderHostCPU() = 0;
-};
-
 #if defined(USE_TENSORRT)
   virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
 #endif
+
+  virtual ProviderHostCPU& GetProviderHostCPU() = 0;
+};
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
