@@ -104,7 +104,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                               const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream,
                                /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches

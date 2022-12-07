@@ -70,75 +70,91 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
-// Check if it's possible to combine innermost dimensions so we copy larger blocks.
-// Sets flattened_output_dims to nullptr if it is not.
-// Updates starts and steps to match flattened_output_dims if it is.
-// e.g. if input shape is { 2, 2, 2 }, output shape is { 1, 2, 2 }, and the 'steps' value for the last two dims is 1,
-// we are keeping all the data of the inner most two dimensions so can combine those into dims of { 1, 4 }
-static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
-                              gsl::span<const int64_t> output_dims,
-                              TensorShapeVector& starts,
-                              TensorShapeVector& ends,
-                              TensorShapeVector& steps,
-                              TensorShapeVector*& flattened_output_dims) {
-  int num_to_combine = 0;
-  for (int64_t i = static_cast<int64_t>(starts.size()) - 1; i >= 0; --i) {
-    // if we're keeping all the data for the dimension and not reversing the direction we can potentially combine it
-    if (steps[narrow<size_t>(i)] == 1 && input_dimensions[narrow<size_t>(i)] == output_dims[narrow<size_t>(i)])
-      ++num_to_combine;
-    else
+// Coalesce contiguous non-slice dimensions into a single dimension.
+// Set p_flattened_input_dims_ and p_flattened_output_dims_ to nullptr if nothing coalesced.
+// Updates starts and steps to match the new dimensions.
+// e.g. if input shape is { 2, 2, 2, 2, 2 }, output shape is { 2, 2, 1, 2, 2 },
+// and the 'steps' value for all dims is 1 except dim-2, then the input shape is coalesced to { 4, 2, 4 }
+// and the output shape is coalesced to { 4, 1, 4 }.
+static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
+  size_t cur = 0;
+  size_t nxt = 0;
+  while (true) {
+    // Skip all leading slicing dims.
+    while (nxt < starts.size() && (steps[nxt] != 1 || input_dimensions[nxt] != output_dims[nxt])) {
+      p_flattened_input_dims->emplace_back(input_dimensions[nxt]);
+      p_flattened_output_dims->emplace_back(output_dims[nxt]);
+      starts[cur] = starts[nxt];
+      ends[cur] = ends[nxt];
+      steps[cur] = steps[nxt];
+      ++cur;
+      ++nxt;
+    }
+    if (nxt == starts.size()) {
       break;
+    }
+    // Coalesce contiguous non-slicing dims.
+    int64_t running_size = 1;
+    while (nxt < starts.size() && steps[nxt] == 1 && input_dimensions[nxt] == output_dims[nxt]) {
+      running_size *= input_dimensions[nxt];
+      ++nxt;
+    }
+    if (running_size > 1) {
+      p_flattened_input_dims->emplace_back(running_size);
+      p_flattened_output_dims->emplace_back(running_size);
+      starts[cur] = 0LL;
+      ends[cur] = running_size;
+      steps[cur] = 1LL;
+      ++cur;
+    }
   }
 
-  if (num_to_combine > 1) {
-    auto num_dims = output_dims.size() - num_to_combine + 1;
-    flattened_output_dims->assign(output_dims.begin(), output_dims.end());
-    flattened_output_dims->resize(num_dims);
+  // No actual slice dim, and all dims are size 1.
+  if (cur == 0) {
+    p_flattened_input_dims->emplace_back(1LL);
+    p_flattened_output_dims->emplace_back(1LL);
+    starts[cur] = 0LL;
+    ends[cur] = 1LL;
+    steps[cur] = 1LL;
+    ++cur;
+  }
 
-    int64_t dim_value = 1;
-    for (size_t k = num_dims - 1, end = output_dims.size(); k < end; ++k) {
-      dim_value *= output_dims[k];
-    }
-
-    flattened_output_dims->back() = dim_value;
-
-    // the value of starts and steps for all the dims being combined are 0 and 1 respectively,
-    // so we can just shrink via resize so the number of entries matches flattened_output_dims
-    starts.resize(num_dims);
-    steps.resize(num_dims);
-
-    // update ends as well
-    ends.resize(num_dims);
-    ends.back() = dim_value;
+  if (p_flattened_output_dims->size() == output_dims.size()) {
+    p_flattened_input_dims->clear();
+    p_flattened_output_dims->clear();
+    p_flattened_input_dims = nullptr;
+    p_flattened_output_dims = nullptr;
   } else {
-    flattened_output_dims = nullptr;
+    starts.resize(cur);
+    ends.resize(cur);
+    steps.resize(cur);
   }
 }
 
 // Slice V1-9 & DynamicSlice
-Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
-                                    gsl::span<const int64_t> raw_ends,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::span<const int64_t> raw_ends,
                                     gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                    compute_metadata.p_flattened_output_dims_);
   return Status::OK();
 }
 
 // DynamicSlice & Slice V10
-Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
-                                    gsl::span<const int64_t> raw_ends,
-                                    gsl::span<const int64_t> raw_axes,
-                                    gsl::span<const int64_t> raw_steps,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes, gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                    compute_metadata.p_flattened_output_dims_);
 
   return Status::OK();
 }
-
 namespace {
 template <typename T>
 void CopyData(const Tensor& start_tensor,
@@ -231,16 +247,11 @@ static Status SliceImpl(OpKernelContext* ctx,
      ORT_ENFORCE(output == output_end);
   };
 
-  if (compute_metadata.p_flattened_output_dims_) {
-    // if we have flattened output dims we need to also flatten the input dims.
-    // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
-    auto flattened_input_dims = input_tensor.Shape().AsShapeVector();
-    flattened_input_dims.resize(compute_metadata.p_flattened_output_dims_->size());
-    flattened_input_dims.back() = compute_metadata.p_flattened_output_dims_->back();
-    TensorShape input_shape(flattened_input_dims);
-
-    auto input_iterator2 = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
-                                            *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
+  if (compute_metadata.p_flattened_input_dims_) {
+    // If we were able to coalesce the input and output shapes, use the new shapes.
+    auto input_iterator2 =
+        SliceIterator<T>(input_tensor, TensorShape(compute_metadata.flattened_input_dims_), compute_metadata.starts_,
+                         compute_metadata.flattened_output_dims_, compute_metadata.steps_);
     create_output(input_iterator2);
   } else {
     auto input_iterator2 = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,

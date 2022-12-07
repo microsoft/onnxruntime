@@ -31,8 +31,8 @@ bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& graph) {
 }  // namespace
 
 // MaxPool doesn't have any quantization params
-bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
-                                         const GraphViewer& graph) {
+bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                  const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   if (IsQuantizedMaxPool(qtype) && IsValidQuantMaxPool(node_unit, graph) == false) {
@@ -137,10 +137,11 @@ MaxPool::MaxPool(const OpKernelInfo& info)
 
   // input is NHWC and we only support input with 4 dims. we checked C, H, W were all known in the op support checker
   const auto& X_arg = *Node().InputDefs()[0];
-  const auto& X_shape = *X_arg.Shape();
-  int64_t H = X_shape.dim(1).dim_value();
-  int64_t W = X_shape.dim(2).dim_value();
-  int64_t C = X_shape.dim(3).dim_value();
+  auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X_arg.Shape());
+
+  int64_t H = X_shape[1];
+  int64_t W = X_shape[2];
+  int64_t C = X_shape[3];
 
   // create NCHW shape to calculate most of the output shape. 'N' is set in Compute.
   TensorShapeVector input_shape{1, C, H, W};

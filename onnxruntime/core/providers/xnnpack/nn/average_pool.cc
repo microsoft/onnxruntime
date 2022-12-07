@@ -78,8 +78,8 @@ bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
 
 }  // namespace
 
-bool AveragePool::IsAveragePoolOnnxNodeSupported(const NodeUnit& node_unit,
-                                                 const GraphViewer& graph) {
+bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                      const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   // we check quant-conditions first, if this quant-node is not supported, return directly.
