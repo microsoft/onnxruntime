@@ -8,9 +8,10 @@
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
-#include "core/framework/murmurhash3.h"
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
+#include "core/framework/murmurhash3.h"
+#include "core/common/common.h"
 
 namespace fs = std::experimental::filesystem;
 

@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
@@ -315,6 +316,10 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
   return g_host->CreateGPUDataTransfer(stream);
+}
+
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
 #endif
 

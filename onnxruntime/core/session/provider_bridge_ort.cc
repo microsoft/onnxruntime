@@ -28,6 +28,7 @@
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
+#include "core/framework/murmurhash3.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -1012,6 +1013,12 @@ struct ProviderHostImpl : ProviderHost {
 
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
+#endif
+
+#if defined(USE_TENSORRT)
+  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
+    MurmurHash3::x86_128(key, len, seed, out);
+  }
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
