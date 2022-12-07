@@ -24,6 +24,7 @@ jobs:
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
   pool:
     vmImage: 'macOS-11'
   timeoutInMinutes:  300
@@ -44,6 +45,19 @@ jobs:
     - template: set-version-number-variables-step.yml
 
     - script: |
+        brew install ccache
+        echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+      displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
+
+    - task: Cache@2
+      inputs:
+        key: 'ccache | "$(Agent.OS)" | protocol'
+        path: $(CCACHE_DIR)
+        restoreKeys: |
+          ccache | "$(Agent.OS)" | protocol
+      displayName: ccache protocol
+
+    - script: |
         set -e -x
         pushd .
         $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed
@@ -54,6 +68,14 @@ jobs:
         python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
       displayName: 'Install dependencies'
+
+    - task: Cache@2
+      inputs:
+        key: 'ccache | "$(Agent.OS)"'
+        path: $(CCACHE_DIR)
+        restoreKeys: |
+          ccache | "$(Agent.OS)"
+      displayName: ccache MacOS Build
 
     - ${{ if eq(parameters.BuildForAllArchs, true) }}:
       - template: mac-packaging.yml
