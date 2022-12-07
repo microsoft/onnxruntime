@@ -24,7 +24,7 @@ RUN if [ "$ROCM_VERSION" = "5.2.3" ] ; \
 RUN yum install -y rocm-dev
 
 # Set ENV
-ENV PATH=/opt/rocm/hcc/bin:/opt/rocm/hip/bin:/opt/rocm/bin:/opt/rocm/hcc/bin${PATH:+:${PATH}}
+ENV PATH=/opt/rocm/hcc/bin:/opt/rocm/hip/bin:/opt/rocm/bin${PATH:+:${PATH}}
 
 #Build manylinux2014 docker image begin
 FROM base_image AS runtime_base
