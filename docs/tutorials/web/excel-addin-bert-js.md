@@ -10,7 +10,7 @@ nav_order: 2
 # ONNX Runtime Custom Excel Functions for BERT NLP Tasks in JavaScript
 {: .no_toc }
 
-In this tutorial we will look at how we can create custom excel functions (`ORT.Sentiment()` and `ORT.Question()`) to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happen locally in the browser with excel on the web. 
+In this tutorial we will look at how we can create custom Excel functions (`ORT.Sentiment()` and `ORT.Question()`) to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happens locally, right in Excel! 
 
 <div class="embed-container">
   <iframe
