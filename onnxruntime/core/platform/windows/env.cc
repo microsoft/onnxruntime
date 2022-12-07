@@ -796,9 +796,11 @@ void WindowsEnv::InitializeCpuInfo() {
   auto last_error = GetLastError();
   if (last_error != ERROR_INSUFFICIENT_BUFFER) {
     const auto error_code = GetLastError();
-    LOGS_DEFAULT(ERROR) << "Failed to calculate byte size for saving cpu info on windows"
-                        << ", error code: " << error_code
-                        << ", error msg: " << std::system_category().message(error_code);
+    if (logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(ERROR) << "Failed to calculate byte size for saving cpu info on windows"
+                          << ", error code: " << error_code
+                          << ", error msg: " << std::system_category().message(error_code);
+    }
     return;
   }
 
@@ -807,9 +809,11 @@ void WindowsEnv::InitializeCpuInfo() {
 
   if (!GetLogicalProcessorInformationEx(RelationProcessorCore, processorInfos, &returnLength)) {
     const auto error_code = GetLastError();
-    LOGS_DEFAULT(ERROR) << "Failed to fetch cpu info on windows"
-                        << ", error code: " << error_code
-                        << ", error msg: " << std::system_category().message(error_code);
+    if (logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(ERROR) << "Failed to fetch cpu info on windows"
+                          << ", error code: " << error_code
+                          << ", error msg: " << std::system_category().message(error_code);
+    }
     return;
   }
 
@@ -852,8 +856,9 @@ void WindowsEnv::InitializeCpuInfo() {
     }
     iter += size;
   }
-
-  LOGS_DEFAULT(VERBOSE) << "Found total " << cores_.size() << " core(s) from windows system:";
-  LOGS_DEFAULT(VERBOSE) << log_stream.str();
+  if (logging::LoggingManager::HasDefaultLogger()) {
+    LOGS_DEFAULT(VERBOSE) << "Found total " << cores_.size() << " core(s) from windows system:";
+    LOGS_DEFAULT(VERBOSE) << log_stream.str();
+  }
 }
 }  // namespace onnxruntime
