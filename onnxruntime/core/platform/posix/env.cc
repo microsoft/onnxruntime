@@ -237,7 +237,7 @@ class PosixThread : public EnvThread {
           if (id > -1 && id < CPU_SETSIZE) {
             CPU_SET(id, &cpuset);
           } else {
-            LOGS_DEFAULT(WARNING) << "cpu " << id << " does not exist, skipping it for affinity setting";
+            LOGS_DEFAULT(ERROR) << "cpu " << id << " does not exist, skipping it for affinity setting";
           }
         }
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);

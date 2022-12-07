@@ -548,7 +548,19 @@ TEST(ThreadPoolTest, TestStackSize) {
 TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
   OrtThreadPoolParams tp_params;
   tp_params.thread_pool_size = 3;
-  const char* wrong_formats[] = {",", "1,", ";", ";1", "a", "a;b", "1;a", "0;1", "-;2", "--", "2-1;3"};
+  const char* wrong_formats[] = {
+      ",",     //1st and 2nd processor id are empty strings
+      "1,",    //2nd processor id is an empty string
+      ";",     //affinity settings for both threads are empty
+      ";1",    //missing the affinity setting for the 1st thread
+      "a",     //invalid char, must be digit
+      "a;b",   //invalid char, must be digit
+      "1;a",   //invalid char, must be digit
+      "0;1",   //processor string must start from 1
+      "-;2",   //invalid char, must be digit
+      "--",    //invalid char, must be digit
+      "2-1;3"  //invalid interval, "from" must be equal to or smaller than "to"
+  };
   for (const auto* wrong_format : wrong_formats) {
     tp_params.affinity_str = wrong_format;
     ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
@@ -556,17 +568,17 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
                                                concurrency::ThreadPoolType::INTRA_OP),
                  std::exception);
   }
-  const char* less_than_expects[] = {"1", "1,2", "1-2"};
-  for (const auto* less_than_expect : less_than_expects) {
-    tp_params.affinity_str = less_than_expect;
+  const char* less_than_expected_vec[] = {"1", "1,2", "1-2"};
+  for (const auto* less_than_expected : less_than_expected_vec) {
+    tp_params.affinity_str = less_than_expected;
     ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                tp_params,
                                                concurrency::ThreadPoolType::INTRA_OP),
                  std::exception);
   }
-  const char* more_than_expects[] = {"1;2;3", "1-2;2-2;3-4", "1;2;3;4;5"};
-  for (const auto* more_than_expect : more_than_expects) {
-    tp_params.affinity_str = more_than_expect;
+  const char* more_than_expected_vec[] = {"1;2;3", "1-2;2-2;3-4", "1;2;3;4;5"};
+  for (const auto* more_than_expected : more_than_expected_vec) {
+    tp_params.affinity_str = more_than_expected;
     ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                tp_params,
                                                concurrency::ThreadPoolType::INTRA_OP),

@@ -841,7 +841,9 @@ void WindowsEnv::InitializeCpuInfo() {
           * The map helps to bridge between ort API and windows affinity API -
           * we need local processor id to build an affinity mask for a particular group.
           */
-          global_processor_info_map_[global_processor_id] = {static_cast<int>(group_mask.Group), logical_proessor_id};
+          global_processor_info_map_.insert_or_assign(global_processor_id,
+                                                      ProcessorInfo{static_cast<int>(group_mask.Group),
+                                                                    logical_proessor_id});
           global_processor_id++;
         }
       }

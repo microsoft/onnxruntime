@@ -194,9 +194,6 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
   if (!tp_options) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
   }
-  if (!affinity_string) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null affinity string");
-  }
   tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
 }
