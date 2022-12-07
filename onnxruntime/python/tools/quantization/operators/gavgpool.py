@@ -11,10 +11,15 @@ class QGlobalAveragePool(QuantOperatorBase):
     def quantize(self):
         node = self.node
         assert node.op_type == "GlobalAveragePool"
-
-        # If input to this node is not quantized then keep this node.
+        nodes = []
+        # If input to this node is not quantized then force the quantization.
         if node.input[0] not in self.quantizer.quantized_value_map:
-            return super().quantize()
+            (
+                quantized_input_names,
+                zero_point_names,
+                scale_names,
+                nodes,
+            ) = self.quantizer.quantize_activation(node, [0])
 
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
 
@@ -59,4 +64,5 @@ class QGlobalAveragePool(QuantOperatorBase):
             qnode_name,
             **kwargs,
         )
-        self.quantizer.new_nodes += [qnode]
+        nodes.append(qnode)
+        self.quantizer.new_nodes += nodes
