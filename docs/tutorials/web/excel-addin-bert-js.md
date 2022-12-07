@@ -12,14 +12,17 @@ nav_order: 2
 
 In this tutorial we will look at how we can create custom Excel functions (`ORT.Sentiment()` and `ORT.Question()`) to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happens locally, right in Excel! 
 
-<div class="embed-container">
+<img src="../../../images/bert-excel.gif" width="100%" height="100%" alt="Image of browser inferencing on sample images."/>
+
+
+<!-- <div class="embed-container">
   <iframe
       src="https://www.youtube.com/embed/wuSxWGY_Sjg"
       width="560" height="315"
       frameborder="0"
       allowfullscreen="true">
   </iframe>
-</div>
+</div> -->
 
 ## Contents
 {: .no_toc }
