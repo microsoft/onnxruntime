@@ -84,6 +84,8 @@ Now we are ready to jump into the code!
 <ProviderName>ORT</ProviderName>
 ```
 
+Learn more about the configuration of the [mainfest file here](https://learn.microsoft.com/office/dev/add-ins/develop/configure-your-add-in-to-use-a-shared-runtime#configure-the-manifest).
+
 ## The `functions.ts` file
 
 In the [`function.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/functions.ts) file we define the functions name, parameters, logic and return type.
