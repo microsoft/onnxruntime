@@ -583,6 +583,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  Erf,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Erf,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Where,                              typeNameListWhere,              supportedTypeListWhere,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     16,  Where,                              typeNameListWhere,              supportedTypeListWhere,                 DmlGraphSupport::Supported)},
     {REG_INFO(      7,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32Ints32to64, DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32Ints32to64, DmlGraphSupport::Supported)},
     {REG_INFO(     13,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32Ints32to64, DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
