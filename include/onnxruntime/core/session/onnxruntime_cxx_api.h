@@ -75,10 +75,6 @@ struct Exception : std::exception {
   throw Ort::Exception(string, code)
 #endif
 
-// Logs a message at the specified severity level. Wraps OrtApi::Log.
-#define ORT_CXX_LOG(severity, message) \
-  Ort::detail::LogImpl(severity, message, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__))
-
 // This is used internally by the C++ API. This class holds the global variable that points to the OrtApi,
 //  it's in a template so that we can define a global variable in a header and make
 // it transparent to the users of the API.
@@ -392,13 +388,15 @@ struct Env : detail::Base<OrtEnv> {
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
-
+// Logs a message at the specified severity level. Wraps OrtApi::Log.
+#define ORT_CXX_LOG(severity, message) \
+  Ort::detail::LogImpl(severity, message, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__))
 
 namespace detail {
 
 // Logs a message at the given severity level. Typically called via the ORT_CXX_LOG macro.
-void LogImpl(OrtLoggingLevel log_severity_level, const char* message, const char* file_path, int line_number,
-             const char* func_name);
+Status LogImpl(OrtLoggingLevel log_severity_level, const char* message, const char* file_path, int line_number,
+               const char* func_name) noexcept;
 }  // namespace detail
 
 /** \brief Custom Op Domain
