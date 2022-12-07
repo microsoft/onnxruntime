@@ -39,77 +39,6 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 
 if (onnxruntime_USE_CLOUD)
 
-  include(ExternalProject)
-
-  if (WIN32)
-
-    function(get_vcpkg)
-      ExternalProject_Add(vcpkg
-        GIT_REPOSITORY https://github.com/microsoft/vcpkg.git
-        PREFIX vcpkg
-        CONFIGURE_COMMAND ""
-        INSTALL_COMMAND ""
-        UPDATE_COMMAND ""
-        BUILD_COMMAND "<SOURCE_DIR>/bootstrap-vcpkg.bat")
-
-      ExternalProject_Get_Property(vcpkg SOURCE_DIR)
-      set(VCPKG_SRC ${SOURCE_DIR} PARENT_SCOPE)
-      set(VCPKG_DEPENDENCIES "vcpkg" PARENT_SCOPE)
-    endfunction()
-
-    function(vcpkg_install PACKAGE_NAME)
-      add_custom_command(
-        OUTPUT ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO
-        COMMAND ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
-        WORKING_DIRECTORY ${VCPKG_SRC}
-        DEPENDS vcpkg)
-
-      add_custom_target(get${PACKAGE_NAME}
-        ALL
-        DEPENDS ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO)
-
-      list(APPEND VCPKG_DEPENDENCIES "get${PACKAGE_NAME}")
-      set(VCPKG_DEPENDENCIES ${VCPKG_DEPENDENCIES} PARENT_SCOPE)
-    endfunction()
-
-    get_vcpkg()
-    vcpkg_install(openssl)
-    vcpkg_install(openssl-windows)
-    vcpkg_install(rapidjson)
-    vcpkg_install(re2)
-    vcpkg_install(boost-interprocess)
-    vcpkg_install(boost-stacktrace)
-    vcpkg_install(zlib)
-    vcpkg_install(pthread)
-    vcpkg_install(b64)
-
-    ExternalProject_Add(triton
-                        GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                        GIT_TAG r22.12
-                        PREFIX triton
-                        CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=x64-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
-                        INSTALL_COMMAND ""
-                        UPDATE_COMMAND "")
-
-  else()
-
-    ExternalProject_Add(triton
-                        GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                        GIT_TAG r22.12
-                        PREFIX triton
-                        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
-                        INSTALL_COMMAND ""
-                        UPDATE_COMMAND "")
-
-  endif() #if (WIN32)
-
-  ExternalProject_Get_Property(triton SOURCE_DIR)
-  set(TRITON_SRC ${SOURCE_DIR})
-
-  ExternalProject_Get_Property(triton BINARY_DIR)
-  set(TRITON_BIN ${BINARY_DIR}/binary)
-  set(TRITON_THIRD_PARTY ${BINARY_DIR}/third-party)
-
   add_dependencies(onnxruntime_framework triton)
   target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
   link_directories(${TRITON_BIN}/lib ${TRITON_THIRD_PARTY}/curl/lib)
@@ -145,19 +74,19 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
-    target_include_directories(onnxruntime_framework PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+    target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
   endif()
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
 endif()
+
 if (onnxruntime_ENABLE_ATEN)
   # DLPack is a header-only dependency
-  target_compile_definitions(onnxruntime_framework PRIVATE ENABLE_ATEN)
-  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers safeint_interface Boost::mp11)
 
 if (onnxruntime_USE_MIMALLOC)
     target_link_libraries(onnxruntime_framework mimalloc-static)

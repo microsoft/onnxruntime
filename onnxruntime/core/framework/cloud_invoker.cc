@@ -125,7 +125,7 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     //assemble triton inputs
     auto iter = input_names.begin();
     for (int i = 0; i < static_cast<int>(ort_inputs.size()); i++) {
-      const OrtValue& ort_input = ort_inputs.at(i);
+      const OrtValue& ort_input = ort_inputs[i];
       if (!ort_input.IsTensor()) {
         //todo - do we need to support tensor sequence and sparse tensor?
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton client only accept tensor(s) as input");

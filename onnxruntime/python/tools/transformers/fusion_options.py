@@ -27,7 +27,7 @@ class FusionOptions:
         self.enable_qordered_matmul = True
 
         self.enable_shape_inference = True
-
+        self.enable_gemm_fast_gelu = False
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
         if model_type == "gpt2":
@@ -63,6 +63,8 @@ class FusionOptions:
             options.enable_gelu_approximation = True
         if args.disable_shape_inference:
             options.enable_shape_inference = False
+        if args.enable_gemm_fast_gelu:
+            options.enable_gemm_fast_gelu = True
         if args.use_mask_index:
             options.use_raw_attention_mask(False)
         if args.no_attention_mask:
@@ -142,6 +144,14 @@ class FusionOptions:
             help="disable symbolic shape inference",
         )
         parser.set_defaults(disable_shape_inference=False)
+
+        parser.add_argument(
+            "--enable_gemm_fast_gelu",
+            required=False,
+            action="store_true",
+            help="enable GemmfastGelu fusion",
+        )
+        parser.set_defaults(enable_gemm_fast_gelu=False)
 
         parser.add_argument(
             "--use_mask_index",

@@ -234,7 +234,7 @@ void FusedMatMulShapeMapping(
     std::vector<DimensionType>& outputShape);
 
 std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
-    gsl::span<const uint32_t> sizes, 
+    gsl::span<const uint32_t> sizes,
     int32_t transBatch = 0,
     int32_t transpose = 0);
 
@@ -299,12 +299,14 @@ struct IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const = 0;
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept = 0;
     virtual MLOperatorAttributes const& GetAttributes() const noexcept = 0;
+    virtual ~IKernelInformationAdapter() {}
 };
 
 struct IShapeInformationAdapter
 {
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const = 0;
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const = 0;
+    virtual ~IShapeInformationAdapter() {}
 };
 
 // To avoid duplicating dozens of templated functions that vary only on the source of the kernel
@@ -323,6 +325,7 @@ struct KernelInformationAdapter : IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const { return m_informationSource.GetConstantInputTensor(inputIndex); }
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept { return m_informationSource.HasAttribute(name, type); }
     virtual MLOperatorAttributes const& GetAttributes() const noexcept { return m_informationSource; }
+    virtual ~KernelInformationAdapter() {}
 
     InformationSourceType& m_informationSource;
 };
@@ -338,6 +341,7 @@ struct ShapeInformationAdapter : IShapeInformationAdapter
 
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const { return m_informationSource.GetInputTensorDimensionCount(inputIndex); }
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const { return m_informationSource.GetInputTensorShape(inputIndex); }
+    virtual ~ShapeInformationAdapter() {}
 
     InformationSourceType& m_informationSource;
 };
@@ -437,7 +441,7 @@ public:
     enum InputDims { N, C, H, W };
 
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
     template<typename Info_t, typename Shape_t>
     ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads, uint32_t inputTensorIndex, uint32_t filterTensorIndex) :
         m_inputTensorIndex(inputTensorIndex),
@@ -445,7 +449,7 @@ public:
         m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(inputTensorIndex), shape.GetInputTensorShape(filterTensorIndex)))
     {
         m_groupCount = info.template GetOptionalAttribute<uint32_t>(AttrName::Group, 1);
-        
+
         if (!transpose)
         {
             InitializeKernelAndShapes(ShapeInformationAdapter(shape));
@@ -507,8 +511,8 @@ public:
 class GemmHelper
 {
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template<typename Info_t, typename Shape_t>
     GemmHelper(const Info_t& info, const Shape_t& shape)
     {
@@ -591,8 +595,8 @@ class SliceHelper
     );
 
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template<typename Info_t, typename Shape_t>
     SliceHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
     {
@@ -722,6 +726,9 @@ public:
         MatMul,
         MatMulTransposeA,
         MatMulTransposeB,
+        MatMulNhcw,
+        MatMulNhcwTransposeA,
+        MatMulNhcwTransposeB,
         ReduceSum,
         Transpose,
         Total,
@@ -740,7 +747,7 @@ protected:
     {
         uint32_t labelIndexBegin;
         uint32_t labelIndexEnd;
-       
+
         uint32_t GetDimensionCount() const noexcept
         {
             return labelIndexEnd - labelIndexBegin;
@@ -1037,8 +1044,8 @@ protected:
 class UnpoolingHelper
 {
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template<typename Info_t, typename Shape_t>
     UnpoolingHelper(
         const Info_t& info,
@@ -1348,6 +1355,34 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class ShapeHelper {
+public:
+    template <typename Info_t, typename Shape_t>
+    ShapeHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shapeInfo));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    uint32_t m_sliceStart = 0;
+    uint32_t m_sliceEnd = 0;
+
+private:
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+};
+
+class SizeHelper {
+public:
+    template <typename Info_t, typename Shape_t>
+    SizeHelper(const Info_t& info, const Shape_t& shapeInfo) { }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1462,6 +1497,7 @@ using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Attention = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;
@@ -1521,6 +1557,7 @@ using ShapeInferenceHelper_ParametricSoftplus = GetOutputShapeAsInputShapeHelper
 using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BiasGelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
@@ -1561,5 +1598,8 @@ using ShapeInferenceHelper_DmlFusedMatMul = MatMulHelper;
 using ShapeInferenceHelper_FusedMatMul = FusedMatMulHelper;
 using ShapeInferenceHelper_DmlFusedAdd = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
+
+using ShapeInferenceHelper_Shape = ShapeHelper;
+using ShapeInferenceHelper_Size = SizeHelper;
 
 }  // namespace OperatorHelper

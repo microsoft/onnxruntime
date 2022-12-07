@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/common/gsl_suppress.h"
 #include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
@@ -23,6 +22,7 @@ OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_BEGIN
+  GSL_SUPPRESS(r .11)
   *out = new OrtSessionOptions();
   return nullptr;
   API_IMPL_END
@@ -34,6 +34,7 @@ ORT_API(void, OrtApis::ReleaseSessionOptions, _Frees_ptr_opt_ OrtSessionOptions*
 
 ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
   API_IMPL_BEGIN
+  GSL_SUPPRESS(r .11)
   *out = new OrtSessionOptions(*input);
   return nullptr;
   API_IMPL_END
@@ -220,5 +221,3 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External initializers are not supported in this build");
 #endif
 }
-
-

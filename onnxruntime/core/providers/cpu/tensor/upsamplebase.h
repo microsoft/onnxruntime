@@ -5,6 +5,8 @@
 
 #include <string>
 #include <vector>
+#include <core/common/safeint.h>
+#include <core/common/narrow.h>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
@@ -318,17 +320,17 @@ class UpsampleBase {
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
     if (scales.empty()) {
-      scales.resize(scales_size);
+      scales.resize(onnxruntime::narrow<size_t>(scales_size));
     }
-    memcpy(scales.data(), scale_data, scales_size * sizeof(float));
+    memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
     ScalesValidation(scales, mode_);
   }
 
   void ParseRoiData(const Tensor* roi, std::vector<float>& roi_array) const {
     int64_t roi_size = roi->Shape().Size();
     if (roi_size > 0) {
-      roi_array.resize(roi_size);
-      memcpy(roi_array.data(), roi->Data<float>(), roi_size * sizeof(float));
+      roi_array.resize(onnxruntime::narrow<size_t>(roi_size));
+      memcpy(roi_array.data(), roi->Data<float>(), SafeInt<size_t>(roi_size) * sizeof(float));
     }
   }
 

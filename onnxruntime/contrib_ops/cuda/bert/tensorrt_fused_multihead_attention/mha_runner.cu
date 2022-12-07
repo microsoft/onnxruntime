@@ -150,6 +150,24 @@ void FusedMHARunnerFP16v2::run(const void* qkvPtr, const void* maskPtr, const vo
   return pimpl->run(qkvPtr, maskPtr, seqLens, output, workspace, stream);
 }
 
+int FusedMHARunnerFP16v2::getSFromMaxSeqLen(const int max_seq_len) const {
+  int S = 1024;
+  if (max_seq_len <= 64) {
+    S = 64;
+  } else if (max_seq_len <= 96) {
+    S = 96;
+  } else if (max_seq_len <= 128) {
+    S = 128;
+  } else if (max_seq_len <= 256) {
+    S = 256;
+  } else if (max_seq_len <= 384) {
+    S = 384;
+  } else if (max_seq_len <= 512) {
+    S = 512;
+  }
+  return S;
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -17,19 +17,31 @@ static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1)
     return nullptr;
-  std::vector<size_t> cpu_list;
   ThreadOptions to;
+
   if (options.affinity_vec_len != 0) {
-    to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
+    // Currently, the affinities are passed in as bit masks and they need to be converted to integers.
+    // We when create a public API, bit-masks must be done away with because of the following reasons:
+    // 1) integers have a limited number of bits
+    // 2) bit-masks of integers can only represent numbers 0 -63, but on VMs the actual logical processor numbering
+    //    may not start with zero for a given core and may be way beyond 63.
+    // 3) Customers would be forced to concoct bit-masks which is far less convenient than simply an array of processor integers. 
+    to.affinity.reserve(options.affinity_vec_len);
+    std::transform(options.affinity_vec, options.affinity_vec + options.affinity_vec_len, std::back_inserter(to.affinity),
+                   [](size_t affinity) {
+                     return LogicalProcessors{static_cast<int>(affinity)};
+                   });
   }
+
   if (options.thread_pool_size <= 0) {  // default
-    cpu_list = Env::Default().GetThreadAffinityMasks();
+    auto cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
     options.thread_pool_size = static_cast<int>(cpu_list.size());
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
+
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
   // set custom thread management members

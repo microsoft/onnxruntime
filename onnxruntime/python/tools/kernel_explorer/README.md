@@ -19,16 +19,12 @@ rocm_home="/opt/rocm"
     --config ${config} \
     --cmake_extra_defines \
         CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
-        CMAKE_EXPORT_COMPILE_COMMANDS=ON \
         onnxruntime_BUILD_KERNEL_EXPLORER=ON \
-        onnxruntime_DISABLE_CONTRIB_OPS=ON \
-        onnxruntime_DISABLE_ML_OPS=ON \
-        onnxruntime_DEV_MODE=OFF \
     --skip_submodule_sync --skip_tests \
     --use_rocm --rocm_home=${rocm_home} --nccl_home=${rocm_home} \
-    --build_wheel \
+    --build_wheel
 
-cmake --build ${build_dir}/${config} --target kernel_explorer
+cmake --build ${build_dir}/${config} --target kernel_explorer --parallel
 ```
 
 ## Run

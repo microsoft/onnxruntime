@@ -3,7 +3,12 @@
 
 #pragma once
 
+#include <unordered_set>
+
 #include "core/common/common.h"
+#ifndef SHARED_PROVIDER
+#include "core/common/logging/logging.h"
+#endif
 #include "core/common/optional.h"
 #include "core/common/parse_string.h"
 #include "core/platform/env.h"
@@ -42,5 +47,45 @@ T ParseEnvironmentVariableWithDefault(const std::string& name, const T& default_
   }
 
   return default_value;
+}
+
+/**
+ * Parses an environment variable value for testing convenience.
+ *
+ * This function ensures the value is valid and also produces a warning on its usage.
+ */
+template <typename T>
+std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
+                                                  const std::unordered_set<std::string>& valid_values,
+                                                  const std::string& hint = "") {
+  ORT_ENFORCE(!valid_values.empty());
+
+#ifndef SHARED_PROVIDER
+  const std::string raw_env = Env::Default().GetEnvironmentVar(name);
+#else
+  const std::string raw_env = GetEnvironmentVar(name);
+#endif
+  if (raw_env.empty()) {
+    return std::nullopt;
+  }
+  if (valid_values.find(raw_env) == valid_values.cend()) {
+    std::ostringstream oss;
+    auto it = valid_values.cbegin();
+    oss << *it++;
+    while(it != valid_values.cend()) {
+      oss << ", " << *it++;
+    }
+    ORT_THROW("Value of environment variable ", name," must be ", oss.str(), ", but got ", raw_env);
+  }
+
+  auto env = onnxruntime::ParseEnvironmentVariable<T>(name);
+
+  std::string default_hint = "End users should opt for provider options or session options.";
+  const std::string& logged_hint = hint.empty() ? default_hint : hint;
+
+  LOGS_DEFAULT(WARNING) << "Environment variable " << name << " is used. It is reserved for internal testing prupose. "
+                        << logged_hint;
+
+  return env;
 }
 }  // namespace onnxruntime

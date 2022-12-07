@@ -5,12 +5,6 @@ if(NOT APPLE)
     message(FATAL_ERROR "The Objective-C API must be built on an Apple platform.")
 endif()
 
-set(ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION "3.18")
-
-if(CMAKE_VERSION VERSION_LESS ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION)
-    message(FATAL_ERROR "The Objective-C API requires CMake ${ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION}+.")
-endif()
-
 if(NOT onnxruntime_BUILD_SHARED_LIB)
     message(FATAL_ERROR "The Objective-C API requires onnxruntime_BUILD_SHARED_LIB to be enabled.")
 endif()
@@ -32,10 +26,6 @@ endif()
 add_compile_options(
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wall>"
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wextra>")
-if(onnxruntime_DEV_MODE)
-    add_compile_options(
-        "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Werror>")
-endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objectivec")
 
@@ -76,7 +66,6 @@ find_library(FOUNDATION_LIB Foundation REQUIRED)
 target_link_libraries(onnxruntime_objc
     PRIVATE
         onnxruntime
-        safeint_interface
         ${FOUNDATION_LIB})
 
 set_target_properties(onnxruntime_objc PROPERTIES
@@ -86,7 +75,6 @@ set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK_VERSION "A"
     PUBLIC_HEADER "${onnxruntime_objc_headers}"
     FOLDER "ONNXRuntime"
-    CXX_STANDARD 17 # TODO remove when everything else moves to 17
     )
 
 set_property(TARGET onnxruntime_objc APPEND PROPERTY COMPILE_OPTIONS "-fvisibility=default")

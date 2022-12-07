@@ -29,6 +29,7 @@ Example 5: convert gpt2 model with greedy search:
 
 import argparse
 import logging
+import math
 import os
 import sys
 import time
@@ -40,6 +41,7 @@ import numpy as np
 import onnx
 import torch
 from benchmark_helper import Precision
+from fusion_utils import NumpyHelper
 from onnx import GraphProto, ModelProto, TensorProto
 from transformers import (
     GPT2Config,
@@ -170,6 +172,15 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "-s", "--run_shape_inference", required=False, action="store_true", help="run shape inference"
     )
     output_group.set_defaults(run_shape_inference=False)
+
+    output_group.add_argument(
+        "-pvs",
+        "--pad_vocab_size",
+        required=False,
+        action="store_true",
+        help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size",
+    )
+    output_group.set_defaults(pad_vocab_size=True)
 
     output_group.add_argument(
         "-i",
@@ -405,6 +416,84 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
         OnnxModel.save(out, onnx_path, save_as_external_data=use_external_data_format)
     else:
         logger.warning("Failed to run symbolic shape inference on the model.")
+
+
+def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool = True) -> bool:
+    """Pad the logits MatMul weight in the provided decoder model, which will be overwritten.
+
+    Args:
+        onnx_path (str): Path of onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+    decoder_model_proto = onnx.load_model(onnx_path, load_external_data=True)
+
+    logits_output_name = decoder_model_proto.graph.output[0].name
+
+    decoder_model = OnnxModel(decoder_model_proto)
+
+    output_name_to_node = decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    matmul_node = output_name_to_node[logits_output_name]
+    # Sanity check - the logits need to be produced by a MatMul node
+    if matmul_node.op_type != "MatMul":
+        return False
+
+    # The logits MatMul weight MUST be an initializer (or)
+    # it MUST be flowing through a Transpose whose input is
+    # an initializer
+    pad_along_axis_1 = True
+    logits_weight = decoder_model.get_initializer(matmul_node.input[1])
+    if logits_weight is None:
+        transpose_before_matmul = decoder_model.match_parent(matmul_node, "Transpose", 1)
+
+        if transpose_before_matmul is None:
+            return False
+
+        logits_weight = decoder_model.get_initializer(transpose_before_matmul.input[0])
+
+        if logits_weight is None:
+            return False
+
+        pad_along_axis_1 = False
+
+    # The logits MatMul weight MUST be fp16
+    if logits_weight.data_type != TensorProto.DataType.FLOAT16:
+        return False
+
+    # The logits MatMul weight MUST be 2-dimensional
+    if len(logits_weight.dims) != 2:
+        return False
+
+    # Pad and over-write the initializer (if needed)
+    actual_vocab_size = logits_weight.dims[1]
+
+    if (actual_vocab_size % 8) == 0:
+        # Already "padded"
+        return True
+
+    padded_vocab_size = math.ceil(actual_vocab_size / 8) * 8
+    padding = padded_vocab_size - actual_vocab_size
+
+    # TODO(hasesh): Handle cases where the fp16 data is stored in the
+    # non-raw data field
+    if logits_weight.raw_data:
+        if pad_along_axis_1:
+            padding_data = np.zeros((logits_weight.dims[0], padding), dtype=np.float16)
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=1)
+            logits_weight.dims[1] = padded_vocab_size
+        else:
+            padding_data = np.zeros((padding, logits_weight.dims[1]), dtype=np.float16)
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=0)
+            logits_weight.dims[0] = padded_vocab_size
+
+        logits_weight.raw_data = weight_with_padding.tobytes()
+    else:
+        return False
+
+    # Save the model
+    OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
+    return True
 
 
 def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
@@ -814,7 +903,32 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"Convert model {args.model_name_or_path} to onnx ...")
             t5_to_onnx(args)
 
-    if args.run_shape_inference:
+    # We only want to pad the logits MatMul weight in the decoder for fp16 models.
+    # The inherent assumption is that fp16 models run on GPU for which all
+    # dims need to be a multiple of 8 to leverage tensor cores.
+    # NOTE: We currently only support padding the MatMul logits weight for GPT2 BeamSearch.
+    # This can be expanded to other models/decoding strategies later
+    logits_matmul_weight_padded = False
+    if (
+        args.pad_vocab_size
+        and args.precision == Precision.FLOAT16
+        and is_gpt2
+        and generation_type == GenerationType.BEAMSEARCH
+    ):
+        logger.info(
+            f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
+            "The file will be overwritten."
+        )
+        logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
+        if not logits_matmul_weight_padded:
+            logger.warning(
+                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+            )
+
+    # If the user explicitly requests running shape inference or if we padded/mutated
+    # weight(s) in the decoder, we want to run shape inference to capture the new
+    # shapes
+    if logits_matmul_weight_padded or args.run_shape_inference:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
 
@@ -875,7 +989,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if args.custom_attention_mask:
         inputs.append("attention_mask")
-    elif not is_greedysearch:
+    else:
         inputs.append("")
 
     outputs = ["sequences"]
@@ -920,6 +1034,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         ]
     )
+
+    # Explicitly pass in the vocab size via an attribute
+    if logits_matmul_weight_padded:
+        attr_to_extend.extend([onnx.helper.make_attribute("vocab_size", vocab_size)])
+
     node.attribute.extend(attr_to_extend)
 
     initializers = []
@@ -1139,6 +1258,18 @@ def test_torch_performance(
     return get_latency_result(torch_latency, batch_size)
 
 
+def create_attention_mask(input_ids, pad_token_id):
+    attention_mask = np.ones(input_ids.shape, dtype=np.int32)
+    for i in range(input_ids.shape[0]):
+        abs_pos = 0
+        for j in range(input_ids.shape[1]):
+            if input_ids[i][j] == pad_token_id and abs_pos == 0:
+                attention_mask[i][j] = 0
+            else:
+                abs_pos += 1
+    return attention_mask
+
+
 def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
     """Test GPT-2 model
 
@@ -1249,6 +1380,9 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
             for bad_word_id in bad_words_ids:
                 vocab_mask[bad_word_id] = 0
         inputs["vocab_mask"] = vocab_mask
+
+    if args.custom_attention_mask:
+        inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
 
     batch_size = input_ids.shape[0]
     if args.prefix_vocab_mask:
@@ -1455,15 +1589,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
         inputs["vocab_mask"] = vocab_mask
 
     if args.custom_attention_mask:
-        attention_mask = np.ones(input_ids.shape, dtype=np.int32)
-        for i in range(input_ids.shape[0]):
-            abs_pos = 0
-            for j in range(input_ids.shape[1]):
-                if input_ids[i][j] == pad_token_id and abs_pos == 0:
-                    attention_mask[i][j] = 0
-                else:
-                    abs_pos += 1
-        inputs["attention_mask"] = attention_mask
+        inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
@@ -1565,9 +1691,6 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
-    else:
-        if args.custom_attention_mask:
-            raise NotImplementedError("custom_attention_mask is only supported in t5 with beam search")
 
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 

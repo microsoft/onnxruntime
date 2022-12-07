@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <memory>
 #include <string>
-#include "gsl/gsl"
 #include "core/platform/env.h"
 #include "core/common/common.h"
 

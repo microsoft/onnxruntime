@@ -7,12 +7,11 @@
 #include <string_view>
 #include <utility>
 
-#include "gsl/gsl"
-
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/graph/op_identifier.h"
