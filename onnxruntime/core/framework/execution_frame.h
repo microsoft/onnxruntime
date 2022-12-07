@@ -35,7 +35,7 @@ class IExecutionFrame {
                   gsl::span<const int> fetch_mlvalue_idxs);
 
   void Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-            const InlinedHashMap<int, OrtValue>& initializers,
+            const std::unordered_map<int, OrtValue>& initializers,
             const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
             gsl::span<const OrtValue> fetches);
 
@@ -60,7 +60,7 @@ class IExecutionFrame {
   void UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds);
   void UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
 
-                     const InlinedHashMap<int, OrtValue>& initializers);
+                     const std::unordered_map<int, OrtValue>& initializers);
   Status GetOutputs(gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
 #endif
 
@@ -135,7 +135,7 @@ class ExecutionFrame final : public IExecutionFrame {
   ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
                  gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                  // optional custom allocators. key is index in fetches
-                 const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state,
                  gsl::span<Stream*> device_streams);
 
@@ -165,7 +165,7 @@ class ExecutionFrame final : public IExecutionFrame {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
-  const InlinedHashMap<std::string, size_t>& GetDynamicMemorySizeInfo() const {
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
     // If one day, race condition happens, please uncomment the following line:
@@ -175,7 +175,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Return the size of virtual memory allocated before computation.
   // The memory is usually used for activations in forward and backward passes.
-  const InlinedHashMap<std::string, size_t>& GetStaticMemorySizeInfo() const {
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
     // If one day, race condition happens, please uncomment the following line:
@@ -241,13 +241,13 @@ class ExecutionFrame final : public IExecutionFrame {
   // Size of virtual memory allocated before any kernel execution.
   // This field is not physical memory size.
   // static_activation_memory_sizes_in_byte_[location] is the static memory consumption on "location".
-  InlinedHashMap<std::string, size_t> static_activation_memory_sizes_in_byte_;
+  std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
 
   // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
   // we may allocate some memory for its outputs, if not planned.).
   // This field is not physical memory size.
   // dynamic_activation_memory_sizes_in_byte_[location] is the dynamic memory consumption on "location".
-  InlinedHashMap<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+  std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
 
   // Mutex which should be acquired when executing non-thread-safe member functions.
   // A current example is the tracker of dynamic memory allocation.

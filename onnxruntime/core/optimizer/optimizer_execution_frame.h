@@ -46,7 +46,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     const std::unordered_map<int, const NodeArg*>& GetMLValueIdxNodeArgMap() const noexcept {
       return ort_value_idx_nodearg_map_;
     }
-    const InlinedHashMap<int, OrtValue>& GetInitializers() const noexcept { return initializers_; }
+    const std::unordered_map<int, OrtValue>& GetInitializers() const noexcept { return initializers_; }
     const NodeIndexInfo& GetNodeIndexInfo() const { return *node_index_info_; }
     int GetMLValueIndex(const std::string& name) const {
       int index = -1;
@@ -76,7 +76,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     // MLValues for optimizer
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
-    InlinedHashMap<int, OrtValue> initializers_;
+    std::unordered_map<int, OrtValue> initializers_;
     InlinedHashMap<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
     const IExecutionProvider& execution_provider_;

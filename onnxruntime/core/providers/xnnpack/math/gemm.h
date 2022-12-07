@@ -20,7 +20,7 @@ class Gemm : protected GemmBase, public XnnpackKernel {
 
   Status Compute(OpKernelContext* /*context*/) const override;
 
-  static bool IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
+  static bool IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -32,7 +32,7 @@ class Gemm : protected GemmBase, public XnnpackKernel {
   int64_t M_=-1;
   int64_t K_=-1;
   int64_t N_=-1;
-  
+
   bool C_matrix_exists_;
 
   std::optional<std::pair<float, float>> clip_min_max_;

@@ -32,7 +32,7 @@ struct PartialGraphExecutionState {
 
   StreamExecutionContext& GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
                                               gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
-                                              const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                              const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                               const SessionState& session_state,
                                               const logging::Logger& sess_logger,
                                               const DeviceStreamCollection& device_streams);

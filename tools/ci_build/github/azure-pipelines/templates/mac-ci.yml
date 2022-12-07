@@ -1,29 +1,37 @@
 parameters:
-  JobName: 'MacOS_CI_Dev'
-  SubmoduleCheckoutMode: ''
-  BuildCommand: ''
-  DoNodejsPack: 'false'
-  DoNugetPack: 'false'
-  NuPackScript: ''
-  ArtifactName: 'drop-osx'
-  # Controls whether unreleased onnx opsets are allowed. Default is set to 1
-  AllowReleasedOpsetOnly: '1'
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+# Must be 1 or 0
+- name: AllowReleasedOpsetOnly
+  displayName: Whether unreleased onnx opsets are allowed
+  type: number
+  default: 1
+  values:
+  - 1
+  - 0
+
+- name: BuildForAllArchs
+  displayName: Build for all CPU ARCHs
+  type: boolean
 
 jobs:
-- job: ${{ parameters.JobName }}
+- job: MacOS_C_API_Packaging_CPU_x64
   workspace:
     clean: all
-  timeoutInMinutes:  180
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   pool:
     vmImage: 'macOS-11'
-  variables:
-    BuildCommand: ${{ parameters.BuildCommand }}
-    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+  timeoutInMinutes:  300
   steps:
     - checkout: self
-      ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
-        submodules: ${{ parameters.SubmoduleCheckoutMode }}
+      clean: true
+      submodules: none
+
     - task: UsePythonVersion@0
       # Use python 3.8 to avoid build some of the required packages
       displayName: Use Python 3.8
@@ -32,56 +40,49 @@ jobs:
     - task: NodeTool@0
       inputs:
         versionSpec: '16.x'
+
+    - template: set-version-number-variables-step.yml
+
     - script: |
-        set -e
+        set -e -x
         pushd .
-        cd $(Build.SourcesDirectory)/cmake/external/protobuf
-        cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
-        make -j $(getconf _NPROCESSORS_ONLN)
-        make install
+        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed
         popd
-        export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+        export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-        sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-        ${{ parameters.BuildCommand }}
-      displayName: 'Build and Test OnnxRuntime lib for MacOS'
+      displayName: 'Install dependencies'
 
-    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-      - script: |
-         ${{ parameters.NuPackScript }}
-        displayName: 'Copy MacOS libs to Artifact Staging'
-      - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
-        inputs:
-          artifactName: ${{ parameters.ArtifactName }}
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.BuildForAllArchs, true) }}:
+      - template: mac-packaging.yml
+        parameters :
+          AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+          MacosArch: arm64
+          BuildJava: true
+          BuildNodejs: true
 
-    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
-      # Esrp signing
-      #
-      # TODO: ESRP team is working on enable signing workflow on Mac. Should enable the following step when it's ready.
-      #
-      # - template: mac-esrp-dll.yml
-      #   parameters:
-      #     FolderPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/darwin/x64'
-      #     DisplayName: 'ESRP - Sign Node.js binding binaries'
-      #     DoEsrp: ${{ parameters.DoEsrp }}
-      #     Pattern: '*.dylib,*.node'
+    - ${{ if eq(parameters.BuildForAllArchs, true) }}:
+      - template: mac-packaging.yml
+        parameters :
+          AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }}  --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          MacosArch: universal2
+          BuildJava: false
+          BuildNodejs: false
 
-      - script: |
-         cp -R $(Build.SourcesDirectory)/js/node/bin $(Build.ArtifactStagingDirectory)/bin
-        workingDirectory: '$(Build.SourcesDirectory)/js/node'
-        displayName: 'Create Node.js Binding Artifact'
+    - template: mac-packaging.yml
+      parameters :
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs  --use_coreml
+        MacosArch: x86_64
+        BuildJava: true
+        BuildNodejs: true
 
-      - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
-        inputs:
-          artifactName: ${{ parameters.ArtifactName }}
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'onnxruntime-osx'
 
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - template: clean-agent-build-directory-step.yml

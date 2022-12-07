@@ -31,6 +31,7 @@ struct ProviderHostCPU;
 
 class PhiloxGenerator;
 using ProviderType = const std::string&;
+class RandomGenerator;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
@@ -872,6 +873,10 @@ struct ProviderHost {
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 #endif
+#endif
+
+#if defined(USE_CANN)
+  virtual RandomGenerator& RandomGenerator__Default() = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;

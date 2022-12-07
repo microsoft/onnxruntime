@@ -138,7 +138,7 @@ endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_ATEN)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

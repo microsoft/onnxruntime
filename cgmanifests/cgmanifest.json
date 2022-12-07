@@ -23,16 +23,7 @@
           "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.21.7" },
           "DevelopmentDependency": true
         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "a3534567187d2edc428efd3f13466ff75fe5805c",
-               "repositoryUrl": "https://github.com/microsoft/gsl.git"
-            }
-         }
-      },
+      },      
       {
          "component": {
             "type": "git",
@@ -326,26 +317,6 @@
       },
       {
          "component": {
-            "git": {
-               "commitHash": "cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
-               "repositoryUrl": "https://github.com/abseil/abseil-cpp"
-            },
-            "type": "git",
-            "comments": "used by onnxruntime server"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "256be563447a315f2a7993ec669460ba475fa86a",
-               "repositoryUrl": "https://github.com/abseil/abseil-cpp"
-            },
-            "comments": "used by onnxruntime"
-         }
-      },
-      {
-         "component": {
             "Type": "other",
             "Other": {
                "Name": "OpenMPI",
@@ -564,17 +535,7 @@
                "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
             }
          }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "512d44b9aa22690fd7d7e665fcab9bdcb590f118",
-               "repositoryUrl": "https://github.com/google/XNNPACK.git"
-            },
-            "comments": "xnnpack"
-         }
-      }
+      }      
    ],
    "Version": 1
 }
