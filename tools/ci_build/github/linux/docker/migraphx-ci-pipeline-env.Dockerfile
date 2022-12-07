@@ -3,13 +3,16 @@ FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
-RUN apt-get clean && apt-get update && apt-get install -y locales
+RUN apt-get clean && apt-get update && apt-get install -y locales unzip
 RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
 
 WORKDIR /stage
+
+ADD scripts /tmp/scripts
+RUN /tmp/scripts/install_os_deps.sh
 
 # from rocm/pytorch's image, work around ucx's dlopen replacement conflicting with shared provider
 RUN cd /opt/mpi_install/ucx/build &&\
@@ -18,11 +21,7 @@ RUN cd /opt/mpi_install/ucx/build &&\
       make -j $(nproc) &&\
       make install
 
-# CMake
-ENV CMAKE_VERSION=3.24.2
-RUN cd /usr/local && \
-    wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
-ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
+
 
 RUN apt-get update &&\
     apt-get install -y half libnuma-dev

@@ -142,14 +142,9 @@ def test_optimizer_step():
         # TODO : Check if parameters changed from before and after optimizer step.
 
 
-def test_scheduler_step():
+def test_get_and_set_lr():
     # Initialize Models
     simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
-
-    # Generating random data for testing.
-    inputs = torch.randn(64, 784).numpy()
-    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
-    forward_inputs = [inputs, labels]
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
@@ -161,12 +156,16 @@ def test_scheduler_step():
         # Create a Module and Optimizer.
         model = Module(model_file_path, state)
         optimizer = Optimizer(optimizer_file_path, model)
-        scheduler = LRScheduler(optimizer, 1, 2)
-        model.train()
-        model(forward_inputs)
-        optimizer.step()
-        scheduler.step()
-        # TODO : Check if parameters changed from before and after optimizer step.
+
+        # Test get and set learning rate.
+        lr = optimizer.get_learning_rate()
+        assert round(lr, 3) == 0.001
+
+        optimizer.set_learning_rate(0.5)
+        new_lr = optimizer.get_learning_rate()
+
+        assert np.isclose(new_lr, 0.5)
+        assert lr != new_lr
 
 
 def test_training_module_checkpoint():

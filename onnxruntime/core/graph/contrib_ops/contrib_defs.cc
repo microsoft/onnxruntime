@@ -18,7 +18,11 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/defs/function.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
@@ -1083,6 +1087,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)

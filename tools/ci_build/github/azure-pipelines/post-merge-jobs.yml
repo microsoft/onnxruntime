@@ -1,4 +1,38 @@
 jobs:
+- template: templates/win-ci-vs-2019.yml
+  parameters:
+    BuildConfig: 'Debug'
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    additionalBuildFlags: --disable_memleak_checker --use_mimalloc
+    msbuildPlatform: x64
+    isX86: false
+    job_name_suffix: x64_mimalloc
+    RunOnnxRuntimeTests: true
+    RunStaticCodeAnalysis: false
+    isTraining: false
+    ORT_EP_NAME: CPU
+    GenerateDocumentation: false
+    EnablePython: false
+    MachinePool: 'Win-CPU-2021'
+
+- template: templates/win-ci-vs-2019.yml
+  parameters:
+    BuildConfig: 'Debug'
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    additionalBuildFlags: --cmake_extra_defines onnxruntime_DISABLE_ABSEIL=ON
+    msbuildPlatform: x64
+    isX86: false
+    job_name_suffix: x64_no_absl
+    RunOnnxRuntimeTests: true
+    RunStaticCodeAnalysis: false
+    isTraining: false
+    ORT_EP_NAME: CPU
+    GenerateDocumentation: false
+    EnablePython: false
+    MachinePool: 'Win-CPU-2021'
+
 - job: CodeCoverage
   workspace:
     clean: all

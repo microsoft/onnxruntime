@@ -510,7 +510,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
                       int gpt_subgraph_first_present_output_idx,
                       AllocatorPtr allocator) {
   int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
-  for (int i = 0; i < num_present_tensors; ++i) {
+  for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
 
     // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
@@ -698,7 +698,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
                      int t5_decoder_first_past_input_idx,
                      int t5_decoder_first_present_output_idx,
                      AllocatorPtr allocator) {
-  for (int i = 0; i < num_present_tensors; ++i) {
+  for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[t5_decoder_first_present_output_idx + i];
 
     // shape is like (batch_beam_size, 12, past_seq_len, 64)
@@ -785,7 +785,7 @@ Status UpdateDecoderFeeds(
   // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
-    for (int i = 0; i < num_present_tensors; ++i) {
+    for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
       next_inputs[t5_decoder_first_past_input_idx + i] =
           last_outputs[t5_decoder_first_present_output_idx + i];
     }

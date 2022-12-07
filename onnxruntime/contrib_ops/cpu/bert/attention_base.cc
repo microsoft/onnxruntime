@@ -375,7 +375,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
   //   present     : (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size)
 
   past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
-  std::vector<int64_t> present_dims{2, batch_size, num_heads_, kv_sequence_length + past_sequence_length, head_size};
+  std::array<int64_t, 5> present_dims{2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, head_size};
 
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
