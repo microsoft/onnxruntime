@@ -148,6 +148,9 @@ struct PyOptimizer {
   }
 
   Status Step() const { return optimizer_->Step(); }
+  Status SetLearningRate(float lr) { return optimizer_->SetLearningRate(lr); }
+  float GetLearningRate() { return optimizer_->GetLearningRate(); }
+
   std::shared_ptr<onnxruntime::training::api::Optimizer> GetOptimizer() { return optimizer_; }
 
   virtual ~PyOptimizer() {}
@@ -923,6 +926,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                     }))
       .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
+      })
+      .def("set_learning_rate", [](PyOptimizer* optimizer, float lr) -> void {
+        ORT_THROW_IF_ERROR(optimizer->SetLearningRate(lr));
+      })
+      .def("get_learning_rate", [](PyOptimizer* optimizer) -> float {
+        return optimizer->GetLearningRate();
       });
   py::class_<onnxruntime::training::api::LinearLRScheduler>
       lr_scheduler(m, "LRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");

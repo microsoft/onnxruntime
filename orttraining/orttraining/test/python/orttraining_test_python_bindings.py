@@ -168,6 +168,41 @@ def test_get_and_set_lr():
         assert lr != new_lr
 
 
+def test_scheduler_step():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
+
+    # Generating random data for testing.
+    inputs = torch.randn(64, 784).numpy()
+    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
+    forward_inputs = [inputs, labels]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
+        )
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, state)
+        optimizer = Optimizer(optimizer_file_path, model)
+        scheduler = LRScheduler(optimizer, 1, 2)
+
+        # Test get and set learning rate.
+        lr = optimizer.get_learning_rate()
+        assert np.allclose(lr, 0.0)
+
+        model.train()
+        model(forward_inputs)
+        optimizer.step()
+        scheduler.step()
+
+        # Get new learning rate.
+        new_lr = optimizer.get_learning_rate()
+        assert new_lr != lr
+
+
 def test_training_module_checkpoint():
     # Initialize Models
     simple_model, onnx_model, _, _, _ = _create_training_models()
