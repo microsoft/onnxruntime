@@ -33,10 +33,11 @@ namespace onnxruntime {
 ADD_TYPED_ISNAN_OP_9(float);
 ADD_TYPED_ISNAN_OP_9(MLFloat16);
 ADD_TYPED_ISNAN_OP(float);
+ADD_TYPED_ISNAN_OP(double);
 ADD_TYPED_ISNAN_OP(MLFloat16);
 
-template <>
-Status IsNaN<float>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status IsNaN<T>::Compute(OpKernelContext* context) const {
   const auto* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
@@ -45,7 +46,7 @@ Status IsNaN<float>::Compute(OpKernelContext* context) const {
   auto& dims = X.Shape();
   auto& Y = *context->Output(0, dims);
 
-  EigenMap<bool>(Y) = EigenMap<float>(X).array().isNaN();
+  EigenMap<bool>(Y) = EigenMap<T>(X).array().isNaN();
 
   return Status::OK();
 }
