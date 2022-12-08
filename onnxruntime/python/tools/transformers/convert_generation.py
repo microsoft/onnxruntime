@@ -263,6 +263,10 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
     beam_parameters_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
 
+    beam_parameters_group.add_argument("--input_length", type=int, required=False, default=10, help="Input size")
+
+    beam_parameters_group.add_argument("--batch_size", type=int, required=False, default=4, help="Batch size")
+
     beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
 
     beam_parameters_group.add_argument(
@@ -1353,11 +1357,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     # Use different length sentences to test batching
     if sentences is None:
-        sentences = [
-            "The product is released",
-            "I enjoy walking in the park",
-            "Test best way to invest",
-        ]
+        sentence = "happy " * args.input_length
+        sentences = [sentence[:-1]] * args.batch_size
 
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)
     input_ids = inputs["input_ids"]
