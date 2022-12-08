@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 namespace {
 int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> strides) {
   SafeInt<int64_t> size = 1;
@@ -31,7 +31,7 @@ int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> st
 size_t Tensor::CalculateTensorStorageSize(MLDataType p_type,
                                           const TensorShape& shape,
                                           gsl::span<const int64_t> strides) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   int64_t shape_size = 1;
   if (shape.NumDimensions() > 0 && !strides.empty()) {
     ORT_ENFORCE(shape.NumDimensions() == strides.size(), "Length of strides doesn't match with tensor dimension size.");
@@ -106,7 +106,7 @@ void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape,
 }
 
 size_t Tensor::SizeInBytes() const {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   int64_t size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
 #else
   int64_t size = shape_.Size();
@@ -136,7 +136,7 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
     utils::ConstructStrings(p_data_, shape_size);
   }
   byte_offset_ = offset;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   if (shape.NumDimensions() > 0 && !strides.empty()) {
     ORT_ENFORCE(shape.NumDimensions() == strides.size(), "Length of strides doesn't match with tensor dimension size.");
     strides_.assign(strides.begin(), strides.end());
@@ -194,7 +194,7 @@ void Tensor::ReleaseBuffer() {
   }
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 bool Tensor::CheckIsContiguous() const {
   if (strides_.empty()) {
     return true;

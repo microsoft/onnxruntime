@@ -583,7 +583,7 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) override { p->VariadicAlias(input_offset, output_offset); }
   void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) override { p->ExternalOutputs(); }
   void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) override { p->AllocateInputsContiguously(); }
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) override { p->MayStridedInput(input_index); }
   void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) override { p->MayStridedOutput(input_index, output_index); }
 #endif
@@ -946,7 +946,7 @@ struct ProviderHostImpl : ProviderHost {
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   gsl::span<const int64_t> Tensor__Strides(const Tensor* p) override { return p->Strides(); }
   bool Tensor__IsContiguous(const Tensor* p) override { return p->IsContiguous(); }
   void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
@@ -1006,6 +1006,10 @@ struct ProviderHostImpl : ProviderHost {
     return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
   }
 #endif
+#endif
+
+#if defined(USE_CANN)
+  RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
@@ -1240,6 +1244,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   // Add new provider option below
   // Use default value as this field is not available in OrtTensorRTProviderOptionsV
   trt_options_converted.trt_context_memory_sharing_enable = 0;
+  trt_options_converted.trt_layer_norm_fp32_fallback = 0;
   return trt_options_converted;
 }
 
@@ -1545,6 +1550,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_engine_decryption_lib_path = nullptr;
   (*out)->trt_force_sequential_engine_build = false;
   (*out)->trt_context_memory_sharing_enable = false;
+  (*out)->trt_layer_norm_fp32_fallback = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

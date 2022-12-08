@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             else
             {
-                throw new InvalidOperationException("Training is disabled in the current build");
+                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training and enable_training_on_device. \n");
             }
         }
 

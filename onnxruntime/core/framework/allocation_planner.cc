@@ -145,9 +145,12 @@ class PlannerImpl {
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
-  Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                    const std::string& partition_config_file,
-                    const logging::Logger& logger);
+  Status CreatePlan(
+#ifdef ENABLE_STREAM
+      const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
+      const std::string& partition_config_file,
+      const logging::Logger& logger);
 
  private:
   gsl::not_null<const ISequentialPlannerContext*> context_;
@@ -362,7 +365,7 @@ class PlannerImpl {
       }
     }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
     // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
     // strided tensors at the corresponding position, this output will generate a strided tensor
     // and share the data from the corresponding input specified in MayStridedOutputsMap.
@@ -990,6 +993,7 @@ class PlannerImpl {
     return true;
   }
 
+#ifdef ENABLE_STREAM
   // assume we already have a baseline reuse plan (no memory reuse at all)
   // this funciton will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
@@ -1293,6 +1297,7 @@ class PlannerImpl {
     }
     return Status::OK();
   }
+#endif
 
   Status ComputeReusePlan() {
     gsl::not_null<const ISequentialPlannerContext*> backup_context = context_;
@@ -1324,9 +1329,13 @@ class PlannerImpl {
 #endif
     if (IsSingleStream())
       return Status::OK();
-    ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
+
     // restore context
     context_ = backup_context;
+
+#ifdef ENABLE_STREAM
+    ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
+#endif
 
     return Status::OK();
   }
@@ -1404,11 +1413,11 @@ class PlannerImpl {
           // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
           ort_value_info_[current].is_inplace_reuse = true;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
           ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
-#endif  // ENABLE_TRAINING
+#endif  // ENABLE_STRIDED_TENSORS
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif
@@ -1702,8 +1711,42 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                            const std::string& partition_config_file) {
+#ifndef ENABLE_STREAM
+  void
+  PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
+                       const std::string& /*partition_config_file*/) {
+    stream_nodes_.push_back({});
+    node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+      stream_nodes_[0].push_back(node_index);
+      node_stream_map_[node_index] = 0;
+    }
+    num_logic_streams_ = 1;
+  }
+
+  Status BuildExecutionPlan(const ExecutionProviders& execution_providers) {
+    // 1. create logic stream instance
+    auto& execution_plan = plan_.execution_plan;
+    ORT_ENFORCE(num_logic_streams_ == 1 && !stream_nodes_[0].empty());
+    auto first_node_index = stream_nodes_[0][0];
+    auto* node = graph_viewer_.GetNode(first_node_index);
+    onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+    const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+    ORT_ENFORCE(ep);
+    auto& node_device_mem_location = ep->GetAllocator(ep->GetDeviceId(), OrtMemType::OrtMemTypeDefault)->Info();
+    execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location.device));
+    // 2. add steps to the execution plan
+    for (auto node_index : stream_nodes_[0]) {
+      execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+    }
+    return Status::OK();
+  }
+
+#else
+
+  void
+  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
+                       const std::string& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -2015,6 +2058,7 @@ class PlannerImpl {
 
     return Status::OK();
   }
+#endif
 
   static bool
   IsNonTensor(const onnxruntime::NodeArg& nodearg) {
@@ -2057,9 +2101,12 @@ class PlannerImpl {
 #endif
 };
 
-Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
-                               const std::string& partition_config_file,
-                               const logging::Logger& logger) {
+Status PlannerImpl::CreatePlan(
+#ifdef ENABLE_STREAM
+    const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
+    const std::string& partition_config_file,
+    const logging::Logger& logger) {
   // 1. partition graph into streams
   PartitionIntoStreams(logger, execution_providers_, partition_config_file);
 
@@ -2073,7 +2120,11 @@ Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
+#ifdef ENABLE_STREAM
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
+#else
+  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
+#endif
 
   // build value_node_map
   for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
@@ -2127,7 +2178,9 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
+#ifdef ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
     const std::string& partition_config_file,
     const logging::Logger& logger,
     std::optional<SequentialExecutionPlan>& plan) {
@@ -2139,16 +2192,20 @@ Status SequentialPlanner::CreatePlan(
                       outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
-  return planner.CreatePlan(stream_handle_registry,
-                            /*provider_stream_map,
-                            op_stream_map,*/
-                            partition_config_file,
-                            logger);
+  return planner.CreatePlan(
+#ifdef ENABLE_STREAM
+      stream_handle_registry,
+#endif
+      partition_config_file,
+      logger);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TODO: update the keyword in the config file
-InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
+
+#ifdef ENABLE_STREAM
+
+InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy>
+    IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
@@ -2370,5 +2427,6 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
 
   return graph_partitioner;
 }
+#endif
 
 }  // namespace onnxruntime

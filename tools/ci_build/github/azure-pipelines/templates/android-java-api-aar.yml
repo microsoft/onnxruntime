@@ -54,7 +54,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - task: CmdLine@2
     displayName: Create artifacts directory

@@ -36,9 +36,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
+#ifdef ENABLE_STREAM
                                    const DeviceStreamCollection& device_streams,
+#endif
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode);
@@ -47,7 +49,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                           gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
-                                          const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
                                           const bool& terminate_flag,

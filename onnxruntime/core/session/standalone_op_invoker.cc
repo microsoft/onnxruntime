@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 #if defined(_MSC_VER) && !defined(__clang__)
-//disabling warning on calling of raw "delete" operator
+// disabling warning on calling of raw "delete" operator
 #pragma warning(disable : 26400)
 #endif
 
@@ -83,7 +83,7 @@ using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
 using ArgPtrs = onnxruntime::InlinedVector<ArgPtr>;
 
 using NodeResource = std::pair<NodePtr, ArgPtrs>;
-using NodeResourceMap = InlinedHashMap<const onnxruntime::OpKernel*,NodeResource>;
+using NodeResourceMap = InlinedHashMap<const onnxruntime::OpKernel*, NodeResource>;
 
 class NodeRepo {
  public:
@@ -96,7 +96,7 @@ class NodeRepo {
     std::lock_guard<std::mutex> guard(mutex_);
     auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
     if (!ret.second) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node"); 
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
     }
     return Status::OK();
   }
@@ -153,11 +153,11 @@ class StandAloneKernelContext : public OpKernelContext {
                           onnxruntime::concurrency::ThreadPool* threadpool,
                           const logging::Logger& logger,
                           Stream* stream) : OpKernelContext(threadpool, logger, stream),
-                                                           input_values_(input_values),
-                                                           input_count_(input_count),
-                                                           output_values_(output_values),
-                                                           output_count_(output_count),
-                                                           allocator_(allocator) {}
+                                            input_values_(input_values),
+                                            input_count_(input_count),
+                                            output_values_(output_values),
+                                            output_count_(output_count),
+                                            allocator_(allocator) {}
 
   int NumVariadicInputs(size_t arg_num) const override {
     ORT_ENFORCE(arg_num < static_cast<size_t>(input_count_), "invalid arg_num.");
@@ -377,7 +377,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SinceVersion(version);
   auto kernel_def = kernel_def_builder->Build();
 
-  static InlinedHashMap<int, OrtValue> kEmptyValueMap;
+  static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;
 
   OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
