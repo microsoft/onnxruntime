@@ -81,8 +81,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
       break;
     }
 
-    std::string keep_aspect_ratio_policy = "stretch";
-    info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", &mode, "stretch");
+    std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
     if (keep_aspect_ratio_policy != "stretch") {
       break;
     }

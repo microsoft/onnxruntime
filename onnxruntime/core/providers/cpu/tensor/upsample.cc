@@ -4,7 +4,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
-
+#include "core/providers/cpu/tensor/upsample_aa.h"
 using namespace onnxruntime::common;
 using namespace std;
 using onnxruntime::narrow;
@@ -1100,7 +1100,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     memcpy(Y->MutableDataRaw(), X->DataRaw(), Y->SizeInBytes());
     return Status::OK();
   }
-
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   switch (mode_) {
     case UpsampleMode::NN:
       return UpsampleNearest<T>(X->Data<T>(), Y->MutableData<T>(), X->Shape(), Y->Shape(),
@@ -1166,46 +1167,64 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           }
         }
 
-        AllocatorPtr alloc;
-        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
         if (is_nchw) {
-          UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                           height_scale, width_scale, roi,
-                           use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                           Y->MutableData<T>(), alloc, get_original_coordinate_,
-                           output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          if (antialias_) {
+            UpsampleBilinearAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                               height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                               X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                               output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          } else {
+            UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                             height_scale, width_scale, roi,
+                             use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                             Y->MutableData<T>(), alloc, get_original_coordinate_,
+                             output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          }
         } else {
           if (use_extrapolation_) {
-            if (!is_2D &&
-                (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-                 Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
-              NhwcUpsampleBilinearInteger<T, true>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
-            } else {
-              NhwcUpsampleBilinear<T, true>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+            if (antialias_) {
+              NhwcUpsampleBilinearAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                     height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                     X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                     output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+              if (!is_2D &&
+                  (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                   Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+                NhwcUpsampleBilinearInteger<T, true>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              } else {
+                NhwcUpsampleBilinear<T, true>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              }
             }
           } else {
-            if (!is_2D &&
-                (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-                 Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
-              NhwcUpsampleBilinearInteger<T, false>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+            if (antialias_) {
+              NhwcUpsampleBilinearAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                     height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                     X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                     output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-              NhwcUpsampleBilinear<T, false>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              if (!is_2D &&
+                  (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                   Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+                NhwcUpsampleBilinearInteger<T, false>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              } else {
+                NhwcUpsampleBilinear<T, false>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              }
             }
           }
         }
@@ -1224,14 +1243,21 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         const int64_t output_height = is_3D ? output_dims[1] : output_dims[3];
         const int64_t output_width = is_3D ? output_dims[2] : output_dims[4];
 
-        AllocatorPtr alloc;
-        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-        UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
-                          output_depth, output_height, output_width,
-                          is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
-                          is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                          X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
-                          output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        if (antialias_) {
+          UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
+                            output_depth, output_height, output_width,
+                            is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                            is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                            X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
+                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        } else {
+          UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
+                            output_depth, output_height, output_width,
+                            is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                            is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                            X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
+                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        }
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
@@ -1252,17 +1278,37 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       }
 
       bool is_2D = dims.size() == 2;
-      const int64_t batch_size = is_2D ? 1 : dims[0];
-      const int64_t num_channels = is_2D ? 1 : dims[1];
-      const int64_t input_height = is_2D ? dims[0] : dims[2];
-      const int64_t input_width = is_2D ? dims[1] : dims[3];
-      const int64_t output_height = is_2D ? output_dims[0] : output_dims[2];
-      const int64_t output_width = is_2D ? output_dims[1] : output_dims[3];
+      bool is_nchw = is_2D ? true : (scales[1] == 1.0f);
 
-      ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                    is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], cubic_coeff_a_, use_extrapolation_,
-                    extrapolation_value_, exclude_outside_, roi, X->Data<float>(),
-                    Y->MutableData<float>(), get_original_coordinate_);
+      const int64_t batch_size = is_2D ? 1 : dims[0];
+      const int64_t num_channels = is_2D ? 1 : (is_nchw ? dims[1] : dims[3]);
+      const int64_t input_height = is_2D ? dims[0] : (is_nchw ? dims[2] : dims[1]);
+      const int64_t input_width = is_2D ? dims[1] : (is_nchw ? dims[3] : dims[2]);
+      const int64_t output_height = is_2D ? output_dims[0] : (is_nchw ? output_dims[2] : output_dims[1]);
+      const int64_t output_width = is_2D ? output_dims[1] : (is_nchw ? output_dims[3] : output_dims[2]);
+      const float height_scale = is_2D ? scales[0] : (is_nchw ? scales[2] : scales[1]);
+      const float width_scale = is_2D ? scales[1] : (is_nchw ? scales[3] : scales[2]);
+
+      if (antialias_) {
+        if (!is_nchw) {
+          NhwcResizeBiCubicAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                              height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                              extrapolation_value_, exclude_outside_, roi, X,
+                              Y->MutableData<float>(), alloc, get_original_coordinate_,
+                              output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+        } else {
+          ResizeBiCubicAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                          height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                          extrapolation_value_, exclude_outside_, roi, X,
+                          Y->MutableData<float>(), alloc, get_original_coordinate_,
+                          output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+        }
+      } else {
+        ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                      height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                      extrapolation_value_, exclude_outside_, roi, X->Data<float>(),
+                      Y->MutableData<float>(), get_original_coordinate_);
+      }
       return Status::OK();
     }
     default:
@@ -1281,8 +1327,8 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   // Initialize the roi array to all zeros as this will be the most common case
   // Roi data is needed only when coordinate transformation mode is set to tf_crop_and_resize
   // for all other cases we need a 0 initialized roi array
-  std::vector<float> roi_array;
-  const std::vector<float>* roi_ptr = roi_cached_ ? &roi_ : &roi_array;
+  std::vector<float> roi_array(roi_);
+  const std::vector<float>* roi_ptr = &roi_array;
 
   if (!roi_cached_) {
     bool use_default_roi = true;
@@ -1307,25 +1353,29 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     }
   }
 
+  ComputeROIWithAxes(roi_array);
+  // Get scales data
+  std::vector<float> scales_array(X->Shape().GetDims().size());
+
   if (OpKernel::Node().InputDefs().size() == 1) {
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
-    return BaseCompute(context, *roi_ptr, scales_, output_dims);
+    scales_array = scales_;
+
+    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    return BaseCompute(context, *roi_ptr, scales_array, output_dims);
   }
 
   const auto* scales = context->Input<Tensor>(scales_input_idx_);
   const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
+  // Get scales data
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-
+    scales_array = scales_;
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
-    return BaseCompute(context, *roi_ptr, scales_, output_dims);
+    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    return BaseCompute(context, *roi_ptr, scales_array, output_dims);
   }
-
-  // Get scales data
-  std::vector<float> scales_array(X->Shape().GetDims().size());
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
@@ -1337,7 +1387,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
     // When sizes input is available directly populate it into the output_dims array.
-    memcpy(output_dims.data(), sizes->template Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size())* sizeof(int64_t));
+    memcpy(output_dims.data(), sizes->template Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size()) * sizeof(int64_t));
 
     ORT_ENFORCE(X->Shape().GetDims().size() == output_dims.size(),
                 "Resize: input tensor's rank does not match the output tensor's rank.");

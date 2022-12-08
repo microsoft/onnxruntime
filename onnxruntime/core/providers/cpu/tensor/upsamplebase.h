@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include "core/common/inlined_containers.h"
 #include <core/common/safeint.h>
 #include <core/common/narrow.h>
 #ifndef SHARED_PROVIDER
@@ -49,6 +50,12 @@ enum ResizeNearestMode {
   NearestModeCount = 5,
 };
 
+enum AspectRatioPolicy {
+  STRETCH,
+  NOT_LARGER,
+  NOT_SMALLER,
+};
+
 class UpsampleBase {
  protected:
   explicit UpsampleBase(const OpKernelInfo& info)
@@ -67,6 +74,16 @@ class UpsampleBase {
       ScalesValidation(scales_, mode_);
       scales_cached_ = true;
     }
+
+    std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
+    keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
+
+    axes_ = info.GetAttrsOrDefault<int64_t>("axes");
+    antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
+
+    // antialias_ = true;                       //===================================================
+    // keep_aspect_ratio_policy_ = NOT_LARGER;  //================================
+    // axes_ = {1, 2};
 
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
@@ -96,8 +113,11 @@ class UpsampleBase {
     cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", -0.75f);
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
-    if (exclude_outside_ == 1 && mode_ != CUBIC) {
-      ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode);
+    if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == 0 || mode_ != LINEAR)) {
+      ORT_THROW(
+          "exclude_outside can be set to 1 only when mode is CUBIC or LINEAR when antialias_ is on"
+          ". Current mode is set to " +
+          mode);
     }
 
     // see if we can potentially use the nearest2x optimization. scales are checked at runtime to be {1,1,2,2}
@@ -142,14 +162,18 @@ class UpsampleBase {
   ResizeCoordinateTransformationMode coordinate_transform_mode_;
   GetOriginalCoordinateFunc get_original_coordinate_;
   ResizeNearestMode nearest_mode_;
+  AspectRatioPolicy keep_aspect_ratio_policy_;
   GetNearestPixelFunc get_nearest_pixel_;
   float cubic_coeff_a_;
   bool exclude_outside_;
+  bool antialias_;
   float extrapolation_value_;
   bool use_nearest2x_optimization_ = false;
 
   std::vector<float> scales_;
   std::vector<float> roi_;
+  std::vector<int64_t> axes_;
+
   bool scales_cached_;
   bool roi_cached_;
   bool need_roi_input_;
@@ -172,6 +196,19 @@ class UpsampleBase {
     }
     ORT_THROW("mode attribute is " + mode + ". It can only be " +
               UpsampleModeNN + "(default) or " + UpsampleModeLinear + " or " + UpsampleModeCubic + ".");
+  }
+
+  AspectRatioPolicy StringToKeepAspectRatioPolicy(const std::string& policy) {
+    if (policy == "stretch") {
+      return AspectRatioPolicy::STRETCH;
+    }
+    if (policy == "not_larger") {
+      return AspectRatioPolicy::NOT_LARGER;
+    }
+    if (policy == "not_smller") {
+      return AspectRatioPolicy::NOT_SMALLER;
+    }
+    ORT_THROW("keep_aspect_ratio attribute is [" + policy + "] is not supported!");
   }
 
   ResizeCoordinateTransformationMode StringToCoordinateTransformationMode(
@@ -307,7 +344,8 @@ class UpsampleBase {
                   "in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
     } else if (UpsampleMode::CUBIC == mode) {
-      ORT_ENFORCE(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1),
+      ORT_ENFORCE(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1) ||
+                      (antialias_ && scales.size() == 4 && scales[0] == 1 && scales[3] == 1),
                   "'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
                   "with the corresponding outermost 2 scale values being 1 in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
@@ -337,6 +375,16 @@ class UpsampleBase {
   void ParseScalesDataFromOutputSize(gsl::span<const int64_t> output_dims,
                                      gsl::span<const int64_t> input_dims,
                                      std::vector<float>& scales) const {
+    auto* mutable_out_dim = const_cast<int64_t*>(output_dims.data());
+
+    if (axes_.size()) {
+      std::vector<int64_t> output_dim_tmp(output_dims.begin(), output_dims.end());
+      for (size_t i = 0; i < axes_.size(); i++) {
+        output_dim_tmp[i] = (output_dims[axes_[i]]);
+      }
+      memcpy(mutable_out_dim, output_dim_tmp.data(), output_dim_tmp.size() * sizeof(int64_t));
+    }
+
     for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
       // Handle corner case to avoid dividing by zero in the next step
       if (input_dims[i] == 0) {
@@ -353,14 +401,67 @@ class UpsampleBase {
         scales[i] = static_cast<float>(output_dims[i]) / static_cast<float>(input_dims[i]);
       }
     }
+
+    InlinedHashSet<int64_t> axes_set(axes_.begin(), axes_.end());
+    if (keep_aspect_ratio_policy_ != STRETCH) {
+      float scale_in_policy;
+      if (keep_aspect_ratio_policy_ == NOT_LARGER) {
+        scale_in_policy = std::numeric_limits<float>::max();
+        for (size_t i = 0; i < scales.size(); i++) {
+          if (axes_set.empty() || axes_set.count(i) > 0) {
+            scale_in_policy = std::min(scale_in_policy, scales[i]);
+          }
+        }
+      } else if (keep_aspect_ratio_policy_ == NOT_SMALLER) {
+        scale_in_policy = std::numeric_limits<float>::min();
+        for (size_t i = 0; i < scales.size(); i++) {
+          if (axes_set.empty() || axes_set.count(i) > 0) {
+            scale_in_policy = std::max(scale_in_policy, scales[i]);
+          }
+        }
+      }
+      for (size_t i = 0; i < scales.size(); i++) {
+        if (axes_set.empty() || axes_set.count(i) > 0) {
+          scales[i] = scale_in_policy;
+          mutable_out_dim[i] = static_cast<int64_t>((scales[i] * input_dims[i] + 0.5f));
+        } else {
+          scales[i] = 1.0f;
+          mutable_out_dim[i] = input_dims[i];
+        }
+      }
+    }
+
     ScalesValidation(scales, mode_);
   }
 
   void ComputeOutputShape(const std::vector<float>& scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
+    auto* mutable_scale = const_cast<float*>(scales.data());
+    if (axes_.size()) {
+      std::vector<float> scales_tmp(scales);
+      for (size_t i = 0; i < axes_.size(); i++) {
+        scales_tmp[i] = static_cast<float>(scales[axes_[i]]);
+      }
+      memcpy(mutable_scale, scales_tmp.data(), scales.size() * sizeof(float));
+    }
+
     for (std::size_t i = 0; i < input_dims.size(); i++) {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
+    }
+  }
+
+  void ComputeROIWithAxes(std::vector<float>& roi_array) const {
+    if (axes_.size()) {
+      std::vector<float> roi_tmp(roi_array.size(), 0);
+      for (size_t i = roi_array.size() / 2; i < roi_array.size(); ++i) {
+        roi_tmp[i] = 1;
+      }
+      for (size_t i = 0; i < axes_.size(); i++) {
+        roi_tmp[axes_[i]] = (roi_array[i]);
+        roi_tmp[i + axes_[i]] = (roi_array[axes_.size() + i]);
+      }
+      roi_array = roi_tmp;
     }
   }
 };  // UpsampleBase
