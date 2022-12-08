@@ -104,9 +104,8 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>(const BFloat16*) {
 }
 
 template <typename T>
-class IndexedRocBlasGemmOp
-{
-public:
+class IndexedRocBlasGemmOp {
+ public:
   IndexedRocBlasGemmOp()
       : index_(0) {}
   IndexedRocBlasGemmOp(int index)
@@ -115,37 +114,34 @@ public:
   Status operator()(const GemmParams<T>* params) {
     RocblasHandleStreamGuard guard(params->handle, params->stream);
     return ROCBLAS_CALL(
-      rocblas_gemm_ex(
-        params->handle,
-        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-        params->n, params->m, params->k,
-        &(params->alpha),
-        params->b, RocBlasDataTypeFor(params->b), params->ldb,
-        params->a, RocBlasDataTypeFor(params->a), params->lda,
-        &(params->beta),
-        params->c, RocBlasDataTypeFor(params->c), params->ldc,
-        params->c, RocBlasDataTypeFor(params->c), params->ldc,
-        RocBlasComputeTypeFor(params->a),
-        rocblas_gemm_algo_standard,
-        index_,
-        rocblas_gemm_flags_none
-      )
-    );
+        rocblas_gemm_ex(
+            params->handle,
+            params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+            params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+            params->n, params->m, params->k,
+            &(params->alpha),
+            params->b, RocBlasDataTypeFor(params->b), params->ldb,
+            params->a, RocBlasDataTypeFor(params->a), params->lda,
+            &(params->beta),
+            params->c, RocBlasDataTypeFor(params->c), params->ldc,
+            params->c, RocBlasDataTypeFor(params->c), params->ldc,
+            RocBlasComputeTypeFor(params->a),
+            rocblas_gemm_algo_standard,
+            index_,
+            rocblas_gemm_flags_none));
   }
 
   Status IsSupported(const GemmParams<T>*) {
     return Status::OK();
   }
 
-private:
+ private:
   int index_;
 };
 
 template <typename T>
-class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>>
-{
-public:
+class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
+ public:
   RocBlasGemmTunableOp() {
     // Ensure that the default implementation is always present
     this->ops_.emplace_back(IndexedRocBlasGemmOp<T>{0});
@@ -156,7 +152,7 @@ public:
     return Status::OK();
   }
 
-protected:
+ protected:
   virtual int FindFastest(const GemmParams<T>* params) override {
     auto solution_indices = this->GetSolutions(params);
     std::vector<Op<GemmParams<T>>> candidates;
@@ -170,47 +166,45 @@ protected:
     return this->ops_.size() - 1;
   }
 
-private:
+ private:
   std::vector<int> GetSolutions(const GemmParams<T>* params) {
     int num_solutions = 0;
     // Get the number of candidate solutions
     ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions(
-      params->handle,
-      params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-      params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-      params->n, params->m, params->k,
-      &(params->alpha),
-      params->b, RocBlasDataTypeFor(params->b), params->ldb,
-      params->a, RocBlasDataTypeFor(params->a), params->lda,
-      &(params->beta),
-      params->c, RocBlasDataTypeFor(params->c), params->ldc,
-      params->c, RocBlasDataTypeFor(params->c), params->ldc,
-      RocBlasComputeTypeFor(params->a),
-      rocblas_gemm_algo_standard,
-      rocblas_gemm_flags_none,
-      NULL,
-      &num_solutions
-    ));
+        params->handle,
+        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->n, params->m, params->k,
+        &(params->alpha),
+        params->b, RocBlasDataTypeFor(params->b), params->ldb,
+        params->a, RocBlasDataTypeFor(params->a), params->lda,
+        &(params->beta),
+        params->c, RocBlasDataTypeFor(params->c), params->ldc,
+        params->c, RocBlasDataTypeFor(params->c), params->ldc,
+        RocBlasComputeTypeFor(params->a),
+        rocblas_gemm_algo_standard,
+        rocblas_gemm_flags_none,
+        NULL,
+        &num_solutions));
 
     // Get the actual candidate solutions
     std::vector<int> solutions(num_solutions);
     ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions(
-      params->handle,
-      params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-      params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-      params->n, params->m, params->k,
-      &(params->alpha),
-      params->b, RocBlasDataTypeFor(params->b), params->ldb,
-      params->a, RocBlasDataTypeFor(params->a), params->lda,
-      &(params->beta),
-      params->c, RocBlasDataTypeFor(params->c), params->ldc,
-      params->c, RocBlasDataTypeFor(params->c), params->ldc,
-      RocBlasComputeTypeFor(params->a),
-      rocblas_gemm_algo_standard,
-      rocblas_gemm_flags_none,
-      solutions.data(),
-      &num_solutions
-    ));
+        params->handle,
+        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->n, params->m, params->k,
+        &(params->alpha),
+        params->b, RocBlasDataTypeFor(params->b), params->ldb,
+        params->a, RocBlasDataTypeFor(params->a), params->lda,
+        &(params->beta),
+        params->c, RocBlasDataTypeFor(params->c), params->ldc,
+        params->c, RocBlasDataTypeFor(params->c), params->ldc,
+        RocBlasComputeTypeFor(params->a),
+        rocblas_gemm_algo_standard,
+        rocblas_gemm_flags_none,
+        solutions.data(),
+        &num_solutions));
 
     return solutions;
   }

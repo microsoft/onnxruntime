@@ -235,7 +235,7 @@ class TunableOp {
 #endif
   }
 
-protected:
+ protected:
   virtual int FindFastest(const ParamsT* params) {
     return FindFastestImpl(params, ops_);
   }

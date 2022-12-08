@@ -31,16 +31,15 @@ bool IsZero(half v) {
   return __half2float(v) == 0.0f;
 }
 
-
 template <typename T, typename ALayout, typename BLayout>
 class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->ops_.emplace_back(RocBlasGemmOp<T>);
 
-  #ifdef USE_ROCBLAS_EXTENSION_API
+#ifdef USE_ROCBLAS_EXTENSION_API
     this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
-  #endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
+#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
 
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
@@ -73,7 +72,7 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
     }
   }
 
-private:
+ private:
 #ifdef USE_ROCBLAS_EXTENSION_API
   RocBlasGemmTunableOp<T> rocblas_gemm_tunable_op_;
 #endif
