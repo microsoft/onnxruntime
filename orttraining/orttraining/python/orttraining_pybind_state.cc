@@ -136,6 +136,7 @@ struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
 };
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
 // Thin wrapper over internal C++ Optimizer
 struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri,
@@ -162,6 +163,7 @@ struct PyOptimizer {
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
 };
+#endif
 
 struct PyGradientGraphBuilder {
   std::unique_ptr<GradientGraphBuilder> builder;
