@@ -230,6 +230,13 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
+  - script: |
+       yarn react-native bundle --platform android --dev false --entry-file e2e/index.tsx \
+        --bundle-output $(Build.SourcesDirectory)/e2e/android/app/src/main/assets/index.android.bundle \
+        --assets-dest $(Build.SourcesDirectory)/e2e/android/app/src/main/res'
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
+    displayName: Generate index.android.bundle file
+
   - template: android-dump-logs-from-steps.yml
     parameters:
       steps:
