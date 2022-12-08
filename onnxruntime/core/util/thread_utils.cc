@@ -203,6 +203,9 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
   if (!tp_options) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
   }
+  if (!affinity_string || strnlen(affinity_string, onnxruntime::kMaxStrLen) == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Affinity string must not be empty");
+  }
   tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
 }

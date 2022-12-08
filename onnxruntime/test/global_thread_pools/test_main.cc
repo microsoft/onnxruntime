@@ -26,6 +26,11 @@ std::unique_ptr<Ort::Env> ort_env;
     return -1;                             \
   }
 
+#define ORT_RETURN_IF_NULL_STATUS(arg) \
+  if (!arg) {                              \
+    return -1;                             \
+  }
+
 namespace TestGlobalCustomThreadHooks {
 
 std::vector<std::thread> threads;
@@ -79,6 +84,12 @@ int main(int argc, char** argv) {
 
     st_ptr.reset(g_ort->SetGlobalIntraOpNumThreads(tp_options, thread_pool_size));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
+    // test with an empty affinity string, error status expected
+    st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, ""));
+    ORT_RETURN_IF_NULL_STATUS(st_ptr);
+    ASSERT_EQ(std::string{g_ort->GetErrorMessage(st_ptr.get())},
+              std::string{"Affinity string must not be empty"});
 
     st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, affinity_stream.str().c_str()));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
