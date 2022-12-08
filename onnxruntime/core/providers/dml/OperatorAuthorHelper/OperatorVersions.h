@@ -395,6 +395,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_SkipLayerNormalization = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

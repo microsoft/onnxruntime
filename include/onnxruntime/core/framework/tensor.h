@@ -267,7 +267,7 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   /**
    * Get the strides of the tensor.
    */
@@ -295,7 +295,7 @@ class Tensor final {
 
   void ReleaseBuffer();
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   bool CheckIsContiguous() const;
 #endif
 
@@ -308,7 +308,7 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   mutable TensorShapeVector strides_;
   bool is_contiguous_ = true;
 #endif
