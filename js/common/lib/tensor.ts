@@ -83,12 +83,11 @@ export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<T
   /**
    * creates an ImageData instance from tensor
    *
-   * @param inputOptions - Optional - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
-   * @param outputOptions - Optional - Interface describing output image - Defaults: RGBA (A is set to NAN), 3 channels,
+   * @param tensorFormat - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
    * 0-255, NHWC
    * @returns An ImageData instance which can be used to draw on canvas
    */
-  toImage(inputOptions?: TensorFromImageConfig, outputOptions?: ImageFromTensorConfig): ImageData;
+  toImage(tensorFormat?: ImageFromTensorConfig): ImageData;
 }
 
 export interface TensorConstructor {
