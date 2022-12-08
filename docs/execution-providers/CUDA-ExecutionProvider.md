@@ -178,3 +178,20 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
+
+### Java
+
+```java
+OrtCUDAProviderOptions cudaProviderOptions = new OrtCUDAProviderOptions(/*device id*/0); // Must be closed after the session closes
+
+cudaProviderOptions.add("gpu_mem_limit","2147483648");
+cudaProviderOptions.add("arena_extend_strategy","kSameAsRequested");
+cudaProviderOptions.add("cudnn_conv_algo_search","DEFAULT");
+cudaProviderOptions.add("do_copy_in_default_stream","1");
+cudaProviderOptions.add("cudnn_conv_use_max_workspace","1");
+cudaProviderOptions.add("cudnn_conv1d_pad_to_nc1d","1");
+
+OrtSession.SessionOptions options = new OrtSession.SessionOptions(); // Must be closed after the session closes
+options.addCUDA(cudaProviderOptions);
+```
+
