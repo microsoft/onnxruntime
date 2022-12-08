@@ -1155,11 +1155,12 @@ TEST_F(PlannerTest, MultiStream) {
   tensor.set_name("Graph_input");
   GetGraph().AddInitializedTensor(tensor);
 
-  AddNormalNode(std::string("Graph_input"), std::string("Arg1"));
-  AddNormalNode(std::string("Arg1"), std::string("Arg2"));
+  std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), Arg4("Arg4");
+  AddNormalNode(Graph_input, Arg1);
+  AddNormalNode(Arg1, Arg2);
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
-  AddNode(*cudaKernel, std::string("Arg2"), std::string("Arg3"));
-  AddNormalNode(std::string("Arg3"), std::string("Arg4"));
+  AddNode(*cudaKernel, Arg2, Arg3);
+  AddNormalNode(Arg3, Arg4);
 
   CUDAExecutionProviderInfo epi;
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
@@ -1173,18 +1174,18 @@ TEST_F(PlannerTest, MultiStream) {
 
   EXPECT_EQ(GetPlan().execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
   EXPECT_EQ(GetPlan().execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[0]->steps_[0]).name(), "class onnxruntime::LaunchKernelStep"), 0) << "0th step: LaunchKernelStep for node 1";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[0]->steps_[1]).name(), "class onnxruntime::LaunchKernelStep"), 0) << "1st step: LaunchKernelStep for node 2";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[0]->steps_[2]).name(), "class onnxruntime::ActivateNotificationStep"), 0) << "2nd step: ActivateNofiticationStep by node 2";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[0]->steps_[3]).name(), "class onnxruntime::TriggerDownstreamStep"), 0) << "3rd step: TriggerDownstreamStep for node 3";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[0]->steps_[4]).name(), "class onnxruntime::BarrierStep"), 0) << "4th step: BarrierStep for node 4";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[0]->steps_[5]).name(), "class onnxruntime::LaunchKernelStep"), 0) << "5th step: LaunchKernelStep for node 4";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 2";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[4]).name(), "BarrierStep"), nullptr) << "4th step: BarrierStep for node 4";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[5]).name(), "LaunchKernelStep"), nullptr) << "5th step: LaunchKernelStep for node 4";
 
   EXPECT_EQ(GetPlan().execution_plan[1]->steps_.size(), 4) << "CUDA stream has 4 steps";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[1]->steps_[0]).name(), "class onnxruntime::BarrierStep"), 0) << "0th step: BarrierStep for node 3";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[1]->steps_[1]).name(), "class onnxruntime::LaunchKernelStep"), 0) << "1st step: LaunchKernelStep for node 3";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[1]->steps_[2]).name(), "class onnxruntime::ActivateNotificationStep"), 0) << "2nd step: ActivateNofiticationStep by node 3";
-  EXPECT_EQ(strcmp(typeid(*GetPlan().execution_plan[1]->steps_[3]).name(), "class onnxruntime::TriggerDownstreamStep"), 0) << "3rd step: TriggerDownstreamStep for node 4";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 4";
 }
 #endif
 
