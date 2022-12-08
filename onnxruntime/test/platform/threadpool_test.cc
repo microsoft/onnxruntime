@@ -559,7 +559,7 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
       "0;1",   //processor string must start from 1
       "-;2",   //invalid char, must be digit
       "--",    //invalid char, must be digit
-      "2-1;3"  //invalid interval, "from" must be equal to or smaller than "to"
+      "2-1;3", //invalid interval, "from" must be equal to or smaller than "to"
       "5;3a"   //invalid processor id containing non-digit as suffix
   };
   for (const auto* wrong_format : wrong_formats) {
