@@ -123,7 +123,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # NCCL -> RCCL
     # s = s.replace('NCCL_CALL', 'RCCL_CALL')
-    s = s.replace("#include <nccl.h>", "#include <rccl.h>")
+    s = s.replace("#include <nccl.h>", "#include <rccl/rccl.h>")
 
     # CUDNN -> MIOpen
     s = s.replace("CUDNN", "MIOPEN")
