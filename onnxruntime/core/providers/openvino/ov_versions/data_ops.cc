@@ -108,6 +108,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Div", V_2020_4, {"All"}},
     {"Dropout", V_2020_4, {"All"}},
+    {"Einsum", V_2022_3, {"CPU"}},
     {"Elu", V_2020_4, {"All"}},
     {"Equal", V_2020_4, {"All"}},
     {"Erf", V_2020_4, {"All"}},
@@ -128,7 +129,9 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GlobalMaxPool", V_2022_1, {"CPU", "GPU"}},
     {"Greater", V_2020_4, {"All"}},
     {"GreaterOrEqual", V_2022_1, {"All"}},
+    {"GridSample", V_2022_3, {"CPU"}},
     {"Identity", V_2020_4, {"All"}},
+    {"If", V_2022_3, {"CPU"}},
     {"ImageScaler", V_2022_1, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
@@ -161,6 +164,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Pad", V_2020_4, {"All"}},
     {"Pow", V_2020_4, {"All"}},
     {"PRelu", V_2020_4, {"All"}},
+    {"QLinearConv", V_2022_3, {"CPU"}},
+    {"QLinearMatMul", V_2022_3, {"CPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Range", V_2021_2, {"MYRIAD"}},
     {"Range", V_2022_1, {"All"}},
@@ -187,6 +192,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
     {"Round", V_2021_4, {"All"}},
+    {"Scan", V_2022_3, {"CPU"}},
     {"Scatter", V_2021_1, {"MYRIAD"}},
     {"Scatter", V_2022_1, {"All"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
@@ -218,6 +224,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"ThresholdedRelu", V_2022_1, {"All"}},
     {"Tile", V_2021_3, {"All"}},
     {"Transpose", V_2020_4, {"All"}},
+    {"Trilu", V_2022_3, {"CPU"}},
     {"TopK", V_2020_4, {"All"}},
     {"Unsqueeze", V_2020_4, {"All"}},
     {"Upsample", V_2021_1, {"CPU"}},
@@ -592,7 +599,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Reshape", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                 auto& attributes = node->GetAttributes();
                                 if (attributes.count("mode") ==1 && attributes.at("mode").s() == "linear") {
@@ -1010,7 +1017,8 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
       } else {
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
-          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+          if (utils::HasDimValue(dim) && dim.dim_value() == 0 &&
+              graph_viewer_.IsConstantInitializer(node_arg.Name(), true)) {
             if ((device_id_.find("MYRIAD") != std::string::npos) && (optype == "Resize"))
               return;
             if ((device_id_.find("GPU") != std::string::npos) && ((optype == "Expand") ||
