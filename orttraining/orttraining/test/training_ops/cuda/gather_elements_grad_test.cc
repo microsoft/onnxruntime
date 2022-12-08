@@ -8,7 +8,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
@@ -135,7 +135,7 @@ void RunTestWrapper() {
   RunTest<T, int64_t>({2, 1, 1, 2, 3, 2, 3}, {2, 1, 1, 2, 3, 2, 2}, true, -5LL);
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
 void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
                           std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
@@ -197,7 +197,7 @@ TEST(GatherElementsGrad, IndicesUpdatesDontMatch) {
   test.Run(onnxruntime::test::OpTester::ExpectResult::kExpectFailure, "");
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 TEST(GatherElementsGrad, Strided_float) { RunKernelComputeTestWrapper<float>(); }
 
 TEST(GatherElementsGrad, Strided_double) { RunKernelComputeTestWrapper<double>(); }
