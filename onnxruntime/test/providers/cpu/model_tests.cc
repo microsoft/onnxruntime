@@ -738,6 +738,7 @@ TEST_P(ModelTest, Run) {
       std::unique_ptr<OrtSession, decltype(&OrtApis::ReleaseSession)> rel_ort_session(ort_session,
                                                                                       &OrtApis::ReleaseSession);
       const size_t data_count = l->GetDataCount();
+#ifndef USE_DNNL // potential crash for DNNL pipeline
       if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
         LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();    // TODO(leca): change level to INFO or even delete the log once verified parallel test working
         Ort::SessionOptions ort_session_options(ortso);
@@ -748,6 +749,7 @@ TEST_P(ModelTest, Run) {
         }
         continue;
       } 
+#endif // !USE_DNNL
       std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
         ortso, &OrtApis::ReleaseSessionOptions);
       // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
