@@ -86,8 +86,8 @@ export const clip = async(handler: WebGpuInferenceHandler, inputs: Tensor[], att
                         Promise<Tensor[] >=>handler.run(
                             createElementwiseProgramInfoLoader(
                                 inputs[0], 'Clip', a => `clamp(${a}, clip_min_, clip_max_)`, `
-    let clip_min_: vec4<f32> = vec4(f32(${attributes.min}));
-    let clip_max_: vec4<f32> = vec4(f32(${attributes.max}));
+    const clip_min_: vec4<f32> = vec4(f32(${attributes.min}));
+    const clip_max_: vec4<f32> = vec4(f32(${attributes.max}));
 `,
                                 attributes.cacheKey),
                             inputs);

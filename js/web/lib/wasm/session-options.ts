@@ -45,6 +45,12 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
     // eslint-disable-next-line camelcase
     session.use_ort_model_bytes_directly = '1';
   }
+
+  // if using JSEP with WebGPU, always disable memory pattern
+  if (options.executionProviders &&
+      options.executionProviders.some(ep => ['jsep-webgpu'].includes(typeof ep === 'string' ? ep : ep.name))) {
+    options.enableMemPattern = false;
+  }
 };
 
 const setExecutionProviders =

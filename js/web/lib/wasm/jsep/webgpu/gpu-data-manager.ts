@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {WebGpuBackend} from '../backend-webgpu';
 
 import {GpuData, GpuDataId, GpuDataType} from './types';
@@ -10,9 +12,13 @@ import {GpuData, GpuDataId, GpuDataType} from './types';
  */
 export interface GpuDataManager {
   /**
-   * upload data to GPU.
+   * copy data from CPU to GPU.
    */
   upload(id: GpuDataId, data: Uint8Array): void;
+  /**
+   * copy data from GPU to GPU.
+   */
+  memcpy(sourceId: GpuDataId, destinationId: GpuDataId): void;
   /**
    * create new data on GPU.
    */
@@ -28,7 +34,7 @@ export interface GpuDataManager {
    */
   release(id: GpuDataId): number;
   /**
-   * download the data from GPU.
+   * copy data from GPU to CPU.
    */
   download(id: GpuDataId): Promise<ArrayBufferLike>;
 
@@ -98,12 +104,36 @@ class GpuDataManagerImpl implements GpuDataManager {
 
 
     // GPU copy
-    this.backend.getCommandEncoder().copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
+    const commandEncoder = this.backend.getCommandEncoder();
+    this.backend.endComputePass();
+    commandEncoder.copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
 
-    // eslint-disable-next-line no-console
-    console.log(`[js] GpuDataManager.upload(id=${id})`);
+    if (env.debug) {
+      // eslint-disable-next-line no-console
+      console.log(`[js] GpuDataManager.upload(id=${id})`);
+    }
 
     this.buffersForUploadingPending.push(gpuBufferForUploading);
+  }
+
+  memcpy(sourceId: GpuDataId, destinationId: GpuDataId): void {
+    // get source gpu buffer
+    const sourceGpuDataCache = this.storageCache.get(sourceId);
+    if (!sourceGpuDataCache) {
+      throw new Error('source gpu data for memcpy does not exist');
+    }
+    // get destination gpu buffer
+    const destinationGpuDataCache = this.storageCache.get(destinationId);
+    if (!destinationGpuDataCache) {
+      throw new Error('destination gpu data for memcpy does not exist');
+    }
+    if (sourceGpuDataCache.originalSize !== destinationGpuDataCache.originalSize) {
+      throw new Error('inconsistent source and destination gpu data size');
+    }
+    const size = calcNormalizedBufferSize(sourceGpuDataCache.originalSize);
+    // GPU copy
+    this.backend.getCommandEncoder().copyBufferToBuffer(
+        sourceGpuDataCache.gpuData.buffer, 0, destinationGpuDataCache.gpuData.buffer, 0, size);
   }
 
   create(size: number): GpuData {
@@ -122,8 +152,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
 
-    // eslint-disable-next-line no-console
-    console.log(`[js] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
+    if (env.debug) {
+      // eslint-disable-next-line no-console
+      console.log(`[js] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
+    }
     return gpuData;
   }
 
@@ -137,8 +169,10 @@ class GpuDataManagerImpl implements GpuDataManager {
       throw new Error('releasing data does not exist');
     }
 
-    // eslint-disable-next-line no-console
-    console.log(`[js] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
+    if (env.debug) {
+      // eslint-disable-next-line no-console
+      console.log(`[js] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
+    }
 
     this.storageCache.delete(id);
     this.buffersPending.push(cachedData.gpuData.buffer);

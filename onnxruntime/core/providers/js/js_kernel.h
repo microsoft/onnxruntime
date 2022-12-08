@@ -58,6 +58,9 @@ public:                                                                    \
         , ({#attr_name:$1}), static_cast<double>(value))
 
 
+// TODO:
+// class JsMultiProgramKernel : public OpKernel { /* TBD */ };
+
 class JsKernel : public OpKernel {
  public:
   explicit JsKernel(const OpKernelInfo& info)
@@ -66,10 +69,7 @@ class JsKernel : public OpKernel {
       EM_ASM({ Module.jsepReleaseKernel($0); }, this);
   }
 
-  Status Compute(OpKernelContext* context) const override {
-      AllocatorPtr alloc;
-      ORT_RETURN_IF_ERROR(context->GetTempSpaceCPUAllocator(&alloc));
-
+  void * SerializeKernelContext(OpKernelContext* context, AllocatorPtr alloc) const {
       //
       // temp_data_format (every item is (u)int32_t):
       //    context_prt | input_count | [input_data_0] ... [input_data_N-1]
@@ -81,35 +81,55 @@ class JsKernel : public OpKernel {
       for (int i = 0; i < context->InputCount(); i++) {
         temp_data_size += sizeof(size_t) * (3 + context->Input<Tensor>(i)->Shape().NumDimensions());
       }
-      uint32_t *p_inputs_data = reinterpret_cast<uint32_t*>(alloc->Alloc(temp_data_size));
-      p_inputs_data[0] = reinterpret_cast<uint32_t>(context);
-      p_inputs_data[1] = static_cast<uint32_t>(context->InputCount());
+      uint32_t *p_serialized_kernel_context = reinterpret_cast<uint32_t*>(alloc->Alloc(temp_data_size));
+      if (p_serialized_kernel_context == nullptr) {
+        return nullptr;
+      }
+
+      p_serialized_kernel_context[0] = reinterpret_cast<uint32_t>(context);
+      p_serialized_kernel_context[1] = static_cast<uint32_t>(context->InputCount());
       size_t index = 2;
       for (int i = 0; i < context->InputCount(); i++) {
-        p_inputs_data[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->GetElementType());
-        p_inputs_data[index++] = reinterpret_cast<uint32_t>(context->Input<Tensor>(i)->DataRaw());
-        p_inputs_data[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->Shape().NumDimensions());
+        p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->GetElementType());
+        p_serialized_kernel_context[index++] = reinterpret_cast<uint32_t>(context->Input<Tensor>(i)->DataRaw());
+        p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->Shape().NumDimensions());
         for (size_t d = 0; d < context->Input<Tensor>(i)->Shape().NumDimensions(); d++) {
-          p_inputs_data[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->Shape()[d]);
+          p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->Shape()[d]);
         }
       }
 
+#ifndef NDEBUG
       printf("temp data size: %zu. Data: ", temp_data_size);
       for (int i=0; i < (int)temp_data_size/4;i++) {
-        printf("%u ", p_inputs_data[i]);
+        printf("%u ", p_serialized_kernel_context[i]);
       }
       printf("\n");
+#endif
 
-      int status = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, p_inputs_data);
+      return p_serialized_kernel_context;
+  }
+
+  virtual Status ComputeInternal(OpKernelContext* context) const {
+      AllocatorPtr alloc;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceCPUAllocator(&alloc));
+
+      auto p_serialized_kernel_context = SerializeKernelContext(context, alloc);
+
+      int status = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, p_serialized_kernel_context);
 
       // printf("outputs = %d. Y.data=%zu\n", context->OutputCount(), (size_t)(context->Output<Tensor>(0)->DataRaw()));
 
-      alloc->Free(p_inputs_data);
+      alloc->Free(p_serialized_kernel_context);
+
       if (status == 0) {
         return Status::OK();
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to run JSEP kernel");
       }
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+      return ComputeInternal(context);
   }
 };
 }  // namespace js
