@@ -28,6 +28,10 @@ GraphOptimizationLevel convertOptimizationLevel(jint level);
 
 ExecutionMode convertExecutionMode(jint mode);
 
+OrtSparseFormat convertToOrtSparseFormat(jint format);
+
+jint convertFromOrtSparseFormat(OrtSparseFormat format);
+
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type);
 
 ONNXTensorElementDataType convertToONNXDataFormat(jint type);
@@ -67,6 +71,8 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
 jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
 
 jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
+
+jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
 
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence);
 

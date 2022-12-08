@@ -172,7 +172,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
   for (int64_t n = 0; n < N; n++) {
     const T* grid_data = grid->Data<T>() + n * (H_out * W_out) * 2;
     concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, C,
+        tp, onnxruntime::narrow<std::ptrdiff_t>(C),
         [&](std::ptrdiff_t c) {
           const T* X_data = input->Data<T>() + (n * C + c) * (H_in * W_in);
           T* Y_data = Y.MutableData<T>() + (n * C + c) * (H_out * W_out);

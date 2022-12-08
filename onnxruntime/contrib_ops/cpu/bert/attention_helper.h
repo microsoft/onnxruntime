@@ -108,7 +108,8 @@ void PrepareMask(const int32_t* mask_index,
     if (nullptr != mask_index) {
       if (is_raw_attention_mask) {
         // Raw attention mask has value 0 or 1. Here we convert 0 to -10000.0, and 1 to 0.0.
-        const int32_t* raw_mask = mask_index + b_i * all_sequence_length;
+        ptrdiff_t off = SafeInt<ptrdiff_t>(b_i) * all_sequence_length;
+        const int32_t* raw_mask = mask_index + off;
         for (int m_i = 0; m_i < all_sequence_length; m_i++) {
           p_mask[m_i] = (raw_mask[m_i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(-10000.0f);
         }
@@ -132,7 +133,7 @@ void PrepareMask(const int32_t* mask_index,
     }
 
     // Broadcast mask from (Bx)T to (Bx)SxT
-    for (int s_i = 1; s_i < sequence_length; s_i++) {
+    for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
       memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
     }
 
@@ -144,8 +145,8 @@ void PrepareMask(const int32_t* mask_index,
         }
       }
     }
-
-    p_mask += sequence_length * all_sequence_length;
+    ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * all_sequence_length;
+    p_mask += mask_to_advance;
   }
 }
 

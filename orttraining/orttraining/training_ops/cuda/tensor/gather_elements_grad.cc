@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #define CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF (*KernelDefBuilder::Create()).MayStridedInput(2)
 #else
 #define CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF (*KernelDefBuilder::Create())
@@ -85,7 +85,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
   TensorShapeVector* p_indices_strides_vec = nullptr;
   TensorShapeVector indices_strids_vec;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   if (!indices_tensor->IsContiguous()) {
     indices_strids_vec = ToShapeVector(indices_tensor->Strides());
     p_indices_strides_vec = &indices_strids_vec;

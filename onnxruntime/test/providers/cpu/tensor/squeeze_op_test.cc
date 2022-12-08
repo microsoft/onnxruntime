@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -208,6 +209,178 @@ TEST(SqueezeOpTest, Squeeze_4d_NegAxis_axes_input) {
   run_test(false);
   run_test(true);  // NNAPI EP will need axes as an initializer
 }
+#if defined(USE_DNNL)
+TEST(SqueezeOpTest, Squeeze_opset13_1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  test.AddInput<BFloat16>("data", {1, 3, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
+  test.AddOutput<BFloat16>("squeezed", {3, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SqueezeOpTest, Squeeze_opset13_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  //test.AddAttribute("axes", std::vector<int64_t>{0, 2, 3});
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
+                       MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<int64_t>("axes", {3}, {0, 2, 3}, true); // only support initializer input at axes.
+  test.AddOutput<BFloat16>("squeezed", {4, 2},
+                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}, nullptr, &execution_providers);  // Incorrect precision. Will be re-enabled after it's fixed
+}
+
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  test.AddInput<BFloat16>("data", {1, 1, 4, 1}, FloatsToBFloat16s(std::vector<float>(4, 1.0f)));
+  test.AddOutput<BFloat16>("squeezed", {4}, FloatsToBFloat16s(std::vector<float>(4, 1.0f)));
+  // TensorRT doesn't seem to support missing 'axes'
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  // nothing to "squeeze" out in the input shape
+  test.AddInput<BFloat16>("data", {2, 4}, FloatsToBFloat16s(std::vector<float>(8, 1.0f)));
+  test.AddOutput<BFloat16>("squeezed", {2, 4}, FloatsToBFloat16s(std::vector<float>(8, 1.0f)));
+  // TensorRT doesn't seem to support missing 'axes'
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_3_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  test.AddInput<BFloat16>("data", {1, 1, 1, 1}, FloatsToBFloat16s(std::vector<float>{1.0f}));
+  test.AddOutput<BFloat16>("squeezed", {}, FloatsToBFloat16s(std::vector<float>{1.0f}));
+  //DNNL ep does not support empty axis input.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+}
+
+TEST(SqueezeOpTest, UnsortedAxes_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
+                       MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{3, 0, 2}, true);
+  test.AddOutput<BFloat16>("squeezed", {4, 2},
+                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}, nullptr, &execution_providers);  // Incorrect precision. Will be re-enabled after it's fixed
+}
+
+TEST(SqueezeOpTest, DuplicateAxes_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
+                       MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<int64_t>("axes", {6}, std::vector<int64_t>{3, 0, 2, 0, 2, 3}, true);
+  test.AddOutput<BFloat16>("squeezed", {4, 2},
+                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif                                                                                                                //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}, nullptr, &execution_providers);  // Incorrect precision. Will be re-enabled after it's fixed
+}
+
+TEST(SqueezeOpTest, BadAxes_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  // Bad axes - should be 1 instead of 0.
+  test.AddInput<BFloat16>("data", {3, 1, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0}, true);
+  test.AddOutput<BFloat16>("squeezed", {3, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
+
+  // Expect failure.
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif                                                                                                                //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // Incorrect precision. Will be re-enabled after it's fixed
+}
+
+TEST(SqueezeOpTest, SqueezeNegAxis_2_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Squeeze", 13);
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
+                       MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, -3, -2}, true);
+  test.AddOutput<BFloat16>("squeezed", {4, 2},
+                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif                                                                                                                //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}, nullptr, &execution_providers);  // Incorrect precision. Will be re-enabled after it's fixed
+
+}
+#endif  //  USE_DNNL
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -107,13 +107,31 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
   std::array<Eigen::DenseIndex, IntermediateTensorRank> permutation{{0, 3, 5, 1, 2, 4}};
 
   if (input.IsDataType<float>()) {
-    SpaceDepthOpCpuImpl<float>(input, output, permutation, batch,
-                               input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
-                               blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_);
+    SpaceDepthOpCpuImpl<float>(input, output, permutation,
+                              onnxruntime::narrow<ptrdiff_t>(batch),
+                              onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                              onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
+                              onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                              onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
+                              onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                              onnxruntime::narrow<ptrdiff_t>(blocksize_),
+                              onnxruntime::narrow<ptrdiff_t>(blocksize_),
+                              onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                              onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
+                              onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else if (input.IsDataType<double>()) {
-    SpaceDepthOpCpuImpl<double>(input, output, permutation, batch,
-                                input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
-                                blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_);
+    SpaceDepthOpCpuImpl<double>(input, output, permutation,
+                                onnxruntime::narrow<ptrdiff_t>(batch),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                onnxruntime::narrow<ptrdiff_t>(blocksize_),
+                                onnxruntime::narrow<ptrdiff_t>(blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else {
     // user will not see this as the kernel doesn't claim support for types other than float and double
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in SpaceToDepth op: ", input.DataType());
@@ -153,13 +171,31 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                              : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 4, 2, 5, 3}};
 
   if (input.IsDataType<float>()) {
-    SpaceDepthOpCpuImpl<float>(input, output, permutation, batch,
-                               dim1, blocksize_, dim3, input_height, input_width,
-                               input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
+    SpaceDepthOpCpuImpl<float>(input, output, permutation,
+                               onnxruntime::narrow<std::ptrdiff_t>(batch),
+                               onnxruntime::narrow<std::ptrdiff_t>(dim1),
+                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(dim3),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_height),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_width),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_height),
+                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_width),
+                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_));
   } else if (input.IsDataType<double>()) {
-    SpaceDepthOpCpuImpl<double>(input, output, permutation, batch,
-                                dim1, blocksize_, dim3, input_height, input_width,
-                                input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
+    SpaceDepthOpCpuImpl<double>(input, output, permutation,
+                                onnxruntime::narrow<std::ptrdiff_t>(batch),
+                                onnxruntime::narrow<std::ptrdiff_t>(dim1),
+                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(dim3),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_height),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_width),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_height),
+                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                onnxruntime::narrow<std::ptrdiff_t>(input_width),
+                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_));
   } else {
     // user will not see this as the kernel doesn't claim support for types other than float and double
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in DepthToSpace op: ", input.DataType());
