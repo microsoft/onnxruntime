@@ -209,8 +209,6 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
     qnn_op_property_list_.push_back(std::move(qnn_op));
     return true;
   }
-
-  return true;
 }
 
 bool QnnModelWrapper::ComposeQnnGraph() {

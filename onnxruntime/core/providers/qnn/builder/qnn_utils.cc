@@ -270,7 +270,11 @@ std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_buf
   count = count > 100 ? 100 : count;  // limit to 100 data
   out << " clientBuf=(";
   for (uint32_t i = 0; i < count; i++) {
-    out << data[i] << " ";
+    if constexpr (sizeof(T) == 1) {
+      out << static_cast<int32_t>(data[i]) << " ";
+    } else {
+      out << data[i] << " ";
+    }
   }
   out << ")";
   return out;
@@ -293,11 +297,14 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
   if (GetQnnTensorMemType(tensor) == QNN_TENSORMEMTYPE_RAW) {
     if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_FLOAT_32) {
       operator<< <float>(out, GetQnnTensorClientBuf(tensor));
-    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_32) {
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_32 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_32) {
       operator<< <uint32_t>(out, GetQnnTensorClientBuf(tensor));
-    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32) {
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_32) {
       operator<< <int32_t>(out, GetQnnTensorClientBuf(tensor));
-    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8) {
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_8) {
       operator<< <uint8_t>(out, GetQnnTensorClientBuf(tensor));
     } else {
       operator<< <int8_t>(out, GetQnnTensorClientBuf(tensor));
