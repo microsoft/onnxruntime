@@ -179,8 +179,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Enable compute optimizer by default. Allowed to be disabled  via environment variable for
         # convergence parity investigation.
-        self._enable_compute_optimizer = \
+        self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
+        )
 
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
