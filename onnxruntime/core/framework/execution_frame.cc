@@ -183,6 +183,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       if (shape != nullptr && IsOutput(ort_value_idx)) {
         VerifyOutputSizes(output_index, node, *shape);
       }
+     // printf("before CreateNodeOutputMLValueImpl()\n");
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape);
     }
   }
@@ -519,6 +520,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
 
+   // printf("{{ before check memory patterns:\n");
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput &&
       per_alloc_plan.alloc_kind != AllocKind::kAllocatedExternally) {
     auto pattern = mem_patterns_->GetPatterns(location);
@@ -526,6 +528,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
       auto block = pattern->GetBlock(ort_value_index);
       // if block not found, fall back to default behavior
       if (block) {
+   // printf("{{   memory patterns - found block.\n");
         auto it = buffers_.find(location);
         if (it != buffers_.end()) {
           // if the block is not correct, log message then fall back to default behavior
@@ -726,6 +729,9 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 #endif
 
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
+#ifndef NDEBUG
+    printf("{{alloc_kind}}=%d\n", (int)alloc_kind);
+#endif
     switch (alloc_kind) {
       // Right now for kAllocate and kAllocateOutput we are using same approach.
       // In the future we may want to have different way to handle it.

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {OrtWasmModule} from '../binding/ort-wasm';
 
 import {WebGpuBackend} from './backend-webgpu';
@@ -83,21 +85,33 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepFree()
         (ptr: number) => backend.free(ptr),
 
-        // jsepUpload(src, dst, size)
-        (dataOffset: number, gpuDataId: number, size: number) => {
-          // eslint-disable-next-line no-console
-          console.log(`[js] jsepUpload: dataOffset=${dataOffset}, gpuDataId=${gpuDataId}, size=${size}`);
-          const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
-          backend.upload(gpuDataId, data);
+        // jsepCopy(src, dst, size, isSourceGpu)
+        (src: number, dst: number, size: number, isSourceGpu = false) => {
+          if (isSourceGpu) {
+            if (env.debug) {
+              // eslint-disable-next-line no-console
+              console.log(`[js] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
+            }
+            backend.memcpy(src, dst);
+          } else {
+            if (env.debug) {
+              // eslint-disable-next-line no-console
+              console.log(`[js] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
+            }
+            const data = module.HEAPU8.subarray(src, src + size);
+            backend.upload(dst, data);
+          }
         },
 
-        // jsepDownload(src, dst, size)
+        // jsepCopyAsync(src, dst, size)
         async(gpuDataId: number, dataOffset: number, size: number):
             Promise<void> => {
               const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
 
-              // eslint-disable-next-line no-console
-              console.log(`[js] jsepDownload: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+              if (env.debug) {
+                // eslint-disable-next-line no-console
+                console.log(`[js] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+              }
 
               await backend.download(gpuDataId, data);
             },
@@ -110,6 +124,10 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
 
         // jsepRun
         (kernel: number, contextDataOffset: number) => {
+          if (env.debug) {
+            // eslint-disable-next-line no-console
+            console.log(`[js] jsepRun on ${contextDataOffset}`);
+          }
           const context = new OpKernelContext(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context);
         });

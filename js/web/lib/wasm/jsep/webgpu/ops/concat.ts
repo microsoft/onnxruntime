@@ -127,7 +127,7 @@ const createConcatProgramInfo =
   ${inputIndicesHelpers.map(i => i.i2oImpl).join('\n')}
   ${outputIndicesHelper.o2iImpl}
 
-  let sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
+  const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
   ${readBufferDataImpl(inputIndicesHelpers, rank, dataType)}
 

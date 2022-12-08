@@ -17,7 +17,7 @@ if exist "%~dp0build\Windows\host_protoc\Release\protoc.exe" (
 call .\build.bat --config Release --skip_submodule_sync --skip_tests --disable_wasm_exception_catching --disable_rtti --build_wasm --use_xnnpack --enable_wasm_simd --use_js --cmake_generator "Visual Studio 17 2022" %protoc_path_flag% --target onnxruntime_webassembly
 
 IF %ERRORLEVEL% == 0 (
-copy /Y .\build\Windows\Release\ort-wasm-simd.js .\js\web\lib\wasm\binding\
+copy /Y .\build\Windows\Release\ort-wasm-simd.js .\js\web\lib\wasm\binding\ort-wasm.js
 copy /Y .\build\Windows\Release\ort-wasm-simd.wasm .\js\web\dist\
 )
 

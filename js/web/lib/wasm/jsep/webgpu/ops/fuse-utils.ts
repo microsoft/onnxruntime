@@ -19,7 +19,8 @@ export const getActicationSnippet =
           return {activationFunction: '', applyActivation: 'value = (1.0 / (1.0 + exp(-value)));'};
         case 'Clip':
           return {
-            activationFunction: `let clip_min_=f32(${attributes.clipMin!});let clip_max_=f32(${attributes.clipMax!});`,
+            activationFunction:
+                `const clip_min_=f32(${attributes.clipMin!});const clip_max_=f32(${attributes.clipMax!});`,
             applyActivation: 'value = clamp(value, clip_min_, clip_max_);'
           };
           // TODO: adding other activations that can be fused.

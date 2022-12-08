@@ -712,5 +712,55 @@ export class PoolConvUtil {
   }
 }
 
+export class GemmUtil {
+  // will make sure input shapes are compatible for this op
+  // and return back the shape of the output in the form of a tuple
+  // will throw exception if the input shapes are not compatible
+  static getShapeOfGemmResult(
+      leftShape: readonly number[], transLeft: boolean, rightShape: readonly number[], transRight: boolean,
+      biasShape?: readonly number[]): readonly number[] {
+    if (leftShape.length !== 2 || rightShape.length !== 2) {
+      throw new Error('shape need to be of size 2');
+    }
+
+    let M: number;
+    let K: number;
+    let N: number;
+
+    if (transLeft) {
+      M = leftShape[1];
+      K = leftShape[0];
+    } else {
+      M = leftShape[0];
+      K = leftShape[1];
+    }
+
+    let kDim = -1;
+
+    if (transRight) {
+      N = rightShape[0];
+      kDim = 1;
+    } else {
+      N = rightShape[1];
+      kDim = 0;
+    }
+
+    if (rightShape[kDim] !== K) {
+      throw new Error('dimension mismatch');
+    }
+
+    if (M <= 0 || N <= 0 || K <= 0) {
+      throw new Error('invalid shape specified');
+    }
+
+    if (biasShape && !BroadcastUtil.isValidBroadcast(biasShape, [M, N])) {
+      throw new Error('gemm: invalid bias shape for broadcast');
+    }
+
+    return [M, N, K];
+  }
+}
+
+
 export const MIN_CLIP = -3.4028234663852886e+38;
 export const MAX_CLIP = 3.4028234663852886e+38;

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
@@ -106,7 +108,7 @@ export class WebGpuBackend {
     for (let i = 0; i < inputs.length; ++i) {
       const gpuData = this.gpuDataManager.get(inputs[i].data);
       if (!gpuData) {
-        throw new Error(`no GPU data for ${inputs[i].data}`);
+        throw new Error(`no GPU data for input: ${inputs[i].data}`);
       }
       inputDatas[i] = gpuData;
     }
@@ -124,7 +126,7 @@ export class WebGpuBackend {
       const dataId = createOutput(i, programInfo.outputs[i].dims);
       const gpuData = this.gpuDataManager.get(dataId);
       if (!gpuData) {
-        throw new Error(`no GPU data for ${inputs[i].data}`);
+        throw new Error(`no GPU data for output: ${dataId}`);
       }
       outputDatas.push(gpuData);
     }
@@ -141,6 +143,10 @@ export class WebGpuBackend {
 
   upload(gpuDataId: number, data: Uint8Array): void {
     this.gpuDataManager.upload(gpuDataId, data);
+  }
+
+  memcpy(src: number, dst: number): void {
+    this.gpuDataManager.memcpy(src, dst);
   }
 
   async download(gpuDataId: number, data: Uint8Array): Promise<void> {
@@ -180,8 +186,10 @@ export class WebGpuBackend {
     }
     const [name, kernelEntry, attributes] = kernel;
 
-    // eslint-disable-next-line no-console
-    console.log(`[js] Start to run kernel "${name}"...`);
+    if (env.debug) {
+      // eslint-disable-next-line no-console
+      console.log(`[js] Start to run kernel "${name}"...`);
+    }
     return kernelEntry(context, attributes);
   }
 }

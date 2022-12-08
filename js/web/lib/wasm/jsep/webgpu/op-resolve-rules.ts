@@ -5,7 +5,7 @@ import * as binaryOps from './ops/binary-op';
 // import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 // import {gather, parseGatherAttributes} from './ops/gather';
-// import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
+import {gemm, parseGemmAttributes} from './ops/gemm';
 // import {matMul, parseMatMulAttributes} from './ops/matmul';
 import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
 //  import {sum} from
@@ -40,9 +40,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', [unaryOps.floor]],
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
-  //['Gather', '', '1+', gather, parseGatherAttributes], ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
-  //['Gemm', '', '11+', gemm, parseGemmAttributesV11],
-  ['GlobalAveragePool', [globalAveragePool]], ['GlobalMaxPool', [globalMaxPool]],
+  //['Gather', '', '1+', gather, parseGatherAttributes],
+  ['Gemm', [gemm, parseGemmAttributes]], ['GlobalAveragePool', [globalAveragePool]], ['GlobalMaxPool', [globalMaxPool]],
   // ['Greater', '', '7+', binaryOps.greater],
   // ['Identity', '', '1+', unaryOps.identity],
   // ['ImageScaler', '', '1+', imageScaler, parseImageScalerAttributes],

@@ -3,7 +3,7 @@
 
 import {expect} from 'chai';
 import {readFile} from 'fs';
-import {onnx as onnxProto} from 'onnx-proto';
+import {onnx} from 'onnx-proto';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
 import {inspect, promisify} from 'util';
@@ -14,6 +14,7 @@ import {createWebGLContext} from '../lib/onnxjs/backends/webgl/webgl-context-fac
 import {Logger, Profiler} from '../lib/onnxjs/instrument';
 import {Operator} from '../lib/onnxjs/operators';
 import {Tensor} from '../lib/onnxjs/tensor';
+import {ProtoUtil} from '../lib/onnxjs/util';
 
 import {base64toBuffer, createMockGraph} from './test-shared';
 import {Test} from './test-types';
@@ -56,12 +57,40 @@ async function loadFile(uri: string): Promise<Uint8Array> {
   }
 }
 
-async function loadTensorProto(uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
+async function loadTensorProto(uriOrData: string|Uint8Array, allowInt64 = false): Promise<Test.NamedTensor> {
   const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
-  const tensorProto = onnxProto.TensorProto.decode(buf);
-  const tensor = Tensor.fromProto(tensorProto);
+  const tensorProto = onnx.TensorProto.decode(buf);
+
+  let tensor: ort.Tensor;
+
+  // by default, we don't allow (u)int64. this is for backward compatibility.
+  if (allowInt64 && tensorProto && tensorProto.dataType &&
+      ((tensorProto.dataType === onnx.TensorProto.DataType.INT64 ||
+        tensorProto.dataType === onnx.TensorProto.DataType.UINT64))) {
+    const signed = tensorProto.dataType === onnx.TensorProto.DataType.INT64;
+    const dataConstructor = signed ? BigInt64Array : BigUint64Array;
+    const length = tensorProto.rawData.byteLength / 8;
+    const data = new dataConstructor(length);
+
+    if (tensorProto.rawData && typeof tensorProto.rawData.byteLength === 'number' &&
+        tensorProto.rawData.byteLength > 0) {
+      const dataSource =
+          new DataView(tensorProto.rawData.buffer, tensorProto.rawData.byteOffset, tensorProto.rawData.byteLength);
+      for (let i = 0; i < length; i++) {
+        data[i] = signed ? dataSource.getBigInt64(i * 8, true) : dataSource.getBigUint64(i * 8, true);
+      }
+    } else {
+      for (let i = 0; i < length; i++) {
+        data[i] = BigInt((signed ? tensorProto.int64Data : tensorProto.uint64Data)![i].toString());
+      }
+    }
+    tensor = new ort.Tensor(signed ? 'int64' : 'uint64', data, ProtoUtil.tensorDimsFromProto(tensorProto.dims));
+  } else {
+    const internalTensor = Tensor.fromProto(tensorProto);
+    tensor = fromInternalTensor(internalTensor);
+  }
   // add property 'name' to the tensor object.
-  const namedTensor = fromInternalTensor(tensor) as unknown as Test.NamedTensor;
+  const namedTensor = tensor as unknown as Test.NamedTensor;
   namedTensor.name = tensorProto.name;
   return namedTensor;
 }
@@ -72,10 +101,12 @@ async function loadMlProto(_uriOrData: string|Uint8Array): Promise<Test.NamedTen
 
 async function loadTensors(
     modelMetaData: {inputNames: readonly string[]; outputNames: readonly string[]}, testCase: Test.ModelTestCase,
-    fileCache?: FileCacheBuffer) {
+    backendName: string, fileCache?: FileCacheBuffer) {
   const inputs: Test.NamedTensor[] = [];
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
+
+  const allowInt64 = ['wasm', 'xnnpack', 'jsep-webgpu'].includes(backendName);
 
   for (const dataFile of testCase.dataFiles) {
     const ext = extname(dataFile);
@@ -88,7 +119,7 @@ async function loadTensors(
       }
 
       const uriOrData = fileCache && fileCache[dataFile] ? fileCache[dataFile] : dataFile;
-      const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData) :  // onnx.TensorProto
+      const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData, allowInt64) :  // onnx.TensorProto
                                               await loadMlProto(uriOrData);
 
       const dataFileBasename = dataFile.split(/[/\\]/).pop()!;
@@ -212,7 +243,7 @@ export class ModelTestContext {
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
-        await loadTensors(session, testCase, this.cache);
+        await loadTensors(session, testCase, modelTest.backend!, this.cache);
       }
 
       return new ModelTestContext(
