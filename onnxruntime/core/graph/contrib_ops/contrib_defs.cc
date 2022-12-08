@@ -1123,6 +1123,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                 .Attr("temperature", "temperature for sampling", AttributeProto::FLOAT, 1.0f)
                                 .Attr("top_p", "top_p for sampling", AttributeProto::FLOAT, 0.0f)
                                 .Attr("filter_value", "filter value for top_p", AttributeProto::FLOAT, -1e20f)
+                                .Attr("min_tokens_to_keep", "min_tokens_to_keep", AttributeProto::INT, static_cast<int64_t>(1))
                                 .Attr("presence_penalty", "presence penalty for sampling", AttributeProto::FLOAT, 0.0f)
                                 .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
@@ -1136,7 +1137,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                 .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Input(7, "presence_mask", "presence penalty mask. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
-                                .Output(1, "logits_before_multinomial", "logits_before_multinomial(debug purpose). Shape is (batch_size, vocab_size)", "T", OpSchema::Optional)
+                                .Output(1, "filtered_logits", "filtered logits as input to the mutinomial function . Shape is (batch_size, vocab_size)", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

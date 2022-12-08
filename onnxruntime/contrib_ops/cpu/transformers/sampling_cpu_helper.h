@@ -6,7 +6,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace SamplingCpuHelper {
 
-template <typename T>
+template <typename T, typename Predicator>
 class TopPSamplingCpu{
   public:
     TopPSamplingCpu(AllocatorPtr& allocator,
@@ -26,6 +26,12 @@ class TopPSamplingCpu{
 
   private:
     void filter_scores(std::vector<size_t>& sorted_indice, gsl::span<T>& next_token_score, size_t index);
+    void cumulate_and_filter(gsl::span<T>& next_token_scores,
+                             gsl::span<T>& cumulative_probs,
+                             std::vector<size_t>& sorted_indices);
+    void cumulate_and_filter_custom(gsl::span<T>& next_token_scores,
+                                    gsl::span<T>& cumulative_probs,
+                                    std::vector<size_t>& sorted_indices);
 
     AllocatorPtr& allocator_;
     onnxruntime::concurrency::ThreadPool* thread_pool_;
@@ -35,48 +41,18 @@ class TopPSamplingCpu{
     const transformers::IConsoleDumper* dumper_;
 };
 
-template <typename T>
-void TopPSamplingCpu<T>::filter_scores(std::vector<size_t>& sorted_indice,
+template <typename T, typename Predicator>
+void TopPSamplingCpu<T,Predicator >::filter_scores(std::vector<size_t>& sorted_indice,
                                        gsl::span<T>& next_token_score,
                                        size_t index) {
   size_t real_index = sorted_indice[index];
-  next_token_score[real_index] = parameters_->filter_value;
+  next_token_score[real_index] = (T)parameters_->filter_value;
 }
 
-template <typename T>
-Status TopPSamplingCpu<T>::Sample(gsl::span<T>& next_token_scores) {
-  if (parameters_->top_p == 0.0f) {
-      ORT_THROW("top_p shall be greater than 0");
-  }
-
-  std::vector<T>& sorted_scores = sampling_state_->sorted_scores;
-  sorted_scores.assign(next_token_scores.begin(), next_token_scores.end());
-  // Decending sort
-  std::vector<size_t>& sorted_indices = sampling_state_->sorted_indices;
-
-  for (size_t i = 0; i < static_cast<size_t>(parameters_->batch_size); i++) {
-    auto indices_begin = sorted_indices.begin() + i * parameters_->vocab_size;
-    auto indices_end = sorted_indices.begin() + (i + 1) * parameters_->vocab_size;
-    std::iota(indices_begin, indices_end, 0);
-    std::sort(indices_begin, indices_end,
-              [&next_token_scores](size_t i1, size_t i2) {
-                return next_token_scores[i1] > next_token_scores[i2];
-              });
-
-    std::sort(sorted_scores.begin() + i * parameters_->vocab_size,
-              sorted_scores.end() + (i + 1) * parameters_->vocab_size,
-              std::greater<T>());
-  }
-
-  std::vector<T>& cumulative_probs = sampling_state_->cumulative_probs;
-
-  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters_->batch_size,
-                                    parameters_->vocab_size,
-                                    sorted_scores.data(),
-                                    cumulative_probs.data(),
-                                    false,
-                                    thread_pool_));
-
+template <typename T, typename Predicator>
+void TopPSamplingCpu<T, Predicator>::cumulate_and_filter_custom(gsl::span<T>& next_token_scores,
+                                                                gsl::span<T>& cumulative_probs,
+                                                                std::vector<size_t>& sorted_indices) {
   for (size_t i = 0; i < static_cast<size_t>(parameters_->batch_size); i++) {
     size_t offset = i * parameters_->vocab_size;
     if (cumulative_probs[offset] > parameters_->top_p) {
@@ -89,8 +65,64 @@ Status TopPSamplingCpu<T>::Sample(gsl::span<T>& next_token_scores) {
       }
     }
   }
+}
 
-  // TODO(wy): This softmax may not be necessary.
+template <typename T, typename Predicator>
+void TopPSamplingCpu<T, Predicator>::cumulate_and_filter(gsl::span<T>& next_token_scores,
+                                                         gsl::span<T>& cumulative_probs,
+                                                         std::vector<size_t>& sorted_indices) {
+  for (size_t i = 0; i < static_cast<size_t>(parameters_->batch_size); i++) {
+    size_t offset = i * parameters_->vocab_size;
+    if (cumulative_probs[offset] <= 1 - parameters_->top_p) {
+      filter_scores(sorted_indices, next_token_scores, offset);
+    }
+    for (size_t j = 1; j < static_cast<size_t>(parameters_->vocab_size - parameters_->min_tokens_to_keep); j++) {
+      cumulative_probs[j + offset] += cumulative_probs[j + offset - 1];
+      if (cumulative_probs[j + offset] <= 1 - parameters_->top_p) {
+        filter_scores(sorted_indices, next_token_scores, j + offset);
+      }
+    }
+  }
+}
+
+template <typename T, typename Predicator>
+Status TopPSamplingCpu<T, Predicator>::Sample(gsl::span<T>& next_token_scores) {
+  gsl::span<T>& sorted_scores = sampling_state_->sorted_scores;
+  memcpy(sorted_scores.data(), next_token_scores.data(), next_token_scores.size_bytes());
+  std::vector<size_t> sorted_indices(parameters_->batch_size * parameters_->vocab_size);
+
+  Predicator predicator;
+
+  // TODO: This could be optimized with allocated buffer and handwritten sort algorithm
+  for (size_t i = 0; i < static_cast<size_t>(parameters_->batch_size); i++) {
+    auto indices_begin = sorted_indices.begin() + i * parameters_->vocab_size;
+    auto indices_end = sorted_indices.begin() + (i + 1) * parameters_->vocab_size;
+    std::iota(indices_begin, indices_end, 0);
+    std::sort(indices_begin, indices_end,
+              [&next_token_scores, &predicator](size_t i1, size_t i2) {
+                return !predicator(next_token_scores[i1], next_token_scores[i2]);
+              });
+
+    std::sort(sorted_scores.begin() + i * parameters_->vocab_size,
+              sorted_scores.begin() + (i + 1) * parameters_->vocab_size,
+              predicator);
+  }
+
+  gsl::span<T>& cumulative_probs = sampling_state_->cumulative_probs;
+
+  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters_->batch_size,
+                                    parameters_->vocab_size,
+                                    sorted_scores.data(),
+                                    cumulative_probs.data(),
+                                    false,
+                                    thread_pool_));
+
+  if (std::is_same<Predicator, std::greater<T>>::value) {
+    cumulate_and_filter_custom(next_token_scores, cumulative_probs, sorted_indices);
+  } else {
+    cumulate_and_filter(next_token_scores, cumulative_probs, sorted_indices);
+  }
+
   gsl::span<T>& next_token_probs = sampling_state_->h_softmaxed_score;
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters_->batch_size,
                                     parameters_->vocab_size,
@@ -136,7 +168,6 @@ Status TopPSamplingCpu<T>::Sample(gsl::span<T>& next_token_scores) {
                                                         generator,
                                                         *sampled_idx));
   // TODO: update presense_mask()
-
 #ifdef DEBUG_GENERATION
     dumper_->Print("sampled_idx", *sampled_idx);
 #endif

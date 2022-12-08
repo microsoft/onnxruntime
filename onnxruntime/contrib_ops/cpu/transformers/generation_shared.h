@@ -84,9 +84,8 @@ struct ISamplingState {
   size_t temp_storage_bytes;
   std::default_random_engine generator;
 
-  std::vector<T> sorted_scores;
-  std::vector<size_t> sorted_indices;
-  std::vector<T> cumulative_probs;
+  gsl::span<T> sorted_scores;
+  gsl::span<T> cumulative_probs;
 };
 
 class ISequences {
@@ -136,6 +135,7 @@ struct IGenerationParameters {
   float top_p = 0.0f;
   float filter_value;
   int seed = 0;
+  int min_tokens_to_keep = 1;
 
   // Parameters from inputs
   int min_length;

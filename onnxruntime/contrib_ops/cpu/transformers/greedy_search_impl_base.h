@@ -42,14 +42,14 @@ struct SamplingState : public ISamplingState<T> {
       this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count));
 
       std::uniform_real_distribution<float> distribution(0.0, 1.0);
-      distribution(this->generator);
+      static_cast<void>(distribution(this->generator));
       for (size_t i = 0; i < this->h_sampled_all.size(); ++i) {
         this->h_sampled_all[i] = distribution(this->generator);
       }
     } else {
-      this->sorted_scores.reserve(total_count);
-      this->sorted_indices.reserve(total_count);
-      this->cumulative_probs.reserve(total_count);
+      // TODO: Some buffer can be reused for CPU
+      this->sorted_scores = AllocateBuffer<T>(cpu_allocator, sorted_scores_buffer_, SafeInt<size_t>(total_count));
+      this->cumulative_probs = AllocateBuffer<T>(cpu_allocator, cumulative_probs_buffer_, SafeInt<size_t>(total_count));
     }
   }
 
@@ -65,6 +65,8 @@ struct SamplingState : public ISamplingState<T> {
   BufferUniquePtr h_sampled_all_buffer_;
   BufferUniquePtr d_indices_buffer_;
   BufferUniquePtr d_presence_mask_buffer_;
+  BufferUniquePtr sorted_scores_buffer_;
+  BufferUniquePtr cumulative_probs_buffer_;
 };
 
 template <typename T>
