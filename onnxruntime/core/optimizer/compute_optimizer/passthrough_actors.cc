@@ -13,8 +13,6 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-using ONNXDimension = ONNX_NAMESPACE::TensorShapeProto_Dimension;
-using TensorShapeProto = ONNX_NAMESPACE::TensorShapeProto;
 namespace onnxruntime::optimizer::compute_optimizer {
 
 enum class DimCompareRet {
@@ -94,6 +92,119 @@ std::pair<DimCompareRet, bool> AreDimsCompatibleBeforeAxisInternal(
 }
 
 /**
+ * @brief Check input meet pass through requirement.
+ *
+ * @param current_node_output_arg_to_gather The output arg of current node that consumed by slice node.
+ * @param arg_to_compare The input/output arg to check.
+ * @param info Slice info.
+ * @param logger The logger.
+ * @param fatal_error_found Used as return value. If fatal error found, set to true. Fatal error means,
+ *   we cannot pass through this input arg.
+ * @param dim_1_for_axis_found Used as return value. If dim value is 1 for axis, set to true.
+ * @return a int represent the new slice axis for the input arg, if pass through needed to be done for
+ * this input arg, otherwise, return nullptr.
+ *
+ * For each input of current_node, using this function to check if the input can be passed through.
+ * If the input has dim on negative_axis and
+ * 1). either the dimension (if exists) including and before negative_axis is same as target node's output shape.
+ * 2). or the dimension (if exists) including and before negative_axis is 1.
+ * Otherwise, we will skip the optimization.
+ *
+ * Example 1: [Can be passed through]
+ *    input_0 [M, N, K]    input_1 [K]
+ *                \        /
+ *                Add [M, N, K] (current_node)
+ *                     |
+ *            Gather0(axis=1, indices=[1])
+ *                     |
+ *              output [M, 1, K]
+ * In this case, we can propagate Gather to input_0 branch, input_1 is skipped because it did not has dim on
+ * slicing axis.
+ *
+ * Example 2: [Can be passed through]
+ *    input_0 [M, N, K]    input_1 [N, K]
+ *                \        /
+ *                Add [M, N, K] (current_node)
+ *                     |
+ *            Gather0(axis=1, indices=[1])
+ *                     |
+ *              output [M, 1, K]
+ * In this case, we can propagate Gather to input_0 and input-1 branch, because including and before slicing axis 1,
+ * all dims are equal.
+ *
+ * Example 3: [Can be passed through]
+ *    input_0 [M, N, K]    input_1 [1, K]
+ *                \        /
+ *                Add [M, N, K] (current_node)
+ *                     |
+ *            Gather0(axis=1, indices=[1])
+ *                     |
+ *              output [M, 1, K]
+ * In this case, we can propagate Gather to input_0 branch, input_1 branch is skipped because it has dim 1 on slicing
+ * axis.
+ *
+ * Example 4: [Can be passed through]
+ *    input_0 [M, N, K]    input_1 [1, N, K]
+ *                \        /
+ *                Add [M, N, K] (current_node)
+ *                     |
+ *            Gather0(axis=1, indices=[1])
+ *                     |
+ *              output [M, 1, K]
+ * In this case, we can propagate Gather to input_0 and input_1 branch.
+ *
+ * Example 5: [Can be passed through]
+ *    input_0 [M, N, K]    input_1 [M, 1, K]
+ *                \        /
+ *                Add [M, N, K] (current_node)
+ *                     |
+ *            Gather0(axis=1, indices=[1])
+ *                     |
+ *              output [M, 1, K]
+ * In this case, we can propagate Gather to input_0 branch, input_1 branch is skipped because it has dim 1 on slicing.
+ *
+ * Example 6: [CANNOT be passed through]
+ *    input_0 [M, N, K]    input_1 [L, N, K]
+ *                \        /
+ *                Add [M, N, K] (current_node)
+ *                     |
+ *            Gather0(axis=1, indices=[1])
+ *                     |
+ *              output [M, 1, K]
+ *
+ */
+std::optional<int> CheckInputForPassThrough(const NodeArg* current_node_output_arg_to_gather,
+                                            const NodeArg* arg_to_compare,
+                                            const SliceInfo& info,
+                                            const logging::Logger& logger,
+                                            bool& fatal_error_found,
+                                            bool& dim_1_for_axis_found) {
+  fatal_error_found = false;
+  auto ret_pair = AreDimsCompatibleBeforeAxisInternal(current_node_output_arg_to_gather->Shape(),
+                                                      info.non_negative_axis,
+                                                      arg_to_compare->Shape());
+  if (ret_pair.first == DimCompareRet::ExactEqual) {
+    return info.non_negative_axis;
+  } else if (ret_pair.first == DimCompareRet::RankTooLow) {
+    LOG_DEBUG_INFO(logger, "Skip " + arg_to_compare->Name() + " because its rank is too low.");
+    return std::nullopt;
+  } else if (ret_pair.first == DimCompareRet::NotEqual) {
+    fatal_error_found = true;
+    return std::nullopt;
+  } else if (ret_pair.first == DimCompareRet::BroadcastableEqual) {
+    if (ret_pair.second) {
+      LOG_DEBUG_INFO(logger, "Skip " + arg_to_compare->Name() +
+                                 ", whose dim on axis is 1, no need to Gather from.");
+      dim_1_for_axis_found = true;
+      return std::nullopt;
+    }
+    return info.non_negative_axis;
+  }
+
+  ORT_THROW("Unexpected return value from CheckInputForPassThrough.");
+}
+
+/**
  * @brief From given TensorShape, update specified dimension with given value.
  * If no new_dim is provided, the dimension will be removed.
  *
@@ -103,7 +214,7 @@ std::pair<DimCompareRet, bool> AreDimsCompatibleBeforeAxisInternal(
  * @return TensorShapeProto A copy of "shape" after modification.
  */
 TensorShapeProto CreateNewShapeWithUpdatedDim(const TensorShapeProto* shape, const int axis,
-                                              const ONNXDimension& new_dim) {
+                                              const TensorShapeProto_Dimension& new_dim) {
   ORT_ENFORCE(axis >= 0 && axis < shape->dim_size());
   TensorShapeProto output_shape;
   for (int i = 0; i < shape->dim_size(); ++i) {
@@ -132,7 +243,7 @@ TensorShapeProto CreateNewShapeWithUpdatedDim(const TensorShapeProto* shape, con
   return output_shape;
 }
 
-bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const ONNXDimension& output_dim_on_axis) {
+bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const TensorShapeProto_Dimension& output_dim_on_axis) {
   ORT_ENFORCE(reverse_axis < 0, " reverse_axis should be negative, representing the index from right to left.");
   const TensorShapeProto* shape = arg_to_update.Shape();
   int rank = shape->dim_size();
@@ -300,7 +411,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
     // Be noted, the Unsqueeze should happens on the axis of new slice node.
     if (GetONNXOpSetVersion(graph) < 13) {
       onnxruntime::NodeAttributes attributes;
-      attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{pair.second.GetAxis()});
+      attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{pair.second.non_negative_axis});
 
       new_node =
           InsertIntermediateNodeOnDestInput(
@@ -328,7 +439,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
               "Unsqueeze",
               "Unsqueeze node",
               {current_node.MutableInputDefs()[input_index],
-               CreateUnsqueezeAxesInitializer(graph, {pair.second.GetAxis()})},
+               CreateUnsqueezeAxesInitializer(graph, {pair.second.non_negative_axis})},
               {&graph.GetOrCreateNodeArg(
                   graph.GenerateNodeArgName("unsqueeze_adaptor"),
                   current_node.MutableInputDefs()[input_index]->TypeAsProto())},
@@ -339,7 +450,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
     // Set correct shape for Unsqueeze node
     const TensorShapeProto* unsqueeze_input_shape = new_node->MutableInputDefs()[0]->Shape();
     new_node->MutableOutputDefs()[0]->SetShape(
-        CreateTensorShapeInsertDimAtAxis(unsqueeze_input_shape, pair.second.GetAxis(), 1));
+        CreateTensorShapeInsertDimAtAxis(unsqueeze_input_shape, pair.second.non_negative_axis, 1));
   }
 
   // Find the consumer node of MatMul, and the input index of that node connect to MatMul.
@@ -424,41 +535,9 @@ bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
                                       bool& input_has_dim_1_for_axis) {
   LOG_DEBUG_INFO(logger, "Enter SimplePassThroughActor::PreCheck for node " + current_node.Name());
 
-  Node* slice_node = info.GetNode();
+  Node* slice_node = info.node_ptr;
   int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *slice_node->InputDefs()[0]);
   const NodeArg* gather_data_input_arg = current_node.OutputDefs()[current_node_output_index];
-  // For each input of current_node, check whether it meets a requirements,
-  // 1). either its rank is lower than minimum_rank_to_handle.
-  // 2). or the dimension (if exists) before minimum_rank_to_handle is same as target node's output shape.
-  // 3). or the dimension (if exists) before minimum_rank_to_handle is 1.
-  // Otherwise, we will skip the optimization.
-  auto check_shapes =
-      [&info, gather_data_input_arg, &logger](const NodeArg* input_arg_to_compare,
-                                              bool& fatal_error_found,
-                                              bool& dim_1_for_axis_found) -> std::optional<int> {
-    fatal_error_found = false;
-    auto ret_pair = AreDimsCompatibleBeforeAxisInternal(gather_data_input_arg->Shape(), info.GetAxis(),
-                                                        input_arg_to_compare->Shape());
-    if (ret_pair.first == DimCompareRet::ExactEqual) {
-      return info.GetAxis();
-    } else if (ret_pair.first == DimCompareRet::RankTooLow) {
-      LOG_DEBUG_INFO(logger, "Skip " + input_arg_to_compare->Name() + " because its rank is too low.");
-      return std::nullopt;
-    } else if (ret_pair.first == DimCompareRet::NotEqual) {
-      fatal_error_found = true;
-      return std::nullopt;
-    } else if (ret_pair.first == DimCompareRet::BroadcastableEqual) {
-      if (ret_pair.second) {
-        LOG_DEBUG_INFO(logger, "Skip " + input_arg_to_compare->Name() +
-                                   ", whose dim on axis is 1, no need to Gather from.");
-        dim_1_for_axis_found = true;
-        return std::nullopt;
-      }
-      return info.GetAxis();
-    }
-
-    ORT_THROW("Unexpected return value from SimplePassThroughActor::PreCheck");
-  };
 
   propagate_input_config.clear();
   input_has_dim_1_for_axis = false;
@@ -468,7 +547,8 @@ bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
       continue;
     }
     bool fatal_error_found = false;
-    auto ret = check_shapes(current_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
+    auto ret = CheckInputForPassThrough(gather_data_input_arg, current_node.InputDefs()[i], info, logger,
+                                        fatal_error_found, input_has_dim_1_for_axis);
     if (fatal_error_found) {
       LOG_DEBUG_INFO(logger, "Skip for node " + current_node.Name() + " due to input check failure at index " +
                                  std::to_string(i));
@@ -479,7 +559,7 @@ bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
   }
 
   // Make sure once Gather is moved before target node, all its outputs can be correctly be sliced.
-  std::unordered_map<int, int> output_dices;
+  std::unordered_map<int, int> output_indices;
   for (size_t i = 0; i < current_node.OutputDefs().size(); ++i) {
     if (static_cast<int>(i) == current_node_output_index) {
       continue;
@@ -487,16 +567,17 @@ bool SimplePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
 
     bool fatal_error_found = false;
     bool dim_1_for_axis_found = false;
-    auto ret = check_shapes(current_node.OutputDefs()[i], fatal_error_found, dim_1_for_axis_found);
+    auto ret = CheckInputForPassThrough(gather_data_input_arg, current_node.OutputDefs()[i], info, logger,
+                                        fatal_error_found, dim_1_for_axis_found);
     if (fatal_error_found) {
       LOG_DEBUG_INFO(logger, "Skip for node " + current_node.Name() + " due to output check failure at index " +
                                  std::to_string(i));
       return false;
     } else if (ret.has_value()) {
-      output_dices[static_cast<int>(i)] = ret.value();
+      output_indices[static_cast<int>(i)] = ret.value();
     }
   }
-  bool output_check_success = output_dices.size() == current_node.OutputDefs().size() - 1;
+  bool output_check_success = output_indices.size() == current_node.OutputDefs().size() - 1;
 
   return output_check_success;
 }
@@ -510,7 +591,7 @@ bool ReductionOpPassThroughActor::PreCheck(const Graph& graph, const Node& curre
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
   // Make sure layernorm/softmax's reduction happens after the axis we want to slice.
-  if (axis <= info.GetAxis()) {
+  if (axis <= info.non_negative_axis) {
     return false;
   }
 
@@ -544,7 +625,7 @@ bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& current_n
   // 1). If the shape data on slicing axis is zero (e.g. remain the same after slicing), we support it.
   // 2). Or if the sliced dim value is a constant, we also support it, and can update the shape data directly.
   // For other cases, it is feasible to support but we don't support for now.
-  if (new_shape_const_values[info.GetAxis()] == 0 || info.GetOutputDimOnAxis().has_dim_value()) {
+  if (new_shape_const_values[info.non_negative_axis] == 0 || info.output_dim_on_axis.has_dim_value()) {
     auto in_dims = data_input_shape->dim();
     auto out_dims = output_shape->dim();
     int in_rank = in_dims.size();
@@ -558,7 +639,7 @@ bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& current_n
       bool dim_param_eq = in_dims[i].has_dim_param() && out_dims[i].has_dim_param() &&
                           in_dims[i].dim_param() == out_dims[i].dim_param();
       if (dim_value_eq || dim_param_eq) {
-        if (i == info.GetAxis()) {
+        if (i == info.non_negative_axis) {
           reshape_input_axis = i;
           break;
         }
@@ -576,7 +657,7 @@ bool ReshapePassThroughActor::PreCheck(const Graph& graph, const Node& current_n
         bool dim_param_eq = in_dims[in_index].has_dim_param() && out_dims[out_index].has_dim_param() &&
                             in_dims[in_index].dim_param() == out_dims[out_index].dim_param();
         if (dim_value_eq || dim_param_eq) {
-          if (out_index == info.GetAxis()) {
+          if (out_index == info.non_negative_axis) {
             reshape_input_axis = in_index;
             break;
           }
@@ -627,7 +708,7 @@ bool ReshapePassThroughActor::PostProcess(Graph& graph, Node& current_node, int 
     return new_shape_arg;
   };
 
-  // Id the shape constant on slice_axis is 0, then it keeps the original dim of input.
+  // If the shape constant on slice_axis is 0, then it keeps the original dim of input.
   // If it is scalar slice, then we just remove that dim. Otherwise, we don't need to update the dim value.
   if (new_shape_const_values[slice_axis] == 0) {
     if (is_slice_scalar) {
@@ -670,7 +751,7 @@ bool TransposePassThroughActor::PreCheck(const Graph& /*graph*/, const Node& cur
     return false;
   }
   propagate_input_config.clear();
-  propagate_input_config[0] = static_cast<int>(perm[info.GetAxis()]);
+  propagate_input_config[0] = static_cast<int>(perm[info.non_negative_axis]);
   input_has_dim_1_for_axis = false;
   return true;
 }
@@ -707,48 +788,16 @@ bool MatMulPassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
   }
 
   propagate_input_config.clear();
-  if (info.GetAxis() == info.GetInputRank() - 1) {
+  if (info.non_negative_axis == info.input_rank - 1) {
     propagate_input_config[1] = rhs_rank - 1;
     return true;
-  } else if (info.GetAxis() == info.GetInputRank() - 2) {
+  } else if (info.non_negative_axis == info.input_rank - 2) {
     propagate_input_config[0] = lhs_rank - 2;
     return true;
   }
 
-  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.GetNode()->InputDefs()[0]);
+  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
   const NodeArg* gather_data_input_arg = current_node.OutputDefs()[target_node_output_index];
-
-  // For each input of current_node, check whether it meets requirements,
-  // 1). the dimension (if exists) before minimum_rank_to_handle is same as target node's output shape.
-  // 2). or the dimension (if exists) before minimum_rank_to_handle is 1.
-  // Otherwise, we will skip the optimization.
-  auto check_shapes =
-      [&info, gather_data_input_arg, &logger](const NodeArg* input_arg_to_compare,
-                                              bool& fatal_error_found,
-                                              bool& dim_1_for_axis_found) -> std::optional<int> {
-    fatal_error_found = false;
-    auto ret_pair = AreDimsCompatibleBeforeAxisInternal(gather_data_input_arg->Shape(), info.GetAxis(),
-                                                        input_arg_to_compare->Shape());
-    if (ret_pair.first == DimCompareRet::ExactEqual) {
-      return info.GetAxis();
-    } else if (ret_pair.first == DimCompareRet::RankTooLow) {
-      LOG_DEBUG_INFO(logger, "Skip " + input_arg_to_compare->Name() + " because its rank is too low.");
-      return std::nullopt;
-    } else if (ret_pair.first == DimCompareRet::NotEqual) {
-      fatal_error_found = true;
-      return std::nullopt;
-    } else if (ret_pair.first == DimCompareRet::BroadcastableEqual) {
-      if (ret_pair.second) {
-        LOG_DEBUG_INFO(logger,
-                       "Skip " + input_arg_to_compare->Name() + ", whose dim on axis is 1, no need to Gather from.");
-        dim_1_for_axis_found = true;
-        return std::nullopt;
-      }
-      return info.GetAxis();
-    }
-
-    ORT_THROW("Unexpected return value from MatMulPassThroughActor::PreCheck");
-  };
 
   input_has_dim_1_for_axis = false;
   for (size_t i = 0; i < current_node.InputDefs().size(); ++i) {
@@ -757,7 +806,8 @@ bool MatMulPassThroughActor::PreCheck(const Graph& /*graph*/, const Node& curren
       continue;
     }
     bool fatal_error_found = false;
-    auto ret = check_shapes(current_node.InputDefs()[i], fatal_error_found, input_has_dim_1_for_axis);
+    auto ret = CheckInputForPassThrough(gather_data_input_arg, current_node.InputDefs()[i], info, logger,
+                                        fatal_error_found, input_has_dim_1_for_axis);
     if (fatal_error_found) {
       LOG_DEBUG_INFO(logger, "Skip for node " + current_node.Name() + " due to input check failure at index " +
                                  std::to_string(i));

@@ -202,7 +202,7 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
                                              SliceInfo& info,
                                              const logging::Logger& logger,
                                              std::deque<SliceInfo>& queue) {
-  Node& slice_node = *info.GetNode();
+  Node& slice_node = *info.node_ptr;
   const std::string& op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
   if (GetOpPassThroughConfigMap().count(op_type)) {
     auto& pass_through_config = GetOpPassThroughConfigMap().at(op_type);
@@ -246,17 +246,17 @@ bool SliceOperationReorderHandle::operator()(Graph& graph, Node& current_node,
       SliceInfo gather_info = PropagateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
                                                        logger);
 
-      ORT_ENFORCE(gather_info.GetNode(), "New added gather node should not be null.");
+      ORT_ENFORCE(gather_info.node_ptr, "New added gather node should not be null.");
       populated_slicing_infos.push_back(gather_info);
-      new_gather_infos[input_index] = gather_info;
+      new_gather_infos.insert({{input_index, gather_info}});
     }
 
     int index_of_output =
         optimizer_utils::IndexOfNodeOutput(current_node, *slice_node.InputDefs()[info.GetDataInputIndex()]);
     ORT_ENFORCE(RemoveOriginSlicingOp(graph, slice_node, current_node, logger, info).IsOK());
-    if (!pass_through_config.actor->PostProcess(graph, current_node, index_of_output, info.GetAxis(),
-                                                info.IsSliceScalar(), input_has_dim_1_for_axis,
-                                                info.GetOutputDimOnAxis(),
+    if (!pass_through_config.actor->PostProcess(graph, current_node, index_of_output, info.non_negative_axis,
+                                                info.is_scalar_slice, input_has_dim_1_for_axis,
+                                                info.output_dim_on_axis,
                                                 entry_node_name_, new_gather_infos,
                                                 logger)) {
       ORT_THROW("Post-process failed for " + current_node.Name() + "(" + op_type + ")");
@@ -279,7 +279,7 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
                                                                 const logging::Logger& logger) {
   LOG_DEBUG_INFO(logger, "PropagateSlicingForInput for Node " + slice_node.Name() + "(" + slice_node.OpType() +
                              ") with input index " + std::to_string(current_node_input_index) + ", keep_dim = " +
-                             std::to_string(!info.IsSliceScalar()));
+                             std::to_string(!info.is_scalar_slice));
 
   InlinedVector<NodeArg*> input_args;
   input_args.reserve(slice_node.InputDefs().size());
@@ -293,14 +293,14 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
   // Update the axis attribute if new_axis is not same with the original slicing axis (which happens when data
   // layout got changed by Transpose or Reshape ops)
   onnxruntime::NodeAttributes attributes = slice_node.GetAttributes();
-  if (info.GetAxis() != new_axis) {
-    attributes[info.GetAxisAttrName()] =
-        ONNX_NAMESPACE::MakeAttribute(info.GetAxisAttrName(), static_cast<int64_t>(new_axis));
+  if (info.non_negative_axis != new_axis) {
+    attributes[info.axis_attr_name] =
+        ONNX_NAMESPACE::MakeAttribute(info.axis_attr_name, static_cast<int64_t>(new_axis));
   }
 
   InlinedVector<NodeArg*> output_args;
   output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(info.GetEntrySliceArgName()),
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(info.entry_slice_arg_name),
                                 current_node.MutableInputDefs()[current_node_input_index]->TypeAsProto()));
 
   /* new node input index to connect to current_node's input node*/
@@ -311,7 +311,7 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
                                                            current_node_input_index,
                                                            new_slice_input_index_to_connect,
                                                            new_slice_output_index_to_connect,
-                                                           graph.GenerateNodeName(info.GetEntrySliceArgName()),
+                                                           graph.GenerateNodeName(info.entry_slice_arg_name),
                                                            slice_node.OpType(),
                                                            "Duplicated Gather node",
                                                            input_args,
@@ -325,9 +325,9 @@ SliceInfo SliceOperationReorderHandle::PropagateSlicingForInput(Graph& graph,
   // Set correct shape for new created node.
   auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[new_slice_output_index_to_connect];
   int reversed_axis = new_axis - new_slice_out_arg->Shape()->dim_size();
-  UpdateSliceOutputShape(*new_slice_out_arg, reversed_axis, info.GetOutputDimOnAxis());
-  auto new_slice_info = SliceInfo(new_slice_node, info.IsSliceScalar(), info.GetAxisAttrName(), new_axis);
-  new_slice_info.UpdateEntrySliceArgName(info.GetEntrySliceArgName());
+  UpdateSliceOutputShape(*new_slice_out_arg, reversed_axis, info.output_dim_on_axis);
+  auto new_slice_info = SliceInfo(new_slice_node, info.is_scalar_slice, info.axis_attr_name, new_axis);
+  new_slice_info.entry_slice_arg_name = info.entry_slice_arg_name;
   return new_slice_info;
 }
 
@@ -335,7 +335,7 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
                                                           const logging::Logger& logger, SliceInfo& info) {
   LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp target_node " + current_node.Name() + "(" + current_node.OpType() +
                              ") slice_node " + slice_node.Name() + "(" + slice_node.OpType() + "), keep_dim = " +
-                             std::to_string(!(info.IsSliceScalar())));
+                             std::to_string(!(info.is_scalar_slice)));
 
   auto slice_input_arg = slice_node.MutableInputDefs()[info.GetDataInputIndex()];
   int slice_input_rank = slice_input_arg->Shape()->dim_size();
@@ -347,8 +347,8 @@ Status SliceOperationReorderHandle::RemoveOriginSlicingOp(Graph& graph, Node& sl
   // If some output rank is lower than sliced axis, we should just ignore it (the correctness is guaranteed by devs
   // who adds more operator coverage in the pass through).
   for (size_t i = 0; i < current_node.MutableOutputDefs().size(); ++i) {
-    UpdateSliceOutputShape(*current_node.MutableOutputDefs()[i], info.GetAxis() - slice_input_rank,
-                           info.GetOutputDimOnAxis());
+    UpdateSliceOutputShape(*current_node.MutableOutputDefs()[i], info.non_negative_axis - slice_input_rank,
+                           info.output_dim_on_axis);
   }
   LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Replace all usage of output " + slice_op_output_arg->Name() + ":0" +
                              " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
@@ -495,7 +495,7 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
     gather_queue.push_back(gather_info.value());
 
     std::string log_prefix = "Entry node " + node_name + " (" + node_type + ") with axis " +
-                             std::to_string(gather_info.value().GetAxis());
+                             std::to_string(gather_info.value().non_negative_axis);
     LOG_DEBUG_INFO(logger, log_prefix + " starts re-ordering check");
 
     SliceOperationReorderHandle handle(node_name);
@@ -503,7 +503,7 @@ Status ComputeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level
     // DON'T operate on `node` once this loop starts, as it may be removed from the graph.
     while (!gather_queue.empty()) {
       SliceInfo info = gather_queue.front();
-      Node* gather_node = info.GetNode();
+      Node* gather_node = info.node_ptr;
       gather_queue.pop_front();
       Node* slice_input_data_producer =
           graph.GetMutableProducerNode(gather_node->MutableInputDefs()[0]->Name());
