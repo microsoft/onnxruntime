@@ -177,6 +177,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False
 
+        # Enable compute optimizer by default. Allowed to be disabled  via environment variable for
+        # convergence parity investigation.
+        self._enable_compute_optimizer = \
+            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
+
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
@@ -445,6 +450,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
         graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
         graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
+        graph_transformer_config.enable_compute_optimizer = self._enable_compute_optimizer
         return graph_transformer_config
 
     def _initialize_graph_builder(self):

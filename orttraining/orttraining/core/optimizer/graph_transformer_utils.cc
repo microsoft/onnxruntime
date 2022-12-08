@@ -124,7 +124,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
-      transformers.emplace_back(std::make_unique<ComputeOptimizer>(compatible_eps));
+
+      if (config.enable_compute_optimizer) {
+        transformers.emplace_back(std::make_unique<ComputeOptimizer>(compatible_eps));
+      }
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
       }
