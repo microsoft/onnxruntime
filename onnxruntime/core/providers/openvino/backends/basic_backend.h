@@ -32,9 +32,9 @@ class BasicBackend : public IBackend {
   bool ImportBlob(std::string hw_target, bool vpu_status);
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
-  void PopulateConfigValue(OVConfig& config);
+  void PopulateConfigValue(ov::AnyMap& device_config);
   void EnableCaching();
-  void EnableGPUThrottling(OVConfig& config);
+  void EnableGPUThrottling(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED

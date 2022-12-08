@@ -131,7 +131,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GreaterOrEqual", V_2022_1, {"All"}},
     {"GridSample", V_2022_3, {"CPU"}},
     {"Identity", V_2020_4, {"All"}},
-    {"If", V_2022_3, {"CPU"}},
+    {"If", V_2022_3, {"All"}},
     {"ImageScaler", V_2022_1, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
@@ -708,7 +708,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Slice", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                 if (node->InputDefs().size() > 1 &&
@@ -771,18 +771,15 @@ void DataOps::populate_op_mode_supported() {
 }
 
 bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_list) {
+  bool auto_support = true;
   for (size_t i = 0; i < op_list.size(); i++) {
+
     if (op_list[i].optype == name) {
       if (op_list[i].version <= version_id_) {
         auto it = op_list[i].device_type.begin();
         while (it != op_list[i].device_type.end()) {
           //status variable is set to True if it's Hetero/Multi/Auto device type
           bool status = false;
-
-          //if device supported is all then we support it
-          if (*it == "All") {
-            return true;
-          }
 
           //The operator to be marked true, it should be supported by either of the devices specified with HETERO
           if (device_id_.find("HETERO") == 0) {
@@ -793,26 +790,40 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
           }
 
          //The operator to be marked true, it should be supported by all the devices specified with MULTI/AUTO
-          if (device_id_.find("MULTI") == 0 || device_id_.find("AUTO") == 0) {
+          if (device_id_.find("MULTI") == 0) {
               status = true;
               if (device_id_.find(*it) == std::string::npos) {
                 return false;
               }
           }
-
+          //The operator to be marked true, it should be supported by atleast CPU device specified with AUTO
+          if (device_id_.find("AUTO") == 0) {
+              if (std::string(*it).find("CPU")==std::string::npos){
+                auto_support = false;
+              }
+              else if((*it == "All") || (device_id_.find(*it) != std::string::npos)){
+                auto_support = true;
+              }
+          }
+          //if device supported is all then we support it
+          if (*it == "All") {
+            return true;
+          }
           //check for device supported
           if (status == false) {
             if (device_id_.find(*it) != std::string::npos) {
               return true;
             }
           }
-
           it++;
         }
+
       }
     }
   }
-
+  if (auto_support==true){
+    return true;
+  }
   return false;
 }
 
