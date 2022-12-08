@@ -35,11 +35,6 @@ bool IsDebugEnabled() {
   }
   return false;
 }
-void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
-  std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto.SerializeToOstream(outfile);
-}
-
 #endif
 
 bool IsCILogEnabled() {
@@ -87,17 +82,10 @@ struct static_cast_int64 {
 };
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context) {
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context) {
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
-
-#ifndef NDEBUG
-  if (IsDebugEnabled()) {
-    DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
-  }
-#endif
-
   const std::string model = model_proto.SerializeAsString();
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model);

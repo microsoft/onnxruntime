@@ -32,11 +32,11 @@ bool IsCILogEnabled();
 
 bool UseCompiledNetwork();
 
-std::string GetCurrentWorkingDir();
+// std::string GetCurrentWorkingDir();
 
-bool IsDirExists(const std::string& pathname);
+// bool IsDirExists(const std::string& pathname);
 
-void CreateDirectory(const std::string& ov_compiled_blobs_dir);
+// void CreateDirectory(const std::string& ov_compiled_blobs_dir);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
@@ -68,7 +68,7 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context);
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);

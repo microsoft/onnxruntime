@@ -25,7 +25,15 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     : global_context_(global_context), subgraph_context_(subgraph_context) {
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   try{
-    ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_);
+    #ifndef NDEBUG
+      if (IsDebugEnabled()) {
+        std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
+        std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+        model_proto.SerializeToOstream(outfile);
+        // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
+      }
+    #endif
+    ie_cnn_network_ = CreateOVModel(model_proto, global_context_);
   } catch (std::string const & msg) {
       throw msg;
   }

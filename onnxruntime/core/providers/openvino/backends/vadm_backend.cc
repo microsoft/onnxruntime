@@ -35,8 +35,15 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // of Infer Requests only if the VAD-M accelerator is being used.
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
-
-  ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_);
+  #ifndef NDEBUG
+    if (IsDebugEnabled()) {
+      std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
+      std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto.SerializeToOstream(outfile);
+      // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
+    }
+  #endif
+  ie_cnn_network_ = CreateOVModel(model_proto, global_context_);
 
 
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
