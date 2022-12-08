@@ -12,6 +12,7 @@
         "--build_java",
         "--build_shared_lib",
         "--use_nnapi",
-        "--skip_tests"
+        "--skip_tests",
+        "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
     ]
 }
