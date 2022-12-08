@@ -33,7 +33,7 @@ class RocblasHandleStreamGuard {
   hipStream_t original_stream_;
 };
 
-#if defined USE_ROCBLAS_EXTENSION_API
+#ifdef USE_ROCBLAS_EXTENSION_API
 
 template <typename T>
 constexpr rocblas_datatype RocBlasDataTypeFor(const T*) {
@@ -80,6 +80,11 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<float>(const float*) {
 
 template <>
 constexpr rocblas_datatype RocBlasComputeTypeFor<half>(const half*) {
+  // Note that we're returning the _compute_ type for a given datatype.
+  // As of 12/2022, using compute type FP16 for 16-bit floats was much
+  // slower than using compute type FP32. So we use FP32 compute even for
+  // FP16 datatypes. This is how GEMM is implemented even in the function
+  // rocblasGemmHelper (see fpgeneric.h)
   return rocblas_datatype_f32_r;
 }
 
@@ -90,6 +95,11 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<double>(const double*) {
 
 template <>
 constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>(const BFloat16*) {
+  // Note that we're returning the _compute_ type for a given datatype.
+  // As of 12/2022, using compute type FP16 for 16-bit floats was much
+  // slower than using compute type FP32. So we use FP32 compute even for
+  // BF16 datatypes. This is how GEMM is implemented even in the function
+  // rocblasGemmHelper (see fpgeneric.h)
   return rocblas_datatype_f32_r;
 }
 
@@ -206,7 +216,7 @@ private:
   }
 };
 
-#endif /* #if defined USE_ROCBLAS_EXTENSION_API */
+#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
 
 template <typename T>
 Status RocBlasGemmOp(const GemmParams<T>* params) {

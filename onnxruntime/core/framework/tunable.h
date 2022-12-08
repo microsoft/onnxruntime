@@ -143,15 +143,15 @@ class TunableOp {
 
   void EnableTuning() {
     tuning_ = true;
-    for (auto sub_op_ptr : tunable_sub_ops_) {
-      sub_op_ptr->EnableTuning();
+    for (auto nested_op_ptr : nested_tunable_ops_) {
+      nested_op_ptr->EnableTuning();
     }
   }
 
   void DisableTuning() {
     tuning_ = false;
-    for (auto sub_op_ptr : tunable_sub_ops_) {
-      sub_op_ptr->DisableTuning();
+    for (auto nested_op_ptr : nested_tunable_ops_) {
+      nested_op_ptr->DisableTuning();
     }
   }
 
@@ -176,17 +176,18 @@ class TunableOp {
     default_id_ = id;
   }
 
-  void RegisterTunableSubOp(TunableOp<ParamsT, TimerT>* op_ptr) {
-    tunable_sub_ops_.insert(op_ptr);
+  void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
+    nested_tunable_ops_.insert(op_ptr);
     if (tuning_) {
       op_ptr->EnableTuning();
     } else {
       op_ptr->DisableTuning();
     }
-  }
 
-  void DeregisterTunableSubOp(TunableOp<ParamsT, TimerT>* op_ptr) {
-    tunable_sub_ops_.erase(op_ptr);
+    // Add an op for this tunable op as well.
+    ops_.emplace_back([op_ptr](const ParamsT* params) {
+      return op_ptr->operator()(params);
+    });
   }
 
  private:
@@ -276,7 +277,7 @@ protected:
   int default_id_{0};
   bool tuning_{false};
   // Registered tunable sub-ops for nested tuning
-  std::unordered_set<TunableOp<ParamsT, TimerT>*> tunable_sub_ops_;
+  std::unordered_set<TunableOp<ParamsT, TimerT>*> nested_tunable_ops_;
 };
 
 }  // namespace tunable
