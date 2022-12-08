@@ -21,19 +21,19 @@ parameters:
   default: 'NPM_packages'
 
 jobs:
-- template: android-java-api-aar.yml
-  parameters:
-    buildConfig: '${{parameters.BuildConfig}}'
-    # Mobile build:
-    #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
-    #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
-    #  artifactName: 'onnxruntime-android-mobile-aar'
-    #  packageName: 'onnxruntime-mobile'
-    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-    artifactName: 'onnxruntime-android-full-aar'
-    job_name_suffix: 'For_React_Native'
-    pool_name: '${{parameters.PoolName}}'
-    packageName: 'onnxruntime-android'
+# - template: android-java-api-aar.yml
+#   parameters:
+#     buildConfig: '${{parameters.BuildConfig}}'
+#     # Mobile build:
+#     #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
+#     #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
+#     #  artifactName: 'onnxruntime-android-mobile-aar'
+#     #  packageName: 'onnxruntime-mobile'
+#     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
+#     artifactName: 'onnxruntime-android-full-aar'
+#     job_name_suffix: 'For_React_Native'
+#     pool_name: '${{parameters.PoolName}}'
+#     packageName: 'onnxruntime-android'
 
 - job: ReactNative_CI
   pool:
@@ -86,25 +86,25 @@ jobs:
 
   #   displayName: Build iOS package
 
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      buildType: 'current'
-      # Mobile build:
-      #  artifactName: 'onnxruntime-android-mobile-aar'
-      #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
-      artifactName: 'onnxruntime-android-full-aar'
-      targetPath: '$(Build.BinariesDirectory)/android-full-aar'
-    displayName: Download Android AAR artifacts
+  # - task: DownloadPipelineArtifact@2
+  #   inputs:
+  #     buildType: 'current'
+  #     # Mobile build:
+  #     #  artifactName: 'onnxruntime-android-mobile-aar'
+  #     #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
+  #     artifactName: 'onnxruntime-android-full-aar'
+  #     targetPath: '$(Build.BinariesDirectory)/android-full-aar'
+  #   displayName: Download Android AAR artifacts
 
-  - task: CopyFiles@2
-    inputs:
-      # Mobile build:
-      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-      #  contents: onnxruntime-mobile-*.aar
-      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-      contents: onnxruntime-android-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
-    displayName: Copy Android package to React Native directory
+  # - task: CopyFiles@2
+  #   inputs:
+  #     # Mobile build:
+  #     #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+  #     #  contents: onnxruntime-mobile-*.aar
+  #     sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+  #     contents: onnxruntime-android-*.aar
+  #     targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
+  #   displayName: Copy Android package to React Native directory
 
   # - task: CopyFiles@2
   #   inputs:
@@ -220,15 +220,15 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Generate a debug keystore
 
-  - task: CopyFiles@2
-    inputs:
-      # Mobile build:
-      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-      #  contents: onnxruntime-mobile-*.aar
-      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-      contents: onnxruntime-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
-    displayName: Copy Android package to Android e2e test directory
+  # - task: CopyFiles@2
+  #   inputs:
+  #     # Mobile build:
+  #     #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+  #     #  contents: onnxruntime-mobile-*.aar
+  #     sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+  #     contents: onnxruntime-*.aar
+  #     targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+  #   displayName: Copy Android package to Android e2e test directory
 
   - template: android-dump-logs-from-steps.yml
     parameters:
