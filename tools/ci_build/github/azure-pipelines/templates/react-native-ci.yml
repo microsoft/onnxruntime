@@ -232,8 +232,8 @@ jobs:
 
   - script: |
        yarn react-native bundle --platform android --dev false --entry-file e2e/index.tsx \
-        --bundle-output $(Build.SourcesDirectory)/e2e/android/app/src/main/assets/index.android.bundle \
-        --assets-dest $(Build.SourcesDirectory)/e2e/android/app/src/main/res
+        --bundle-output $(Build.SourcesDirectory)/js/react_native/e2e/android/app/src/main/assets/index.android.bundle \
+        --assets-dest $(Build.SourcesDirectory)/js/react_native/e2e/android/app/src/main/res
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: Generate index.android.bundle file
 
