@@ -29,6 +29,10 @@ std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affin
       auto processor_interval = utils::SplitString(affinity, "-");
 
       if (processor_interval.size() == 2) {
+        ORT_ENFORCE(std::all_of(processor_interval[0].begin(), processor_interval[0].end(), ::isdigit) &&
+                        std::all_of(processor_interval[1].begin(), processor_interval[1].end(), ::isdigit),
+                    std::string{"Processor id must consist of only digits: "} + std::string{affinity});
+
         auto processor_from = std::stoi(std::string{processor_interval[0]});
         auto processor_to = std::stoi(std::string{processor_interval[1]});
 
@@ -42,6 +46,9 @@ std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affin
 
       } else {
         for (const auto& processor_str : utils::SplitString(affinity, ",")) {
+          ORT_ENFORCE(std::all_of(processor_str.begin(), processor_str.end(), ::isdigit),
+                      std::string{"Processor id must consist of only digits: "} + std::string{processor_str});
+
           auto processor_id = std::stoi(std::string{processor_str});
           ORT_ENFORCE(processor_id > 0, std::string{"Processor id must start from 1: "} + std::string{affinity});
           logical_processors.push_back(processor_id - 1);
@@ -77,7 +84,9 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     if (options.auto_set_affinity) {
       to.affinities = std::move(default_affinities);
     }
-  } else if (!options.affinity_str.empty()) {
+  }
+  // override affinity setting if specified from customer
+  if (!options.affinity_str.empty()) {
     to.affinities = ReadThreadAffinityConfig(options.affinity_str);
     // Limiting the number of affinities to be of thread_pool_size - 1,
     // for that fact that the main thread is a special "member" of the threadpool,

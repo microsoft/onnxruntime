@@ -560,6 +560,7 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
       "-;2",   //invalid char, must be digit
       "--",    //invalid char, must be digit
       "2-1;3"  //invalid interval, "from" must be equal to or smaller than "to"
+      "5;3a"   //invalid processor id containing non-digit as suffix
   };
   for (const auto* wrong_format : wrong_formats) {
     tp_params.affinity_str = wrong_format;
@@ -615,7 +616,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
                               {2, 3},
                               {4, 5},
                               {6, 7}};
-  // test single group
+  // 2 logical processors per core, single group
   test::CpuInfo cpu_info_single = {cpu_group};
   test::WindowsEnvTester win_env;
   win_env.SetCpuInfo(cpu_info_single);
@@ -627,7 +628,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
       ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
     }
   }
-  // test two groups
+  // 2 logical processors per core, two groups
   test::CpuInfo cpu_info_double = {cpu_group, cpu_group};
   win_env.SetCpuInfo(cpu_info_double);
   default_affinities = win_env.GetDefaultThreadAffinities();
@@ -636,6 +637,32 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
     ASSERT_TRUE(default_affinities[i].size() == 2);
     for (int j = 0; j < 2; ++j) {
       ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 4 logical processors per core, single group
+  cpu_group = {{0, 1, 2, 3},
+               {4, 5, 6, 7},
+               {8, 9, 10, 11},
+               {12, 13, 14, 15}};
+  cpu_info_single = {cpu_group};
+  win_env.SetCpuInfo(cpu_info_single);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+  // 4 logical processors per core, two groups
+  cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
     }
   }
 }

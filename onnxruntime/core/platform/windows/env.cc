@@ -168,8 +168,10 @@ class WindowsThread : public EnvThread {
               processor_info.local_processor_id < sizeof(KAFFINITY) * CHAR_BIT) {
             mask |= bit << processor_info.local_processor_id;
           } else {
+            // Logical processor id starts from 0 internally, but in ort API, it starts from 1,
+            // that's why id need to increase by 1 when logging.
             LOGS_DEFAULT(ERROR) << "Cannot set affinity for thread " << GetCurrentThreadId()
-                                << ", processor " << global_processor_id << " does not exist";
+                                << ", processor " << global_processor_id + 1 << " does not exist";
             group_id = -1;
             mask = 0;
             break;
@@ -186,8 +188,7 @@ class WindowsThread : public EnvThread {
           }
         }  //for
         if (group_id > -1 && mask) {
-          GROUP_AFFINITY thread_affinity;
-          memset(&thread_affinity, 0x0, sizeof(GROUP_AFFINITY));
+          GROUP_AFFINITY thread_affinity = {};
           thread_affinity.Group = static_cast<WORD>(group_id);
           thread_affinity.Mask = mask;
           if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
