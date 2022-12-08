@@ -40,8 +40,8 @@ jobs:
     vmImage: 'macOS-11'
   variables:
     runCodesignValidationInjection: false
-  dependsOn:
-  - Android_Java_API_AAR_Packaging_For_React_Native
+  # dependsOn:
+  # - Android_Java_API_AAR_Packaging_For_React_Native
   timeoutInMinutes: 150
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
