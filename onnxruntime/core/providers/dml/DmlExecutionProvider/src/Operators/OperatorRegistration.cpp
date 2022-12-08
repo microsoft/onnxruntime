@@ -640,6 +640,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     12,  GreaterOrEqual,                     typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,    DmlGraphSupport::Supported)},
     {REG_INFO(     16,  GreaterOrEqual,                     typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,    DmlGraphSupport::Supported)},
     {REG_INFO(     12,  LessOrEqual,                        typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,    DmlGraphSupport::Supported)},
+    {REG_INFO(     16,  LessOrEqual,                        typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,    DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,    DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,    DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,    DmlGraphSupport::Supported)},
