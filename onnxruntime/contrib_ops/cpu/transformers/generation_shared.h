@@ -83,6 +83,10 @@ struct ISamplingState {
   BufferUniquePtr storage_buffer;
   size_t temp_storage_bytes;
   std::default_random_engine generator;
+
+  std::vector<T> sorted_scores;
+  std::vector<size_t> sorted_indices;
+  std::vector<T> cumulative_probs;
 };
 
 class ISequences {

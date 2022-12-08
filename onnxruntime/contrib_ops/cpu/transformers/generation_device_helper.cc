@@ -418,9 +418,6 @@ Status GreedySearchProcessLogits(
   int step,                                                   // iteration counter
   void* stream,                                               // cuda stream (for CUDA only)
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
-#ifndef DEBUG_GENERATION
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
@@ -458,18 +455,18 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
 
-  constexpr unsigned top_k = 1;
-
   if (do_sampling) {
     SamplingCpuHelper::TopPSamplingCpu<T> top_p_sampler(allocator,
                                                         thread_pool,
                                                         sampling_state,
                                                         greedy_state,
-                                                        parameters);
+                                                        parameters,
+                                                        dumper);
     ORT_RETURN_IF_ERROR(top_p_sampler.Sample(next_token_scores));
 
     return Status::OK();
   }
+
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
@@ -482,6 +479,7 @@ Status GreedySearchProcessLogits(
                        next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
+  constexpr unsigned top_k = 1;
   constexpr int axis = 1;
   constexpr bool largest = true;
   constexpr bool sorted = false;

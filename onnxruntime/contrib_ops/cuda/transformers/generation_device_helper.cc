@@ -569,7 +569,8 @@ Status GreedySearchProcessLogits(
                                                           cuda_stream,
                                                           sampling_state,
                                                           greedy_state,
-                                                          parameters);
+                                                          parameters,
+                                                          dumper);
     ORT_RETURN_IF_ERROR(top_p_sampler.Sample(step, next_token_scores));
 
     return Status::OK();
