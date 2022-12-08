@@ -60,7 +60,7 @@ graphviz_output_format = "svg"
 
 # -- Options for Google Analytics -------------------------------------------------
 
-googleanalytics_id = 'UA-156955408-1'
+googleanalytics_id = "UA-156955408-1"
 
 # -- Options for intersphinx extension ---------------------------------------
 
