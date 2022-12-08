@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import re
 import sys
 from itertools import product
 
@@ -20,9 +21,9 @@ def get_bert_sizes():
 
 def dtype_to_funcs(dtype):
     type_map = {
-        "float16": list(filter(lambda x: "FastGelu_half" in x, dir(ke))),
-        "float32": list(filter(lambda x: "FastGelu_float" in x, dir(ke))),
-        "float64": list(filter(lambda x: "FastGelu_double" in x, dir(ke))),
+        "float16": list(filter(lambda x: re.match("FastGelu.*_half.*", x), dir(ke))),
+        "float32": list(filter(lambda x: re.match("FastGelu.*_float.*", x), dir(ke))),
+        "float64": list(filter(lambda x: re.match("FastGelu.*_double.*", x), dir(ke))),
     }
     return type_map[dtype]
 
@@ -43,15 +44,16 @@ def run_fast_gelu(x_size, bias_size, dtype, func):
     bias_d = ke.DeviceArray(bias)
     y_d = ke.DeviceArray(y)
     f = getattr(ke, func)
-    va = f(x_d, bias_d, y_d, x.size, bias.size)
-    va.Run()
-    y_d.UpdateHostNumpyArray()
+    my_op = f(x_d, bias_d, y_d, x.size, bias.size)
+    if my_op.IsSupported():
+        my_op.Run()
+        y_d.UpdateHostNumpyArray()
 
-    y_ref = fast_gelu(x, bias)
-    np.testing.assert_allclose(y_ref, y, rtol=1e-02)
+        y_ref = fast_gelu(x, bias)
+        np.testing.assert_allclose(y_ref, y, rtol=1e-02)
 
 
-test_cases = [((2, 16), 16), ((1, 2, 768), 768), ((1, 2, 1024), 1024)]
+test_cases = [((2, 16), 16), ((1, 2, 768), 768), ((1, 2, 1024), 1024), ((1, 3, 3), 3)]
 dtypes = ["float16", "float32", "float64"]
 
 
@@ -74,17 +76,19 @@ def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
     bias_d = ke.DeviceArray(bias)
     y_d = ke.DeviceArray(y)
     f = getattr(ke, func)
-    va = f(x_d, bias_d, y_d, x.size, bias.size)
-    t = va.Profile()
-    print(
-        dtype,
-        batch_size,
-        seq_len,
-        hidden_size,
-        f,
-        f"{t*1000:.2f} us",
-        f"{(x.size*2+bias.size)*x.itemsize*1e3/t/1e9:.2f} GB/s",
-    )
+    my_op = f(x_d, bias_d, y_d, x.size, bias.size)
+    if my_op.IsSupported():
+        t = my_op.Profile()
+        print(
+            f"{func:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4}",
+            f"{t*1000:.2f} us",
+            f"{(x.size*2+bias.size)*x.itemsize*1e3/t/1e9:.2f} GB/s",
+        )
+    else:
+        print(
+            f"{func:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4} not supported or redundant"
+        )
+        sys.stdout.flush()
 
 
 def profile_with_args(batch_size, seq_len, hidden_size, dtype):

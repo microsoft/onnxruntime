@@ -1153,11 +1153,9 @@ if (onnxruntime_USE_MIGRAPHX)
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
-  # TODO: Remove the next line so that we can delete the git submodule
-  include_directories(${PROJECT_SOURCE_DIR}/external/protobuf ${PROJECT_SOURCE_DIR}/external/eigen)
+  include_directories(${protobuf_SOURCE_DIR} ${eigen_SOURCE_DIR})
   set(MIGRAPHX_ROOT ${onnxruntime_MIGRAPHX_HOME})
-  # TODO: Remove the next line so that we can delete the git submodule
-  include_directories(${PROJECT_SOURCE_DIR}/external/onnx)
+  include_directories(${onnx_SOURCE_DIR})
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if ( CMAKE_COMPILER_IS_GNUCC )
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")

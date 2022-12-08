@@ -7,7 +7,7 @@
 #include "core/framework/sparse_tensor.h"
 #endif
 #include "core/framework/ortdevice.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #include "core/framework/copy.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
@@ -50,7 +50,7 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     return Status::OK();
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   if (!src.IsContiguous() || !dst.IsContiguous()) {
     auto dst_stride_vec = dst.Strides();
     auto src_stride_vec = src.Strides();
@@ -71,7 +71,7 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     }
 
     return Status::OK();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   }
 #endif
 }
