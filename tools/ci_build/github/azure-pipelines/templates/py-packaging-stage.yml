@@ -132,7 +132,7 @@ stages:
         displayName: 'Install python modules'
 
       - template: download-deps.yml
-      
+
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
@@ -140,15 +140,12 @@ stages:
           arguments: --new_dir $(Build.BinariesDirectory)/deps
           workingDirectory: $(Build.BinariesDirectory)
 
-      - powershell: |
-          $Env:USE_MSVC_STATIC_RUNTIME=1
-          $Env:ONNX_ML=1
-          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-          python setup.py bdist_wheel
-          python -m pip uninstall -y onnx -qq
-          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      - task: PowerShell@2
         displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
@@ -300,7 +297,7 @@ stages:
           PYTHON_VERSION: '3.10'
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
-          EP_NAME: gpu            
+          EP_NAME: gpu
 
       - template: py-win-gpu.yml
         parameters:
@@ -333,7 +330,7 @@ stages:
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
-     
+
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
       timeoutInMinutes: 90
@@ -364,17 +361,17 @@ stages:
           versionSpec: $(PythonVersion)
 
       - script: |
-          set -e
+          set -e -x
           pushd .
-          cd $(Build.SourcesDirectory)/cmake/external/protobuf
-          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64'
-          make -j$(getconf _NPROCESSORS_ONLN)
-          make install
+          mkdir -p /tmp/scripts
+          mkdir -p $(Build.BinariesDirectory)/installed
+          cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
+          $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
           popd
-          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+          export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
@@ -431,18 +428,17 @@ stages:
         displayName: 'Mac machine info'
 
       - script: |
-          set -e
+          set -e -x
           pushd .
-          cd $(Build.SourcesDirectory)/cmake/external/protobuf
-          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64'
-          make -j$(getconf _NPROCESSORS_ONLN)
-          make install
+          mkdir -p /tmp/scripts
+          mkdir -p $(Build.BinariesDirectory)/installed
+          cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
+          $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
           popd
-          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+          export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-          export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-arm64
-          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'

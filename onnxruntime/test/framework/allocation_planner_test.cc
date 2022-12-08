@@ -166,7 +166,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;   // an uinary kernel with may_strided_input
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_;  // an unary kernel with may_strided_output
 #endif
@@ -194,7 +194,7 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
     may_strided_input_kernel_ = KernelDefBuilder()
                                     .SetName("Abs")
                                     .Provider(kCpuExecutionProvider)
@@ -243,7 +243,7 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*external_outputs_kernel_, input, output);
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   onnxruntime::Node* AddMayStridedInputNode(std::string& input, std::string& output) {
     return AddNode(*may_strided_input_kernel_, input, output);
   }
@@ -480,7 +480,7 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckFreed(2, {X3});
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 TEST_F(PlannerTest, MayStridedTest1) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3");

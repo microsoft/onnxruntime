@@ -64,7 +64,8 @@ class WinMLTelemetryHelper {
   bool telemetry_enabled_ = false;
 
   WinMLTelemetryHelper();
-  ~WinMLTelemetryHelper();
+  virtual ~WinMLTelemetryHelper();
+
 
   //
   // Register telemetry provider and check success.  Will only succeed if

@@ -248,9 +248,13 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           .SetDomain(domain->domain_)
           .SinceVersion(1);
 
-      auto input_count = op->GetInputTypeCount(op);
-      for (size_t i = 0; i < input_count; i++) {
-        def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
+      // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
+      // to work with newer versions (> 12) of the ORT binary.
+      if (op->version > 12) {
+        auto input_count = op->GetInputTypeCount(op);
+        for (size_t i = 0; i < input_count; i++) {
+          def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
+        }
       }
 
       for (auto& id : type_constraint_ids[op]) {
