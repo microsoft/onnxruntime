@@ -1712,9 +1712,8 @@ class PlannerImpl {
   }
 
 #ifndef ENABLE_STREAM
-  void
-  PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
-                       const std::string& /*partition_config_file*/) {
+  void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
+                            const std::string& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -1728,6 +1727,7 @@ class PlannerImpl {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
     ORT_ENFORCE(num_logic_streams_ == 1 && !stream_nodes_[0].empty());
+    execution_plan.reserve(1);
     auto first_node_index = stream_nodes_[0][0];
     auto* node = graph_viewer_.GetNode(first_node_index);
     onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
@@ -1764,6 +1764,7 @@ class PlannerImpl {
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
+    execution_plan.reserve(num_logic_streams_);
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       if (!stream_nodes_[i].empty()) {
         // get device from first node

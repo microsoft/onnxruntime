@@ -94,7 +94,6 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
-                                   // TODO: merge the change in https://github.com/microsoft/onnxruntime/commit/34ebf7d3dd32e14295a409db08a667d6d236aeb6
                                    const bool& terminate_flag,
                                    int32_t partial_graph_index,
                                    Stream* parent_stream);

@@ -51,7 +51,7 @@ DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(co
     // so we can't make sure it is safe to return the device stream collection to
     // session when deconstruct partial graph execution state.
     // so let's always delete the stream collections.
-    // luckly, for ort module, we always running with default stream, so no impact to perf.
+    // luckily, for ort module, we always running with default stream, so no impact to perf.
   }
   return *device_stream_collection_;
 }
