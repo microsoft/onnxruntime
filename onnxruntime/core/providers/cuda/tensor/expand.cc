@@ -58,7 +58,7 @@ static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_di
   }
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes, const gsl::span<const int64_t>& input_strides,
                                        const TensorShape& output_shapes) {
   const size_t rank = output_shapes.NumDimensions();
@@ -101,7 +101,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   // Strided output.
   if (input_data_tensor.DataRaw() == output_tensor.DataRaw()) {
     gsl::span<const int64_t> input_strides = input_data_tensor.Strides();
@@ -142,7 +142,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
       input_strides);
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #define CREATE_EXPAND_KERNEL_DEF (*KernelDefBuilder::Create()).MayStridedOutput(0, 0)
 #else
 #define CREATE_EXPAND_KERNEL_DEF (*KernelDefBuilder::Create())

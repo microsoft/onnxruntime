@@ -580,9 +580,9 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
   // Training starts to support strided tensor that the shape size may be larger (like Expand), smaller (like Split) or
   // equal (like Transpose) to the shared tensor's shape size, so below check is no longer valid.
-#ifndef ENABLE_TRAINING
+#ifndef ENABLE_STRIDED_TENSORS
   ORT_ENFORCE(!is_strided_tensor);
-#endif  // ENABLE_TRAINING
+#endif  // ENABLE_STRIDED_TENSORS
   if (!is_strided_tensor) {
     auto buffer_num_elements = reuse_tensor->Shape().Size();
     auto required_num_elements = shape.Size();
@@ -733,9 +733,9 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
         bool is_strided_tensor = false;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
         is_strided_tensor = per_alloc_plan.is_strided_tensor;
-#endif  // ENABLE_TRAINING
+#endif  // ENABLE_STRIDED_TENSORS
         ORT_RETURN_IF_ERROR(
             AllocateMLValueTensorPreAllocateBuffer(ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape,
                                                    per_alloc_plan.create_fence_if_async, is_strided_tensor));

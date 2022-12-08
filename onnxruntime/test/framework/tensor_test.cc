@@ -210,7 +210,7 @@ TEST(TensorTest, SizeOverflow) {
   EXPECT_THROW(t.SizeInBytes(), OnnxRuntimeException);
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 TEST(TensorTest, Strided) {
   TensorShape shape({2, 3, 4});
   auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
