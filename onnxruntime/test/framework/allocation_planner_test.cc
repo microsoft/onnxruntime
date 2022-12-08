@@ -20,6 +20,10 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif  // USE_CUDA
 
 using namespace ONNX_NAMESPACE;
 
@@ -31,6 +35,9 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 const OrtDevice::DeviceType OrtDevice::CPU;
 
 namespace onnxruntime {
+#ifdef USE_CUDA
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif
 namespace test {
 
 namespace modelbuilder {
@@ -131,7 +138,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;   // an uinary kernel with may_strided_input
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_;  // an unary kernel with may_strided_output
 #endif
@@ -159,7 +166,7 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
     may_strided_input_kernel_ = KernelDefBuilder()
                                     .SetName("Abs")
                                     .Provider(kCpuExecutionProvider)
@@ -176,9 +183,6 @@ class PlannerTest : public ::testing::Test {
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
-
-    state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
-                                  DefaultLoggingManager().DefaultLogger(), profiler_));
   }
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
@@ -190,7 +194,7 @@ class PlannerTest : public ::testing::Test {
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
     auto node = std::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
     auto* p_node = node->p_node;
-    p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+    p_node->SetExecutionProviderType(kernel_def.Provider());
     nodes_.push_back(std::move(node));
     kernel_bindings_.emplace_back(p_node, kernel_def);
     return p_node;
@@ -208,7 +212,7 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*external_outputs_kernel_, input, output);
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   onnxruntime::Node* AddMayStridedInputNode(std::string& input, std::string& output) {
     return AddNode(*may_strided_input_kernel_, input, output);
   }
@@ -252,6 +256,8 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
+    state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
+                                  DefaultLoggingManager().DefaultLogger(), profiler_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
@@ -329,6 +335,7 @@ class PlannerTest : public ::testing::Test {
   Graph& GetGraph() { return graph_; }
   const SequentialExecutionPlan& GetPlan() const { return *plan_; }
   const SessionState& GetState() const { return *state_; }
+  ExecutionProviders& GetExecutionProviders() { return execution_providers_; }
 };
 
 TEST_F(PlannerTest, ChainTest) {
@@ -466,7 +473,7 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckFreed(2, {X3});
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 TEST_F(PlannerTest, MayStridedTest1) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3");
@@ -1135,6 +1142,50 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   // TODO: test para exe plan on subgraph supported
   // const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
   // EXPECT_EQ(para_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
+}
+
+// Test MultiStream scenario for the graph:
+// node1(CPU ep)->node2(CPU ep)->node3(CUDA ep)->node4(CPU ep)
+// TODO(leca): test WaitOnEPStep
+TEST_F(PlannerTest, MultiStream) {
+  ONNX_NAMESPACE::TensorProto tensor;
+  tensor.add_dims(1);
+  tensor.add_float_data(1.0f);
+  tensor.set_data_type(TensorProto_DataType_FLOAT);
+  tensor.set_name("Graph_input");
+  GetGraph().AddInitializedTensor(tensor);
+
+  std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), Arg4("Arg4");
+  AddNormalNode(Graph_input, Arg1);
+  AddNormalNode(Arg1, Arg2);
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
+  AddNode(*cudaKernel, Arg2, Arg3);
+  AddNormalNode(Arg3, Arg4);
+
+  CUDAExecutionProviderInfo epi;
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
+  auto epFactory = ep.CreateExecutionProviderFactory(epi);
+  std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+  AllocatorManager am;
+  execution_provider->RegisterAllocator(am);
+  ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
+
+  CreatePlan();
+
+  EXPECT_EQ(GetPlan().execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
+  EXPECT_EQ(GetPlan().execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 2";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[4]).name(), "BarrierStep"), nullptr) << "4th step: BarrierStep for node 4";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[5]).name(), "LaunchKernelStep"), nullptr) << "5th step: LaunchKernelStep for node 4";
+
+  EXPECT_EQ(GetPlan().execution_plan[1]->steps_.size(), 4) << "CUDA stream has 4 steps";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 3";
+  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 4";
 }
 #endif
 

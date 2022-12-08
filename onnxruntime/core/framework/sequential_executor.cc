@@ -592,7 +592,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const OrtValueCachePtr& cache) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
-  auto* execution_plan = session_state.GetExecutionPlan();
+  auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
@@ -602,8 +602,8 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
-  for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
-    if (!execution_plan->execution_plan[i]->steps_.empty()) {
+  for (size_t i = 0; i < plan->execution_plan.size(); ++i) {
+    if (!plan->execution_plan[i]->steps_.empty()) {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
         auto* range = ctx.GetCurrentRange();
         size_t start = !range ? 0 : range->stream_pc_range[i].first;
