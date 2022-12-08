@@ -584,15 +584,44 @@ if (onnxruntime_USE_CANN)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
 
+if (onnxruntime_ENABLE_EAGER_MODE)
+  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
+    message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_EAGER_MODE can only be used when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
+  endif()
+  set(ONNXRUNTIME_EAGER_CMAKE_FILE_NAME onnxruntime_eager)
+endif()
+
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  # To support LazyTensor, ORT needs to call Python function from C/C++.
+  # so onnxruntime_ENABLE_PYTHON is required.
+  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
+    message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_LAZY_TENSOR can only be set when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
+  endif()
+  # TODO: In the future, we can compile LazyTensor into a standalone
+  # library target, onnxruntime_lazy_tensor, to make the buid
+  # cleaner.
+endif()
+
+
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
       onnxruntime_add_include_to_target(${target_name} cpuinfo)
     endif()
+    if(onnxruntime_ENABLE_EAGER_MODE)
+      target_compile_definitions(${target_name} PRIVATE ENABLE_EAGER_MODE)
+    endif()
+    if(onnxruntime_ENABLE_LAZY_TENSOR)
+      target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
+    endif()
     if (onnxruntime_ENABLE_CPU_FP16_OPS)
       target_compile_definitions(${target_name} PRIVATE ENABLE_CPU_FP16_TRAINING_OPS)
     endif()
-	if(onnxruntime_DISABLE_ABSEIL)
-	  target_compile_definitions(${target_name} PRIVATE DISABLE_ABSEIL)
+    if(onnxruntime_DISABLE_ABSEIL)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_ABSEIL)
     endif()
     if(UNIX)
       target_compile_definitions(${target_name} PRIVATE PLATFORM_POSIX)
@@ -624,6 +653,16 @@ function(onnxruntime_set_compile_flags target_name)
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
         target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+      endforeach()
+      foreach(onnxruntime_external_lib IN LISTS onnxruntime_EXTERNAL_LIBRARIES)
+        #TODO: the list contains cmake keywords like "debug". We should exclude them.
+        if(TARGET ${onnxruntime_external_lib})
+          get_target_property(onnxruntime_external_lib_include_dirs ${onnxruntime_external_lib} INTERFACE_INCLUDE_DIRECTORIES)
+          foreach(onnxruntime_external_lib_include_dir IN LISTS onnxruntime_external_lib_include_dirs)
+            # TODO: onnxruntime_external_lib_include_dir is a cmake generator expr. Very surprising it can fit in at here.
+            target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${onnxruntime_external_lib_include_dir}>")
+          endforeach()
+        endif()
       endforeach()
       target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
@@ -1356,7 +1395,7 @@ endif()
 
 #Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
 #The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
-set(ONNXRUNTIME_TARGETS onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session)
+set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME})
 
 if (onnxruntime_USE_WINML)
   # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
@@ -1366,92 +1405,67 @@ if (onnxruntime_USE_WINML)
         FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
-  list(APPEND ONNXRUNTIME_TARGETS winml)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
 if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
   if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
     message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS.")
   endif()
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 endif()
 
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_java)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_java)
 endif()
 
 if (onnxruntime_BUILD_NODEJS)
   message(STATUS "Node.js Build is enabled")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_nodejs)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_nodejs)
 endif()
 
 if (onnxruntime_ENABLE_PYTHON)
   message(STATUS "Python Build is enabled")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_python)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_python)
 endif()
 
 if (onnxruntime_BUILD_OBJC)
   message(STATUS "Objective-C Build is enabled")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_objectivec)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_objectivec)
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_unittests)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_unittests)
 endif()
 
 if (onnxruntime_BUILD_WINML_TESTS)
-  list(APPEND ONNXRUNTIME_TARGETS winml_unittests)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES winml_unittests)
 endif()
 
 # onnxruntime_training depends on onnxruntime_unittests since onnxruntime_training.cmake uses a variable `TEST_SRC_DIR`
 # that is defined in onnxruntime_unittests.cmake
 if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_training)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_training)
   if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
-    list(APPEND ONNXRUNTIME_TARGETS onnxruntime_training_e2e_tests)
+    list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_training_e2e_tests)
   endif()
 endif()
 
 if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_csharp)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_csharp)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
   message(STATUS "WebAssembly Build is enabled")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_webassembly)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_webassembly)
 endif()
 
 if(onnxruntime_BUILD_KERNEL_EXPLORER)
   message(STATUS "Kernel Explorer Build is enabled")
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_kernel_explorer)
-endif()
-
-if (onnxruntime_ENABLE_EAGER_MODE)
-  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
-    message(
-        FATAL_ERROR
-        "Option onnxruntime_ENABLE_EAGER_MODE can only be used when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
-  endif()
-  add_compile_definitions(ENABLE_EAGER_MODE)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
-endif()
-
-if (onnxruntime_ENABLE_LAZY_TENSOR)
-  # To support LazyTensor, ORT needs to call Python function from C/C++.
-  # so onnxruntime_ENABLE_PYTHON is required.
-  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
-    message(
-        FATAL_ERROR
-        "Option onnxruntime_ENABLE_LAZY_TENSOR can only be set when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
-  endif()
-  add_compile_definitions(ENABLE_LAZY_TENSOR)
-  # TODO: In the future, we can compile LazyTensor into a standalone
-  # library target, onnxruntime_lazy_tensor, to make the buid
-  # cleaner.
-  #list(APPEND ONNXRUNTIME_TARGETS onnxruntime_lazy_tensor)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_kernel_explorer)
 endif()
 
 # When GDK_PLATFORM is set then WINAPI_FAMILY is defined in gdk_toolchain.cmake (along with other relevant flags/definitions).
@@ -1466,7 +1480,7 @@ if (WIN32 AND NOT GDK_PLATFORM)
   endif()
 endif()
 
-foreach(target_name ${ONNXRUNTIME_TARGETS})
+foreach(target_name ${ONNXRUNTIME_CMAKE_FILES})
   include(${target_name}.cmake)
 endforeach()
 if (UNIX)
