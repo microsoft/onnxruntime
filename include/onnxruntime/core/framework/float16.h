@@ -41,10 +41,11 @@ inline bool operator<(const MLFloat16& left, const MLFloat16& right) { return le
 // BFloat16
 struct BFloat16 {
   uint16_t val{0};
-#if defined(__clang__) && defined(__HIP__)
-  ORT_HOST_DEVICE
-#endif
+#if defined(__HIP__)
+  ORT_HOST_DEVICE BFloat16() = default;
+#else
   BFloat16() = default;
+#endif
 
   struct FromBitsT {};
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
@@ -53,7 +54,7 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
-#elif defined(__clang__) && defined(__HIP__)
+#elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
     if (v != v) {  // isnan
       val = UINT16_C(0x7FC0);
@@ -80,7 +81,7 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&val));
-#elif defined(__clang__) && defined(__HIP__)
+#elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
     float result = 0;
     uint32_t tmp = val;
