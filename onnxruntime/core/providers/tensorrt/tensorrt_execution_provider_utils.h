@@ -11,7 +11,6 @@
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/framework/murmurhash3.h"
-#include "core/common/common.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -222,8 +221,14 @@ class TRTModelIdGenerator {
     const auto& model_path = main_graph.ModelPath();
     if (!model_path.IsEmpty()) {
       // Get model name
-      PathString leaf = model_path.GetComponents().back();
-      std::string model_name = ToUTF8String(leaf.c_str());
+      PathString path_string = model_path.GetComponents().back();
+      char arr[256];
+#ifdef _WIN32
+      wcstombs_s(nullptr, arr, sizeof(arr), path_string.c_str(), sizeof(arr));
+#else
+      strcpy(arr, path_string.c_str());
+#endif
+      std::string model_name(arr);
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
       // Ensure enough characters are hashed in case model names are too short
       int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
