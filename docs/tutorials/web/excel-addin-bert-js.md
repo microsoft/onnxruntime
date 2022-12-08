@@ -10,16 +10,19 @@ nav_order: 2
 # ONNX Runtime Custom Excel Functions for BERT NLP Tasks in JavaScript
 {: .no_toc }
 
-In this tutorial we will look at how we can create custom excel functions (`ORT.Sentiment()` and `ORT.Question()`) to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happen locally in the browser with excel on the web. 
+In this tutorial we will look at how we can create custom Excel functions (`ORT.Sentiment()` and `ORT.Question()`) to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks. The inference happens locally, right in Excel! 
 
-<div class="embed-container">
+<img src="../../../images/bert-excel.gif" width="560" height="315" alt="Image of browser inferencing on sample images."/>
+
+
+<!-- <div class="embed-container">
   <iframe
       src="https://www.youtube.com/embed/wuSxWGY_Sjg"
       width="560" height="315"
       frameborder="0"
       allowfullscreen="true">
   </iframe>
-</div>
+</div> -->
 
 ## Contents
 {: .no_toc }
@@ -40,16 +43,35 @@ Excel has many native functions like `SUM()` that you are likely familiar with. 
 
 Now that we know what custom functions are lets look at how we can create functions that will inference a model locally to get the sentiment text in a cell or extract information from a cell by asking a question and the answer being returned to the cell.
 
-- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman cli. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions).
+- If you plan to follow along, [clone the project that we will discuss in this blog](https://github.com/cassiebreviu/bert-excel-addin-ort-web). This project was created with the template project from the Yeoman CLI. [Learn more in this quickstart about the base projects](https://learn.microsoft.com/office/dev/add-ins/tutorials/excel-tutorial-create-custom-functions).
 
-- Once you clone the project then you can run the project with the below command. This will start Excel web and side load the add-in to the spreadsheet that is provided in the command.
+- Run the following commands to install the packages and build the project.
+
+```bash
+npm install
+npm run build
+```
+
+- The below commend will run the add-in in Excel web and side load the add-in to the spreadsheet that is provided in the command.
 
 ```bash
 // Command to run on the web.
 // Replace "{url}" with the URL of an Excel document.
 npm run start:web -- --document {url}
 ```
-- NOTE: You may need to `Enable Developer Mode` when prompted and accept the certificate for the side loaded add-in when you run the project for the first time.
+
+- Use the following command to run in the Excel client.
+
+```bash
+// Command to run on desktop (Windows or Mac)
+npm run start:desktop
+```
+
+- The first time you run the project there will be two prompts:
+  - One will ask to `Enable Developer Mode`. This is required for sideloading plugins.
+  - Next when prompted accept the certificate for the plugin service.
+
+- To access the custom function type `=ORT.Sentiment("TEXT")` and `=ORT.Question("QUESTION","CONTEXT")` in an empty cell and pass in the parameters.
 
 Now we are ready to jump into the code!
 
@@ -61,6 +83,8 @@ Now we are ready to jump into the code!
 <bt:String id="Functions.Namespace" DefaultValue="ORT"/>
 <ProviderName>ORT</ProviderName>
 ```
+
+Learn more about the configuration of the [mainfest file here](https://learn.microsoft.com/office/dev/add-ins/develop/configure-your-add-in-to-use-a-shared-runtime#configure-the-manifest).
 
 ## The `functions.ts` file
 
@@ -226,7 +250,7 @@ export async function inferenceQuestion(question: string, context: string): Prom
 }
 ```
 
-- The `answers` are then returned back to the `functions.ts` `question`, the resulting string is returned and populated into the excel cell.
+- The `answers` are then returned back to the `functions.ts` `question`, the resulting string is returned and populated into the Excel cell.
 
 ```javascript
 export async function question(question: string, context: string): Promise<string> {
@@ -238,7 +262,7 @@ export async function question(question: string, context: string): Promise<strin
   return "Unable to find answer";
 }
 ```
-- Now you can run the below command to build and side load the add-in to your excel spreadsheet!
+- Now you can run the below command to build and side load the add-in to your Excel spreadsheet!
 
 ```bash
 // Command to run on the web.
@@ -250,7 +274,7 @@ That is a breakdown for the `ORT.Question()` custom function, next we will break
 
 ## The `inferenceSentiment.ts` file
 
-The [`inferenceSentiment.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/inferenceSentiment.ts) is the logic to inference and get sentiment for text in an excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
+The [`inferenceSentiment.ts`](https://github.com/cassiebreviu/bert-excel-addin-ort-web/blob/main/src/functions/bert/inferenceSentiment.ts) is the logic to inference and get sentiment for text in an Excel cell. The code here is augmented from [this example](https://github.com/jobergum/browser-ml-inference). Let's jump in and learn how this part works.
 
 - First lets import the packages needed. As you will see in this tutorial the `bertProcessing` function will create our model input.  `bert_tokenizer` is the JavaScript tokenizer for BERT models. `onnxruntime-web` enables inference in JavaScript on the browser.
 
@@ -316,7 +340,7 @@ export async function inferenceSentiment(text: string) {
 }
 
 ```
-- The `result_list` is returned and parsed to return the top result to the excel cell.
+- The `result_list` is returned and parsed to return the top result to the Excel cell.
 
 ```javascript
 export async function sentiment(text: string): Promise<string> {
@@ -326,7 +350,7 @@ export async function sentiment(text: string): Promise<string> {
 }
 ```
 
-- Now you can run the below command to build and side load the add-in to your excel spreadsheet!
+- Now you can run the below command to build and side load the add-in to your Excel spreadsheet!
 
 ```bash
 // Command to run on the web.
@@ -336,7 +360,7 @@ npm run start:web -- --document {url}
 
 ## Conclusion
 
-Here we went over the logic needed to create custom functions in an excel add-in with JavaScript leveraging ONNX Runtime Web and open source models. From here you could take this logic and update to a specific model or use case you have. Be sure to check out the full source code which includes the tokenizers and pre/post processing to complete the above tasks.
+Here we went over the logic needed to create custom functions in an Excel add-in with JavaScript leveraging ONNX Runtime Web and open source models. From here you could take this logic and update to a specific model or use case you have. Be sure to check out the full source code which includes the tokenizers and pre/post processing to complete the above tasks.
 
 ## Additional resources
 * [Publish Add-ins in VS Code](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish-add-in-vs-code#using-visual-studio-code-to-publish)
