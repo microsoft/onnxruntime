@@ -357,7 +357,7 @@ class GPUProfilerBase : public EpProfiler {
 
       auto ts = static_cast<long long>(map_iter.first);
 
-      // find the last occurence of a matching timestamp,
+      // find the last occurrence of a matching timestamp,
       // if one exists
       while (event_iter != event_end &&
              (event_iter->ts < ts ||
