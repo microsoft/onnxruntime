@@ -39,7 +39,7 @@ class InferenceManager(GraphExecutionManager):
         run_options = C.RunOptions()
 
         # Use IO binding
-        _utils._create_iobinding(io_binding, forward_inputs, onnx_model, device)
+        _utils._create_iobinding(io_binding, inputs, onnx_model, device)
 
         # Run and return module outputs.
         ort_output = execution_session.run_forward(io_binding, run_options)
