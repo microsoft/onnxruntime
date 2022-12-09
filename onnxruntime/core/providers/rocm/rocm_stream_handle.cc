@@ -90,7 +90,8 @@ struct CpuBuffersInfo {   // TODO: should be moved to base class
 };
 
 static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {  // TODO: should be moved to base class
-  std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>(raw_info);
+  std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>();
+  info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
   for (size_t i = 0; i < info->n_buffers; ++i) {
     info->allocator->Free(info->buffers[i]);
   }

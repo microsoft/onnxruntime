@@ -109,7 +109,8 @@ struct CpuBuffersInfo {
 };
 
 static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
-  std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>(raw_info);
+  std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>();
+  info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
   // Uncomment the following line to check if all previous stream
   // operations are done correctly.
   // checkCudaErrors(tmp->status);
