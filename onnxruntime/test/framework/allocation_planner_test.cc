@@ -315,20 +315,24 @@ class PlannerTest : public ::testing::Test {
     EXPECT_EQ(plan_->allocation_plan[id].alloc_kind, kind) << "Error in allocation kind for " << name;
   }
 
-  void CheckFreed(int /*step_number*/, std::initializer_list<std::string> /*freed_items*/) {
+  void CheckFreed(int step_number, std::initializer_list<std::string> freed_items) {
     // TODO: add the checker for new implementation of release plan
     //// create set and check equality
-    // std::unordered_set<int> expected;
-    // for (auto& name : freed_items) {
-    //   int id;
-    //   index(name, id);
-    //   expected.insert(id);
-    // }
-    // std::unordered_set<int> plan_result;
-    // auto& step_plan = plan_->execution_plan[step_number];
-    // for (int i = step_plan.free_from_index; i <= step_plan.free_to_index; ++i)
-    //   plan_result.insert(plan_->to_be_freed[i]);
-    // EXPECT_EQ(plan_result, expected) << "Freed items incorrect for step " << step_number;
+    std::unordered_set<int> expected;
+    for (auto& name : freed_items) {
+      int id;
+      index(name, id);
+      expected.insert(id);
+    }
+    std::unordered_set<int> plan_result;
+    // todo - support multi-stream
+    EXPECT_EQ(plan_->execution_plan.size(), 1U);
+    int list_size = static_cast<int>(plan_->node_release_list.size());
+    EXPECT_GT(list_size, step_number);
+    for (auto freed : plan_->node_release_list[step_number]) {
+      plan_result.insert(static_cast<int>(freed));
+    }
+    EXPECT_EQ(plan_result, expected) << "Freed items incorrect for step " << step_number;
   }
 
  protected:
@@ -373,8 +377,8 @@ TEST_F(PlannerTest, ChainTest) {
 
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {"B"});
-  CheckFreed(3, {"X"});
+  CheckFreed(2, {"X"});
+  CheckFreed(3, {"W"});
 }
 
 /* InputOutputTest: Test that:
@@ -441,7 +445,7 @@ TEST_F(PlannerTest, InPlaceTest) {
   // check each ml-value is freed at appropriate step
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X2});
+  CheckFreed(2, {X1});
 }
 
 TEST_F(PlannerTest, ExternalOutputsTest) {
@@ -470,7 +474,7 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X3});
+  CheckFreed(2, {X1});
 }
 
 #ifdef ENABLE_STRIDED_TENSORS
@@ -497,7 +501,7 @@ TEST_F(PlannerTest, MayStridedTest1) {
   // check each ml-value is freed at appropriate step
   // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {X2});
+  CheckFreed(1, {X1});
 }
 
 TEST_F(PlannerTest, MayStridedTest2) {
@@ -554,8 +558,8 @@ TEST_F(PlannerTest, MayStridedTest3) {
   // check each ml-value is freed at appropriate step
   // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {});
-  CheckFreed(2, {X2});
+  CheckFreed(1, {X1});
+  CheckFreed(2, {});
 }
 #endif
 
@@ -590,8 +594,8 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   // check each ml-value is freed at appropriate step
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X3});
-  CheckFreed(3, {X2});
+  CheckFreed(2, {X2});
+  CheckFreed(3, {X1});
 }
 
 // Test operator<< to output details of an allocation & execution plan.

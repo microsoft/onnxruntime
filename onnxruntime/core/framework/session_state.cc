@@ -1371,7 +1371,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 // Uncomment the below to dump the allocation plan to std::cout
 // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
+  auto mem_profiler = std::make_unique<MemoryProfiler>();
+  mem_profiler->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
+  SetMemoryProfiler(mem_profiler.release());
 #endif
 
   // Memory pattern tracer allocates all initializers on a single contiguous

@@ -212,6 +212,13 @@ class SessionScope {
     }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    session_state_.GetMemoryProfiler()->CreateEvents(
+        "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+        session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+    session_state_.GetMemoryProfiler()->Clear();
+#endif
+
     if (session_state_.Profiler().IsEnabled()) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     }
