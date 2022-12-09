@@ -111,7 +111,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, context]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =
-        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), OrtStream(context));
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), context->GetComputeStream());
     return temp_mask_buffer.get();
   }();
 

@@ -39,7 +39,7 @@ void Recv::ReceiveData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, OrtStream(context));
+  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, context->GetComputeStream());
 #else
   buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
 #endif

@@ -136,7 +136,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       y_data = reinterpret_cast<CudaT*>(p.Y->MutableData<T>());
 
       if (!s_.cached_benchmark_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, OrtStream(context));
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
 
         // set math type to tensor core before algorithm search
         if constexpr (std::is_same<T, MLFloat16>::value)
@@ -186,7 +186,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     const auto alpha = Consts<CudaT>::One;
     const auto beta = Consts<CudaT>::Zero;
 
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, OrtStream(context));
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, context->GetComputeStream());
 
     CUDNN_RETURN_IF_ERROR(
         cudnnConvolutionBackwardData(

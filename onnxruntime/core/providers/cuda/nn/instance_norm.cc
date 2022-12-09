@@ -104,15 +104,15 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     const size_t stats_byte_count = stats_count * sizeof(CudaT);
 
     // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
-    auto mean = GetScratchBuffer<CudaT>(stats_count, OrtStream(p_op_kernel_context));
+    auto mean = GetScratchBuffer<CudaT>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
-    auto variance = GetScratchBuffer<CudaT>(stats_count, OrtStream(p_op_kernel_context));
+    auto variance = GetScratchBuffer<CudaT>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
 
     // We must set the scale & bias inputs to zero as they are inputs to the calculation
-    auto unused_scale = GetScratchBuffer<CudaT>(stats_count, OrtStream(p_op_kernel_context));
+    auto unused_scale = GetScratchBuffer<CudaT>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
-    auto unused_bias = GetScratchBuffer<CudaT>(stats_count, OrtStream(p_op_kernel_context));
+    auto unused_bias = GetScratchBuffer<CudaT>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
@@ -201,10 +201,10 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     // alpha, beta will be of type float as the Consts struct specialization
     // for MLFloat16 type take care of that. Only Convert the scale, bias to float)
 
-    auto scale_data_fp32 = GetScratchBuffer<float>(C, OrtStream(p_op_kernel_context));
+    auto scale_data_fp32 = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), scale_data, scale_data_fp32.get(), C);
 
-    auto bias_data_fp32 = GetScratchBuffer<float>(C, OrtStream(p_op_kernel_context));
+    auto bias_data_fp32 = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), bias_data, bias_data_fp32.get(), C);
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
@@ -247,15 +247,15 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     const size_t stats_byte_count = stats_count * sizeof(float);
 
     // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
-    auto mean = GetScratchBuffer<float>(stats_count, OrtStream(p_op_kernel_context));
+    auto mean = GetScratchBuffer<float>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
-    auto variance = GetScratchBuffer<float>(stats_count, OrtStream(p_op_kernel_context));
+    auto variance = GetScratchBuffer<float>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
 
     // We must set the scale & bias inputs to zero as they are inputs to the calculation
-    auto unused_scale = GetScratchBuffer<float>(stats_count, OrtStream(p_op_kernel_context));
+    auto unused_scale = GetScratchBuffer<float>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
-    auto unused_bias = GetScratchBuffer<float>(stats_count, OrtStream(p_op_kernel_context));
+    auto unused_bias = GetScratchBuffer<float>(stats_count, p_op_kernel_context->GetComputeStream());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream(p_op_kernel_context)));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training

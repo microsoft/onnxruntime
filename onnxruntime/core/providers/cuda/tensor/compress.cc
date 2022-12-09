@@ -48,7 +48,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   int64_t compress_input_length = has_axis_ ? input_dimensions[axis] : input_size;
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
-  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(gsl::narrow<size_t>(valid_condition_length), OrtStream(ctx));
+  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(gsl::narrow<size_t>(valid_condition_length), ctx->GetComputeStream());
   auto condition_cumulative_sum = condition_cumulative_sum_buffer.get();
 
   size_t temp_storage_bytes = 0;
@@ -58,7 +58,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
                                                              gsl::narrow<int>(valid_condition_length),
                                                              temp_storage_bytes));
 
-  auto temp_buffer = GetScratchBuffer<uint8_t>(temp_storage_bytes, OrtStream(ctx));
+  auto temp_buffer = GetScratchBuffer<uint8_t>(temp_storage_bytes, ctx->GetComputeStream());
   auto d_temp_storage = temp_buffer.get();
   CUDA_RETURN_IF_ERROR(CompressInclusivePrefixSum(Stream(ctx),
                                                   d_temp_storage,

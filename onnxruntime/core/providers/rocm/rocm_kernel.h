@@ -171,10 +171,6 @@ class RocmKernel : public OpKernel {
     return GetMiopenHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
   }
 
-  inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
-    return ctx->GetComputeStream();
-  }
-
  protected:
   template <typename T>
   inline const T* GetConstOnes(size_t count, hipStream_t stream) const {

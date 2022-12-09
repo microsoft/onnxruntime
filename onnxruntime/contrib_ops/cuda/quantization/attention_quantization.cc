@@ -139,8 +139,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   int n = 3 * hidden_size;
   int k = parameters.input_hidden_size;
   size_t num_elements = SafeInt<size_t>(m) * n;
-  auto gemm_buffer = GetScratchBuffer<T>(num_elements * element_size, OrtStream(context));
-  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(num_elements, OrtStream(context));
+  auto gemm_buffer = GetScratchBuffer<T>(num_elements * element_size, context->GetComputeStream());
+  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(num_elements, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -187,7 +187,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;

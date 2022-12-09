@@ -129,7 +129,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
     int k = parameters.input_hidden_size;
     size_t gemm_buffer_size = static_cast<size_t>(batch_size) * sequence_length * n * element_size;
-    gemm_buffer = GetScratchBuffer<void>(gemm_buffer_size, OrtStream(context));
+    gemm_buffer = GetScratchBuffer<void>(gemm_buffer_size, context->GetComputeStream());
 
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -153,7 +153,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
