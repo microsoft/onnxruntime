@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/graph_transformer_level.h"
-#include <gtest/gtest.h>
+#include "gmock/gmock.h"
 
 using namespace onnxruntime;
 
@@ -11,4 +12,15 @@ TEST(CApiTest, session_options_graph_optimization_level) {
   // Test set optimization level succeeds when valid level is provided.
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
+}
+
+TEST(CApiTest, session_options_oversized_affinity_string) {
+  Ort::SessionOptions options;
+  std::string long_affinity_str(onnxruntime::kMaxStrLen + 1, '0');
+  try {
+    options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, long_affinity_str.c_str());
+    ASSERT_TRUE(false) << "Creation of config should have thrown exception";
+  } catch (const std::exception& ex) {
+    ASSERT_THAT(ex.what(), testing::HasSubstr("Config value is longer than maximum length: "));
+  }
 }

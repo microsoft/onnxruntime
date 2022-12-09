@@ -88,8 +88,11 @@ int main(int argc, char** argv) {
     // test with an empty affinity string, error status expected
     st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, ""));
     ORT_RETURN_IF_NULL_STATUS(st_ptr);
-    ASSERT_EQ(std::string{g_ort->GetErrorMessage(st_ptr.get())},
-              std::string{"Affinity string must not be empty"});
+
+    // test with an oversized affinity string, error status expected
+    std::string long_affinity_str(onnxruntime::kMaxStrLen + 1, '0');
+    st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, long_affinity_str.c_str()));
+    ORT_RETURN_IF_NULL_STATUS(st_ptr);
 
     st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, affinity_stream.str().c_str()));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
