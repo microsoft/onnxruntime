@@ -6,7 +6,6 @@
 
 #include "custom_op_lib.h"
 #include "openvino_wrapper.h"
-#include "core/common/common.h"
 
 static const char* c_OpDomain = "test.customop.ov";
 
@@ -27,18 +26,16 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
   OrtStatus* result = nullptr;
 
-  ORT_TRY {
+  try {
     Ort::CustomOpDomain domain{c_OpDomain};
     domain.Add(&c_CustomOpOpenVINO);
 
     session_options.Add(domain);
     AddOrtCustomOpDomainToContainer(std::move(domain));
 
-  } ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      Ort::Status status{e};
-      result = status.release();
-    });
+  } catch(const std::exception& e) {
+    Ort::Status status{e};
+    result = status.release();
   }
 
   return result;
