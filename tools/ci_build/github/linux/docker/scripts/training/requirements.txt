@@ -3,7 +3,7 @@
 # transformers requires scikit-learn
 scikit-learn
 numpy==1.21.6
-transformers==v4.4.2
+transformers==v2.10.0
 torch==1.10.0+cu113
 torchvision==0.11.1+cu113
 torchtext==0.11.0
