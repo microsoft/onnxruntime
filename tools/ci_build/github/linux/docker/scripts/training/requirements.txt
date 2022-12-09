@@ -2,7 +2,7 @@
 -f https://download.pytorch.org/whl/torch_stable.html
 # transformers requires scikit-learn
 scikit-learn
-numpy==1.21.6
+numpy==1.22.0
 transformers==v2.10.0
 torch==1.10.0+cu113
 torchvision==0.11.1+cu113
