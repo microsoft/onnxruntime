@@ -1403,19 +1403,27 @@ common::Status InferenceSession::Initialize() {
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
-        std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                    execution_providers_.Get(kDmlExecutionProvider));
-        if (dmlGraphFusionTransformer == nullptr) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+        bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
+                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+        
+        if (dml_graph_fusion_enabled) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
+                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+          if (dmlGraphFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
         }
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
-        std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
-        if (dmlOperatorFusionTransformer == nullptr) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+        bool dml_operator_fusion_enabled = session_options_.graph_optimization_level > TransformerLevel::Level1;
+        if (dml_operator_fusion_enabled) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
+          if (dmlOperatorFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
         }
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
       }
 #endif
 
