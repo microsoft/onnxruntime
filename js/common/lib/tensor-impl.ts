@@ -432,7 +432,7 @@ export class Tensor implements TensorInterface {
     }
   }
 
-  toImage(tensorFormat?: ImageFromTensorConfig): ImageData {
+  toImage(tensorFormat?: TensorFromImageConfig): ImageData {
     const pixels2DContext = document.createElement('canvas').getContext('2d');
     let image: ImageData;
     if (pixels2DContext != null) {

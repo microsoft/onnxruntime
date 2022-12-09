@@ -87,7 +87,7 @@ export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<T
    * 0-255, NHWC
    * @returns An ImageData instance which can be used to draw on canvas
    */
-  toImage(tensorFormat?: ImageFromTensorConfig): ImageData;
+  toImage(tensorFormat?: TensorFromImageConfig): ImageData;
 }
 
 export interface TensorConstructor {
