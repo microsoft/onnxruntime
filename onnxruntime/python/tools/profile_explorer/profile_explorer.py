@@ -3,18 +3,13 @@
 import argparse
 import fnmatch
 import json
+import pprint
 import subprocess as sp
 
 import pandas as pd
-
-
-def _demangle(name, demangler="c++filt"):
-    try:
-        with sp.Popen([demangler, name], stdin=sp.PIPE, stdout=sp.PIPE) as proc:
-            out, _ = proc.communicate()
-            return out.decode("utf-8").strip()
-    except:
-        return name
+from interactive import interactive_loop
+from print_utils import print_cpu_top_hitters, print_gpu_top_hitters
+from utils import shape_to_string
 
 
 def _get_args():
@@ -47,26 +42,21 @@ def _get_args():
     parser.add_argument("--csv", help="save data to csv")
     parser.add_argument("-c", "--count", type=int, default=40, help="list top N items")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose")
+    parser.add_argument(
+        "--interactive", "-i", action="store_true", help="Enable interactive mode to explore the dataset."
+    )
     args = parser.parse_args()
+
+    if args.csv and args.interactive:
+        print("WARNING: CSV output requested in interactive mode, ignoring CSV output directive.")
     return args
-
-
-def _shape_to_string(shape):
-    res = ""
-    for dict_obj in shape:
-        if len(dict_obj) > 1:
-            raise ValueError("Unhandled type in _shape_to_string()")
-        key = list(dict_obj.keys())[0]
-        value = list(dict_obj.values())[0]
-        if len(res) != 0:
-            res += "__"
-        res += f'{key}_{"x".join(str(v) for v in value)}'
-    return res
 
 
 def _json_to_df(profile_path, filter_matcher):
     cpu_entries = []
     gpu_entries = []
+    op_and_kernel_events = []
+    kernel_events_for_most_recent_launch = []
 
     with open(profile_path, "r", encoding="utf-8") as file_obj:
         data = json.load(file_obj)
@@ -90,6 +80,8 @@ def _json_to_df(profile_path, filter_matcher):
         op_name = arg.get("op_name")
 
         name = item["name"]
+        if "thread_scheduling_stats" in item["args"]:
+            del item["args"]["thread_scheduling_stats"]
 
         if not filter_matcher(name) and op_name is not None and not filter_matcher(op_name):
             continue
@@ -97,7 +89,10 @@ def _json_to_df(profile_path, filter_matcher):
         if cat != "Kernel" and not name.endswith("kernel_time"):
             continue
         elif name.endswith("kernel_time"):
+            if most_recent_kernel_launch_event is not None and len(kernel_events_for_most_recent_launch) > 0:
+                op_and_kernel_events.append((most_recent_kernel_launch_event, kernel_events_for_most_recent_launch))
             most_recent_kernel_launch_event = item
+            kernel_events_for_most_recent_launch = []
 
         block_x = arg.get("block_x", -1)
         block_y = arg.get("block_y", -1)
@@ -114,7 +109,7 @@ def _json_to_df(profile_path, filter_matcher):
                     "dimensions": f"{block_x}_{block_y}_{block_z}_{grid_x}_{grid_y}_{grid_z}",
                     "op_name": op_name,
                     "input_type_shape": (
-                        _shape_to_string(most_recent_kernel_launch_event["args"]["input_type_shape"])
+                        shape_to_string(most_recent_kernel_launch_event["args"]["input_type_shape"])
                         if most_recent_kernel_launch_event is not None
                         else "unknown"
                     ),
@@ -123,13 +118,15 @@ def _json_to_df(profile_path, filter_matcher):
             total_kernel_events += 1
             if gpu_entries[-1]["input_type_shape"] == "unknown" and "hipMem" not in gpu_entries[-1]["name"]:
                 num_missing_kernel_launch_events += 1
+            if most_recent_kernel_launch_event is not None:
+                kernel_events_for_most_recent_launch.append(gpu_entries[-1])
         else:
             cpu_entries.append(
                 {
                     "name": item["args"]["op_name"],
                     "duration": dur,
-                    "input_type_shape": _shape_to_string(item["args"]["input_type_shape"]),
-                    "output_type_shape": _shape_to_string(item["args"]["output_type_shape"]),
+                    "input_type_shape": shape_to_string(item["args"]["input_type_shape"]),
+                    "output_type_shape": shape_to_string(item["args"]["output_type_shape"]),
                 }
             )
 
@@ -142,54 +139,7 @@ def _json_to_df(profile_path, filter_matcher):
     gpu_df = pd.DataFrame(gpu_entries)
     cpu_df["count"] = 1
     gpu_df["count"] = 1
-    return cpu_df, gpu_df
-
-
-def _print_cpu_top_hitters(frame, args):
-    if len(frame) == 0:
-        print("No CPU entries found!")
-        return
-    top = args.count
-    group_key = ["name"]
-    if args.shape_sensitive:
-        group_key.append("input_type_shape")
-
-    frame2 = frame[["duration", "count"]].sum()
-    frame["pct"] = 100 * (frame["duration"] / frame2["duration"])
-    fields = group_key + ["duration", "pct", "count"]
-    frame1 = frame[fields].groupby(group_key).sum().reset_index()
-    frame1 = frame1.sort_values(by="duration", ascending=False)[:top]
-    frame1["cumulative_pct"] = frame1["pct"].cumsum()
-    frame1["cumulative_dur"] = frame1["duration"].cumsum()
-    print("\n------ Top CPU Kernel Times ------")
-    print(frame1.round(2).to_string(index=False))
-    if args.csv:
-        frame1.to_csv(f"{args.csv}_cpu_kernel_times.csv", index=False)
-
-
-def _print_gpu_top_hitters(frame, args):
-    if len(frame) == 0:
-        print("No GPU entries found!")
-        return
-    top = args.count
-    group_key = ["name"]
-    if args.dimension_sensitive:
-        group_key.append("dimensions")
-    if args.shape_sensitive:
-        group_key.append("input_type_shape")
-
-    frame2 = frame[["duration", "count"]].sum()
-    frame["pct"] = 100 * (frame["duration"] / frame2["duration"])
-    fields = group_key + ["duration", "pct", "count"]
-    frame1 = frame[fields].groupby(group_key).sum().reset_index()
-    frame1 = frame1.sort_values(by="duration", ascending=False)[:top]
-    frame1["cumulative_pct"] = frame1["pct"].cumsum()
-    frame1["cumulative_dur"] = frame1["duration"].cumsum()
-    frame1["name"] = frame1["name"].apply(lambda x: _demangle(x, args.demangler))
-    print("\n------ Top GPU Kernel Times ------")
-    print(frame1.round(2).to_string(index=False))
-    if args.csv:
-        frame1.to_csv(f"{args.csv}_gpu_kernel_times.csv", index=False)
+    return (cpu_df, gpu_df, data, op_and_kernel_events)
 
 
 def _construct_filter_matcher(args):
@@ -219,11 +169,14 @@ def main():
     args = _get_args()
     filter_matcher = _construct_filter_matcher(args)
 
-    cpu_df, gpu_df = _json_to_df(args.input, filter_matcher)
-
     pd.set_option("display.max_colwidth", 120)
-    _print_cpu_top_hitters(cpu_df, args)
-    _print_gpu_top_hitters(gpu_df, args)
+    cpu_df, gpu_df, data, ops_and_kernel_events = _json_to_df(args.input, filter_matcher)
+
+    if args.interactive:
+        interactive_loop(cpu_df, gpu_df, data, ops_and_kernel_events, args)
+    else:
+        print_cpu_top_hitters(cpu_df, args)
+        print_gpu_top_hitters(gpu_df, args)
 
 
 if __name__ == "__main__":
