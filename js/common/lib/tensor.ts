@@ -79,16 +79,7 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
 /**
  * Represent multi-dimensional arrays to feed to or fetch from model inferencing.
  */
-export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {
-  /**
-   * creates an ImageData instance from tensor
-   *
-   * @param tensorFormat - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
-   * 0-255, NHWC
-   * @returns An ImageData instance which can be used to draw on canvas
-   */
-  toImage(tensorFormat?: TensorFromImageConfig): ImageData;
-}
+export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {}
 
 export interface TensorConstructor {
   // #region specify element type
