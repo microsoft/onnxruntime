@@ -2643,6 +2643,7 @@ static constexpr OrtApi ort_api_1_to_13 = {
     &OrtApis::KernelInfo_GetOutputName,
     &OrtApis::KernelInfo_GetInputTypeInfo,
     &OrtApis::KernelInfo_GetOutputTypeInfo,
+    &OrtApis::KernelInfoGetAttribute_tensor,
     &OrtApis::HasSessionConfigEntry,
     &OrtApis::GetSessionConfigEntry,
     &OrtApis::Log,

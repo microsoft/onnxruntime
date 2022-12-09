@@ -415,6 +415,8 @@ ORT_API_STATUS_IMPL(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info,
                     _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                     _Outptr_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* info, _In_z_ const char* name,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out);
 
 ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_ int* out);

@@ -3730,6 +3730,20 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
 
+  /** \brief Get a ::OrtValue tensor stored as an attribute in the graph node.
+  *
+  * \param[in] info ::OrtKernelInfo instance.
+  * \param[in] name UTF-8 null-terminated string representing the attribute's name.
+  * \param[in] allocator Allocator used to allocate the internal tensor state.
+  * \param[out] out Returns newly created ::OrtValue backed by the provided buffer.
+  *                 Must be freed with OrtApi::ReleaseValue, which will also free internal
+  *                 tensor state allocated with the provided allocator.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* info, _In_z_ const char* name,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out);
+
   /// @}
   /// \name OrtSessionOptions
   /// @{

@@ -27,7 +27,7 @@ struct KernelOpenVINO {
   ov::CompiledModel compiled_model_;
   ov::OutputVector ov_inputs_;
   ov::OutputVector ov_outputs_;
-  std::string weights_;
+  Ort::Value weights_;
   std::string device_type_;
 };
 

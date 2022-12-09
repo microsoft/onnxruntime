@@ -117,17 +117,23 @@ static bool ValidateInputsAndOutputs(const Ort::ConstKernelInfo& kinfo, const ov
 }
 
 KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info,
-                               const std::unordered_map<std::string, std::string>& session_configs) {
+                               const std::unordered_map<std::string, std::string>& session_configs)
+    : weights_(nullptr) {
   Ort::ConstKernelInfo kinfo(info);
+  Ort::AllocatorWithDefaultOptions allocator;
 
   // Extract OpenVINO .bin and .xml contents from node attributes.
-  this->weights_ = kinfo.GetAttribute<std::string>("BIN");
+  this->weights_ = kinfo.GetTensorAttribute("BIN", allocator);
+  Ort::TensorTypeAndShapeInfo weights_type_shape = this->weights_.GetTensorTypeAndShapeInfo();
+  size_t num_weights = weights_type_shape.GetElementCount();
+  void* weights_data = this->weights_.GetTensorMutableData<void>();
+
   std::string xml_contents = kinfo.GetAttribute<std::string>("XML");
 
   // Create OpenVINO model.
   ov::Core core;
-  const ov::Shape shape{this->weights_.size()};
-  const ov::Tensor weights_tensor(ov::element::u8, shape, weights_.data());
+  const ov::Shape shape{num_weights};
+  const ov::Tensor weights_tensor(ov::element::u8, shape, weights_data);
   std::shared_ptr<ov::Model> model = core.read_model(xml_contents, weights_tensor);
 
   // Validate input/output shapes and types.

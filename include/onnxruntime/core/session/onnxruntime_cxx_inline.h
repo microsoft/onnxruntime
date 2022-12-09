@@ -1483,6 +1483,13 @@ inline TypeInfo KernelInfoImpl<T>::GetOutputTypeInfo(size_t index) const {
   return TypeInfo{out};
 }
 
+template <typename T>
+inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocator* allocator) const {
+  OrtValue* out = nullptr;
+  ThrowOnError(GetApi().KernelInfoGetAttribute_tensor(this->p_, name, allocator, &out));
+  return Value{out};
+}
+
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p, name, &out));
 }

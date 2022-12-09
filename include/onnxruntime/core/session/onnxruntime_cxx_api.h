@@ -1474,6 +1474,8 @@ struct KernelInfoImpl : Base<T> {
     return result;
   }
 
+  Value GetTensorAttribute(const char* name, OrtAllocator* allocator) const;
+
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
 
