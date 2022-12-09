@@ -200,9 +200,9 @@ struct OrtTrainingApi {
 
   /** \brief Registers the use of the Linear learning rate scheduler for the training session.
    *
-   * Register a Linear learning rate scheduler with the given
-   * learning rate scheduler parameters. Optionally specify the initial learning rate
-   * that should be used with this learning rate scheduler and training session.
+   * Register a Linear learning rate scheduler with the given learning rate scheduler parameters.
+   * Users must specify the initial learning rate that should be used with this learning rate scheduler
+   * and training session.
    *
    * \param[in] sess The training session that should use the linear learning rate scheduler.
    * \param[in] warmup_step_count Warmup steps for LR warmup.
