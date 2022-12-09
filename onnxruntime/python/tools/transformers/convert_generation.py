@@ -187,7 +187,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--separate_gpt2_decoder_for_init_run",
         required=False,
         action="store_true",
-        help="Have separate decoder subgraphs for initial and remianing runs. This allows for optimizations based on sequence lengths in each subgraph",
+        help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
     )
     output_group.set_defaults(separate_gpt2_decoder_for_init_run=False)
 
@@ -877,7 +877,8 @@ def move_initializers(
 
 
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
-    """TODO.
+    """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
+       The decoder model will be over-written.
 
     Args:
         decoder_onnx_path (str): Path of GPT-2 decoder onnx model
@@ -899,7 +900,8 @@ def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_exter
 def generate_gpt2_init_decoder(
     decoder_onnx_path: str, init_decoder_onnx_path: str, use_external_data_format: bool = True
 ) -> bool:
-    """TODO.
+    """Generates the initial decoder GPT2 subgraph and saves it for downstream use.
+       The initial decoder model will be saved to init_decoder_onnx_path.
 
     Args:
         decoder_onnx_path (str): Path of GPT-2 decoder onnx model
