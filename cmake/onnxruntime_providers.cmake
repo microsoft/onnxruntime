@@ -635,8 +635,10 @@ if (onnxruntime_USE_TENSORRT)
     FetchContent_Declare(
       onnx_tensorrt
       URL ${DEP_URL_onnx_tensorrt}
-        URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
+      URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
     )
+    # The onnx_tensorrt repo contains a test program, getSupportedAPITest, which doesn't support Windows. It uses
+    # unistd.h. So we must exclude it from our build. onnxruntime_fetchcontent_makeavailable is for the purpose.
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
     include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
