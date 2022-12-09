@@ -15,6 +15,7 @@
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -74,6 +75,7 @@ class Op {
  public:
   template <typename T>
   explicit Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}
+  Op(Op&&) = default;
   Status operator()(const ParamsT* param) { return (*callable_)(param); }
   Status IsSupported(const ParamsT* param) { return (*callable_).IsSupported(param); }
 
@@ -87,6 +89,7 @@ class Op {
   template <typename T>
   struct CallableImpl : ICallable {
     explicit CallableImpl(T&& c) : c_{std::move(c)} {}
+    CallableImpl(CallableImpl&&) = default;
     Status operator()(const ParamsT* param) override { return c_(param); }
 
     Status IsSupported(const ParamsT* param) override {
@@ -117,6 +120,9 @@ class Op {
 template <typename ParamsT, typename TimerT>
 class TunableOp {
  public:
+  TunableOp() = default;
+  TunableOp(TunableOp&&) = default;
+
   Status operator()(const ParamsT* params) {
     int id;
     if (tuning_) {
@@ -137,10 +143,16 @@ class TunableOp {
 
   void EnableTuning() {
     tuning_ = true;
+    for (auto nested_op_ptr : nested_tunable_ops_) {
+      nested_op_ptr->EnableTuning();
+    }
   }
 
   void DisableTuning() {
     tuning_ = false;
+    for (auto nested_op_ptr : nested_tunable_ops_) {
+      nested_op_ptr->DisableTuning();
+    }
   }
 
   // We might want to do some tricks to the `params`, e.g., some op will use a buffer for input and output at the same
@@ -162,6 +174,20 @@ class TunableOp {
   void SetDefaultId(int id) {
     ORT_ENFORCE(id < static_cast<int>(ops_.size()), "TunableOp id out of bound");
     default_id_ = id;
+  }
+
+  void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
+    nested_tunable_ops_.insert(op_ptr);
+    if (tuning_) {
+      op_ptr->EnableTuning();
+    } else {
+      op_ptr->DisableTuning();
+    }
+
+    // Add an op for this tunable op as well.
+    ops_.emplace_back([op_ptr](const ParamsT* params) {
+      return op_ptr->operator()(params);
+    });
   }
 
  private:
@@ -209,42 +235,49 @@ class TunableOp {
 #endif
   }
 
-  int FindFastest(const ParamsT* params) {
+ protected:
+  virtual int FindFastest(const ParamsT* params) {
+    return FindFastestImpl(params, ops_);
+  }
+
+  int FindFastestImpl(const ParamsT* params, const std::vector<Op<ParamsT>>& candidates) {
     auto op_sig = OpSignature();
     auto param_sig = params->Signature();
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
+    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
-    for (size_t i = 0; i < this->ops_.size(); i++) {
-      if (!IsSupported(ops_[i], params)) {
-        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
+
+    for (size_t i = 0; i < candidates.size(); i++) {
+      auto& candidate = const_cast<Op<ParamsT>&>(candidates[i]);
+      if (!IsSupported(candidate, params)) {
+        LOGS_DEFAULT(VERBOSE) << "FindFastestImpl found unsupported " << op_sig
+                              << '(' << param_sig << ") id=" << i;
         continue;
       }
 
-      WarmUp(ops_[i], params);
-      auto time = Profile(ops_[i], params);
+      WarmUp(candidate, params);
+      auto time = Profile(candidate, params);
       if (time < min_time) {
         min_time = time;
         id = static_cast<int>(i);
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
+    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
 
- protected:
   std::vector<Op<ParamsT>> ops_;
 
  private:
   // mapping from Signature to best impl
   std::unordered_map<std::string, int> kernel_map_;
-
   // the default impl to use when tuning is disabled
   int default_id_{0};
-
   bool tuning_{false};
+  // Registered tunable sub-ops for nested tuning
+  std::unordered_set<TunableOp<ParamsT, TimerT>*> nested_tunable_ops_;
 };
 
 }  // namespace tunable
