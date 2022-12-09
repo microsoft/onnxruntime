@@ -261,15 +261,15 @@ std::string GetEnvironmentVar(const std::string& var_name);
 
 namespace profiling {
 
-  std::string demangle(const char* name);
-  std::string demangle(const std::string& name);
+std::string demangle(const char* name);
+std::string demangle(const std::string& name);
 
-};
+}  // namespace profiling
 
 namespace logging {
 
-  unsigned int GetThreadId();
-  unsigned int GetProcessId();
+unsigned int GetThreadId();
+unsigned int GetProcessId();
 
 struct Category {
   static const char* onnxruntime;  ///< General output
