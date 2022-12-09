@@ -529,19 +529,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
-  if (provider_type == onnxruntime::kXnnpackExecutionProvider) {
-    bool allow_intra_op_spinning =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
-    if (allow_intra_op_spinning && session_options_.intra_op_param.thread_pool_size > 1) {
-      LOGS(*session_logger_, WARNING)
-          << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
-             "If ORT's thread pool size is > 1 and spinning is enabled, "
-             "there will be contention between the two thread pools, and performance will suffer."
-             "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
-             "or the ORT intra-op threadpool size to 1 and try again.";
-    }
-  }
-
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
     is_concurrent_run_supported_ = false;

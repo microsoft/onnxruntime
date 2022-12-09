@@ -13,7 +13,7 @@ struct SessionOptions;
 
 struct XnnpackProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options,
-                                                           const SessionOptions* session_options = nullptr);
+                                                           const SessionOptions* session_options);
 };
 
 }  // namespace onnxruntime
