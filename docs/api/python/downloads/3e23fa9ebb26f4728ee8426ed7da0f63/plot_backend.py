@@ -8,8 +8,8 @@
 ONNX Runtime Backend for ONNX
 =============================
 
-*ONNX Runtime* extends the 
-`onnx backend API <https://github.com/onnx/onnx/blob/master/docs/ImplementingAnOnnxBackend.md>`_
+*ONNX Runtime* extends the
+`onnx backend API <https://github.com/onnx/onnx/blob/main/docs/ImplementingAnOnnxBackend.md>`_
 to run predictions using this runtime.
 Let's use the API to compute the prediction
 of a simple logistic regression model.
