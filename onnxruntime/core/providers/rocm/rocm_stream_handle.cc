@@ -90,12 +90,11 @@ struct CpuBuffersInfo {   // TODO: should be moved to base class
 };
 
 static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {  // TODO: should be moved to base class
-  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
+  std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>(raw_info);
   for (size_t i = 0; i < info->n_buffers; ++i) {
     info->allocator->Free(info->buffers[i]);
   }
   delete[] info->buffers;
-  delete info;
 }
 
 Status RocmStream::CleanUpOnRunEnd() {
@@ -104,7 +103,7 @@ Status RocmStream::CleanUpOnRunEnd() {
   // Release the ownership of cpu_buffers_info so that the underlying
   // object will keep alive until the end of ReleaseCpuBufferCallback.
   if (release_cpu_buffer_on_rocm_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
-    auto cpu_buffers_info = new CpuBuffersInfo;
+    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;
     cpu_buffers_info->buffers = new void*[deferred_cpu_buffers_.size()];
     for (size_t i = 0; i < deferred_cpu_buffers_.size(); ++i) {
@@ -118,7 +117,7 @@ Status RocmStream::CleanUpOnRunEnd() {
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
 
     // Release memory asynchronously to avoid blocking the compute stream.
-    HIP_RETURN_IF_ERROR(hipStreamAddCallback(static_cast<hipStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info, 0));
+    HIP_RETURN_IF_ERROR(hipStreamAddCallback(static_cast<hipStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
   } else {
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetHandle())));
     for (auto* buffer : deferred_cpu_buffers_) {
