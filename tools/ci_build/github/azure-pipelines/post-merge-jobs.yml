@@ -64,7 +64,7 @@ jobs:
     isTraining: false
     ORT_EP_NAME: CPU
     GenerateDocumentation: false
-    EnablePython: true
+    EnablePython: false
     MachinePool: 'Win-CPU-2021'
 
 - job: CodeCoverage
