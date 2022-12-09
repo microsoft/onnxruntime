@@ -35,12 +35,32 @@ class CannKernel : public OpKernel {
 
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
+  inline aclrtStream Stream() const { return static_cast<aclrtStream>(provider_->GetComputeStream()); }
+
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
   }
 
-  inline aclrtStream Stream() const { return static_cast<aclrtStream>(provider_->GetComputeStream()); }
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
+    return provider_->GetScratchBufferOnCANNPinned<T>(count_or_bytes);
+  }
+
+  template <typename T>
+  inline Status Fill(Tensor* y, void* addr) const {
+    return provider_->Fill<T>(y, addr);
+  }
+
+  template <typename T>
+  inline Status Broadcast(const Tensor* x, Tensor* y, void* addr) const {
+    return provider_->Broadcast<T>(x, y, addr);
+  }
+
+ protected:
+  inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
+    return Info().GetDataTransferManager().CopyTensor(src, dst);
+  }
 
  private:
   CANNExecutionProvider* provider_;

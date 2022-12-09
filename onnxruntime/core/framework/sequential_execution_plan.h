@@ -41,7 +41,7 @@ struct AllocPlanPerValue {
   IntervalT allocate_interval{0, 0};
   OrtValueIndex inplace_reuse{-1}; //No in-place reuse
 #endif
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   // is_strided_tensor indicates if this OrtValue is strided tensor.
   // If alloc_kind is kReuse, it reuses one of the node inputs (like Expand),
   // if alloc_kind is kAllocate, it will only allocate required buffer size (like ConstantOfShape).

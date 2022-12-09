@@ -30,6 +30,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class PhiloxGenerator;
+class RandomGenerator;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
@@ -497,7 +498,7 @@ struct ProviderHost {
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
   virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
   virtual void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) = 0;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   virtual void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) = 0;
   virtual void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) = 0;
 #endif
@@ -823,7 +824,7 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   virtual gsl::span<const int64_t> Tensor__Strides(const Tensor* p) = 0;
   virtual bool Tensor__IsContiguous(const Tensor* p) = 0;
   virtual void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
@@ -870,6 +871,10 @@ struct ProviderHost {
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 #endif
+#endif
+
+#if defined(USE_CANN)
+  virtual RandomGenerator& RandomGenerator__Default() = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
