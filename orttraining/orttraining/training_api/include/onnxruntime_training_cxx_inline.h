@@ -105,4 +105,8 @@ inline void TrainingSession::ExportModelForInferencing(const std::basic_string<O
       p_, inference_model_path.c_str(), graph_output_names.size(), output_names.data()));
 }
 
+inline void SetSeed(const int64_t seed) {
+  ThrowOnError(GetTrainingApi().SetSeed(seed));
+}
+
 }  // namespace Ort

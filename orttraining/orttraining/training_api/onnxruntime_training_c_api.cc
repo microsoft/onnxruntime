@@ -2,14 +2,15 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
+#include "core/common/string_helper.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/random_seed.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-#include "core/session/abi_session_options_impl.h"
 #include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/training_session.h"
 #include "orttraining/training_api/include/ort_training_apis.h"
-#include "core/common/string_helper.h"
+#include "orttraining/training_api/include/training_session.h"
 
 namespace {
 
@@ -370,6 +371,15 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetSeed, _In_ const int64_t seed) {
+  API_IMPL_BEGIN
+
+  onnxruntime::utils::SetRandomSeed(seed);
+  return nullptr;
+
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -395,6 +405,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
     &OrtTrainingApis::ExportModelForInferencing,
+    &OrtTrainingApis::SetSeed,
 };
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {

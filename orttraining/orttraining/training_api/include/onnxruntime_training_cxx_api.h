@@ -153,6 +153,8 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
                                  const std::vector<std::string>& graph_output_names);
 };
 
+void SetSeed(const int64_t seed);
+
 }  // namespace Ort
 
 #include "onnxruntime_training_cxx_inline.h"

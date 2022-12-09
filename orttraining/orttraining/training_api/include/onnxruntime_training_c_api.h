@@ -316,6 +316,17 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
                   _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len,
                   _In_reads_(graph_outputs_len) const char* const* graph_output_names);
+
+  /** \brief Sets the seed used for random number generation in Onnxruntime.
+   *
+   * Use this to get reproducible results.
+   *
+   * \param[in] seed The seed to be set.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(SetSeed, _In_ const int64_t seed);
 };
 
 typedef struct OrtTrainingApi OrtTrainingApi;
