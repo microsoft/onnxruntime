@@ -1,17 +1,26 @@
 import onnx
+import os
 from onnx import helper, shape_inference
 import argparse
 import pickle
 import numpy as np
+import torch
+import random
+from transformers import AutoConfig
 
-def process_shape(batch, seq_len, model):
+def process_shape(model, batch, seq_len, past_seq_len):
+    total_seq_len = seq_len + past_seq_len
+    dim_map = {
+            'batch_size': batch,
+            'seq_len': seq_len,
+            'total_seq_len': total_seq_len,
+            'past_seq_len': past_seq_len
+            }
     for input in model.graph.input:
         new_shape = []
         for dim in input.type.tensor_type.shape.dim:
-            if dim.dim_param == "batch_size":
-                new_shape.append(batch)
-            elif dim.dim_param == "seq_len":
-                new_shape.append(seq_len)
+            if dim.dim_param in dim_map:
+                new_shape.append(dim_map[dim.dim_param])
             else:
                 new_shape.append(dim.dim_value)
         del input.type.tensor_type.shape.dim[:]
@@ -22,10 +31,8 @@ def process_shape(batch, seq_len, model):
     for output in model.graph.output:
         new_shape = []
         for dim in output.type.tensor_type.shape.dim:
-            if dim.dim_param == "batch_size":
-                new_shape.append(batch)
-            elif dim.dim_param == "seq_len":
-                new_shape.append(seq_len)
+            if dim.dim_param in dim_map:
+                new_shape.append(dim_map[dim.dim_param])
             else:
                 new_shape.append(dim.dim_value)
         del output.type.tensor_type.shape.dim[:]
@@ -36,10 +43,8 @@ def process_shape(batch, seq_len, model):
     for value_info in model.graph.value_info:
         new_shape = []
         for dim in value_info.type.tensor_type.shape.dim:
-            if dim.dim_param == "batch_size":
-                new_shape.append(batch)
-            elif dim.dim_param == "seq_len":
-                new_shape.append(seq_len)
+            if dim.dim_param in dim_map:
+                new_shape.append(dim_map[dim.dim_param])
             else:
                 new_shape.append(dim.dim_value)
         del value_info.type.tensor_type.shape.dim[:]
@@ -50,16 +55,17 @@ def process_shape(batch, seq_len, model):
 
 def main(args):
     model = onnx.load(args.input)
-    model = process_shape(args.batch, args.seq_len, model)
+    model = process_shape(model, args.batch, args.seq_len, args.past_seq_len)
 
-    onnx.save(model, args.output)
+    output_file = os.path.split(args.output)[1]
+    external_data_file = f'{output_file}.data'
+    onnx.save(model,
+            args.output,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=external_data_file
+    )
 
-    # generate fake input data
-    data_shape = (args.batch, args.seq_len)
-
-    x = np.random.randint(low=0, high=10000, size=data_shape, dtype=np.int64)
-    with open('input-x.pkl', 'wb') as fp:
-        pickle.dump(x, fp)
 
 def get_args():
     parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
@@ -67,6 +73,7 @@ def get_args():
     parser.add_argument('--output', type=str)
     parser.add_argument('--batch', type=int)
     parser.add_argument('--seq-len', type=int)
+    parser.add_argument('--past-seq-len', type=int)
 
     args = parser.parse_args()
     return args

@@ -4,6 +4,7 @@ from onnx import helper
 from onnx import numpy_helper
 import numpy as np
 import argparse
+from shard_spec import ShardSpec, megatron_shard_spec, allgather_gemm_shard_spec, get_gpt2_spec
 
 def gen_allgather(arg_name, out_name, out_shape, ranks):
     assert out_shape[-1] % ranks == 0
@@ -50,28 +51,6 @@ def gen_allgather(arg_name, out_name, out_shape, ranks):
             )
     return (ag_node, r1_node, t_node, r2_node), (r1, r2)
 
-class ShardSpec:
-    def __init__(self, shard_spec, is_partial):
-        self.spec = shard_spec
-        self.is_partial = is_partial
-
-    def is_valid_sharding(self, shape):
-        if self.is_partial:
-            return True
-        if len(self.spec) != len(shape):
-            return False
-        
-        for shard, dim in zip(self.spec, shape):
-            if dim % shard != 0:
-                return False
-        return True
-    
-    def num_shard(self):
-        return np.prod(self.spec)
-    
-    def get_shard_dims(self, shape):
-        return [int(dim / shard) for shard, dim in zip(self.spec, shape)]
-
 class Actions(Enum):
     NoAction = 0
     AllGather = 1
@@ -86,6 +65,9 @@ class ShardedOnnxOp:
     def infer_sharding(self, input_shard_specs):
         actions = []
         for shard, shape in zip(input_shard_specs, self.input_shapes):
+            if shard is None:
+                actions.append(Actions.NoAction)
+                continue
             if not shard.is_valid_sharding(shape):
                 raise Exception(f'invalid sharding on shape {shape}')
             if shard.is_partial:
@@ -170,12 +152,16 @@ class MatmulOp(ReductionOnnxOp):
 
 class AttentionOp(ReductionOnnxOp):
     def infer_output_shard_spec(self, input_sharded_shape, partial_result):
-        assert len(self.output_shapes) == 1
+        #assert len(self.output_shapes) == 1
         assert input_sharded_shape[1][1] == input_sharded_shape[2][0]
         spec = [int(self.output_shapes[0][0] / input_sharded_shape[0][0]),
                 int(self.output_shapes[0][1] / input_sharded_shape[0][1]),
                 int(self.output_shapes[0][2] / int(input_sharded_shape[1][1] / 3))]
-        return [ShardSpec(spec, partial_result)]
+        ret = [ShardSpec(spec, partial_result)]
+        if len(self.output_shapes) > 1:
+            # not need to split second output
+            ret.append(ShardSpec([int(1)] * len(self.output_shapes[1]), False))
+        return ret
 
 class ElementwiseOp(ShardedOnnxOp):
     def __init__(self, op_type, input_shapes, output_shapes, broad_cast_dims):
@@ -191,7 +177,7 @@ class ElementwiseOp(ShardedOnnxOp):
         for i, input_spec in enumerate(input_shard_specs):
             if input_spec.is_partial:
                 # TODO: support partial tensor
-                action[i] = Actions.AllReduce
+                actions[i] = Actions.AllReduce
                 has_partial_input = True
             elif input_spec.num_shard() > 1:
                 has_sharded_input = True
@@ -231,7 +217,7 @@ def lookup_arg_shape(graph, arg_name):
     if arg is None:
         #look in the initializers
         w = [_ for _ in graph.initializer if _.name == arg_name]
-        assert len(w) == 1
+        assert len(w) == 1, f'no shape for arg: {arg_name}'
         return [_ for _ in w[0].dims]
     return [_.dim_value for _ in arg.type.tensor_type.shape.dim]
 
@@ -244,30 +230,42 @@ def lookup_arg_type_shape(graph, arg_name):
             return init.data_type, [_ for _ in init.dims]
     return None, None
 
+def lookup_shape(graph, name_list):
+    ret = []
+    for n in name_list:
+        if n != "":
+            ret.append(lookup_arg_shape(graph, n))
+        else:
+            ret.append([])
+    return ret
+
 def get_shard_op(node, graph):
+    input_shapes = lookup_shape(graph, node.input)
+    output_shapes = lookup_shape(graph, node.output)
+    elementwise_op_list = ['FastGelu', 'BiasGelu', 'Cast']
     if node.op_type == "Gemm":
         return GemmOp(node.op_type, 
-                      [lookup_arg_shape(graph, input) for input in node.input],
-                      [lookup_arg_shape(graph, output) for output in node.output],
+                      input_shapes,
+                      output_shapes,
                       ((1, 0),))
     elif node.op_type == "MatMul":
         return MatmulOp(node.op_type, 
-                      [lookup_arg_shape(graph, input) for input in node.input],
-                      [lookup_arg_shape(graph, output) for output in node.output],
-                      ((len(lookup_arg_shape(graph, node.input[0])) - 1, 0),))
+                      input_shapes,
+                      output_shapes,
+                      ((len(input_shapes[0]) - 1, 0),))
     elif node.op_type == "Attention":
         return AttentionOp(node.op_type,
-                      [lookup_arg_shape(graph, input) for input in node.input],
-                      [lookup_arg_shape(graph, output) for output in node.output],
+                      input_shapes,
+                      output_shapes,
                       ((2, 0, -1, -1),))
-    elif node.op_type == "FastGelu" or node.op_type == 'BiasGelu':
+    elif node.op_type in elementwise_op_list:
         return ElementwiseOp(node.op_type,
-                      [lookup_arg_shape(graph, input) for input in node.input],
-                      [lookup_arg_shape(graph, output) for output in node.output],
+                      input_shapes,
+                      output_shapes,
                       ((2, (2, 0),),))
     return ShardedOnnxOp(node.op_type, 
-                      [lookup_arg_shape(graph, input) for input in node.input],
-                      [lookup_arg_shape(graph, output) for output in node.output])
+                      input_shapes,
+                      output_shapes)
 
 def shard_model(model, shard_specs, output_name, rank, num_layers):
     graph = model.graph
@@ -283,7 +281,7 @@ def shard_model(model, shard_specs, output_name, rank, num_layers):
 
     for node in graph.node:
         shard_op = get_shard_op(node, graph)
-        input_shard_spec = [shard_dict[_] for _ in node.input]
+        input_shard_spec = [shard_dict[_] if _ != "" else None for _ in node.input]
         actions, output_shard_spec = shard_op.infer_sharding(input_shard_spec)
         for name, spec in zip (node.output, output_shard_spec,):
             shard_dict[name] = spec
@@ -316,29 +314,46 @@ def shard_model(model, shard_specs, output_name, rank, num_layers):
             # this is not correct, temporary use it to demostrate.
             new_arg = helper.make_tensor_value_info(f'{arg_name}_all_gather', arg_type, arg_shape)
             ag_nodes, ag_inits = gen_allgather(arg_name, new_arg.name, arg_shape, rank)
-            #allgather_node = helper.make_node(
-            #                "NcclAllGather",
-            #                [arg_name],
-            #                [new_arg.name],
-            #                domain = "com.microsoft",
-            #                name=""
-            #                )
             coolective_nodes.extend(ag_nodes)
             collective_initializer.extend(ag_inits)
             collective_args_map[arg_name] = new_arg.name
         else:
             raise Exception("Not Implemented.")
     
-    atten_name = [f'Attention_{i}' for i in range(num_layers)]
+    qkv_weight = []
+    qkv_bias = []
+    past_names = []
+    present_names = []
     for node in graph.node:
         new_inputs = [collective_args_map[_] if _ in collective_args_map else _ for _ in node.input]
         del node.input[:]
         node.input.extend(new_inputs)
         # change attention's head to shard
-        if node.name in atten_name:
+        if node.op_type == 'Attention':
+            qkv_weight.append(node.input[1])
+            qkv_bias.append(node.input[2])
             for a in node.attribute:
                 if a.name == 'num_heads':
                     a.i = int(a.i / rank)
+            # modify past value_info
+            if len(node.input) >= 5:
+                past_names.append(node.input[4])
+            if len(node.output) >= 2:
+                present_names.append(node.output[1])
+
+    # modify attention past and present
+    for i in graph.input:
+        if i.name in past_names:
+            # past shape is (2, batch, num_head, past_seq_len, hid/num_heads)
+            shape = i.type.tensor_type.shape.dim
+            shape[2].dim_value = shape[2].dim_value // rank
+    for o in graph.output:
+        if o.name in present_names:
+            # present shape is (2, batch, num_head, past_seq+seq_len, hid/num_heads)
+            shape = o.type.tensor_type.shape.dim
+            shape[2].dim_value = shape[2].dim_value // rank
+
+
     graph.node.extend(coolective_nodes)
 
     #added_outputs = ['EmbedLayerNormalization_0_output', 'onnx::MatMul_336', 'onnx::Add_338']
@@ -364,8 +379,6 @@ def shard_model(model, shard_specs, output_name, rank, num_layers):
     opset.domain="com.microsoft"
     opset.version=1
     
-    qkv_weight = [f'{i}_qkv_weight' for i in atten_name]
-    qkv_bias = [f'{i}_qkv_bias' for i in atten_name]
 
     for _ in range(rank):
         for i, w in enumerate(original_initializers):
@@ -415,187 +428,22 @@ def shard_model(model, shard_specs, output_name, rank, num_layers):
                 graph.initializer.append(w)
 
         graph.initializer.extend(collective_initializer)
-        onnx.save(model, f'{output_name}_{_}.onnx')
+        output_file = f'{output_name}_{_}.onnx'
+        external_data_file = f'{output_file}.data'
+        onnx.save(model,
+                output_file,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location=external_data_file
+        )
         del graph.initializer[:]
-
-shard = 4
-megatron_shard_spec = {# layer 0
-              'Attention_0_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_0_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1650': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1651': ShardSpec([1, shard], False),
-              'encoder.layer.0.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1652': ShardSpec([shard, 1], False),
-              # layer 1
-              'Attention_1_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_1_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1663': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1664': ShardSpec([1, shard], False),
-              'encoder.layer.1.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1665': ShardSpec([shard, 1], False),
-              ## layer 2
-              'Attention_2_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_2_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1676': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1677': ShardSpec([1, shard], False),
-              'encoder.layer.2.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1678': ShardSpec([shard, 1], False),
-              # layer 3
-              'Attention_3_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_3_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1689': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1690': ShardSpec([1, shard], False),
-              'encoder.layer.3.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1691': ShardSpec([shard, 1], False),
-              # layer 4
-              'Attention_4_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_4_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1702': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1703': ShardSpec([1, shard], False),
-              'encoder.layer.4.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1704': ShardSpec([shard, 1], False),
-              # layer 5
-              'Attention_5_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_5_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1715': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1716': ShardSpec([1, shard], False),
-              'encoder.layer.5.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1717': ShardSpec([shard, 1], False),
-              # layer 6
-              'Attention_6_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_6_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1728': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1729': ShardSpec([1, shard], False),
-              'encoder.layer.6.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1730': ShardSpec([shard, 1], False),
-              # layer 7
-              'Attention_7_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_7_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1741': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1742': ShardSpec([1, shard], False),
-              'encoder.layer.7.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1743': ShardSpec([shard, 1], False),
-              # layer 8
-              'Attention_8_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_8_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1754': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1755': ShardSpec([1, shard], False),
-              'encoder.layer.8.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1756': ShardSpec([shard, 1], False),
-              # layer 9
-              'Attention_9_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_9_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1767': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1768': ShardSpec([1, shard], False),
-              'encoder.layer.9.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1769': ShardSpec([shard, 1], False),
-              # layer 10
-              'Attention_10_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_10_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1780': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1781': ShardSpec([1, shard], False),
-              'encoder.layer.10.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1782': ShardSpec([shard, 1], False),
-              # layer 11
-              'Attention_11_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_11_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1793': ShardSpec([shard, 1,], False),
-              'onnx::MatMul_1794': ShardSpec([1, shard], False),
-              'encoder.layer.11.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1795': ShardSpec([shard, 1], False),
-              }
-
-allgather_gemm_shard_spec = {# layer 0
-              'Attention_0_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_0_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1650': ShardSpec([1, shard], False),
-              'onnx::MatMul_1651': ShardSpec([1, shard], False),
-              'encoder.layer.0.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1652': ShardSpec([1, shard], False),
-              # layer 1
-              'Attention_1_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_1_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1663': ShardSpec([1, shard], False),
-              'onnx::MatMul_1664': ShardSpec([1, shard], False),
-              'encoder.layer.1.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1665': ShardSpec([1, shard], False),
-              # layer 2
-              'Attention_2_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_2_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1676': ShardSpec([1, shard], False),
-              'onnx::MatMul_1677': ShardSpec([1, shard], False),
-              'encoder.layer.2.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1678': ShardSpec([1, shard], False),
-              # layer 3
-              'Attention_3_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_3_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1689': ShardSpec([1, shard], False),
-              'onnx::MatMul_1690': ShardSpec([1, shard], False),
-              'encoder.layer.3.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1691': ShardSpec([1, shard], False),
-              # layer 4
-              'Attention_4_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_4_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1702': ShardSpec([1, shard], False),
-              'onnx::MatMul_1703': ShardSpec([1, shard], False),
-              'encoder.layer.4.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1704': ShardSpec([1, shard], False),
-              # layer 5
-              'Attention_5_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_5_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1715': ShardSpec([1, shard], False),
-              'onnx::MatMul_1716': ShardSpec([1, shard], False),
-              'encoder.layer.5.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1717': ShardSpec([1, shard], False),
-              # layer 6
-              'Attention_6_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_6_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1728': ShardSpec([1, shard], False),
-              'onnx::MatMul_1729': ShardSpec([1, shard], False),
-              'encoder.layer.6.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1730': ShardSpec([1, shard], False),
-              # layer 7
-              'Attention_7_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_7_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1741': ShardSpec([1, shard], False),
-              'onnx::MatMul_1742': ShardSpec([1, shard], False),
-              'encoder.layer.7.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1743': ShardSpec([1, shard], False),
-              # layer 8
-              'Attention_8_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_8_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1754': ShardSpec([1, shard], False),
-              'onnx::MatMul_1755': ShardSpec([1, shard], False),
-              'encoder.layer.8.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1756': ShardSpec([1, shard], False),
-              # layer 9
-              'Attention_9_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_9_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1767': ShardSpec([1, shard], False),
-              'onnx::MatMul_1768': ShardSpec([1, shard], False),
-              'encoder.layer.9.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1769': ShardSpec([1, shard], False),
-              # layer 10
-              'Attention_10_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_10_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1780': ShardSpec([1, shard], False),
-              'onnx::MatMul_1781': ShardSpec([1, shard], False),
-              'encoder.layer.10.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1782': ShardSpec([1, shard], False),
-              # layer 11
-              'Attention_11_qkv_weight': ShardSpec([1, shard], False),
-              'Attention_11_qkv_bias': ShardSpec([shard], False),
-              'onnx::MatMul_1793': ShardSpec([1, shard], False),
-              'onnx::MatMul_1794': ShardSpec([1, shard], False),
-              'encoder.layer.11.intermediate.dense.bias': ShardSpec([shard], False),
-              'onnx::MatMul_1795': ShardSpec([1, shard], False),
-              }
 
 def get_args():
     parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
     parser.add_argument('--model-file', type=str)
     parser.add_argument('--shard-prefix', type=str)
     parser.add_argument('--mode', type=str, default='allreduce')
+    parser.add_argument('--num-shards', type=int, default=4)
 
     args = parser.parse_args()
     return args
@@ -603,8 +451,11 @@ def get_args():
 if __name__ == '__main__':
     args = get_args()
     model = onnx.load(args.model_file)
-    if args.mode == 'allreduce':
-        shard_model(model, megatron_shard_spec, args.shard_prefix, shard,12)
-    elif args.mode == 'allgather':
-        shard_model(model, allgather_gemm_shard_spec, args.shard_prefix, shard,12)
+    #if args.mode == 'allreduce':
+    #    shard_model(model, megatron_shard_spec, args.shard_prefix, args.num_shards,12)
+    #elif args.mode == 'allgather':
+    #    shard_model(model, allgather_gemm_shard_spec, args.shard_prefix, args.num_shards,12)
+    num_layers=36
+    spec = get_gpt2_spec(args.num_shards, num_layers, mode=args.mode)
+    shard_model(model, spec, args.shard_prefix, args.num_shards, num_layers)
     print('Shard Done')
