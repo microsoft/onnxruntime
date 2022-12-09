@@ -75,7 +75,8 @@ constexpr bool dependent_false_v = false;
 template <typename T>
 T ValueFromIdx(size_t idx) {
   if constexpr (std::is_same_v<T, std::string>) {
-    return std::string{'a' + gsl::narrow_cast<char>(idx)};
+    const char c = gsl::narrow_cast<char>('a' + idx);
+    return std::string(1, c);
   } else if constexpr (std::is_same_v<T, bool>) {
     return (idx & 1) == 1;
   } else if constexpr (std::is_integral_v<T> || std::is_floating_point_v<T>) {
