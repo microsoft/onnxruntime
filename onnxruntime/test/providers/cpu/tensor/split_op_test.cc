@@ -70,7 +70,7 @@ void RunTest(int64_t axis, const std::vector<int64_t>& split_sizes, const ShapeA
 }
 
 template <typename>
-constexpr bool dependent_false_v = false;
+[[maybe_unused]] constexpr bool dependent_false_v = false;
 
 template <typename T>
 T ValueFromIdx(size_t idx) {
