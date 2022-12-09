@@ -1883,7 +1883,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         else:
             if args.use_tensorrt:
                 # Using --tensorrt_placeholder_builder can help reduce CI testing time.
-                # However, in C-API application test in package pipelines, with this flag will cause ORT TRT to deadlock,  
+                # However, in C-API application test in package pipelines, with this flag will cause ORT TRT to deadlock,
                 # so we remove this flag for package pipelines.
                 # For package pipelines with TRT 8.5 GA, we observe increased testing time, hence increase the timeout as workaround.
                 ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "36000"]
