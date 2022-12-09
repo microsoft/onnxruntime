@@ -5536,6 +5536,7 @@ def test_eval_onnx_models():
     assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
     assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
 
+
 def test_kwargs_dict_input():
     class DictNet(torch.nn.Module):
         def __init__(self):
