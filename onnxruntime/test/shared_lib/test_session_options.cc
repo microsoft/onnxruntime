@@ -14,6 +14,8 @@ TEST(CApiTest, session_options_graph_optimization_level) {
   options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 }
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
+
 TEST(CApiTest, session_options_oversized_affinity_string) {
   Ort::SessionOptions options;
   std::string long_affinity_str(onnxruntime::kMaxStrLen + 1, '0');
@@ -24,3 +26,5 @@ TEST(CApiTest, session_options_oversized_affinity_string) {
     ASSERT_THAT(ex.what(), testing::HasSubstr("Config value is longer than maximum length: "));
   }
 }
+
+#endif
