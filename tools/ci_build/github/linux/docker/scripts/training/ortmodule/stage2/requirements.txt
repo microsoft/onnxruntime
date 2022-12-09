@@ -1,6 +1,6 @@
 pandas
 scikit-learn
-numpy==1.21.6
+numpy==1.22.0
 transformers==v4.4.2
 tensorboard>=2.2.0,<2.5.0
 h5py
