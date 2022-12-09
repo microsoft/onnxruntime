@@ -126,9 +126,10 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
   int xnn_thread_pool_size = info.xnn_thread_pool_size;
   int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
-  bool allow_intra_op_spinning =
-      info.session_options && info.session_options->config_options.GetConfigOrDefault(
-                                  kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+  bool allow_intra_op_spinning = (info.session_options == nullptr) ||
+                                 (info.session_options &&
+                                  info.session_options->config_options.GetConfigOrDefault(
+                                      kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
   if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size > 1) {
     LOGS_DEFAULT(WARNING)
         << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."

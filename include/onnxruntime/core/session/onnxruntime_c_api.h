@@ -3500,7 +3500,7 @@ struct OrtApi {
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
-   *      default value is 0, which means to use the global thread-pool size.
+   *      default value is 0, which means to use the session thread-pool size.
    *
    * \since Version 1.12.
    */
