@@ -19,7 +19,9 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
-def _test_strided_batched_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
+def _test_strided_batched_gemm(
+    func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int, alpha=1.0, beta=0.0
+):
     assert dtype in ["float32", "float16"]
 
     a_shape = (k, m) if transa else (m, k)
@@ -28,14 +30,18 @@ def _test_strided_batched_gemm(func, dtype: str, transa: bool, transb: bool, m: 
     np.random.seed(0)
     a = (np.random.rand(batch, *a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(batch, *b_shape) + 0.5).astype(dtype).astype("float64")
-    ref_c = (a.swapaxes(1, 2) if transa else a) @ (b.swapaxes(1, 2) if transb else b)
+    intermidiate_c = (a.swapaxes(1, 2) if transa else a) @ (b.swapaxes(1, 2) if transb else b)
+    if alpha == 1.0 and beta == 0.0:  # fast path
+        ref_c = intermidiate_c
+    else:
+        ref_c = alpha * intermidiate_c + beta * np.ones_like(intermidiate_c)
 
     bounds = [get_gemm_bound(dtype, a[i], b[i], ref_c[i], transa, transb) for i in range(batch)]
 
     a = a.astype(dtype)
     b = b.astype(dtype)
 
-    my_c = np.zeros((batch, m, n), dtype=dtype)
+    my_c = np.ones((batch, m, n), dtype=dtype)
     dev_a = ke.DeviceArray(a)
     dev_b = ke.DeviceArray(b)
     dev_c = ke.DeviceArray(my_c)
@@ -48,8 +54,6 @@ def _test_strided_batched_gemm(func, dtype: str, transa: bool, transb: bool, m: 
     stride_a = m * k
     stride_b = k * n
     stride_c = m * n
-    alpha = 1.0
-    beta = 0.0
     my_gemm = func(
         opa, opb, m, n, k, alpha, dev_a, lda, stride_a, dev_b, ldb, stride_b, beta, dev_c, ldc, stride_c, batch
     )
@@ -112,6 +116,36 @@ def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k, batch):
 def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k, batch):
     wrapper_name = "StridedBatchedGemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
     _test_strided_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_rocblas_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "RocBlasStridedBatchedGemm_" + dtype_to_suffix(dtype)
+    _test_strided_batched_gemm(
+        getattr(ke, wrapper_name), dtype, transa, transb, 128, 256, 768, 16, alpha=alpha, beta=beta
+    )
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_ck_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "CKStridedBatchedGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_strided_batched_gemm(
+        getattr(ke, wrapper_name), dtype, transa, transb, 256, 128, 384, 8, alpha=alpha, beta=beta
+    )
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_gemm_tunable_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "StridedBatchedGemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_strided_batched_gemm(
+        getattr(ke, wrapper_name), dtype, transa, transb, 128, 512, 384, 4, alpha=alpha, beta=beta
+    )
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):

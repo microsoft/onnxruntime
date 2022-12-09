@@ -13,7 +13,7 @@ import pytest
 from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
-def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int):
+def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, alpha=1.0, beta=0.0):
     assert dtype in ["float32", "float16"]
 
     a_shape = (k, m) if transa else (m, k)
@@ -22,14 +22,18 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     np.random.seed(0)
     a = (np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64")
-    ref_c = (a.T if transa else a) @ (b.T if transb else b)
+    intermidiate_c = (a.T if transa else a) @ (b.T if transb else b)
+    if alpha == 1.0 and beta == 0.0:  # fast path
+        ref_c = intermidiate_c
+    else:
+        ref_c = alpha * intermidiate_c + beta * np.ones_like(intermidiate_c)
 
     bound = get_gemm_bound(dtype, a, b, ref_c, transa, transb)
 
     a = a.astype(dtype)
     b = b.astype(dtype)
 
-    my_c = np.zeros((m, n), dtype=dtype)
+    my_c = np.ones((m, n), dtype=dtype)
     dev_a = ke.DeviceArray(a)
     dev_b = ke.DeviceArray(b)
     dev_c = ke.DeviceArray(my_c)
@@ -38,8 +42,6 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     opb = ke.blas_op.T if transb else ke.blas_op.N
     lda = a_shape[1]
     ldb = b_shape[1]
-    alpha = 1.0
-    beta = 0.0
     my_gemm = func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
 
     failures = {}
@@ -91,6 +93,30 @@ def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k):
 def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k):
     wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_rocblas_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "RocBlasGemm_" + dtype_to_suffix(dtype)
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 128, 256, 768, alpha=alpha, beta=beta)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_ck_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 256, 128, 384, alpha=alpha, beta=beta)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_gemm_tunable_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 128, 512, 384, alpha=alpha, beta=beta)
 
 
 @dataclass

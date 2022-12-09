@@ -19,7 +19,9 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
-def _test_batched_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
+def _test_batched_gemm(
+    func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int, alpha=1.0, beta=0.0
+):
     assert dtype in ["float32", "float16"]
 
     a_shape = (k, m) if transa else (m, k)
@@ -28,14 +30,18 @@ def _test_batched_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: 
     np.random.seed(0)
     as_ = [(np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
     bs = [(np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
-    ref_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
+    intermidiate_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
+    if alpha == 1.0 and beta == 0.0:  # fast path
+        ref_cs = intermidiate_cs
+    else:
+        ref_cs = [alpha * cs + beta * np.ones_like(cs) for cs in intermidiate_cs]
 
     bounds = [get_gemm_bound(dtype, as_[i], bs[i], ref_cs[i], transa, transb) for i in range(batch)]
 
     as_ = [a.astype(dtype) for a in as_]
     bs = [b.astype(dtype) for b in bs]
 
-    my_cs = [np.zeros((m, n), dtype=dtype) for i in range(batch)]
+    my_cs = [np.ones((m, n), dtype=dtype) for i in range(batch)]
     dev_as = [ke.DeviceArray(a) for a in as_]
     dev_bs = [ke.DeviceArray(b) for b in bs]
     dev_cs = [ke.DeviceArray(my_c) for my_c in my_cs]
@@ -45,8 +51,6 @@ def _test_batched_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: 
     lda = a_shape[1]
     ldb = b_shape[1]
     ldc = n
-    alpha = 1.0
-    beta = 0.0
     my_gemm = func(opa, opb, m, n, k, alpha, dev_as, lda, dev_bs, ldb, beta, dev_cs, ldc, batch)
 
     failures = {}
@@ -97,6 +101,22 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k, batch):
     wrapper_name = "BatchedGemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
     _test_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_rocblas_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "RocBlasBatchedGemm_" + dtype_to_suffix(dtype)
+    _test_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 512, 512, 768, 8, alpha=alpha, beta=beta)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_tunable_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "BatchedGemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 768, 768, 512, 4, alpha=alpha, beta=beta)
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
