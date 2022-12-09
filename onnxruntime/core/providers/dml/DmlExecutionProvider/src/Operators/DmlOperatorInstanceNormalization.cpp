@@ -15,37 +15,43 @@ class DmlOperatorInstanceNormalization : public DmlOperator
         IN_BIAS
     };
 
-    void Shift1DInputsTensorDesc(
-        const MLOperatorKernelCreationContext& kernelCreationContext,
-        int index,
-        int count,
-        uint32_t minimumDimensionCount
-        )
-    {
-        for (int i = index; i != index + count; ++i)
-        {
-            // Shift a single dimension size to the C channel.
-            // e.g. Given a 4D input (X), then a 1D scale of [7] becomes [1,7,1,1].
-            TensorDesc& tensorDesc = m_inputTensorDescs[i];
-            gsl::span<const uint32_t> sizes = tensorDesc.GetSizes();
-            gsl::span<const uint32_t> lastDimension = sizes.last(1);
-            m_inputTensorDescs[i] = CreateTensorDescFromInput(kernelCreationContext, i, TensorAxis::DoNotCoerce, TensorAxis::C, TensorAxis::LeftAligned, lastDimension, minimumDimensionCount);
-        }
-    }
-
 public:
     DmlOperatorInstanceNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
+        ORT_THROW_HR_IF(E_INVALIDARG, kernelCreationContext.GetInputCount() != 3);
+        std::vector<std::vector<uint32_t>> inputShapes(kernelCreationContext.GetInputCount());
+        std::vector<gsl::span<const uint32_t>> inputShapeSpans(kernelCreationContext.GetInputCount());
+        auto firstInputShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
+
         DmlOperator::Initialize(
             kernelCreationContext,
-            kernelInputIndices,
             std::nullopt,
             std::nullopt,
-            std::nullopt,
-            /*minimumDimensionCount*/ 1
-        );
+            firstInputShape,
+            firstInputShape,
+            static_cast<uint32_t>(firstInputShape.size()));
+
+        // To allow metacommands to be called, add missing trailing dimensions of 1 until we reach 4 dimensions
+        firstInputShape.resize(std::max<size_t>(firstInputShape.size(), 4), 1);
+
+        m_inputTensorDescs[0] = TensorDesc(
+            m_inputTensorDescs[0].GetDmlDataType(),
+            firstInputShape);
+
+        m_outputTensorDescs[0] = m_inputTensorDescs[0];
+
+        for (uint32_t i = 1; i < m_inputTensorDescs.size(); ++i)
+        {
+            // Only the channel dimension shouldn't be broadcasted
+            std::vector<uint32_t> inputStrides(firstInputShape.size());
+            inputStrides[1] = 1;
+
+            m_inputTensorDescs[i] = TensorDesc(
+                m_inputTensorDescs[i].GetDmlDataType(),
+                firstInputShape,
+                inputStrides);
+        }
 
         // "Instance" normalization is really spatial normalization,
         // where the spatial channels are reduced and normalized, while
@@ -59,9 +65,6 @@ public:
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
         const std::optional<ActivationOperatorDesc> fusedActivation = FusionHelpers::TryGetFusedActivationDesc(kernelCreationContext);
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
-
-        // Shift IN_SCALE and IN_BIAS input tensor descs {1, C, 1, 1} out of 1D tensors.
-        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, inputDimensionCount);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
