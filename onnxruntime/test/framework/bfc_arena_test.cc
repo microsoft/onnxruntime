@@ -273,7 +273,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST(BFCArenaTest, TestReserve) {
-  // Configure a 1MiB byte limit
+  // Configure a 1GiB byte limit
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
 
   void* first_ptr = a.Alloc(sizeof(float) * (1 << 6));
@@ -284,6 +284,22 @@ TEST(BFCArenaTest, TestReserve) {
   AllocatorStats stats;
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
+}
+
+TEST(BFCArenaTest, TestShrink) {
+  AllocatorStats stats;
+  BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, ArenaExtendStrategy::kSameAsRequested);
+  void* p1k = a.Alloc(1024);
+  /* void* p10M =*/ a.Alloc(10 * 1024 * 1024);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_arena_extensions, 2) << "Expect 2 regions but got " << stats.num_arena_extensions << " region";
+  a.Free(p1k);
+
+  EXPECT_EQ(a.Shrink(), Status::OK());
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_arena_extensions, 1) << "1 region left as p10M is still in use";
+  EXPECT_EQ(stats.num_arena_shrinkages, 1) << "shrink only once as only p1k is freed";
+  EXPECT_EQ(stats.total_allocated_bytes, 10 * 1024 * 1024) << "Expect 10M bytes but actually " << stats.total_allocated_bytes << " bytes";
 }
 
 class BadAllocator : public IAllocator {
@@ -372,6 +388,25 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   a.Free(stream2_chunk_d);
   a.Free(stream2_chunk_e);
   a.Free(stream2_chunk_f);
+}
+
+TEST(StreamAwareArenaTest, TestSecureTheChunk) {
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, true);
+  OrtDevice tmp;
+  StreamMock stream1(tmp), stream2(tmp);
+
+  void* p1 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream1, nullptr);
+  a.Free(p1);
+
+  bool waitFunctionInvoked = false;
+  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2, 
+      [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
+
+  std::unordered_map<Stream*, uint64_t> syncTable;
+  stream2.CloneCurrentStreamSyncTable(syncTable);
+  EXPECT_EQ(syncTable.size(), 1u) << "stream2 has been updated with stream1's nofitication on the clock";
+  EXPECT_TRUE(waitFunctionInvoked) << "wait function should be invoked";
+  a.Free(p2);
 }
 
 }  // namespace test

@@ -158,7 +158,7 @@ class BFCArena : public IAllocator {
 
     // If not kInvalidChunkHandle, the memory referred to by 'next' is directly
     // following the memory used by this chunk.  E.g., It should be at
-    // 'ptr + size'
+    // 'ptr + next->size'
     ChunkHandle next = kInvalidChunkHandle;
 
     // What bin are we in?
