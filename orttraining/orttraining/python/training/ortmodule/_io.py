@@ -85,6 +85,31 @@ class _PrimitiveType(object):
         return f"{str(type(value))}_{value}" if isinstance(value, bool) else str(type(value))
 
 
+def flatten_kwargs(kwargs, device):
+    def _flatten_kwargs(value, name):
+        if _PrimitiveType.is_primitive_type(value):
+            flattened_kwargs[name] = _PrimitiveType.get_tensor(value, device)
+        elif isinstance(value, torch.Tensor):
+            flattened_kwargs[name] = value
+        elif isinstance(value, abc.Sequence):
+            # If the input is a sequence (like a list), expand the list so that
+            # each element of the list has a corresponding entry in the flattened
+            # kwargs dict
+            for idx, val in enumerate(value):
+                _flatten_kwargs(val, f"{name}_{idx}")
+        elif isinstance(value, abc.Mapping):
+            # If the input is a mapping (like a dict), expand the dict so that
+            # each element of the dict has an entry in the flattened kwargs dict
+            for key, val in value.items():
+                _flatten_kwargs(val, f"{name}_{key}")
+
+    flattened_kwargs = {}
+    for key, value in kwargs.items():
+        _flatten_kwargs(value, key)
+
+    return flattened_kwargs
+
+
 class _InputInfo(object):
     def __init__(
         self,
@@ -105,6 +130,7 @@ class _InputInfo(object):
         self.num_positionals = num_positionals
         self.num_expanded_positionals_non_none = num_expanded_positionals_non_none
         self.keyword_names = keyword_names
+        self.kwargs = None
 
     def __repr__(self) -> str:
         return f"""_InputInfo class:
@@ -121,13 +147,9 @@ class _InputInfo(object):
         """Flatten args and kwargs in a single tuple of tensors with strict ordering"""
 
         ret = [_PrimitiveType.get_tensor(arg, device) if _PrimitiveType.is_primitive_type(arg) else arg for arg in args]
-        ret += [
-            _PrimitiveType.get_tensor(kwargs[name], device)
-            if _PrimitiveType.is_primitive_type(kwargs[name])
-            else kwargs[name]
-            for name in self.names
-            if name in kwargs
-        ]
+        flattened_kwargs = flatten_kwargs(kwargs, device)
+        ret += [flattened_kwargs[name] for name in self.names if name in flattened_kwargs]
+        self.kwargs = kwargs
 
         # if kwargs is empty, append an empty dictionary at the end of the sample inputs to make exporter
         # happy. This is because the exporter is confused with kwargs and dictionary inputs otherwise.
@@ -140,13 +162,8 @@ class _InputInfo(object):
         """Unflatten tuple of tensors into args and kwargs"""
 
         args = tuple(flat_args[: self.num_positionals])
-        kwargs = {
-            name: arg
-            for name, arg in zip(
-                self.names[self.num_expanded_positionals_non_none :], flat_args[self.num_positionals :]
-            )
-            if name in self.keyword_names
-        }
+        kwargs = self.kwargs
+        self.kwargs = None
         return args, kwargs
 
 
@@ -158,7 +175,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         * Initializers: computed from original PyTorch model parameters
     """
 
-    def _expand_inputs(current_input, non_none_inputs):
+    def _expand_inputs(current_input, non_none_inputs, name=""):
         # The exporter handles input lists by expanding them so that each
         # element of the list is its own input.
         # ORTModule must match this behavior by also expanding the inputs.
@@ -168,28 +185,33 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         if isinstance(current_input, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself
-            for inp in current_input:
-                _expand_inputs(inp, non_none_inputs)
+            for i, inp in enumerate(current_input):
+                _expand_inputs(inp, non_none_inputs, f"{name}_{i}" if name else str(i))
         elif isinstance(current_input, abc.Mapping):
             # If the input is a mapping (like a dict), expand the dict so that
             # each element of the dict is an input by itself
-            for _, val in current_input.items():
-                _expand_inputs(val, non_none_inputs)
+            for key, val in current_input.items():
+                _expand_inputs(val, non_none_inputs, f"{name}_{key}" if name else key)
         else:
             # else just collect all the non none inputs within non_none_inputs
-            non_none_inputs.append(current_input)
+            if isinstance(non_none_inputs, abc.Sequence):
+                non_none_inputs.append(current_input)
+            elif isinstance(non_none_inputs, abc.Mapping):
+                non_none_inputs[name] = current_input
 
     # User inputs
     non_none_inputs = []
     _expand_inputs(inputs, non_none_inputs)
+    flattened_kwargs_inputs = {}
+    _expand_inputs(kwargs, flattened_kwargs_inputs)
     buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
     result = []
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
-        if name in kwargs and kwargs[name] is not None:
+        if name in flattened_kwargs_inputs and flattened_kwargs_inputs[name] is not None:
             # Only use keywords coming from user that are expected by ONNX model
-            inp = kwargs[name]
+            inp = flattened_kwargs_inputs[name]
 
         if inp is None:
             try:
