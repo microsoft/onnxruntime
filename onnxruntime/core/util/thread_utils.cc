@@ -50,7 +50,7 @@ std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affin
                       std::string{"Processor id must consist of only digits: "} + std::string{processor_str});
 
           auto processor_id = std::stoi(std::string{processor_str});
-          ORT_ENFORCE(processor_id > 0, std::string{"Processor id must start from 1: "} + std::string{affinity});
+          ORT_ENFORCE(processor_id > 0, std::string{"Processor id must start from 1: "} + std::string{processor_str});
           logical_processors.push_back(processor_id - 1);
         }
       }
@@ -71,9 +71,6 @@ std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affin
 
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
-  if (options.thread_pool_size == 1) {
-    return nullptr;
-  }
   ThreadOptions to;
   if (options.thread_pool_size <= 0) {  // default
     auto default_affinities = Env::Default().GetDefaultThreadAffinities();
@@ -85,16 +82,24 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       to.affinities = std::move(default_affinities);
     }
   }
+  if (options.thread_pool_size <= 1) {
+    return nullptr;
+  }
   // override affinity setting if specified from customer
   if (!options.affinity_str.empty()) {
     to.affinities = ReadThreadAffinityConfig(options.affinity_str);
     // Limiting the number of affinities to be of thread_pool_size - 1,
-    // for that fact that the main thread is a special "member" of the threadpool,
+    // for the fact that the main thread is a special "member" of the threadpool,
     // which onnxruntime has no control.
-    ORT_ENFORCE(to.affinities.size() == static_cast<size_t>(options.thread_pool_size) - 1,
-                "Number of affinities must be equal to thread_pool_size minus one");
-    // prepend an empty affinity as placeholder for the main thread,
-    // which will be dropped later during threadpool creation
+    auto actual_num_affinities = to.affinities.size();
+    ORT_ENFORCE(actual_num_affinities == static_cast<size_t>(options.thread_pool_size) - 1,
+                (std::string{"Number of affinities does not equal to thread_pool_size minus one, affinities: "} +
+                 std::to_string(actual_num_affinities) +
+                 std::string{", thread_pool_size: "} +
+                 std::to_string(options.thread_pool_size))
+                    .c_str());
+    // prepend with an empty affinity as placeholder for the main thread,
+    // it will be dropped later during threadpool creation.
     to.affinities.insert(to.affinities.begin(), LogicalProcessors{});
   }
 

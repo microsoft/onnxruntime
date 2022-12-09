@@ -169,7 +169,8 @@ static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "ses
 // e.g. 1-8;8-16;17-24
 // orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
 // Note:
-// 1. Once set, the number of thread affinities must equal to intra_op_num_threads - 1, since ort does not set affinity on the main thread.
+// 1. Once set, the number of thread affinities must equal to intra_op_num_threads - 1, since ort does not set affinity on the main thread which
+//    is started and managed by the calling app;
 // 2. For windows, ort will infer the group id from a logical processor id, for example, assuming there are two groups with each has 64 logical processors,
 //    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
 //    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
