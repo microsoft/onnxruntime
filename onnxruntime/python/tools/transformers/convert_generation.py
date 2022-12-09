@@ -1140,6 +1140,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             )
 
     gpt2_init_decoder_generated = False
+    gpt2_init_decoder_onnx_path = None
     if (
         args.separate_gpt2_decoder_for_init_run
         and is_gpt2
