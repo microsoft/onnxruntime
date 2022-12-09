@@ -20,7 +20,7 @@ ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputName, _In_ const OrtSes
 ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
-ORT_API_STATUS_IMPL(ResetGrad, _Inout_ OrtTrainingSession* session);
+ORT_API_STATUS_IMPL(LazyResetGrad, _Inout_ OrtTrainingSession* session);
 
 ORT_API_STATUS_IMPL(TrainStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options,
                     size_t inputs_len, _In_reads_(input_len) const OrtValue* const* inputs,

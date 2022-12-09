@@ -51,7 +51,7 @@ class TrainingSession {
                   const std::vector<OrtValue>& inputs,
                   std::vector<OrtValue>& fetches) const;
 
-  Status ResetGrad();
+  Status LazyResetGrad();
 
   Status OptimizerStep(const RunOptions& run_options);
 

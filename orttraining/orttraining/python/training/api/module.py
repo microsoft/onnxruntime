@@ -80,11 +80,11 @@ class Module:
         """
         return self.train(False)
 
-    def reset_grad(self):
+    def lazy_reset_grad(self):
         """
-        Resets the gradient of the parameters.
+        Lazily resets the gradient of the parameters.
         """
-        return self._model.reset_grad()
+        return self._model.lazy_reset_grad()
 
     def save_checkpoint(self, ckpt_uri):
         """

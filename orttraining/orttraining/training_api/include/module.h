@@ -72,7 +72,7 @@ struct Module {
   }
 
   // Reset and release the gradient buffer of all trainable params lazily.
-  Status ResetGrad();
+  Status LazyResetGrad();
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
   // Gradients will be accumulated within the Parameter object

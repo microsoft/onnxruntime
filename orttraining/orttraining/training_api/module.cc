@@ -407,7 +407,7 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
   return Status::OK();
 }
 
-Status Module::ResetGrad() {
+Status Module::LazyResetGrad() {
   accumulate_gradient_ = false;
   return Status::OK();
 }

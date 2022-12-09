@@ -39,8 +39,8 @@ inline std::vector<Value> TrainingSession::TrainStep(const std::vector<Value>& i
   return output_values;
 }
 
-inline void TrainingSession::ResetGrad() {
-  ThrowOnError(GetTrainingApi().ResetGrad(p_));
+inline void TrainingSession::LazyResetGrad() {
+  ThrowOnError(GetTrainingApi().LazyResetGrad(p_));
 }
 
 inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& input_values) {

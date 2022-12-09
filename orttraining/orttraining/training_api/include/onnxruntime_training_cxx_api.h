@@ -89,10 +89,10 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
 
   /** \brief Lazily resets the gradients of the trainable parameters.
    *
-   * Wraps OrtTrainingApi::ResetGrad
+   * Wraps OrtTrainingApi::LazyResetGrad
    *
    */
-  void ResetGrad();
+  void LazyResetGrad();
 
   /** \brief Run the evaluation step returning results in an Ort allocated vector.
    *

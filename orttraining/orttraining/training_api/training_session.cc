@@ -63,8 +63,8 @@ Status TrainingSession::EvalStep(const RunOptions&,
   return module_->EvalStep(inputs, fetches);
 }
 
-Status TrainingSession::ResetGrad() {
-  return module_->ResetGrad();
+Status TrainingSession::LazyResetGrad() {
+  return module_->LazyResetGrad();
 }
 
 Status TrainingSession::OptimizerStep(const RunOptions&) {

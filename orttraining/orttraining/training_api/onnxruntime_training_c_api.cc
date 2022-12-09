@@ -100,10 +100,10 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::ResetGrad, _Inout_ OrtTrainingSession* session) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::LazyResetGrad, _Inout_ OrtTrainingSession* session) {
   API_IMPL_BEGIN
   auto train_session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(train_session->ResetGrad());
+  ORT_API_RETURN_IF_STATUS_NOT_OK(train_session->LazyResetGrad());
 
   return nullptr;
   API_IMPL_END
@@ -381,7 +381,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputName,
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputName,
-    &OrtTrainingApis::ResetGrad,
+    &OrtTrainingApis::LazyResetGrad,
     &OrtTrainingApis::TrainStep,
     &OrtTrainingApis::EvalStep,
     &OrtTrainingApis::SetLearningRate,
