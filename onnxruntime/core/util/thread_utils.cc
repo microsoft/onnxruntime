@@ -203,12 +203,13 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
   if (!tp_options) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
   }
-  if (!affinity_string || strnlen(affinity_string, onnxruntime::kMaxStrLen) == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Affinity string must not be empty");
+  if (!affinity_string) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null affinity_string");
   }
-  if (strnlen(affinity_string, onnxruntime::kMaxStrLen + 1) > onnxruntime::kMaxStrLen) {
+  auto len = strnlen(affinity_string, onnxruntime::kMaxStrLen + 1);
+  if (0 == len || len > onnxruntime::kMaxStrLen) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 (std::string{"Size of affinity string must be smaller than or equal to "} +
+                                 (std::string{"Size of affinity string must be between 1 and "} +
                                   std::to_string(onnxruntime::kMaxStrLen))
                                      .c_str());
   }
