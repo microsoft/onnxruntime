@@ -7,6 +7,7 @@ if ["%~1"]==["--clean"] (
 )
 
 setlocal
+set PATH=C:\Program Files\Git\usr\bin;%PATH%
 
 if exist "%~dp0build\Windows\host_protoc\Release\protoc.exe" (
     set protoc_path_flag=--path_to_protoc_exe %~dp0build\Windows\host_protoc\Release\protoc.exe
