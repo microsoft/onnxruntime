@@ -501,7 +501,7 @@ TEST_F(PlannerTest, MayStridedTest1) {
   // check each ml-value is freed at appropriate step
   // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {X2});
+  CheckFreed(1, {X1});
 }
 
 TEST_F(PlannerTest, MayStridedTest2) {
@@ -558,8 +558,8 @@ TEST_F(PlannerTest, MayStridedTest3) {
   // check each ml-value is freed at appropriate step
   // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {});
-  CheckFreed(2, {X2});
+  CheckFreed(1, {X1});
+  CheckFreed(2, {});
 }
 #endif
 
