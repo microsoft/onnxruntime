@@ -73,7 +73,7 @@ template <typename>
 [[maybe_unused]] constexpr bool dependent_false_v = false;
 
 template <typename T>
-T ValueFromIdx(size_t idx) {
+constexpr T ValueFromIdx(size_t idx) {
   if constexpr (std::is_same_v<T, std::string>) {
     const char c = gsl::narrow_cast<char>('a' + idx);
     return std::string(1, c);
