@@ -162,47 +162,42 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
 void KernelOpenVINO::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
 
+  // Create inference request.
+  ov::InferRequest infer_req = this->compiled_model_.create_infer_request();
+
   const size_t num_inputs = kcontext.GetInputCount();
   assert(num_inputs == this->ov_inputs_.size());
 
-  ov::TensorVector ov_inputs(num_inputs);
-
-  // Gather OpenVINO model inputs.
+  // Set input tensors.
   for (size_t i = 0; i < num_inputs; ++i) {
     Ort::ConstValue ort_val = kcontext.GetInput(i);
     const auto& input_info = this->ov_inputs_[i];
 
     const void* p_input_data = ort_val.GetTensorData<void>();
-    ov_inputs[i] = ov::Tensor(input_info.get_element_type(), input_info.get_shape(), const_cast<void*>(p_input_data));
+    ov::Tensor input_tensor(input_info.get_element_type(), input_info.get_shape(), const_cast<void*>(p_input_data));
+
+    infer_req.set_input_tensor(i, input_tensor);
   }
-
-  // Inference.
-  ov::InferRequest infer_req = this->compiled_model_.create_infer_request();
-
-  infer_req.set_input_tensors(ov_inputs);
-  infer_req.infer();
 
   const size_t num_outputs = kcontext.GetOutputCount();
   assert(num_outputs == this->ov_outputs_.size());
 
-  // Copy inference results to ORT memory.
+  // Set output tensors that are backed by ORT memory.
   for (size_t i = 0; i < num_outputs; ++i) {
     const auto& output_info = this->ov_outputs_[i];
-
-    // Get pointer to output data (src) from OpenVINO inference.
-    ov::element::Type elem_type = output_info.get_element_type();
-    const void* src = infer_req.get_output_tensor(i).data(elem_type);
-
-    // Get dst to which to copy result.
     const ov::Shape& ov_shape = output_info.get_shape();
-    std::vector<int64_t> shape(ov_shape.begin(), ov_shape.end());
-    Ort::UnownedValue ort_val = kcontext.GetOutput(i, shape);
-    void* dst = ort_val.GetTensorMutableData<void>();
+    const ov::element::Type ov_elem_type = output_info.get_element_type();
 
-    // Copy data.
-    size_t copy_size = elem_type.size() * ov::shape_size(ov_shape);
-    std::memcpy(dst, src, copy_size);
+    std::vector<int64_t> ort_shape(ov_shape.begin(), ov_shape.end());
+    Ort::UnownedValue ort_val = kcontext.GetOutput(i, ort_shape);
+    void* ort_memory = ort_val.GetTensorMutableData<void>();
+
+    ov::Tensor output_tensor(ov_elem_type, ov_shape, ort_memory);
+    infer_req.set_output_tensor(i, output_tensor);
   }
+
+  // Run inference.
+  infer_req.infer();
 }
 
 //
