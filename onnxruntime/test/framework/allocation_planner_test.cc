@@ -327,7 +327,8 @@ class PlannerTest : public ::testing::Test {
     std::unordered_set<int> plan_result;
     // todo - support multi-stream
     EXPECT_EQ(plan_->execution_plan.size(), 1U);
-    EXPECT_GT(plan_->node_release_list.size(), step_number);
+    int list_size = static_cast<int>(plan_->node_release_list.size());
+    EXPECT_GT(list_size, step_number);
     for (auto freed : plan_->node_release_list[step_number]) {
       plan_result.insert(static_cast<int>(freed));
     }
