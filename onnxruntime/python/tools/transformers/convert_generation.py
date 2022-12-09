@@ -891,7 +891,14 @@ def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_exter
             decoder_model_proto.graph.input[i].name == "input_ids"
             or decoder_model_proto.graph.input[i].name == "position_ids"
         ):
-            decoder_model_proto.graph.input[i].type.tensor_type.shape.dim[1].dim_value = 1
+            shape_dim_proto = decoder_model_proto.graph.input[i].type.tensor_type.shape.dim[1]
+
+            # Clear any existing dim_param first
+            if shape_dim_proto.HasField("dim_param"):
+                shape_dim_proto.Clear()
+
+            # Update dim_value to be 1
+            shape_dim_proto.dim_value = 1
 
     OnnxModel.save(decoder_model_proto, decoder_onnx_path, save_as_external_data=use_external_data_format)
     return True
@@ -1146,6 +1153,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         and is_gpt2
         and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
     ):
+        logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
+
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
             "fp16" if args.precision == Precision.FLOAT16 else "fp32"
         )
