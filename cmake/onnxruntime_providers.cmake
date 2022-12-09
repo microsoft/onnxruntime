@@ -897,7 +897,6 @@ if (onnxruntime_USE_COREML)
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
-  )
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
     )
   endif()
@@ -1128,6 +1127,7 @@ if (onnxruntime_USE_DML)
   target_compile_definitions(onnxruntime_providers_dml
     PRIVATE
     ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS
+  )
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
   if (MSVC)
     target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
