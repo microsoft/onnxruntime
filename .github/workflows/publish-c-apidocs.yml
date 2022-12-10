@@ -33,6 +33,7 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
+          rm -rf ../../doxygen-1.9.5
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
