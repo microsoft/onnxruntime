@@ -564,14 +564,14 @@ Status GreedySearchProcessLogits(
   ORT_UNUSED_PARAMETER(output_scores);
 
   if (do_sampling) {
-    // TODO: Move the ctor out of the function.
-    SamplingCudaHelper::TopPSamplingCuda<T> top_p_sampler(allocator,
-                                                          cuda_stream,
-                                                          sampling_state,
-                                                          greedy_state,
-                                                          parameters,
-                                                          dumper);
-    ORT_RETURN_IF_ERROR(top_p_sampler.Sample(step, next_token_scores));
+    ORT_RETURN_IF_ERROR(SamplingCudaHelper::Sample(allocator,
+                                                   cuda_stream,
+                                                   next_token_scores,
+                                                   sampling_state,
+                                                   greedy_state,
+                                                   parameters,
+                                                   step,
+                                                   dumper));
 
     return Status::OK();
   }

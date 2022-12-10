@@ -456,14 +456,13 @@ Status GreedySearchProcessLogits(
 #endif
 
   if (do_sampling) {
-    // std::smaller<T> for huggingface version and std::greater<T> for custom version.
-    SamplingCpuHelper::TopPSamplingCpu<T, std::less<T>> top_p_sampler(allocator,
-                                                                      thread_pool,
-                                                                      sampling_state,
-                                                                      greedy_state,
-                                                                      parameters,
-                                                                      dumper);
-    ORT_RETURN_IF_ERROR(top_p_sampler.Sample(next_token_scores));
+    ORT_RETURN_IF_ERROR(SamplingCpuHelper::Sample(allocator,
+                                                  thread_pool,
+                                                  next_token_scores,
+                                                  sampling_state,
+                                                  greedy_state,
+                                                  parameters,
+                                                  dumper));
 
     return Status::OK();
   }

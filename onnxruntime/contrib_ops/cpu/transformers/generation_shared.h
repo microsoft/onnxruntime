@@ -130,12 +130,6 @@ struct IGenerationParameters {
   int decoder_start_token_id;
   int no_repeat_ngram_size;
   bool early_stopping;
-  float presence_penalty;
-  float temperature = 1.0f;
-  float top_p = 0.0f;
-  float filter_value;
-  int seed = 0;
-  int min_tokens_to_keep = 1;
 
   // Parameters from inputs
   int min_length;
@@ -159,6 +153,15 @@ struct IGenerationParameters {
   int num_heads;
   int head_size;
   int num_layers;
+
+  // Parameters for TopK/TopP sampling.
+  float presence_penalty;
+  float filter_value;
+  float temperature = 1.0f;
+  float top_p = 0.0f;
+  int seed = 0;
+  int min_tokens_to_keep = 1;
+  bool custom_sampling = false;
 };
 
 class IConsoleDumper {

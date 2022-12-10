@@ -15,8 +15,9 @@ void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) {
   temperature = info.GetAttrOrDefault<float>("temperature", 1.0f);
   top_p = info.GetAttrOrDefault<float>("top_p", 0.0f);
   filter_value = info.GetAttrOrDefault<float>("filter_value", -std::numeric_limits<float>::infinity());
-  min_tokens_to_keep = static_cast<int>(info.GetAttrOrDefault<int64_t>("min_tokens_to_keep", 1));
+  min_tokens_to_keep = static_cast<int>(info.GetAttrOrDefault<int64_t>("min_tokens_to_keep", 0));
   presence_penalty = info.GetAttrOrDefault<float>("presence_penalty", 0.0f);
+  custom_sampling = static_cast<int>(info.GetAttrOrDefault<int64_t>("custom", 0));
 }
 
 }  // namespace transformers

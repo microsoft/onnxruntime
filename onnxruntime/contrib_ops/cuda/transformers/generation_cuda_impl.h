@@ -60,12 +60,14 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
                            cudaStream_t stream);
 
 template <typename T>
-size_t GetTempStorageSize(const T *d_keys_in,
-                          const int* d_values_in,
-                          int* d_offsets,
-                          int num_items,
-                          int num_segments,
-                          cudaStream_t stream);
+void GetTempStorageSize(const T *d_keys_in,
+                        const int* d_values_in,
+                        int* d_offsets,
+                        int num_items,
+                        int num_segments,
+                        cudaStream_t stream,
+                        bool is_descending,
+                        size_t& temp_storage_bytes);
 
 void LaunchSetupParamsKernel(int* d_values_in,
                              int* d_offsets,
@@ -74,16 +76,17 @@ void LaunchSetupParamsKernel(int* d_values_in,
                              cudaStream_t stream);
 
 template <typename T>
-void LaunchSortPairsDescending(void *d_temp_storage,
-                               size_t temp_storage_bytes,
-                               const T *d_keys_in,
-                               T *d_keys_out,
-                               const int *d_values_in,
-                               int *d_values_out,
-                               int num_items,
-                               int num_segments,
-                               int *d_offsets,
-                               cudaStream_t stream);
+void LaunchSortPairs(void *d_temp_storage,
+                     size_t temp_storage_bytes,
+                     const T *d_keys_in,
+                     T *d_keys_out,
+                     const int *d_values_in,
+                     int *d_values_out,
+                     int num_items,
+                     int num_segments,
+                     int *d_offsets,
+                     cudaStream_t stream,
+                     bool is_descending);
 
 template <typename T>
 void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
@@ -91,9 +94,11 @@ void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                               T* d_logits_in_out,
                               float top_p,
                               float filter_value,
+                              int min_tokens_to_keep,
                               int batch_size,
                               int vocab_size,
-                              cudaStream_t stream);
+                              cudaStream_t stream,
+                              bool is_descending);
 
 void TorchMultinomialKernelLauncher(float* d_input,
                                     float* d_sampled,

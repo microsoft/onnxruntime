@@ -301,15 +301,16 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
       old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
 
-// TODO: merge those kernels into one
 template <typename T>
-size_t GetTempStorageSize(const T *d_keys_in,
-                          const int* d_values_in,
-                          int* d_offsets,
-                          int num_items,
-                          int num_segments,
-                          cudaStream_t stream) {
-    size_t temp_storage_bytes = 0;
+void GetTempStorageSize(const T *d_keys_in,
+                           const int* d_values_in,
+                           int* d_offsets,
+                           int num_items,
+                           int num_segments,
+                           cudaStream_t stream,
+                           bool is_descending,
+                           size_t& temp_storage_bytes) {
+  if (is_descending) {
     cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
                                                        temp_storage_bytes,
                                                        d_keys_in,
@@ -323,24 +324,42 @@ size_t GetTempStorageSize(const T *d_keys_in,
                                                        0,
                                                        sizeof(T) * 8,
                                                        stream);
-    return temp_storage_bytes;
+  } else {
+    cub::DeviceSegmentedRadixSort::SortPairs(nullptr,
+                                             temp_storage_bytes,
+                                             d_keys_in,
+                                             (T*)nullptr,
+                                             d_values_in,
+                                             (int*)nullptr,
+                                             num_items,
+                                             num_segments,
+                                             d_offsets,
+                                             d_offsets + 1,
+                                             0,
+                                             sizeof(T) * 8,
+                                             stream);
+  }
 }
 
-template size_t GetTempStorageSize(
+template void GetTempStorageSize(
   const float *d_keys_in,
   const int* d_values_in,
   int* d_offsets,
   int num_items,
   int num_segments,
-  cudaStream_t stream);
+  cudaStream_t stream,
+  bool is_descending,
+  size_t& temp_storage_bytes);
 
-template size_t GetTempStorageSize(
+template void GetTempStorageSize(
   const half *d_keys_in,
   const int* d_values_in,
   int* d_offsets,
   int num_items,
   int num_segments,
-  cudaStream_t stream);
+  cudaStream_t stream,
+  bool is_descending,
+  size_t& temp_storage_bytes);
 
 // TODO: merge to one kernel
 __global__ void SetupParamsKernel(int* d_values_in,
@@ -372,7 +391,7 @@ void LaunchSetupParamsKernel(int* d_values_in,
 }
 
 template <typename T>
-void LaunchSortPairsDescending(void *d_temp_storage,
+void LaunchSortPairs(void *d_temp_storage,
                                size_t temp_storage_bytes,
                                const T *d_keys_in,
                                T *d_keys_out,
@@ -381,51 +400,106 @@ void LaunchSortPairsDescending(void *d_temp_storage,
                                int num_items,
                                int num_segments,
                                int *d_offsets,
-                               cudaStream_t stream) {
-  cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
-                                                     temp_storage_bytes,
-                                                     d_keys_in,
-                                                     d_keys_out,
-                                                     d_values_in,
-                                                     d_values_out,
-                                                     num_items,
-                                                     num_segments,
-                                                     d_offsets,
-                                                     d_offsets + 1,
-                                                     0,
-                                                     sizeof(T) * 8,
-                                                     stream);
+                               cudaStream_t stream,
+                               bool is_descending) {
+  if (is_descending) {
+    cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
+                                                       temp_storage_bytes,
+                                                       d_keys_in,
+                                                       d_keys_out,
+                                                       d_values_in,
+                                                       d_values_out,
+                                                       num_items,
+                                                       num_segments,
+                                                       d_offsets,
+                                                       d_offsets + 1,
+                                                       0,
+                                                       sizeof(T) * 8,
+                                                       stream);
+  } else {
+    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage,
+                                             temp_storage_bytes,
+                                             d_keys_in,
+                                             d_keys_out,
+                                             d_values_in,
+                                             d_values_out,
+                                             num_items,
+                                             num_segments,
+                                             d_offsets,
+                                             d_offsets + 1,
+                                             0,
+                                             sizeof(T) * 8,
+                                             stream);
+  }
 }
 
-template void LaunchSortPairsDescending(void *d_temp_storage,
-                                        size_t temp_storage_bytes,
-                                        const float *d_keys_in,
-                                        float *d_keys_out,
-                                        const int *d_values_in,
-                                        int *d_values_out,
-                                        int num_items,
-                                        int num_segments,
-                                        int *d_offsets,
-                                        cudaStream_t stream);
+template void LaunchSortPairs(void *d_temp_storage,
+                              size_t temp_storage_bytes,
+                              const float *d_keys_in,
+                              float *d_keys_out,
+                              const int *d_values_in,
+                              int *d_values_out,
+                              int num_items,
+                              int num_segments,
+                              int *d_offsets,
+                              cudaStream_t stream,
+                              bool is_descending);
 
-template void LaunchSortPairsDescending(void *d_temp_storage,
-                                        size_t temp_storage_bytes,
-                                        const half *d_keys_in,
-                                        half *d_keys_out,
-                                        const int *d_values_in,
-                                        int *d_values_out,
-                                        int num_items,
-                                        int num_segments,
-                                        int *d_offsets,
-                                        cudaStream_t stream);
+template void LaunchSortPairs(void *d_temp_storage,
+                              size_t temp_storage_bytes,
+                              const half *d_keys_in,
+                              half *d_keys_out,
+                              const int *d_values_in,
+                              int *d_values_out,
+                              int num_items,
+                              int num_segments,
+                              int *d_offsets,
+                              cudaStream_t stream,
+                              bool is_descending);
 
-// A trick here: cumuliative sum of the sorted logits is a temporarily variable in the kernel.
+template <typename T>
+__global__ void FilterLogitsKernelCustom(float* d_sorted_logits_in,
+                                         const int* d_sorted_indices,
+                                         T* d_logits_in_out,
+                                         float top_p_threshold,
+                                         float filter_value,
+                                         int batch_size,
+                                         int vocab_size) {
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (index >= batch_size * vocab_size) {
+    return;
+  }
+
+  int vocab_idx = index % vocab_size;
+  int batch_id = index / vocab_size;
+  int start_index = batch_id * vocab_size;
+
+  int count = vocab_idx;
+  float sum = 0.0f;
+  while (count >= 0) {
+    sum += d_sorted_logits_in[start_index];
+    ++start_index;
+    --count;
+  }
+
+  if (sum > top_p_threshold) {
+    // Shift the indices to the right by one according to the custom implementation.
+    int shifted_index = index + 1;
+    if (shifted_index % vocab_size != 0) {
+      int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
+      d_logits_in_out[original_index] = (T)filter_value;
+    }
+  }
+}
+
 template <typename T>
 __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
                                    const int* d_sorted_indices,
                                    T* d_logits_in_out,
-                                   float top_p,
+                                   float top_p_threshold,
                                    float filter_value,
+                                   int min_tokens_to_keep,
                                    int batch_size,
                                    int vocab_size) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -446,11 +520,9 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
     --count;
   }
 
-  if (sum > top_p) {
-    // Shift the indices to the right by one according to the Turing implementation.
-    int shifted_index = index + 1;
-    if (shifted_index % vocab_size != 0) {
-      int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
+  if (sum <= top_p_threshold) {
+    if (index % vocab_size + min_tokens_to_keep < vocab_size) {
+      int original_index = batch_id * vocab_size + d_sorted_indices[index];
       d_logits_in_out[original_index] = (T)filter_value;
     }
   }
@@ -462,19 +534,32 @@ void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                               T* d_logits_in_out,
                               float top_p,
                               float filter_value,
+                              int min_tokens_to_keep,
                               int batch_size,
                               int vocab_size,
-                              cudaStream_t stream) {
+                              cudaStream_t stream,
+                              bool is_descending) {
   int total_elements = batch_size * vocab_size;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
-  FilterLogitsKernel<<<gridSize, blockSize, 0, stream>>>(d_sorted_logits_in,
-                                                         d_sorted_indices,
-                                                         d_logits_in_out,
-                                                         top_p,
-                                                         filter_value,
-                                                         batch_size,
-                                                         vocab_size);
+  if (is_descending) {
+    FilterLogitsKernelCustom<<<gridSize, blockSize, 0, stream>>>(d_sorted_logits_in,
+                                                                 d_sorted_indices,
+                                                                 d_logits_in_out,
+                                                                 top_p,
+                                                                 filter_value,
+                                                                 batch_size,
+                                                                 vocab_size);
+  } else {
+    FilterLogitsKernel<<<gridSize, blockSize, 0, stream>>>(d_sorted_logits_in,
+                                                           d_sorted_indices,
+                                                           d_logits_in_out,
+                                                           1 - top_p,
+                                                           filter_value,
+                                                           min_tokens_to_keep,
+                                                           batch_size,
+                                                           vocab_size);
+  }
 }
 
 template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
@@ -482,32 +567,34 @@ template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                                        float* d_logits_in_out,
                                        float top_p,
                                        float filter_value,
+                                       int min_tokens_to_keep,
                                        int batch_size,
                                        int vocab_size,
-                                       cudaStream_t stream);
+                                       cudaStream_t stream,
+                                       bool is_descending);
 
 template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                                        const int* d_sorted_indices,
                                        half* d_logits_in_out,
                                        float top_p,
                                        float filter_value,
+                                       int min_tokens_to_keep,
                                        int batch_size,
                                        int vocab_size,
-                                       cudaStream_t stream);
+                                       cudaStream_t stream,
+                                       bool is_descending);
 
 
 // Ref: https://github.com/pytorch/pytorch/blob/release/1.13/aten/src/ATen/native/cuda/MultinomialKernel.cu
 template <typename scalar_t, typename accscalar_t, unsigned TPB>
-__global__ void sampleMultinomialOnce(
-    int64_t* dest,
-    int distributions,
-    int categories,
-    scalar_t* sampled,
-    scalar_t* dist,
-    int stride_dist, // dist->stride(0)
-    int stride_categories, // dist->stride(1)
-    int* d_presence_mask
-) {
+__global__ void sampleMultinomialOnce(int64_t* dest,
+                                      int distributions,
+                                      int categories,
+                                      scalar_t* sampled,
+                                      scalar_t* dist,
+                                      int stride_dist, // dist->stride(0)
+                                      int stride_categories, // dist->stride(1)
+                                      int* d_presence_mask) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
 
@@ -576,8 +663,7 @@ __global__ void sampleMultinomialOnce(
         }
         __syncthreads();
       }
-      // Each thread will check to see if the sample falls in its
-      // bucket
+      // Each thread will check to see if the sample falls in its bucket
       scalar_t curBucket =
           static_cast<scalar_t>(smem[threadIdx.x] + prevHighProb);
       scalar_t prevBucket = static_cast<scalar_t>(
