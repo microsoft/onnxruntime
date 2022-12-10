@@ -165,6 +165,7 @@ enum class Mode : int;
 struct EinsumComputePreprocessor;
 template <typename T>
 struct EinsumTypedComputeProcessor;
+struct SessionOptions;
 
 namespace contrib {
 class ATen;
