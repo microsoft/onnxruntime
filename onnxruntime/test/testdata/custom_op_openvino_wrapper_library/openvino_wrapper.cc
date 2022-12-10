@@ -184,6 +184,8 @@ void KernelOpenVINO::Compute(OrtKernelContext* context) {
     const auto& input_info = this->ov_inputs_[i];
 
     const void* p_input_data = ort_val.GetTensorData<void>();
+
+    // OpenVINO does not always observe const-correctness.
     ov::Tensor input_tensor(input_info.get_element_type(), input_info.get_shape(), const_cast<void*>(p_input_data));
 
     infer_req.set_input_tensor(i, input_tensor);
@@ -218,29 +220,5 @@ void* CustomOpOpenVINO::CreateKernel(const OrtApi& api, const OrtKernelInfo* inf
   GetSessionConfigs(session_configs, this->session_options_);
   return new KernelOpenVINO(api, info, session_configs);
 }
-
-const char* CustomOpOpenVINO::GetName() const { return "OpenVINO_Wrapper"; }
-
-size_t CustomOpOpenVINO::GetInputTypeCount() const { return 1; }
-
-ONNXTensorElementDataType CustomOpOpenVINO::GetInputType(size_t /* index */) const {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-}
-
-OrtCustomOpInputOutputCharacteristic CustomOpOpenVINO::GetInputCharacteristic(size_t /* index */) const {
-  return INPUT_OUTPUT_VARIADIC;
-}
-
-size_t CustomOpOpenVINO::GetOutputTypeCount() const { return 1; }
-
-ONNXTensorElementDataType CustomOpOpenVINO::GetOutputType(size_t /* index */) const {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-}
-
-OrtCustomOpInputOutputCharacteristic CustomOpOpenVINO::GetOutputCharacteristic(size_t /* index */) const {
-  return INPUT_OUTPUT_VARIADIC;
-}
-
-const char* CustomOpOpenVINO::GetExecutionProviderType() const { return nullptr; }
 
 std::vector<std::string> CustomOpOpenVINO::GetSessionConfigKeys() const { return {"device_type"}; }

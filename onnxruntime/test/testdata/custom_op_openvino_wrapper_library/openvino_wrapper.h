@@ -21,6 +21,11 @@ struct KernelOpenVINO {
   KernelOpenVINO(const OrtApi& api, const OrtKernelInfo* info,
                  const std::unordered_map<std::string, std::string>& session_configs);
 
+  KernelOpenVINO(const KernelOpenVINO&) = delete;
+  KernelOpenVINO& operator=(const KernelOpenVINO&) = delete;
+
+  ~KernelOpenVINO() = default;
+
   void Compute(OrtKernelContext* context);
 
  private:
@@ -32,17 +37,45 @@ struct KernelOpenVINO {
 };
 
 struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
-  CustomOpOpenVINO(Ort::ConstSessionOptions session_options) : session_options_(session_options){};
+  explicit CustomOpOpenVINO(Ort::ConstSessionOptions session_options) : session_options_(session_options) {};
+
+  CustomOpOpenVINO(const CustomOpOpenVINO&) = delete;
+  CustomOpOpenVINO& operator=(const CustomOpOpenVINO&) = delete;
 
   void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const;
-  const char* GetName() const;
-  size_t GetInputTypeCount() const;
-  ONNXTensorElementDataType GetInputType(size_t index) const;
-  size_t GetOutputTypeCount() const;
-  ONNXTensorElementDataType GetOutputType(size_t index) const;
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const;
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const;
-  const char* GetExecutionProviderType() const;
+
+  constexpr const char* GetName() const noexcept {
+    return "OpenVINO_Wrapper";
+  }
+
+  constexpr const char* GetExecutionProviderType() const noexcept {
+    return "CPUExecutionProvider";
+  }
+
+  constexpr size_t GetInputTypeCount() const noexcept {
+    return 1;
+  }
+
+  constexpr size_t GetOutputTypeCount() const noexcept {
+    return 1;
+  }
+
+  constexpr ONNXTensorElementDataType GetInputType(size_t /* index */) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  }
+
+  constexpr ONNXTensorElementDataType GetOutputType(size_t /* index */) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  }
+
+  constexpr OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const noexcept {
+    return INPUT_OUTPUT_VARIADIC;
+  }
+
+  constexpr OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /* index */) const noexcept {
+    return INPUT_OUTPUT_VARIADIC;
+  }
+
   std::vector<std::string> GetSessionConfigKeys() const;
 
  private:
