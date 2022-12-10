@@ -4,6 +4,14 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   publish:
     name: Generate C/C++ API docs
@@ -13,7 +21,7 @@ jobs:
       - name: Install doxygen and dependencies
         run: |
           sudo apt update
-          sudo apt-get install libclang-9-dev
+          sudo apt-get install libclang-dev
           sudo apt-get install libclang-cpp9
           wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
           tar xvzf doxygen-1.9.2.linux.bin.tar.gz
@@ -33,11 +41,8 @@ jobs:
         run: |
           rm -rf docs/api/c
           mv build/doxygen/html docs/api/c
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
-        with:
-          branch: gh-pages-pr
-          base: gh-pages
-          title: '[Automated]: Update C/C++ API docs'
-          commit-message: 'Update C/C++ API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/c
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v1
