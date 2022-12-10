@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p build/doxygen
           cd docs/c_cxx
-          ../../doxygen-1.9.2/bin/doxygen
+          ../../doxygen-1.9.5/bin/doxygen
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
