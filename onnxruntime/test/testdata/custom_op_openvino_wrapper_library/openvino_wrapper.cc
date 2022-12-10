@@ -116,6 +116,21 @@ static bool ValidateInputsAndOutputs(const Ort::ConstKernelInfo& kinfo, const ov
   return true;
 }
 
+/// <summary>
+/// Converts an ORT tensor (as a Ort::Value) into an OpenVINO tensor that uses
+/// the same underlying tensor data.
+/// </summary>
+static ov::Tensor OrtToOpenVINOTensor(Ort::UnownedValue ort_tensor) {
+  Ort::TensorTypeAndShapeInfo type_shape_info = ort_tensor.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> ort_shape = type_shape_info.GetShape();
+
+  ov::Shape ov_shape(ort_shape.begin(), ort_shape.end());  // Copy shape because ORT uses int64_t, not size_t.
+  void* raw_data = ort_tensor.GetTensorMutableData<void>();
+  auto elem_type = ConvertONNXToOVType(type_shape_info.GetElementType());
+
+  return ov::Tensor(elem_type, ov_shape, raw_data);
+}
+
 KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info,
                                const std::unordered_map<std::string, std::string>& session_configs)
     : weights_(nullptr) {
@@ -123,17 +138,12 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
   Ort::AllocatorWithDefaultOptions allocator;
 
   // Extract OpenVINO .bin and .xml contents from node attributes.
-  this->weights_ = kinfo.GetTensorAttribute("BIN", allocator);
-  Ort::TensorTypeAndShapeInfo weights_type_shape = this->weights_.GetTensorTypeAndShapeInfo();
-  size_t num_weights = weights_type_shape.GetElementCount();
-  void* weights_data = this->weights_.GetTensorMutableData<void>();
-
+  this->weights_ = kinfo.GetTensorAttribute("BIN", allocator);  // Must keep the weights memory alive for inference.
   std::string xml_contents = kinfo.GetAttribute<std::string>("XML");
 
   // Create OpenVINO model.
   ov::Core core;
-  const ov::Shape shape{num_weights};
-  const ov::Tensor weights_tensor(ov::element::u8, shape, weights_data);
+  const ov::Tensor weights_tensor = OrtToOpenVINOTensor(this->weights_.GetUnowned());
   std::shared_ptr<ov::Model> model = core.read_model(xml_contents, weights_tensor);
 
   // Validate input/output shapes and types.
@@ -192,8 +202,7 @@ void KernelOpenVINO::Compute(OrtKernelContext* context) {
     Ort::UnownedValue ort_val = kcontext.GetOutput(i, ort_shape);
     void* ort_memory = ort_val.GetTensorMutableData<void>();
 
-    ov::Tensor output_tensor(ov_elem_type, ov_shape, ort_memory);
-    infer_req.set_output_tensor(i, output_tensor);
+    infer_req.set_output_tensor(i, ov::Tensor(ov_elem_type, ov_shape, ort_memory));
   }
 
   // Run inference.
