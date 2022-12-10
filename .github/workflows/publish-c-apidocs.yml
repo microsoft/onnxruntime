@@ -24,7 +24,7 @@ jobs:
           sudo apt-get install libclang-dev
           sudo apt-get install libclang-cpp14
           wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
-          tar xvzf doxygen-1.9.2.linux.bin.tar.gz
+          tar xvzf doxygen-1.9.5.linux.bin.tar.gz
       - name: Set commit ID
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
