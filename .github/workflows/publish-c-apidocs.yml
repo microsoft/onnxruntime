@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt-get install libclang-dev
-          sudo apt-get install libclang-cpp9
+          sudo apt-get install libclang-cpp
           wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
           tar xvzf doxygen-1.9.2.linux.bin.tar.gz
       - name: Set commit ID
