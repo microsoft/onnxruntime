@@ -53,7 +53,7 @@ parameters:
   default: 'onnxruntime'
 
 - name: timeoutInMinutes 
-  type: integer 
+  type: number 
   default: 300 
 
 jobs:
