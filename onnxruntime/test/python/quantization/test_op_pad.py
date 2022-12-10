@@ -28,12 +28,12 @@ class TestOpQuatizerPad(unittest.TestCase):
         return dr
 
     def construct_model_pad(
-            self,
-            output_model_path,
-            pad_mode,
-            pad_input_shape,
-            pad_dims,
-            constant_value=None,
+        self,
+        output_model_path,
+        pad_mode,
+        pad_input_shape,
+        pad_dims,
+        constant_value=None,
     ):
         #    (input)
         #      |
@@ -70,14 +70,14 @@ class TestOpQuatizerPad(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     def construct_model_conv_pad(
-            self,
-            output_model_path,
-            conv_input_shape,
-            conv_weight_shape,
-            pad_input_shape,
-            pad_mode,
-            pad_dims,
-            constant_value=None,
+        self,
+        output_model_path,
+        conv_input_shape,
+        conv_weight_shape,
+        pad_input_shape,
+        pad_mode,
+        pad_dims,
+        constant_value=None,
     ):
         #      (input)
         #          \
@@ -122,13 +122,13 @@ class TestOpQuatizerPad(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     def quantize_model(
-            self,
-            model_fp32_path,
-            model_i8_path,
-            data_reader=None,
-            activation_type=QuantType.QUInt8,
-            weight_type=QuantType.QUInt8,
-            extra_options={},
+        self,
+        model_fp32_path,
+        model_i8_path,
+        data_reader=None,
+        activation_type=QuantType.QUInt8,
+        weight_type=QuantType.QUInt8,
+        extra_options={},
     ):
         if data_reader is not None:
             quantize_static(
@@ -179,15 +179,15 @@ class TestOpQuatizerPad(unittest.TestCase):
         self.verify_should_not_trigger(quantize_mode="dynamic")
 
     def verify_quantize_with_pad_mode(
-            self,
-            pad_mode,
-            constant_value=None,
-            quantize_mode="static",
-            rtol=0.01,
-            atol=0.05,
-            activation_type=QuantType.QUInt8,
-            weight_type=QuantType.QUInt8,
-            extra_options=None,
+        self,
+        pad_mode,
+        constant_value=None,
+        quantize_mode="static",
+        rtol=0.01,
+        atol=0.05,
+        activation_type=QuantType.QUInt8,
+        weight_type=QuantType.QUInt8,
+        extra_options=None,
     ):
         if extra_options is None:
             extra_options = {}
@@ -218,7 +218,6 @@ class TestOpQuatizerPad(unittest.TestCase):
                 [0, 0, 1, 2, 0, 0, 3, 4],
                 constant_value=constant_value,
             )
-
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
@@ -353,14 +352,14 @@ class TestOpQuatizerPad(unittest.TestCase):
     #     self.verify_quantize_with_pad_mode('constant', constant_value=3.75, quantize_mode='dynamic', activation_type=QuantType.QInt8,
     #                                        weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
     def construct_edge_case_model(
-            self,
-            output_model_path,
-            conv_input_shape,
-            conv_weight_shape,
-            pad_input_shape,
-            pad_mode,
-            pad_dims,
-            constant_value=None,
+        self,
+        output_model_path,
+        conv_input_shape,
+        conv_weight_shape,
+        pad_input_shape,
+        pad_mode,
+        pad_dims,
+        constant_value=None,
     ):
         #      (input)
         #          \
@@ -402,8 +401,9 @@ class TestOpQuatizerPad(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     def test_static_mode_constant_value_edge_case(self):
-        self.verify_quantize_with_pad_mode("constant", constant_value=0.1, quantize_mode="static",
-                                           extra_options={"dual_feed": True})
+        self.verify_quantize_with_pad_mode(
+            "constant", constant_value=0.1, quantize_mode="static", extra_options={"dual_feed": True}
+        )
 
 
 if __name__ == "__main__":
