@@ -51,6 +51,22 @@ std::string TrainingSession::GetEvalModelOutputName(size_t index) const noexcept
   return module_->GetEvalModelOutputName(index);
 }
 
+size_t TrainingSession::GetTrainingModelInputCount() const noexcept {
+  return module_->GetTrainingModelInputCount();
+}
+
+size_t TrainingSession::GetEvalModelInputCount() const noexcept {
+  return module_->GetEvalModelInputCount();
+}
+
+std::string TrainingSession::GetTrainingModelInputName(size_t index) const noexcept {
+  return module_->GetTrainingModelInputName(index);
+}
+
+std::string TrainingSession::GetEvalModelInputName(size_t index) const noexcept {
+  return module_->GetEvalModelInputName(index);
+}
+
 Status TrainingSession::TrainStep(const RunOptions&,
                                   const std::vector<OrtValue>& inputs,
                                   std::vector<OrtValue>& fetches) {

@@ -327,6 +327,44 @@ struct OrtTrainingApi {
    *
    */
   ORT_API2_STATUS(SetSeed, _In_ const int64_t seed);
+
+  /** \brief Retrieves the number of user inputs in the training model.
+   *
+   * This function returns the number of inputs of the training model.
+   *
+   * \param[in] sess The training session which has working knowledge of the training model.
+   * \param[out] out Number of user inputs in the training model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelInputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+  /** \brief Retrieves the number of user inputs in the eval model.
+   *
+   * This function returns the number of inputs of the eval model.
+   *
+   * \param[in] sess The training session which has working knowledge of the eval model.
+   * \param[out] out Number of user inputs in the eval model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(TrainingSessionGetEvalModelInputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+  /** \brief Retrieves the name of the user input at given index.
+   *
+   * \param[in] sess The training session which has working knowledge of the training model.
+   * \param[out] out Number of user inputs in the eval model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
+                  _In_ OrtAllocator* allocator, _Outptr_ char** output);
+
+  ORT_API2_STATUS(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
+                  _In_ OrtAllocator* allocator, _Outptr_ char** output);
 };
 
 typedef struct OrtTrainingApi OrtTrainingApi;

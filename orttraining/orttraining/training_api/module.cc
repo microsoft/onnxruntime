@@ -181,6 +181,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   gradients_.resize(grad_input_names.size());
 
   train_input_names_ = user_input_names;
+  train_user_input_count_ = user_input_names.size();
   train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
@@ -276,6 +277,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
       }
     }
     eval_input_names_ = eval_user_input_names;
+    eval_user_input_count_ = eval_user_input_names.size();
     eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
 
     // Keep a copy of the eval model path to be able to later export the model for inferencing.
@@ -477,6 +479,28 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
 
   return Status::OK();
+}
+
+size_t Module::GetTrainingModelInputCount() const noexcept {
+  return train_user_input_count_;
+}
+
+size_t Module::GetEvalModelInputCount() const noexcept {
+  return eval_user_input_count_;
+}
+
+std::string Module::GetTrainingModelInputName(size_t index) const {
+  ORT_ENFORCE(index < train_user_input_count_,
+              "Train input name index out of range. Expected in range [0-", train_user_input_count_, "). Actual: ",
+              index);
+  return train_input_names_.at(index);
+}
+
+std::string Module::GetEvalModelInputName(size_t index) const {
+  ORT_ENFORCE(index < eval_user_input_count_,
+              "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
+              index);
+  return eval_input_names_.at(index);
 }
 
 }  // namespace api

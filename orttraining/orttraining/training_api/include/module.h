@@ -111,6 +111,18 @@ struct Module {
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
 
+  // Returns the input count for training graph
+  size_t GetTrainingModelInputCount() const noexcept;
+
+  // Returns the input count for eval graph
+  size_t GetEvalModelInputCount() const noexcept;
+
+  // Returns the input name for train graph at given index
+  std::string GetTrainingModelInputName(size_t index) const;
+
+  // Returns the input name for eval graph at given index
+  std::string GetEvalModelInputName(size_t index) const;
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
@@ -124,6 +136,8 @@ struct Module {
   bool accumulate_gradient_ = false;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
   std::string eval_model_path_;
+  size_t train_user_input_count_;
+  size_t eval_user_input_count_;
 };
 
 }  // namespace api

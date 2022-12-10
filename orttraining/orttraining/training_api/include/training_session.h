@@ -43,6 +43,14 @@ class TrainingSession {
 
   std::string GetEvalModelOutputName(size_t index) const noexcept;
 
+  size_t GetTrainingModelInputCount() const noexcept;
+
+  size_t GetEvalModelInputCount() const noexcept;
+
+  std::string GetTrainingModelInputName(size_t index) const noexcept;
+
+  std::string GetEvalModelInputName(size_t index) const noexcept;
+
   Status TrainStep(const RunOptions& run_options,
                    const std::vector<OrtValue>& inputs,
                    std::vector<OrtValue>& fetches);

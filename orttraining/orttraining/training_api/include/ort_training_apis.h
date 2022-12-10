@@ -66,4 +66,14 @@ ORT_API_STATUS_IMPL(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
 
 ORT_API_STATUS_IMPL(SetSeed, _In_ const int64_t seed);
 
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelInputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelInputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
+                    _In_ OrtAllocator* allocator, _Outptr_ char** output);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
+                    _In_ OrtAllocator* allocator, _Outptr_ char** output);
+
 }  // namespace OrtTrainingApis

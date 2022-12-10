@@ -380,6 +380,44 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetSeed, _In_ const int64_t seed) {
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelInputCount, _In_ const OrtTrainingSession* sess,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetTrainingModelInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputCount, _In_ const OrtTrainingSession* sess,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetEvalModelInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess,
+                    size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetTrainingModelInputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess,
+                    size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetEvalModelInputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -406,6 +444,10 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::ReleaseCheckpointState,
     &OrtTrainingApis::ExportModelForInferencing,
     &OrtTrainingApis::SetSeed,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelInputCount,
+    &OrtTrainingApis::TrainingSessionGetEvalModelInputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelInputName,
+    &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
 };
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {
