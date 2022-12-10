@@ -20,7 +20,15 @@ public:
         PoolingHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), useGlobalPooling),
         m_function(function)
     {
-        DmlOperator::Initialize(kernelInfo);
+        if (function == DML_OPERATOR_MAX_POOLING2)
+        {
+            auto kernelOutputIndices = std::vector<std::optional<uint32_t>> { 0, 1};
+            DmlOperator::Initialize(kernelInfo, std::nullopt, kernelOutputIndices);
+        }
+        else
+        {
+            DmlOperator::Initialize(kernelInfo);
+        }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
