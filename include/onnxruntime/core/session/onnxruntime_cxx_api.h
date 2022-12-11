@@ -464,10 +464,6 @@ struct ConstSessionOptionsImpl : Base<T> {
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def);
-
-  // Utility function that returns a SessionOption config entry key for a specific custom operator.
-  // Ex: custom_op.[custom_op_name].[config]
-  static std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config);
 };
 
 template <typename T>
@@ -503,9 +499,6 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                        ///< Wraps OrtApi::AddSessionConfigEntry
 
-  ///< Adds a config entry for a specific custom operator. Calls OrtApi::AddSessionConfigEntry with a key format defined in onnxruntime_session_options_config_key.h.
-  SessionOptionsImpl& AddCustomOpConfigEntry(const char* op_name, const char* key, const char* config_value);
-
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
@@ -525,8 +518,6 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptionsImpl& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
-
-  void* RegisterCustomOpsLibrary(const char* library_path);  ///< Wraps OrtApi::RegisterCustomOpsLibrary
 };
 }  // namespace detail
 
@@ -542,6 +533,56 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   explicit SessionOptions(OrtSessionOptions* p) : SessionOptionsImpl<OrtSessionOptions>{p} {}  ///< Used for interop with the C API
   UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
+};
+
+namespace detail {
+// Utility function that returns a SessionOption config entry key for a specific custom operator.
+// Ex: custom_op.[custom_op_name].[config]
+std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config);
+}  // namespace detail
+
+// Type for a function that can release a custom operator library handle.
+// This function calls platform-specific fuctions such as dlclose or FreeLibrary
+// in order to release the library handle.
+using ReleaseLibraryHandleFunc = void (*)(void* library_handle);
+
+/// <summary>
+/// Class that enables configuration and registration of custom operator libraries.
+/// Wraps calls to OrtApi::AddSessionConfigEntry and OrtApi::RegisterCustomOpsLibrary.
+///
+/// Example:
+///   CustomOpLibrary my_lib("my_lib.dll", lib_cleanup);
+///
+///   my_lib.AddConfigEntry("my_op", "device_type", "CPU");
+///   my_lib.Register(session_options);
+/// </summary>
+struct CustomOpLibrary {
+  explicit CustomOpLibrary(const char* library_path, ReleaseLibraryHandleFunc release_library_func) noexcept
+      : library_path_{library_path}, release_library_func_(release_library_func), library_handle_{nullptr} {}
+
+  // Disable copying.
+  CustomOpLibrary(const CustomOpLibrary&) = delete;
+  CustomOpLibrary& operator=(const CustomOpLibrary&) = delete;
+
+  // Make moveable.
+  CustomOpLibrary(CustomOpLibrary&& o) noexcept;
+  CustomOpLibrary& operator=(CustomOpLibrary&& o) noexcept;
+
+  ~CustomOpLibrary() noexcept;
+
+  ///< Adds a config entry for a specific custom operator.
+  ///< Config entries added after calling CustomOpsLibrary::Register() may be ignored by the custom operator.
+  void AddConfigEntry(const char* op_name, const char* key, const char* config_value);
+
+  ///< First, adds all custom op config entries to session options via OrtApi::AddSessionConfigEntry.
+  ///< Then, registers the custom op library via OrtApi::RegisterCustomOpsLibrary.
+  void Register(UnownedSessionOptions session_options);
+
+ private:
+  const char* library_path_;
+  ReleaseLibraryHandleFunc release_library_func_;
+  void* library_handle_;
+  std::unordered_map<std::string, std::string> custom_op_configs_;
 };
 
 /** \brief Wrapper around ::OrtModelMetadata

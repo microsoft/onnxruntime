@@ -926,21 +926,32 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   std::vector<float> expected_vals = {-5.34957457f, 13.1904755f, -4.79670954f, -3.59232116f, 2.31260920f,
                                       -4.27866220f, -4.31867933f, 0.587718308f, -2.33952785f, -3.88515306f};
 
-  void* lib_handle = nullptr;
   const char* lib_name;
 #if defined(_WIN32)
   lib_name = "custom_op_openvino_wrapper_library.dll";
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_openvino_wrapper_library.dylib";
 #else
-lib_name = "./libcustom_op_openvino_wrapper_library.so";
+  lib_name = "./libcustom_op_openvino_wrapper_library.so";
 #endif
 
+  auto release_lib_func = [](void* lib_handle) {
+#ifdef _WIN32
+    bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(lib_handle));
+    ORT_ENFORCE(success, "Error while closing custom op OpenVINO wrapper shared library");
+#else
+    int retval = dlclose(lib_handle);
+    ORT_ENFORCE(retval == 0, "Error while closing custom op OpenVINO wrapper shared library");
+#endif
+  };
+
+  Ort::CustomOpLibrary custom_op_lib(lib_name, release_lib_func);
+  custom_op_lib.AddConfigEntry("OpenVINO_Wrapper", "device_type", "CPU");
+
   {
-    // Add session config entry for the custom op.
     Ort::SessionOptions session_opts;
-    session_opts.AddCustomOpConfigEntry("OpenVINO_Wrapper", "device_type", "CPU");
-    lib_handle = session_opts.RegisterCustomOpsLibrary(lib_name);
+
+    custom_op_lib.Register(session_opts.GetUnowned());
 
     Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
@@ -952,14 +963,6 @@ lib_name = "./libcustom_op_openvino_wrapper_library.so";
                expected_vals,
                nullptr);
   }
-
-#ifdef _WIN32
-  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(lib_handle));
-  ORT_ENFORCE(success, "Error while closing custom op OpenVINO wrapper shared library");
-#else
-  int retval = dlclose(lib_handle);
-  ORT_ENFORCE(retval == 0, "Error while closing custom op OpenVINO wrapper shared library");
-#endif
 }
 #endif
 
