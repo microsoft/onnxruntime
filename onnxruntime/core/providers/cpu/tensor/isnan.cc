@@ -31,6 +31,7 @@ namespace onnxruntime {
       IsNaN<data_type>);
 
 ADD_TYPED_ISNAN_OP_9(float);
+ADD_TYPED_ISNAN_OP_9(double);
 ADD_TYPED_ISNAN_OP_9(MLFloat16);
 ADD_TYPED_ISNAN_OP(float);
 ADD_TYPED_ISNAN_OP(double);
