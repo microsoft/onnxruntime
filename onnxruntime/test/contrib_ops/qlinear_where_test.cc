@@ -36,12 +36,14 @@ void RunQLinearWhere(
 }
 template <typename T>
 void QLinearWhereScalarAll() {
+  constexpr float scale = 0.039f;
+  constexpr uint8_t zp = 135;
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
   test.AddInput<bool>("condition", {1}, {true}, true  );
   RunQLinearWhere<T>(
       test,
       {1}, {2}, {1},// x ,y ,z
-      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      scale, zp, scale, zp, scale, zp, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
       {1}, {1}, {1});
 }
 
@@ -52,12 +54,14 @@ TEST(QLinearWhereTest, QLinearWhereScalarAll) {
 
 template <typename T>
 void QLinearWhereVectorAll() {
+  constexpr float scale = 0.039f;
+  constexpr uint8_t zp = 135;
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
   test.AddInput<bool>("condition", {4}, {true,false,false,true}, true  );
   RunQLinearWhere<T>(
       test,
       {1,1,1,1}, {2,2,2,2}, {1,2,2,1},// x ,y ,z
-      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      scale, zp, scale, zp, scale, zp, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
       {4}, {4}, {4});
 }
 
@@ -67,12 +71,14 @@ TEST(QLinearWhereTest,QLinearWhereVectorAll){
 }
 template <typename T>
 void QLinearWhereMatrixAll() {
+  constexpr float scale = 0.039f;
+  constexpr uint8_t zp = 135;
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
   test.AddInput<bool>("condition", {2,2}, {true,false,false,true}, true  );
   RunQLinearWhere<T>(
       test,
       {1,1,1,1}, {2,2,2,2}, {1,2,2,1},// x ,y ,z
-      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      scale, zp, scale, zp, scale, zp, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
       {2,2}, {2,2}, {2,2});
 }
 
@@ -82,12 +88,14 @@ TEST(QLinearWhereTest,QLinearWhereMatrixAll){
 }
 template <typename T>
 void QLinearWhereScalarX_VectorY_MatrixCondition() {
+  constexpr float scale = 0.039f;
+  constexpr uint8_t zp = 135;
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
   test.AddInput<bool>("condition", {2,2}, {true,false,false,true}, true  );
   RunQLinearWhere<T>(
       test,
       {1}, {2,2}, {1,2,2,1},// x ,y ,z
-      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      scale, zp, scale, zp, scale, zp, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
       {1}, {2}, {2,2});
 }
 
@@ -98,12 +106,14 @@ TEST(QLinearWhereTest,QLinearWhereScalarX_VectorY_MatrixCondition){
 
 template <typename T>
 void QLinearWhereVectorX_VectorY_MatrixCondition() {
+  constexpr float scale = 0.039f;
+  constexpr uint8_t zp = 135;
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
   test.AddInput<bool>("condition", {2,2}, {true,false,false,true}, true  );
   RunQLinearWhere<T>(
       test,
       {1,1}, {2,2}, {1,2,2,1},// x ,y ,z
-      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      scale, zp, scale, zp, scale, zp, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
       {2}, {2}, {2,2});
 }
 
