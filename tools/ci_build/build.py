@@ -881,8 +881,8 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-+        "-Donnxruntime_SKIP_UNNECESSARY_TENSORRT_UNITTESTS="
-+        + ("ON" if args.skip_unnecessary_tensorrt_unittests else "OFF"),
+        "-Donnxruntime_SKIP_UNNECESSARY_TENSORRT_UNITTESTS="
+        + ("ON" if args.skip_unnecessary_tensorrt_unittests else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
