@@ -491,7 +491,11 @@ def parse_arguments():
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument("--skip_unnecessary_tensorrt_unittests", action="store_true", help="Skip unnecessary and time-consuming unittests for TensorRT EP")
+    parser.add_argument(
+        "--skip_unnecessary_tensorrt_unittests",
+        action="store_true",
+        help="Skip unnecessary and time-consuming unittests for TensorRT EP",
+    )
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
@@ -877,7 +881,8 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_SKIP_UNNECESSARY_TENSORRT_UNITTESTS=" + ("ON" if args.skip_unnecessary_tensorrt_unittests else "OFF"),
++        "-Donnxruntime_SKIP_UNNECESSARY_TENSORRT_UNITTESTS="
++        + ("ON" if args.skip_unnecessary_tensorrt_unittests else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
