@@ -635,10 +635,12 @@ if (onnxruntime_USE_TENSORRT)
     FetchContent_Declare(
       onnx_tensorrt
       URL ${DEP_URL_onnx_tensorrt}
-	    URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
+      URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
     )
-    FetchContent_MakeAvailable(onnx_tensorrt)
-	include_directories(${onnx_tensorrt_SOURCE_DIR})
+    # The onnx_tensorrt repo contains a test program, getSupportedAPITest, which doesn't support Windows. It uses
+    # unistd.h. So we must exclude it from our build. onnxruntime_fetchcontent_makeavailable is for the purpose.
+    onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
+    include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
@@ -1153,11 +1155,9 @@ if (onnxruntime_USE_MIGRAPHX)
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
-  # TODO: Remove the next line so that we can delete the git submodule
-  include_directories(${PROJECT_SOURCE_DIR}/external/protobuf ${PROJECT_SOURCE_DIR}/external/eigen)
+  include_directories(${protobuf_SOURCE_DIR} ${eigen_SOURCE_DIR})
   set(MIGRAPHX_ROOT ${onnxruntime_MIGRAPHX_HOME})
-  # TODO: Remove the next line so that we can delete the git submodule
-  include_directories(${PROJECT_SOURCE_DIR}/external/onnx)
+  include_directories(${onnx_SOURCE_DIR})
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if ( CMAKE_COMPILER_IS_GNUCC )
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
@@ -1481,7 +1481,7 @@ if (onnxruntime_USE_TVM)
     # wd4100: identifier' : unreferenced formal parameter
     # wd4127: conditional expression is constant
     # wd4244: conversion from 'int' to 'char', possible loss of data
-	# TODO: 4244 should not be disabled
+    # TODO: 4244 should not be disabled
     target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4127" "/wd4244")
   else()
     target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
