@@ -1528,7 +1528,10 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         )
         print("Torch Latency", torch_latency_output)
 
+    print("-"*10)
+    print(f"batch:{args.batch_size}, input_length:{args.input_length}, output_length:{args.max_length - args.input_length}, {args.enable_last_token_logits_matmul}, {args.pad_vocab_size}")
     print("ORT", output)
+    print("-"*10)
 
     return output
 
