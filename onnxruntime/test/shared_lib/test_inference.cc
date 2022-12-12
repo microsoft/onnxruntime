@@ -719,6 +719,56 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   }
 }
 
+TEST(CApiTest, invalid_variadic_input_custom_op) {
+  // Create an invalid custom op with 2 inputs. The first input is variadic and the last is not.
+  // Expect an error because only the last input may be marked as variadic.
+  MyInvalidVariadicInputCustomOp custom_op;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  bool caught_exception = false;
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  } catch (const Ort::Exception& excpt) {
+    caught_exception = true;
+    std::string_view exception_msg = excpt.what();
+    std::string_view expected_err = "Only the last input to a custom op may be marked variadic.";
+    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+  }
+
+  ASSERT_TRUE(caught_exception);
+}
+
+TEST(CApiTest, invalid_variadic_output_custom_op) {
+  // Create an invalid custom op with 2 outputs. The first output is variadic and the last is not.
+  // Expect an error because only the last output may be marked as variadic.
+  MyInvalidVariadicOutputCustomOp custom_op;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  bool caught_exception = false;
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  } catch (const Ort::Exception& excpt) {
+    caught_exception = true;
+    std::string_view exception_msg = excpt.what();
+    std::string_view expected_err = "Only the last output to a custom op may be marked variadic.";
+    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+  }
+
+  ASSERT_TRUE(caught_exception);
+}
+
 TEST(CApiTest, optional_input_output_custom_op_handler) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
 
