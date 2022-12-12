@@ -30,7 +30,7 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
-      - name: Debug
+      - name: Debug 1
         run: |
           pwd
           ls
@@ -38,6 +38,10 @@ jobs:
         with:
           ref: gh-pages
           clean: false
+      - name: Debug 2
+        run: |
+          pwd
+          find .
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
