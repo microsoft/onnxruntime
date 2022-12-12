@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 jobs:
-  publish:
+  build:
     name: Generate C/C++ API docs
     runs-on: ubuntu-latest
     steps:
@@ -45,6 +45,8 @@ jobs:
         with:
           name: capidocs
           working-directory: docs/api/c
+      - name: Setup Pages
+        uses: actions/configure-pages@v2
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
@@ -54,6 +56,16 @@ jobs:
         uses: actions/upload-pages-artifact@v1
         with:
           path: ./_site
+
+
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
