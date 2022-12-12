@@ -212,6 +212,50 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+NcclAllReduceV2::NcclAllReduceV2(const OpKernelInfo& info) : NcclKernel(info) {
+}
+
+Status NcclAllReduceV2::ComputeInternal(OpKernelContext* context) const {
+  ncclComm_t comm = nccl_->Comm();
+
+  auto input_tensor = context->Input<Tensor>(0);
+  const void* input_data = input_tensor->DataRaw();
+  const auto in_shape = input_tensor->Shape();
+  int64_t input_count = in_shape.Size();
+
+  void* output_data = context->Output(0, in_shape)->MutableDataRaw();
+
+  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+#ifdef ORT_USE_NCCL
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream()));
+#endif
+  return Status::OK();
+}
+
+NcclAllGatherV2::NcclAllGatherV2(const OpKernelInfo& info) : NcclKernel(info) {
+  info.GetAttrOrDefault("world_size", &world_size_, static_cast<int64_t>(1));
+}
+
+Status NcclAllGatherV2::ComputeInternal(OpKernelContext* context) const {
+  ncclComm_t comm = nccl_->Comm();
+
+  auto input_tensor = context->Input<Tensor>(0);
+  const void* input_data = input_tensor->DataRaw();
+  const auto in_shape = input_tensor->Shape();
+  int64_t input_count = in_shape.Size();
+  // construct output shape
+  TensorShape out_shape(in_shape);
+  out_shape[0] = world_size_ * out_shape[0];
+
+  void* output_data = context->Output(0, out_shape)->MutableDataRaw();
+
+  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+#ifdef ORT_USE_NCCL
+  NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream()));
+#endif
+  return Status::OK();
+}
+
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kMSDomain,
@@ -244,6 +288,27 @@ ONNX_OPERATOR_KERNEL_EX(
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
+
+ONNX_OPERATOR_KERNEL_EX(
+    NcclAllReduceV2,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    NcclAllReduceV2);
+
+ONNX_OPERATOR_KERNEL_EX(
+    NcclAllGatherV2,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    NcclAllGatherV2);
 
 }  // namespace cuda
 }  // namespace onnxruntime

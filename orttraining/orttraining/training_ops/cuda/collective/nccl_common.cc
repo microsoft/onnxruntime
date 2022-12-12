@@ -152,5 +152,62 @@ NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {
   group_type_ = static_cast<training::WorkerGroupType>(group_type);
 }
 
+#ifdef USE_MPI
+static Status CreateNcclCommByMPI(int world_size, int rank, ncclComm_t* comm) {
+
+  // Create new NCCL communicator
+  ncclUniqueId nccl_id;
+  if (rank == 0) {
+    NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
+  }
+  MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD));
+  NCCL_RETURN_IF_ERROR(ncclCommInitRank(comm, world_size, nccl_id, rank));
+
+  return Status::OK();
+}
+#endif
+
+NcclContextV2::NcclContextV2() {
+#ifdef USE_MPI
+  int is_mpi_initialized = 0;
+  MPI_Initialized(&is_mpi_initialized);
+  if (!is_mpi_initialized) {
+    int mpi_threads_provided = 0;
+    MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
+  }
+
+  // get world_size and rank from MPI
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
+
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
+
+  // Initialize global Parallel Group NCCL Communicator
+  auto ret = CreateNcclCommByMPI(rank_, world_size_, &comm_);
+  ORT_ENFORCE(ret.IsOK());
+
+#else
+  ORT_THROW("ORT must be built with MPI to use NCCL.");
+#endif
+}
+
+NcclContextV2::~NcclContextV2() {
+  if (comm_ != nullptr) {
+    ncclCommDestroy(comm_);
+  }
+
+#ifdef USE_MPI
+  int is_mpi_finalized = 0;
+  MPI_Finalized(&is_mpi_finalized);
+  if (!is_mpi_finalized) {
+    MPI_Finalize();
+  }
+#endif
+}
+
+NcclKernelV2::NcclKernelV2(const OpKernelInfo& info) : CudaKernel(info) {
+  static NcclContextV2 context;
+  nccl_ = &context;
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
