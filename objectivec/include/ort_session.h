@@ -106,6 +106,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
 
 /**
+* Append a ExecutionProvider in new interface, now we support xnnpack
+* @param providerName provider names, example "xnnpack"
+* @param providerOptions for example, {"intra_thread_num":2}
+* @param error Optional error information set if an error occurs.
+* @return True if appendEP success or False
+*/
+- (BOOL)appendExecutionProvider:(NSString*)providerName
+                providerOptions:(NSDictionary*)providerOptions
+                          error:(NSError**)error;
+/**
  * Sets the number of threads used to parallelize the execution within nodes.
  * A value of 0 means ORT will pick a default value.
  *

@@ -4,6 +4,7 @@
 #import <XCTest/XCTest.h>
 
 #import "ort_coreml_execution_provider.h"
+#import "ort_xnnpack_execution_provider.h"
 #import "ort_env.h"
 #import "ort_session.h"
 #import "ort_value.h"
@@ -215,6 +216,23 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(session, err);
 }
 
+- (void)testAppendXnnpackEP {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  ORTXnnpackExecutionProviderOptions* XnnpackOptions = [[ORTXnnpackExecutionProviderOptions alloc] init];
+  XnnpackOptions.intra_thread_num = 2;
+
+  BOOL appendResult = [sessionOptions appendXnnpackExecutionProviderWithOptions:XnnpackOptions
+                                                                         error:&err];
+
+  ORTAssertBoolResultSuccessful(appendResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+}
 @end
 
 NS_ASSUME_NONNULL_END

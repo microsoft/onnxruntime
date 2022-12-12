@@ -1,0 +1,46 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#import <Foundation/Foundation.h>
+
+#import "ort_session.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+NS_ASSUME_NONNULL_BEGIN
+
+/**
+ * Options for configuring the CoreML execution provider.
+ */
+@interface ORTXnnpackExecutionProviderOptions : NSObject
+
+/**
+ * How many threads used for the Xnnpack execution provider.
+ */
+@property int intra_thread_num;
+
+@end
+
+@interface ORTSessionOptions (ORTSessionOptionsXnnpackEP)
+
+/**
+ * Enables the Xnnpack execution provider in the session configuration options.
+ * It is appended to the execution provider list which is ordered by
+ * decreasing priority.
+ *
+ * @param options The Xnnpack execution provider configuration options.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the provider was enabled successfully.
+ */
+- (BOOL)appendXnnpackExecutionProviderWithOptions:(ORTXnnpackExecutionProviderOptions*)options
+                                           error:(NSError**)error;
+
+@end
+
+NS_ASSUME_NONNULL_END
