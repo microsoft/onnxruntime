@@ -4,19 +4,12 @@
 # --------------------------------------------------------------------------
 
 import sys
+from dataclasses import dataclass
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import sort_profile_results
-
-
-def dtype_to_bytes(dtype):
-    type_map = {
-        "float16": 2,
-        "float32": 4,
-    }
-    return type_map[dtype]
+from utils import dtype_to_bytes
 
 
 def dtype_to_funcs(dtype):
@@ -56,6 +49,18 @@ def test_vector_add(size, dtype):
             run_vector_add(size, dtype, f)
 
 
+@dataclass
+class VectorAddStatus(ke.InstanceStatus):
+    size: int
+
+    @property
+    def gbps(self):
+        return self.size * 3 * (dtype_to_bytes(self.dtype)) * 1e3 / self.duration / 1e6
+
+    def report(self):
+        return f"{self.name :<50} {self.dtype} size={self.size:<4}, {self.duration:.2f} us, {self.gbps:.2f} GB/s"
+
+
 def profile_vector_add_func(size, dtype, func):
     np.random.seed(0)
     x = np.random.rand(size).astype(dtype)
@@ -67,42 +72,23 @@ def profile_vector_add_func(size, dtype, func):
     z_d = ke.DeviceArray(z)
     f = getattr(ke, func)
     my_op = f(x_d, y_d, z_d, size)
-    duration = my_op.Profile()
-    gbytes_per_seconds = size * 3 * (dtype_to_bytes(dtype)) * 1e3 / duration / 1e9
-    duration = duration * 1000
-    return {"func": func, "duration": duration, "GBps": gbytes_per_seconds}
+    duration_ms = my_op.Profile()
+
+    ke.report(VectorAddStatus(func, dtype, duration_ms, size))
 
 
-def print_results(size, dtype, profile_results):
-    for result in profile_results:
-        print(
-            f"{result['func']:<50} {dtype} size={size:<4}",
-            f"{result['duration']:.2f} us",
-            f"{result['GBps']:.2f} GB/s",
-        )
-
-
-def profile_with_args(size, dtype, enable_sort=True):
-    if enable_sort:
-        profile_results = []
+def profile_with_args(size, dtype, sort):
+    with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
-            profile_result = profile_vector_add_func(size, dtype, func)
-            profile_results.append(profile_result)
-        sorted_profile_results = sort_profile_results(profile_results, sort_item="GBps", reverse=True)
-        print_results(size, dtype, sorted_profile_results)
-    else:
-        for func in dtype_to_funcs(dtype):
-            profile_result = profile_vector_add_func(size, dtype, func)
-            print_results(size, dtype, [profile_result])
-    print()
+            profile_vector_add_func(size, dtype, func)
 
 
 def profile():
     sizes = [10000, 100000, 1000000, 10000000]
     for dt in dtypes:
         for s in sizes:
-            profile_with_args(s, dt)
-        print()
+            profile_with_args(s, dt, True)
+            print()
 
 
 if __name__ == "__main__":
@@ -112,10 +98,10 @@ if __name__ == "__main__":
     group = parser.add_argument_group("profile with args")
     group.add_argument("size", type=int)
     group.add_argument("dtype", choices=dtypes)
-    group.add_argument("--enable_sort", action="store_true")
+    group.add_argument("--sort", action="store_true")
 
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.size, args.dtype, args.enable_sort)
+        profile_with_args(args.size, args.dtype, args.sort)

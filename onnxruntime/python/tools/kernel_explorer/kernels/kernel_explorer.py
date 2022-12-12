@@ -60,3 +60,68 @@ import _kernel_explorer  # noqa
 
 # pylint: disable=wrong-import-position, disable=unused-import, disable=wildcard-import
 from _kernel_explorer import *  # noqa
+
+"""Benchmark Reporter"""
+
+from abc import abstractmethod
+from contextlib import contextmanager
+from dataclasses import dataclass
+
+
+@dataclass
+class InstanceStatus:
+    name: str
+    dtype: str
+    milliseconds_duration: float
+
+    def __lt__(self, other):
+        if "Tunable" in self.name or other.duration < 0:
+            return True
+        if "Tunable" in other.name or self.duration < 0:
+            return False
+
+        return self.duration < other.duration
+
+    @property
+    def duration(self):
+        return self.milliseconds_duration * 1000
+
+    @abstractmethod
+    def report(self) -> str:
+        return self.name
+
+
+class InstanceBenchmarkReporter:
+    def __init__(self):
+        self.sort = False
+        self.reporters = []
+
+    def set_sort(self, sort):
+        self.sort = sort
+
+    def flush(self):
+        self.reporters.sort()
+        for item in self.reporters:
+            print(item.report())
+        self.reporters.clear()
+
+    def receive(self, status):
+        self.reporters.append(status)
+        if not self.sort:
+            self.flush()
+
+
+_repoter = InstanceBenchmarkReporter()
+
+
+@contextmanager
+def benchmark(sort):
+    _repoter.set_sort(sort)
+    try:
+        yield
+    finally:
+        _repoter.flush()
+
+
+def report(status):
+    _repoter.receive(status)
