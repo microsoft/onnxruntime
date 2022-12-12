@@ -508,7 +508,7 @@ inline std::string ConstSessionOptionsImpl<T>::GetConfigEntry(const char* config
 
   std::string out;
   out.resize(size);
-  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, &out[0], &size));
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, out.data(), &size));
   out.resize(size - 1);  // remove the terminating character '\0'
 
   return out;
@@ -1469,7 +1469,7 @@ inline std::string KernelInfoImpl<T>::GetInputName(size_t index) const {
 
   std::string out;
   out.resize(size);
-  Ort::ThrowOnError(GetApi().KernelInfo_GetInputName(this->p_, index, &out[0], &size));
+  Ort::ThrowOnError(GetApi().KernelInfo_GetInputName(this->p_, index, out.data(), &size));
   out.resize(size - 1);  // remove the terminating character '\0'
 
   return out;
@@ -1484,7 +1484,7 @@ inline std::string KernelInfoImpl<T>::GetOutputName(size_t index) const {
 
   std::string out;
   out.resize(size);
-  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputName(this->p_, index, &out[0], &size));
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputName(this->p_, index, out.data(), &size));
   out.resize(size - 1);  // remove the terminating character '\0'
 
   return out;
@@ -1526,7 +1526,7 @@ inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, std::s
 
   std::string out;
   out.resize(size);
-  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_string(p, name, &out[0], &size));
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_string(p, name, out.data(), &size));
   out.resize(size - 1);  // remove the terminating character '\0'
   out.swap(result);
 }
@@ -1628,7 +1628,7 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
 
   if (status == nullptr) {
     out.resize(size);
-    Ort::ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
+    Ort::ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, out.data(), &size));
     out.resize(size - 1);  // remove the terminating character '\0'
   } else {
     Ort::ThrowOnError(status);
