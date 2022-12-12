@@ -189,7 +189,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
     )
-    output_group.set_defaults(separate_gpt2_decoder_for_init_run=False)
+    output_group.set_defaults(separate_gpt2_decoder_for_init_run=True)
 
     output_group.add_argument(
         "-i",
