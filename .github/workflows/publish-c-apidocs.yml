@@ -31,6 +31,10 @@ jobs:
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
           rm -rf ../../doxygen-1.9.5
+      - name: Move API docs into target area
+        run: |
+          sudo rm -rf docs/api/c
+          sudo mv build/doxygen/html docs/api/c
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
@@ -40,10 +44,6 @@ jobs:
         with:
           source: ./
           destination: ./_site
-      - name: Move API docs into target area
-        run: |
-          sudo rm -rf _site/docs/api/c
-          sudo mv build/doxygen/html _site/docs/api/c
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
