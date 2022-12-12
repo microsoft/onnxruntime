@@ -45,7 +45,7 @@ jobs:
           sudo rm -rf _site/docs/api/c
           sudo mv build/doxygen/html _site/docs/api/c
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v1
         with:
           path: "./_site"
       - name: Deploy to GitHub Pages
