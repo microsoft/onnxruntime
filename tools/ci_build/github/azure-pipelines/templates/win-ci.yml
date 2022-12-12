@@ -57,7 +57,7 @@ jobs:
   workspace:
     clean: all
   pool: ${{ parameters.ort_build_pool_name }}
-  timeoutInMinutes: 300  
+  timeoutInMinutes:  300  
 
   steps:
     - checkout: self

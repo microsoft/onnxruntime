@@ -120,7 +120,6 @@ jobs:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-    timeoutInMinutes:  600  
 
 - job: Jar_Packaging_GPU
   workspace:
