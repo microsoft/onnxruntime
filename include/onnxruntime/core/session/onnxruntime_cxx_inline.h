@@ -874,8 +874,7 @@ inline std::string detail::MakeCustomOpConfigEntryKey(const char* custom_op_name
 
 inline CustomOpLibrary::CustomOpLibrary(CustomOpLibrary&& o) noexcept : library_path_(std::exchange(o.library_path_, nullptr)),
                                                                         release_library_func_(std::exchange(o.release_library_func_, nullptr)),
-                                                                        library_handle_(std::exchange(o.library_handle_, nullptr)),
-                                                                        custom_op_configs_(std::move(o.custom_op_configs_)) {
+                                                                        library_handle_(std::exchange(o.library_handle_, nullptr)) {
 }
 
 inline CustomOpLibrary& CustomOpLibrary::operator=(CustomOpLibrary && o) noexcept {
@@ -887,7 +886,6 @@ inline CustomOpLibrary& CustomOpLibrary::operator=(CustomOpLibrary && o) noexcep
     library_path_ = std::exchange(o.library_path_, nullptr);
     release_library_func_ = std::exchange(o.release_library_func_, nullptr);
     library_handle_ = std::exchange(o.library_handle_, nullptr);
-    custom_op_configs_ = std::move(o.custom_op_configs_);
   }
   return *this;
 }
@@ -898,23 +896,14 @@ inline CustomOpLibrary::~CustomOpLibrary() noexcept {
   }
 }
 
-inline void CustomOpLibrary::AddConfigEntry(const char* op_name, const char* key, const char* config_value) {
-  const std::string full_key = detail::MakeCustomOpConfigEntryKey(op_name, key);
-
-  if (library_handle_ != nullptr) {
-    std::string err_msg = "Custom operator session config '";
-    err_msg += full_key;
-    err_msg += "' may be ignored after custom operator library registration.";
-    ORT_CXX_LOG(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, err_msg.c_str());
-  }
-
-  custom_op_configs_[full_key] = config_value;
-}
-
-inline void CustomOpLibrary::Register(UnownedSessionOptions session_options) {
-  // Add session config entries _before_ registering the custom op library.
-  for (const auto& it : custom_op_configs_) {
-    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
+inline void CustomOpLibrary::Register(UnownedSessionOptions session_options, const CustomOpConfigs& custom_op_configs) {
+  // Add custom op config entries before registering the custom op library. Otherwise, the config entries _may_ be ignored by
+  // the custom op library.
+  for (const auto& op_iter : custom_op_configs) {
+    for (const auto& config_iter : op_iter.second) {
+      const std::string full_key = detail::MakeCustomOpConfigEntryKey(op_iter.first.c_str(), config_iter.first.c_str());
+      session_options.AddConfigEntry(full_key.c_str(), config_iter.second.c_str());
+    }
   }
 
   ThrowOnError(GetApi().RegisterCustomOpsLibrary(session_options, library_path_, &library_handle_));

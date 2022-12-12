@@ -546,15 +546,19 @@ std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* c
 // in order to release the library handle.
 using ReleaseLibraryHandleFunc = void (*)(void* library_handle);
 
+// Type representing session configuration entries for one or more custom operators.
+// The first level key corresponds to the custom operator name. The second level map
+// stores string key/value pairs for a given custom operator.
+using CustomOpConfigs = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+
 /// <summary>
 /// Class that enables configuration and registration of custom operator libraries.
 /// Wraps calls to OrtApi::AddSessionConfigEntry and OrtApi::RegisterCustomOpsLibrary.
 ///
 /// Example:
 ///   CustomOpLibrary my_lib("my_lib.dll", lib_cleanup);
-///
-///   my_lib.AddConfigEntry("my_op", "device_type", "CPU");
-///   my_lib.Register(session_options);
+///   ...
+///   my_lib.Register(session_options, {{"my_op", {{"device_type", "CPU"}}}});
 /// </summary>
 struct CustomOpLibrary {
   explicit CustomOpLibrary(const char* library_path, ReleaseLibraryHandleFunc release_library_func) noexcept
@@ -570,19 +574,14 @@ struct CustomOpLibrary {
 
   ~CustomOpLibrary() noexcept;
 
-  ///< Adds a config entry for a specific custom operator.
-  ///< Config entries added after calling CustomOpsLibrary::Register() may be ignored by the custom operator.
-  void AddConfigEntry(const char* op_name, const char* key, const char* config_value);
-
-  ///< First, adds all custom op config entries to session options via OrtApi::AddSessionConfigEntry.
-  ///< Then, registers the custom op library via OrtApi::RegisterCustomOpsLibrary.
-  void Register(UnownedSessionOptions session_options);
+  ///< Registers the custom op library via OrtApi::RegisterCustomOpsLibrary.
+  ///< The specified custom op configurations are set via OrtApi::AddSessionConfigEntry.
+  void Register(UnownedSessionOptions session_options, const CustomOpConfigs& custom_op_configs = {});
 
  private:
   const char* library_path_;
   ReleaseLibraryHandleFunc release_library_func_;
   void* library_handle_;
-  std::unordered_map<std::string, std::string> custom_op_configs_;
 };
 
 /** \brief Wrapper around ::OrtModelMetadata

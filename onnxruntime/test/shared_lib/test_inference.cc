@@ -946,12 +946,11 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   };
 
   Ort::CustomOpLibrary custom_op_lib(lib_name, release_lib_func);
-  custom_op_lib.AddConfigEntry("OpenVINO_Wrapper", "device_type", "CPU");
 
   {
     Ort::SessionOptions session_opts;
 
-    custom_op_lib.Register(session_opts.GetUnowned());
+    custom_op_lib.Register(session_opts.GetUnowned(), {{"OpenVINO_Wrapper", {{"device_type", "CPU"}}}});
 
     Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
