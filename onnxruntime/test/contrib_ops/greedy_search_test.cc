@@ -124,7 +124,7 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #endif
 
-    Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_with_init_decoder_greedysearch.onnx"), session_options);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_greedysearch_with_init_decoder.onnx"), session_options);
 
     auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
                                    output_names, 1);
