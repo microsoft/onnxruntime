@@ -414,6 +414,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             0,
             0,
+            0,
             0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
@@ -546,6 +547,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_layer_norm_fp32_fallback = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_sideload_engine") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_sideload_engine = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_sideload_engine = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_sideload_engine' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);

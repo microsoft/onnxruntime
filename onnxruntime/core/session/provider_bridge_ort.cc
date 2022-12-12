@@ -1247,6 +1247,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   // Use default value as this field is not available in OrtTensorRTProviderOptionsV
   trt_options_converted.trt_context_memory_sharing_enable = 0;
   trt_options_converted.trt_layer_norm_fp32_fallback = 0;
+  trt_options_converted.trt_sideload_engine = 0;
   return trt_options_converted;
 }
 
@@ -1553,6 +1554,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_force_sequential_engine_build = false;
   (*out)->trt_context_memory_sharing_enable = false;
   (*out)->trt_layer_norm_fp32_fallback = false;
+  (*out)->trt_sideload_engine = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

@@ -297,6 +297,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (fp16_enable_) {
       layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
     }
+    sideload_engine_ = info.sideload_engine;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -392,9 +393,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
     }
 
-    const std::string side_load_engine_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSideLoadEngine);
-    if (!side_load_engine_env.empty()) {
-      side_load_engine_ = (std::stoi(side_load_engine_env) == 0 ? false : true);
+    const std::string sideload_engine_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSideloadEngine);
+    if (!sideload_engine_env.empty()) {
+      sideload_engine_ = (std::stoi(sideload_engine_env) == 0 ? false : true);
     }
   }
 
@@ -462,7 +463,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
                         << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
-                        << ", trt_side_load_engine: " << side_load_engine_;
+                        << ", trt_sideload_engine: " << sideload_engine_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1066,7 +1067,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   SubGraphCollection_t supported_nodes_vector;
   std::vector<std::unique_ptr<ComputeCapability>> result;
   const std::string trt_node_list_name = GetCachePath(cache_path_, "trt_nodes_list_" + graph.Name() + "_" + model_name + ".txt");
-  if (!side_load_engine_) {
+  if (!sideload_engine_) {
     std::vector<size_t> nodes_vector(number_of_ort_nodes);
     std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   
@@ -1327,7 +1328,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     const std::string profile_cache_path = cache_path + ".profile";
     std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
     std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-    if (side_load_engine_ && engine_cache_enable_ && engine_file && profile_file) {
+    if (sideload_engine_ && engine_cache_enable_ && engine_file && profile_file) {
       has_dynamic_shape = true;
     } else {
       trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
@@ -1497,7 +1498,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
-            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, side_load_engine_};
+            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, sideload_engine_};
       *state = p.release();
       return 0;
     };
@@ -1607,7 +1608,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
 
-      if (!trt_state->side_load_engine) {
+      if (!trt_state->sideload_engine) {
         for (int i = 0, end = num_inputs; i < end; ++i) {
           auto input = trt_state->network->get()->getInput(i);
           const std::string& input_name = input->getName();

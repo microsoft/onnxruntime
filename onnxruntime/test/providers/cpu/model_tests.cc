@@ -669,7 +669,7 @@ TEST_P(ModelTest, Run) {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
+                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0};
           ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
         } else {
           OrtTensorRTProviderOptionsV2* ep_option;

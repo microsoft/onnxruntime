@@ -33,6 +33,7 @@ struct TensorrtExecutionProviderInfo {
   bool force_sequential_engine_build{false};
   bool context_memory_sharing_enable{false};
   bool layer_norm_fp32_fallback{false};
+  bool sideload_engine{false};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

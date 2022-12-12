@@ -151,6 +151,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       nullptr,
       0,
       0,
+      0,
       0};
 
     params.trt_engine_cache_enable = 1;
@@ -220,6 +221,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       nullptr,
       0,
       nullptr,
+      0,
       0,
       0,
       0};
@@ -424,6 +426,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       nullptr,
       0,
       nullptr,
+      0,
       0,
       0,
       0};
