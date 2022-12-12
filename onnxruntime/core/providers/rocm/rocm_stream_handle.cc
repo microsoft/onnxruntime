@@ -81,14 +81,6 @@ void RocmStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
 
-struct CpuBuffersInfo {   // TODO: should be moved to base class
-  AllocatorPtr allocator;
-  void** buffers;
-  // CPU buffer buffers[i].
-  // Number of buffer points in "buffers".
-  size_t n_buffers;
-};
-
 static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {  // TODO: should be moved to base class
   std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>();
   info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));

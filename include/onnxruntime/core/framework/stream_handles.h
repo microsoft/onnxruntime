@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 #include "core/common/status.h"
 
@@ -142,7 +143,6 @@ class Notification {
 // EP can register the handle to the executor.
 // in the POC, just use primitive function pointer
 // TODO: use a better way to dispatch handles.
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
 // an interface of a simple registry which hold the handles EP registered.
@@ -162,6 +162,31 @@ class IStreamCommandHandleRegistry {
                               WaitNotificationFn fn) = 0;
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
+};
+
+struct CpuBuffersInfo {
+  // This struct stores the information needed
+  // to release CPU buffers allocated for GPU kernels.
+  // It's used to enqueue their release after
+  // associated GPU kernels in a CUDA stream.
+
+  // This is a CPU allocator in CUDA EP.
+  // It must be the one used to allocate the
+  // following pointers.
+  AllocatorPtr allocator;
+  // buffers[i] is the i-th pointer added by
+  // AddDeferredReleaseCPUPtr for a specific
+  // CUDA stream. For example, this fields
+  // should contain all values in
+  // deferred_release_buffer_pool_[my_stream]
+  // when release my_stream's buffers.
+  void** buffers;
+  // CPU buffer buffers[i].
+  // Number of buffer points in "buffers".
+  size_t n_buffers;
+
+  //  CpuBuffersInfo() {}
+  //  ~CpuBuffersInfo() {}
 };
 
 }  // namespace onnxruntime

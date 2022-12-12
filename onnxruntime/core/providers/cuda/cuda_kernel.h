@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/framework/stream_handles.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/platform/ort_mutex.h"
