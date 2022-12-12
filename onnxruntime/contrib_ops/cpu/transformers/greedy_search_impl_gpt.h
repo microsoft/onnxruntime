@@ -200,7 +200,6 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
                                     ExecutionMode::ORT_SEQUENTIAL,
                                     this->context_.GetTerminateFlag(),
                                     this->context_.Logger());
-
     ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = fetches[0];
@@ -211,6 +210,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds
                                                 sampling_state,
                                                 iteration_counter,
                                                 parameters->eos_token_id));
+
     // When all batches are finished, stop earlier to avoid wasting computation.
     gsl::span<bool>& eos_meet = greedy_state.eos_meet;
     size_t batch_id = 0;

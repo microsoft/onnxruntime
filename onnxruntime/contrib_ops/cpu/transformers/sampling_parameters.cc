@@ -18,6 +18,7 @@ void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) {
   min_tokens_to_keep = static_cast<int>(info.GetAttrOrDefault<int64_t>("min_tokens_to_keep", 0));
   presence_penalty = info.GetAttrOrDefault<float>("presence_penalty", 0.0f);
   custom_sampling = static_cast<int>(info.GetAttrOrDefault<int64_t>("custom", 0));
+  vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
 }
 
 }  // namespace transformers
