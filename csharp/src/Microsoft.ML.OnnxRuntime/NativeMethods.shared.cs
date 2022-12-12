@@ -277,6 +277,7 @@ namespace Microsoft.ML.OnnxRuntime
             api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
+            OrtCreateEnvWithCustomLogger = (DOrtCreateEnvWithCustomLogger)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLogger, typeof(DOrtCreateEnvWithCustomLogger));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
             OrtEnableTelemetryEvents = (DOrtEnableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.EnableTelemetryEvents, typeof(DOrtEnableTelemetryEvents));
             OrtDisableTelemetryEvents = (DOrtDisableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.DisableTelemetryEvents, typeof(DOrtDisableTelemetryEvents));
@@ -457,10 +458,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern ref OrtApiBase OrtGetApiBase();
 
 #region Runtime/Environment API
-
+        
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */DOrtCreateEnv(LogLevel default_warning_level, string logId, out IntPtr /*(OrtEnv*)*/ env);
         public static DOrtCreateEnv OrtCreateEnv;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithCustomLogger(IntPtr /* (OrtLoggingFunction*) */ logging_function, IntPtr /* (void*) */ logger_param, LogLevel default_warning_level, string logId, out IntPtr /*(OrtEnv*)*/ env);
+        public static DOrtCreateEnvWithCustomLogger OrtCreateEnvWithCustomLogger;
 
         // OrtReleaseEnv should not be used
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
