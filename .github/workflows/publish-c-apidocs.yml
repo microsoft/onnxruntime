@@ -30,35 +30,20 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
-      - name: Debug 1
-        run: |
-          pwd
-          ls
+          rm -rf ../../doxygen-1.9.5
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
           clean: false
-      - name: Debug 2
-        run: |
-          pwd
-          find .
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
           source: ./
           destination: ./_site
-      - name: Debug 3
-        run: |
-          pwd
-          find .
       - name: Move API docs into target area
         run: |
-          rm -rf docs/api/c
-          mv build/doxygen/html docs/api/c
-      - name: Debug 4
-        run: |
-          pwd
-          find .
+          rm -rf _site/docs/api/c
+          mv build/doxygen/html _site/docs/api/c
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
