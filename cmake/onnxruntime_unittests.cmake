@@ -708,9 +708,9 @@ endif()
 
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
-    if (onnxruntime_SKIP_UNNECESSARY_TENSORRT_UNITTESTS)
-       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We don't use place holder to reduce testing time due to application test deadlock. 
-       # Therefore we only run TRT EP related tests.
+    if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
+       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock. 
+       # Therefore we only run filtered TRT EP tests.
       list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
       #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
     else()
