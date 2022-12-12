@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 1
 ---
-# Get started with ORT for Python
+# Get started with ONNX Runtime in Python
 {: .no_toc }
 
 Below is a quick guide to get the packages installed to use ONNX for model serialization and infernece with ORT.
