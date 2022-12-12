@@ -65,11 +65,20 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 
   ONNX_NAMESPACE::GraphProto proto;
   if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
+    // Make sure the encoder sub-graph attribute is present for the T5 model.
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
-  // Make sure the decoder attribute was present even though we don't need it here.
+  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
+    // Check if the init_decoder sub-graph attribute is present for the GPT2 model.
+    if (info.GetAttr<ONNX_NAMESPACE::GraphProto>("init_decoder", &proto).IsOK()) {
+      has_init_decoder_ = true;
+    }
+  }
+
+  // Make sure the decoder sub-graph attribute is present for all model types.
   ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("decoder", &proto).IsOK());
+
   ORT_IGNORE_RETURN_VALUE(proto);
 }
 
@@ -87,7 +96,17 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         gpt_subgraph_->num_heads,
                                         gpt_subgraph_->head_size,
                                         gpt_subgraph_->num_layers);
+    } else if (attribute_name == "init_decoder") {
+      ORT_ENFORCE(init_run_gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      init_run_gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(init_run_gpt_subgraph_->Setup(session_state, subgraph_session_state));
+      init_run_decoder_feeds_fetches_manager_ = init_run_gpt_subgraph_->GetFeedsFetchesManager();
+      parameters_.SetSubgraphParameters(init_run_gpt_subgraph_->vocab_size,
+                                        init_run_gpt_subgraph_->num_heads,
+                                        init_run_gpt_subgraph_->head_size,
+                                        init_run_gpt_subgraph_->num_layers);
     }
+
   } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
@@ -130,6 +149,12 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(decoder_session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
   ORT_ENFORCE(decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
+  auto* init_run_decoder_session_state = ctx_internal->SubgraphSessionState("init_decoder");
+  if (has_init_decoder_) {
+    ORT_ENFORCE(init_run_decoder_session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
+    ORT_ENFORCE(init_run_decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
+  }
+
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   // Make a copy of parameters since we will update it based on inputs later
@@ -138,7 +163,12 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
     if (!gpt_subgraph_->IsOutputFloat16()) {  // Output float32
       BeamSearchGpt<float> impl{
-          *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
+          *ctx_internal,
+          has_init_decoder_ ? init_run_decoder_session_state : nullptr,
+          has_init_decoder_ ? init_run_gpt_subgraph_.get() : nullptr,
+          *decoder_session_state,
+          *gpt_subgraph_,
+          thread_pool, cuda_stream_, dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
@@ -149,10 +179,15 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
-      return impl.Execute(*decoder_feeds_fetches_manager_);
+      return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {  // Output float16
       BeamSearchGpt<MLFloat16> impl{
-          *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
+          *ctx_internal,
+          has_init_decoder_ ? init_run_decoder_session_state : nullptr,
+          has_init_decoder_ ? init_run_gpt_subgraph_.get() : nullptr,
+          *decoder_session_state,
+          *gpt_subgraph_,
+          thread_pool, cuda_stream_, dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
@@ -163,7 +198,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_gpt_feeds_fp16_func_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
-      return impl.Execute(*decoder_feeds_fetches_manager_);
+      return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     }
   }
 

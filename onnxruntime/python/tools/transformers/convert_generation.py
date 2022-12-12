@@ -1210,6 +1210,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     decoder_model = onnx.load_model(args.decoder_onnx, load_external_data=True)
     decoder_model.graph.name = f"{args.model_type} decoder"
 
+    gpt2_init_decoder_model = None
     if args.model_type == "gpt2":
         verify_gpt2_subgraph(decoder_model.graph, args.precision)
 
@@ -1340,8 +1341,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         )
     else:
         if gpt2_init_decoder_generated:
-            gpt2_init_decoder_model = onnx.load_model(gpt2_init_decoder_onnx_path, load_external_data=True)
-
             # Move shared initializers (shared between init decoder and decoder models) to the main
             # graph and remove them from these models
             if not args.disable_shared_initializers:
