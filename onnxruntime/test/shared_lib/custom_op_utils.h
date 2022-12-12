@@ -152,18 +152,27 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
 };
 
 // Custom kernel that outputs the lengths of all input strings.
-struct MyCustomKernelWithVariadicIO {
-  explicit MyCustomKernelWithVariadicIO(const OrtKernelInfo* /* info */) {}
+struct MyCustomStringLengthsKernel {
+  explicit MyCustomStringLengthsKernel(const OrtKernelInfo* /* info */) {}
 
   void Compute(OrtKernelContext* context);
 };
 
+// Utility function to be used when testing with MyCustomStringLengthsKernel.
+// Creates an input tensor from the provided input string and adds it to `ort_inputs`.
+// Also initializes the correspoinding expected output and I/O names.
+void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator,
+                                          std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names,
+                                          std::vector<std::string>& output_names,
+                                          std::vector<std::vector<int64_t>>& expected_dims,
+                                          std::vector<std::vector<int64_t>>& expected_outputs);
+
 // Custom op with 1 variadic input (string) and 1 variadic output (int64_t)
-struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, MyCustomKernelWithVariadicIO> {
+struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, MyCustomStringLengthsKernel> {
   MyCustomOpWithVariadicIO() = default;
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
-    return new MyCustomKernelWithVariadicIO(info);
+    return new MyCustomStringLengthsKernel(info);
   }
   constexpr const char* GetName() const noexcept { return "VariadicNode"; }
 
@@ -181,6 +190,34 @@ struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, My
   };
   constexpr OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const noexcept {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
+  }
+};
+
+// Custom op with 2 inputs (required, variadic) and 2 outputs (required, variadic)
+struct MyCustomOpWithMixedVariadicIO : Ort::CustomOpBase<MyCustomOpWithMixedVariadicIO, MyCustomStringLengthsKernel> {
+  MyCustomOpWithMixedVariadicIO() = default;
+
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new MyCustomStringLengthsKernel(info);
+  }
+  constexpr const char* GetName() const noexcept { return "VariadicNode"; }
+
+  constexpr size_t GetInputTypeCount() const noexcept { return 2; }
+  constexpr ONNXTensorElementDataType GetInputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+  }
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const noexcept {
+    return index == 0 ? OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED :
+                        OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
+  }
+
+  constexpr size_t GetOutputTypeCount() const noexcept { return 2; }
+  constexpr ONNXTensorElementDataType GetOutputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  };
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const noexcept {
+    return index == 0 ? OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED :
+                        OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
 };
 

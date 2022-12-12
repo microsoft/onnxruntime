@@ -667,34 +667,62 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   std::vector<std::string> input_names;
   std::vector<std::string> output_names;
 
-  // Local function that creates an input and initializes the corresponding expected output.
-  auto add_input = [&ort_inputs, &expected_dims, &expected_lens,
-                    &input_names, &output_names, &allocator](std::string_view str) {
-    const size_t index = ort_inputs.size();
+  // Create inputs.
+  AddInputForCustomStringLengthsKernel("hello", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("123", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
 
-    std::array<int64_t, 1> input_dims = {1};
-    Ort::Value& ort_value = ort_inputs.emplace_back(
-        Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
-                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
-    std::ostringstream oss(std::ostringstream::ate);
+  // Create arrays of c-strings for input and output names.
+  auto get_c_str = [](const std::string& str) { return str.c_str(); };
+  std::vector<const char*> input_name_cstrs(input_names.size());
+  std::transform(input_names.begin(), input_names.end(), input_name_cstrs.begin(), get_c_str);
+  std::vector<const char*> output_name_cstrs(output_names.size());
+  std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
 
-    oss.str("input_");
-    oss << index;
-    input_names.emplace_back(oss.str());
+  Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_name_cstrs.data(), output_name_cstrs.size());
+  ASSERT_EQ(ort_outputs.size(), 3u);
 
-    oss.str("output_");
-    oss << index;
-    output_names.emplace_back(oss.str());
+  // Validate outputs.
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
+    auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), expected_dims[i]);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
 
-    expected_dims.push_back({1});
-    expected_lens.push_back({static_cast<int64_t>(str.size())});
-    ort_value.FillStringTensorElement(str.data(), 0);
-  };
+    int64_t* lens_data = ort_outputs[i].GetTensorMutableData<int64_t>();
+    ASSERT_EQ(lens_data[0], expected_lens[i][0]);
+  }
+}
+
+TEST(CApiTest, mixed_variadic_input_output_custom_op) {
+  // Create a custom op with 2 inputs (required, variadic) and 2 outputs (required, variadic).
+  // The model passes in 3 string inputs and expects 3 int64_t outputs.
+  MyCustomOpWithMixedVariadicIO custom_op;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+  Ort::AllocatorWithDefaultOptions allocator;
+  std::vector<std::vector<int64_t>> expected_dims;
+  std::vector<std::vector<int64_t>> expected_lens;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
 
   // Create inputs.
-  add_input("hello");
-  add_input("");
-  add_input("123");
+  AddInputForCustomStringLengthsKernel("mixed variadic", allocator, ort_inputs, input_names, output_names,
+                                       expected_dims, expected_lens);
+  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("abcd", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
 
   // Create arrays of c-strings for input and output names.
   auto get_c_str = [](const std::string& str) { return str.c_str(); };

@@ -162,7 +162,7 @@ void MyCustomKernelWithOptionalInput::Compute(OrtKernelContext* context) {
   }
 }
 
-void MyCustomKernelWithVariadicIO::Compute(OrtKernelContext* context) {
+void MyCustomStringLengthsKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
   std::array<const int64_t, 1> output_shape = {1};
 
@@ -176,6 +176,32 @@ void MyCustomKernelWithVariadicIO::Compute(OrtKernelContext* context) {
 
     *str_len_ptr = input.GetStringTensorElementLength(0);
   }
+}
+
+void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator,
+                                          std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names,
+                                          std::vector<std::string>& output_names,
+                                          std::vector<std::vector<int64_t>>& expected_dims,
+                                          std::vector<std::vector<int64_t>>& expected_outputs) {
+  const size_t index = ort_inputs.size();
+
+  std::array<int64_t, 1> input_dims = {1};
+  Ort::Value& ort_value = ort_inputs.emplace_back(
+      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
+                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+  std::ostringstream oss(std::ostringstream::ate);
+
+  oss.str("input_");
+  oss << index;
+  input_names.emplace_back(oss.str());
+
+  oss.str("output_");
+  oss << index;
+  output_names.emplace_back(oss.str());
+
+  expected_dims.push_back({1});
+  expected_outputs.push_back({static_cast<int64_t>(input_str.size())});
+  ort_value.FillStringTensorElement(input_str.data(), 0);
 }
 
 void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
