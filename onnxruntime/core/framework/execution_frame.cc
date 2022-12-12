@@ -21,7 +21,6 @@
 #include "core/framework/memory_info.h"
 #endif
 
-#include "core/framework/stream_handles.h"
 #include "core/framework/bfc_arena.h"
 
 using namespace onnxruntime::common;

@@ -7,7 +7,6 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/framework/stream_handles.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/gsl.h"
 
