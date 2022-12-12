@@ -45,6 +45,10 @@ jobs:
         with:
           name: capidocs
           working-directory: docs/api/c
+      - name: Debug
+        run: |
+          pwd
+          find .
       - name: Setup Pages
         uses: actions/configure-pages@v2
       - name: Build with Jekyll
@@ -56,7 +60,6 @@ jobs:
         uses: actions/upload-pages-artifact@v1
         with:
           path: ./_site
-
 
   # Deployment job
   deploy:
