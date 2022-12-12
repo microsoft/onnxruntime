@@ -44,7 +44,7 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           name: capidocs
-          working-directory: docs/api/c
+          path: docs/api/c
       - name: Debug
         run: |
           pwd
