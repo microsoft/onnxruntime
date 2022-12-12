@@ -43,7 +43,7 @@ jobs:
       - name: Move API docs into target area
         run: |
           sudo rm -rf _site/docs/api/c
-          mv build/doxygen/html _site/docs/api/c
+          sudo mv build/doxygen/html _site/docs/api/c
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
