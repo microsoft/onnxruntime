@@ -101,7 +101,7 @@ class ComputeStatus(InstanceStatus):
 
 
 @dataclass
-class BandWidthStatus(InstanceStatus):
+class BandwidthStatus(InstanceStatus):
     bytes: int
 
     @property

@@ -50,7 +50,7 @@ def test_vector_add(size, dtype):
 
 
 @dataclass
-class VectorAddStatus(ke.BandWidthStatus):
+class VectorAddStatus(ke.BandwidthStatus):
     size: int
 
     def report(self):

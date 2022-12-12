@@ -67,7 +67,7 @@ def test_fast_gelu(x_size, bias_size, dtype):
 
 
 @dataclass
-class FastGeluStatus(ke.BandWidthStatus):
+class FastGeluStatus(ke.BandwidthStatus):
     batch_size: int
     seq_len: int
     hidden_size: int

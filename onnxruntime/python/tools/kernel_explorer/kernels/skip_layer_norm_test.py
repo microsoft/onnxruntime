@@ -85,7 +85,7 @@ def test_skip_layer_norm(bert_sizes, dtype):
 
 
 @dataclass
-class SkipLayerNormStatus(ke.BandWidthStatus):
+class SkipLayerNormStatus(ke.BandwidthStatus):
     batch_size: int
     seq_len: int
     hidden_size: int
