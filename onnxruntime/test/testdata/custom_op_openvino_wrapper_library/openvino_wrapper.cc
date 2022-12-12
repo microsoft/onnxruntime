@@ -214,11 +214,12 @@ void KernelOpenVINO::Compute(OrtKernelContext* context) {
 //
 // CustomOpOpenVINO
 //
+CustomOpOpenVINO::CustomOpOpenVINO(Ort::ConstSessionOptions session_options) {
+  GetSessionConfigs(this->session_configs_, session_options);
+}
 
 void* CustomOpOpenVINO::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
-  std::unordered_map<std::string, std::string> session_configs;
-  GetSessionConfigs(session_configs, this->session_options_);
-  return new KernelOpenVINO(api, info, session_configs);
+  return new KernelOpenVINO(api, info, this->session_configs_);
 }
 
 std::vector<std::string> CustomOpOpenVINO::GetSessionConfigKeys() const { return {"device_type"}; }

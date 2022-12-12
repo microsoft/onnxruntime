@@ -18,7 +18,7 @@ static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
 
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api_base) {
 
-  // Allow use of Ort::GetApi() and Ort::OpWrapper::GetApi() in C++ ORT api implementations.
+  // Allow use of Ort::GetApi() in C++ API implementations.
   Ort::InitApi(api_base->GetApi(ORT_API_VERSION));
   Ort::UnownedSessionOptions session_options(options);
 

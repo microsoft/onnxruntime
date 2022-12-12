@@ -37,7 +37,7 @@ struct KernelOpenVINO {
 };
 
 struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
-  explicit CustomOpOpenVINO(Ort::ConstSessionOptions session_options) : session_options_(session_options) {};
+  explicit CustomOpOpenVINO(Ort::ConstSessionOptions session_options);
 
   CustomOpOpenVINO(const CustomOpOpenVINO&) = delete;
   CustomOpOpenVINO& operator=(const CustomOpOpenVINO&) = delete;
@@ -79,5 +79,5 @@ struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
   std::vector<std::string> GetSessionConfigKeys() const;
 
  private:
-  Ort::ConstSessionOptions session_options_;
+  std::unordered_map<std::string, std::string> session_configs_;
 };
