@@ -163,6 +163,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
+    constexpr uint32_t min_ort_ver_io_opt = 8;   // Minimum ORT version supporting optional input/output.
+    constexpr uint32_t min_ort_ver_io_var = 13;  // Minimum ORT version supporting variadic input/output.
+
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
     for (const auto* op : domain->custom_ops_) {
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
@@ -174,8 +177,16 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
         // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= 8 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-          option = onnx::OpSchema::FormalParameterOption::Optional;
+        if (op->version >= min_ort_ver_io_opt) {
+          auto characteristic = op->GetInputCharacteristic(op, i);
+
+          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+            option = onnx::OpSchema::FormalParameterOption::Optional;
+          } else if ((op->version >= min_ort_ver_io_var) &&
+                     (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
+            // Variadic I/O is only supported after API version 14.
+            option = onnx::OpSchema::FormalParameterOption::Variadic;
+          }
         }
 
         auto type = op->GetInputType(op, i);
@@ -195,8 +206,16 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
         // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= 8 && op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-          option = onnx::OpSchema::FormalParameterOption::Optional;
+        if (op->version >= min_ort_ver_io_opt) {
+          auto characteristic = op->GetOutputCharacteristic(op, i);
+
+          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+            option = onnx::OpSchema::FormalParameterOption::Optional;
+          } else if ((op->version >= min_ort_ver_io_var) &&
+                     (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
+            // Variadic I/O is only supported after API version 14.
+            option = onnx::OpSchema::FormalParameterOption::Variadic;
+          }
         }
 
         auto type = op->GetOutputType(op, i);

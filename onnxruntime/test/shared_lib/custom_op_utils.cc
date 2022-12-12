@@ -162,6 +162,22 @@ void MyCustomKernelWithOptionalInput::Compute(OrtKernelContext* context) {
   }
 }
 
+void MyCustomKernelWithVariadicIO::Compute(OrtKernelContext* context) {
+  Ort::KernelContext kcontext(context);
+  std::array<const int64_t, 1> output_shape = {1};
+
+  size_t num_inputs = kcontext.GetInputCount();
+
+  // Each output is set to the length of the corresponding input string.
+  for (size_t i = 0; i < num_inputs; ++i) {
+    auto input = kcontext.GetInput(i);
+    auto output = kcontext.GetOutput(i, output_shape.data(), output_shape.size());
+    int64_t* str_len_ptr = output.GetTensorMutableData<int64_t>();
+
+    *str_len_ptr = input.GetStringTensorElementLength(0);
+  }
+}
+
 void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
   // Setup inputs
   Ort::KernelContext ctx(context);

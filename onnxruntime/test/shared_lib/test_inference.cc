@@ -173,6 +173,7 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/Var
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
+static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/custom_op_variadic_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
@@ -646,6 +647,76 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 #ifdef USE_CUDA
   cudaStreamDestroy(compute_stream);
 #endif
+}
+
+TEST(CApiTest, variadic_input_output_custom_op) {
+  // Create a custom op with 1 variadic input and 1 variadic output.
+  // The model passes in 3 string inputs and expects 3 int64_t outputs.
+  MyCustomOpWithVariadicIO custom_op;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+  Ort::AllocatorWithDefaultOptions allocator;
+  std::vector<std::vector<int64_t>> expected_dims;
+  std::vector<std::vector<int64_t>> expected_lens;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+
+  // Local function that creates an input and initializes the corresponding expected output.
+  auto add_input = [&ort_inputs, &expected_dims, &expected_lens,
+                    &input_names, &output_names, &allocator](std::string_view str) {
+    const size_t index = ort_inputs.size();
+
+    std::array<int64_t, 1> input_dims = {1};
+    Ort::Value& ort_value = ort_inputs.emplace_back(
+        Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
+                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+    std::ostringstream oss(std::ostringstream::ate);
+
+    oss.str("input_");
+    oss << index;
+    input_names.emplace_back(oss.str());
+
+    oss.str("output_");
+    oss << index;
+    output_names.emplace_back(oss.str());
+
+    expected_dims.push_back({1});
+    expected_lens.push_back({static_cast<int64_t>(str.size())});
+    ort_value.FillStringTensorElement(str.data(), 0);
+  };
+
+  // Create inputs.
+  add_input("hello");
+  add_input("");
+  add_input("123");
+
+  // Create arrays of c-strings for input and output names.
+  auto get_c_str = [](const std::string& str) { return str.c_str(); };
+  std::vector<const char*> input_name_cstrs(input_names.size());
+  std::transform(input_names.begin(), input_names.end(), input_name_cstrs.begin(), get_c_str);
+  std::vector<const char*> output_name_cstrs(output_names.size());
+  std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
+
+  Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_name_cstrs.data(), output_name_cstrs.size());
+  ASSERT_EQ(ort_outputs.size(), 3u);
+
+  // Validate outputs.
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
+    auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), expected_dims[i]);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+
+    int64_t* lens_data = ort_outputs[i].GetTensorMutableData<int64_t>();
+    ASSERT_EQ(lens_data[0], expected_lens[i][0]);
+  }
 }
 
 TEST(CApiTest, optional_input_output_custom_op_handler) {

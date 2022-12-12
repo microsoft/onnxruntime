@@ -151,6 +151,31 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
   const char* provider_;
 };
 
+struct MyCustomKernelWithVariadicIO {
+  explicit MyCustomKernelWithVariadicIO(const OrtKernelInfo* /* info */) {}
+
+  void Compute(OrtKernelContext* context);
+};
+
+struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, MyCustomKernelWithVariadicIO> {
+  MyCustomOpWithVariadicIO() = default;
+
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelWithVariadicIO(info); };
+  const char* GetName() const { return "VariadicNode"; }
+
+  size_t GetInputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; };
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
+  }
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
+  }
+};
+
 struct MyCustomKernelWithAttributes {
   MyCustomKernelWithAttributes(const OrtKernelInfo* kernel_info) {
     Ort::ConstKernelInfo info{kernel_info};

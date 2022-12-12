@@ -3629,10 +3629,11 @@ struct OrtApi {
 // Specify if the inputs/outputs are one of:
 // 1) Non-optional (input/output must be present in the node)
 // 2) Optional (input/output may be absent in the node)
+// 3) Variadic: The input/output may accept zero or more inputs/outputs.
 typedef enum OrtCustomOpInputOutputCharacteristic {
-  // TODO: Support 'Variadic' inputs/outputs
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
+  INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
 
 /*
