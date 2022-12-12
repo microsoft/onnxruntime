@@ -1888,7 +1888,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
-            if args.use_tensorrt and not args.skip_and_perform_filtered_tests
+            if args.use_tensorrt and not args.skip_and_perform_filtered_tests:
                 # TensorRT 8.5 needs more time to run tests on Windows
                 ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "72000"]
             else:
