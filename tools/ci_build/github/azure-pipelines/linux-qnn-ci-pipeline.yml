@@ -20,7 +20,7 @@ jobs:
         displayName: Install coreutils and ninja
 
       - script: |
-          echo "##vso[task.setvariable variable=QNN_SDK_ROOT]/data/qnnsdk/qnn-v2.3.0.220928044548_41498"
+          echo "##vso[task.setvariable variable=QNN_SDK_ROOT]/data/qnnsdk/qnn-v2.5.0.221123101258_42157"
         displayName: set QNN_SDK_ROOT
 
       - script: |
