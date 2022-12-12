@@ -10,6 +10,9 @@
 namespace onnxruntime {
 namespace cann {
 
+static int lower_bound = 8;   // Supported domain version lower bounds
+static int upper_bound = 15;  // Supported domain version upper bounds
+
 /**
  * This function will been changed with the evolution of ONNX and CANN
  * and will be replaced by the corresponding API provided by CANN in the future, probably.
@@ -54,20 +57,17 @@ std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer) {
   std::vector<NodeIndex> unsupported_nodes;
 
   int domain_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
-  if (domain_version < 8 || domain_version > 15) {
-    return graph_viewer.GetNodesInTopologicalOrder();
-  }
-
-  // When the ONNX model is converted into an OM model, the Constant node will be automatically removed,
-  // Therefore, the Constant nodes must be run on single operator inference mode.
   for (const auto& index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto& node = graph_viewer.GetNode(index);
 
-    if (!cann_supported_ops.count(node->OpType())) {
+    if (node->Domain() != kOnnxDomain || domain_version < lower_bound || domain_version > upper_bound ||
+        !cann_supported_ops.count(node->OpType())) {
       unsupported_nodes.push_back(index);
       continue;
     }
 
+    // When the ONNX model is converted into an OM model, the Constant node will be automatically removed,
+    // Therefore, the Constant nodes must be run on single operator inference mode.
     bool is_all_constant = true;
     for (const auto& input : node->InputDefs()) {
       if (!graph_viewer.GetAllInitializedTensors().count(input->Name())) {
