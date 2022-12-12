@@ -50,12 +50,8 @@ def test_vector_add(size, dtype):
 
 
 @dataclass
-class VectorAddStatus(ke.InstanceStatus):
+class VectorAddStatus(ke.BandWidthStatus):
     size: int
-
-    @property
-    def gbps(self):
-        return self.size * 3 * (dtype_to_bytes(self.dtype)) * 1e3 / self.duration / 1e6
 
     def report(self):
         return f"{self.name :<50} {self.dtype} size={self.size:<4}, {self.duration:.2f} us, {self.gbps:.2f} GB/s"
@@ -73,8 +69,9 @@ def profile_vector_add_func(size, dtype, func):
     f = getattr(ke, func)
     my_op = f(x_d, y_d, z_d, size)
     duration_ms = my_op.Profile()
+    total_bytes = size * 3 * (dtype_to_bytes(dtype))
 
-    ke.report(VectorAddStatus(func, dtype, duration_ms, size))
+    ke.report(VectorAddStatus(func, dtype, duration_ms, total_bytes, size))
 
 
 def profile_with_args(size, dtype, sort):

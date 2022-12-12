@@ -67,16 +67,10 @@ def test_fast_gelu(x_size, bias_size, dtype):
 
 
 @dataclass
-class FastGeluStatus(ke.InstanceStatus):
+class FastGeluStatus(ke.BandWidthStatus):
     batch_size: int
     seq_len: int
     hidden_size: int
-
-    @property
-    def gbps(self):
-        x_size = self.batch_size * self.seq_len * self.hidden_size * 4
-        bias_size = self.hidden_size * 4
-        return (x_size * 2 + bias_size) * dtype_to_bytes(self.dtype) * 1e3 / self.duration / 1e6
 
     def report(self):
         prefix = f"{self.name:<50} {self.dtype}  batch_size={self.batch_size:<4} seq_len={self.seq_len:<4} hidden_size={self.hidden_size:<4} "
@@ -102,8 +96,9 @@ def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
     duration_ms = -1
     if my_op.IsSupported():
         duration_ms = my_op.Profile()
+    total_bytes = (x.size * 2 + bias.size) * dtype_to_bytes(dtype)
 
-    ke.report(FastGeluStatus(func, dtype, duration_ms, batch_size, seq_len, hidden_size))
+    ke.report(FastGeluStatus(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
 def profile_with_args(batch_size, seq_len, hidden_size, dtype, sort):

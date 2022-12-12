@@ -88,7 +88,25 @@ class InstanceStatus:
 
     @abstractmethod
     def report(self) -> str:
-        return self.name
+        ...
+
+
+@dataclass
+class ComputeStatus(InstanceStatus):
+    FLOPs: int
+
+    @property
+    def tflops(self):
+        return self.FLOPs * 1e6 / self.duration / 1e12
+
+
+@dataclass
+class BandWidthStatus(InstanceStatus):
+    bytes: int
+
+    @property
+    def gbps(self):
+        return self.bytes * 1e6 / self.duration / 1e9
 
 
 class InstanceBenchmarkReporter:

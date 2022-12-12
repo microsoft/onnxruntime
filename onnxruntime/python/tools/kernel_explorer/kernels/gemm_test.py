@@ -101,16 +101,12 @@ def test_gemm_tunable_bert_cases(dtype, size, transab):
 
 
 @dataclass
-class GemmStatus(ke.InstanceStatus):
+class GemmStatus(ke.ComputeStatus):
     transa: bool
     transb: bool
     m: int
     n: int
     k: int
-
-    @property
-    def tflops(self):
-        return (self.m * self.k * self.n * 2) / (self.duration * 1e-6) / 1e12
 
     def report(self):
         prefix = f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
@@ -147,8 +143,9 @@ def profile_gemm_func(f, transa: bool, transb: bool, dtype: str, m: int, n: int,
         duration_ms = -1
         if my_gemm.SelectOp(impl):
             duration_ms = my_gemm.Profile()
+        FLOPs = m * k * n * 2
 
-        ke.report(GemmStatus(impl, dtype, duration_ms, transa, transb, m, n, k))
+        ke.report(GemmStatus(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k))
 
 
 def profile_with_args(transa, transb, dtype, m, n, k, sort):
