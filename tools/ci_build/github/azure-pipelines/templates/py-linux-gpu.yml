@@ -28,25 +28,13 @@ jobs:
         DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u ) --build-arg PLATFORM=${{ parameters.arch }}"
         Repository: onnxruntimecuda116xtrt84build${{ parameters.arch }}
 
-    - task: CmdLine@2
+
+    - task: Bash@3
       displayName: 'Build Python Wheel'
       inputs:
-        script: |
-            set -e -x
-            mkdir -p $HOME/.onnx
-            docker run --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -w /onnxruntime_src \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              onnxruntimecuda116xtrt84build${{ parameters.arch }} /bin/bash tools/ci_build/github/linux/build_linux_arm64_python_package.sh -d GPU
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
-            cd $(Build.BinariesDirectory)/Release
-            find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+        arguments: -i onnxruntimecuda116xtrt84build${{ parameters.arch }} -x "-d GPU"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

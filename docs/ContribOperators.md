@@ -58,6 +58,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
   * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
+  * <a href="#com.microsoft.QLinearWhere">com.microsoft.QLinearWhere</a>
   * <a href="#com.microsoft.QOrderedAttention">com.microsoft.QOrderedAttention</a>
   * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
   * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
@@ -1708,6 +1709,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
+<dt><tt>vocab_size</tt> : int</dt>
+<dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
 #### Inputs (2 - 7)
@@ -2995,6 +2998,56 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
 <dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QLinearWhere"></a><a name="com.microsoft.qlinearwhere">**com.microsoft.QLinearWhere**</a>
+
+  Return elements, either from X or Y, depending on condition.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>condition</tt> : B</dt>
+<dd> When True (nonzero), yield x, otherwise yield y</dd>
+<dt><tt>X</tt> : T</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>x_scale</tt> : TF</dt>
+<dd>X's scale.</dd>
+<dt><tt>x_zero_point</tt> : T</dt>
+<dd>X's zero point.</dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>y_scale</tt> : TF</dt>
+<dd>Y's scale.</dd>
+<dt><tt>y_zero_point</tt> : T</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>z_scale</tt> : TF</dt>
+<dd>Z's scale.</dd>
+<dt><tt>z_zero_point</tt> : T</dt>
+<dd>Z's zero point.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Z</tt> : T</dt>
+<dd>Tensor of shape equal to the broadcasted shape of condition, X, and Y</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>B</tt> : tensor(bool)</dt>
+<dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain scale types to any float tensor type.</dd>
+<dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
 </dl>
 
 

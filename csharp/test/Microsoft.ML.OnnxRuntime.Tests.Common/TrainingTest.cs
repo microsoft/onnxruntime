@@ -23,6 +23,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             this.output = o;
         }
 
+#if !__TRAINING_ENABLED_NATIVE_BUILD__
+        [Fact(DisplayName = "TestLoadCheckpointThrows")]
+        public void TestLoadCheckpointThrows()
+        {
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            var ex = Assert.Throws<InvalidOperationException>(() => { var opt = new CheckpointState(path); });
+            Assert.Contains("Training is disabled in the current build.", ex.Message);
+        }
+#endif
+
+#if __TRAINING_ENABLED_NATIVE_BUILD__
         [Fact(DisplayName = "TestLoadCheckpoint")]
         public void TestLoadCheckpoint()
         {
@@ -122,13 +133,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 outputs = trainingSession.TrainStep(pinnedInputs);
                 var outputBuffer = outputs.ElementAtOrDefault(0);
 
-                Assert.Equal("542.loss", outputBuffer.Name);
+                Assert.Equal("onnx::loss::21273", outputBuffer.Name);
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outputBuffer.ValueType);
                 Assert.Equal(TensorElementType.Float, outputBuffer.ElementType);
 
                 var outLabelTensor = outputBuffer.AsTensor<float>();
                 Assert.NotNull(outLabelTensor);
-                Assert.Equal(expectedOutput, outLabelTensor, new FloatComparer());
+                Assert.Equal(expectedOutput, outLabelTensor.ToArray(), new FloatComparer());
             }
         }
 
@@ -304,5 +315,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return x.GetHashCode();
             }
         }
-    }
+#endif
+        }
 }

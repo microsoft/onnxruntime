@@ -21,7 +21,7 @@ class MatMul : public XnnpackKernel {
   Status Compute(OpKernelContext* /*context*/) const override;
 
   // Required for checking XNNpack restrictions on ORT side
-  static bool IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
+  static bool IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
