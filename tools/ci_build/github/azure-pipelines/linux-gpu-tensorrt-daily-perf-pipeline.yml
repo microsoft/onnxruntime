@@ -13,6 +13,7 @@ parameters:
   - 8.2.1.8
   - 8.0.1.6
   - 8.4.1.5
+  - 8.5.1.1
   - BIN
 
 - name: ModelGroups

@@ -43,7 +43,7 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-        EXPECT_THAT(ltensor.DataAsSpan<int8_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int8_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int8_t>(), rtensor.DataAsSpan<int8_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
