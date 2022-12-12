@@ -166,6 +166,7 @@ enum class Mode : int;
 struct EinsumComputePreprocessor;
 template <typename T>
 struct EinsumTypedComputeProcessor;
+struct SessionOptions;
 
 namespace contrib {
 class ATen;
@@ -266,7 +267,7 @@ namespace profiling {
 std::string demangle(const char* name);
 std::string demangle(const std::string& name);
 
-};  // namespace profiling
+}  // namespace profiling
 
 namespace logging {
 

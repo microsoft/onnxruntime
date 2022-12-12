@@ -153,6 +153,8 @@ set(provider_excluded_files
   "cuda_utils.cu"
   "cudnn_common.cc"
   "cudnn_common.h"
+  "cupti_manager.cc"
+  "cupti_manager.h"
   "fpgeneric.cu"
   "gpu_data_transfer.cc"
   "gpu_data_transfer.h"

@@ -774,7 +774,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if defined(USE_XNNPACK)
     auto cit = provider_options_map.find(type);
     return onnxruntime::XnnpackProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
   } else if (type == kCannExecutionProvider) {
