@@ -127,7 +127,7 @@ jobs:
       buildJava: true
       java_artifact_id: onnxruntime_gpu
       timeoutInMinutes: 1200 
-${{ else }}:
+- ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'false') }}:
   - template: templates/win-ci.yml
     parameters:
       ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
