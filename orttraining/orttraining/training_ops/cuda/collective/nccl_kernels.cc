@@ -212,7 +212,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-NcclAllReduceV2::NcclAllReduceV2(const OpKernelInfo& info) : NcclKernel(info) {
+NcclAllReduceV2::NcclAllReduceV2(const OpKernelInfo& info) : NcclKernelV2(info) {
 }
 
 Status NcclAllReduceV2::ComputeInternal(OpKernelContext* context) const {
@@ -232,7 +232,7 @@ Status NcclAllReduceV2::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-NcclAllGatherV2::NcclAllGatherV2(const OpKernelInfo& info) : NcclKernel(info) {
+NcclAllGatherV2::NcclAllGatherV2(const OpKernelInfo& info) : NcclKernelV2(info) {
   info.GetAttrOrDefault("world_size", &world_size_, static_cast<int64_t>(1));
 }
 
