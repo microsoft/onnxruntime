@@ -205,7 +205,7 @@ class UpsampleBase {
     if (policy == "not_larger") {
       return AspectRatioPolicy::NOT_LARGER;
     }
-    if (policy == "not_smller") {
+    if (policy == "not_smaller") {
       return AspectRatioPolicy::NOT_SMALLER;
     }
     ORT_THROW("keep_aspect_ratio attribute is [" + policy + "] is not supported!");

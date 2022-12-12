@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <type_traits>
 #include <vector>
+#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/tensor/upsample.h"
 #ifndef SHARED_PROVIDER
@@ -496,26 +497,29 @@ inline void InterpolateLoopForSingleDim(
 }
 
 template <typename T>
-void LoopInDimN(const T* Xdata_base, size_t dim_idx, size_t section_idx,
-                const std::vector<int32_t>& input_stride,
-                const std::vector<int32_t>& output_stride, const size_t compute_dim,
-                const float* weight_coeff, const std::vector<int64_t>& idx_bound,
-                int32_t window_size, T* Ydata_base) {
+inline void
+LoopInDimN(const T* Xdata_base, int64_t dim_idx, int64_t pre_level_idx, int64_t section_idx,
+           const InlinedVector<int64_t>& input_stride,
+           const InlinedVector<int64_t>& output_stride, const int64_t compute_dim,
+           const float* weight_coeff, const std::vector<int64_t>& idx_bound,
+           int32_t window_size, T* Ydata_base) {
   const int32_t x_ofs =
-      section_idx * ((compute_dim == dim_idx) ? 0 : input_stride[dim_idx]);
+      pre_level_idx * ((compute_dim == dim_idx) ? 0 : input_stride[dim_idx]);
 
   const T* const Xdata = Xdata_base + x_ofs;
-  T* const Ydata = Ydata_base + section_idx * output_stride[dim_idx];
-  if (dim_idx < input_stride.size() - 2) {
+  T* const Ydata = Ydata_base + pre_level_idx * output_stride[dim_idx];
+  if (dim_idx < int64_t(input_stride.size()) - 2) {
     for (int32_t sub_sec_idx = 0;
          sub_sec_idx < output_stride[dim_idx] / output_stride[dim_idx + 1];
          ++sub_sec_idx) {
-      LoopInDimN(Xdata, dim_idx + 1, sub_sec_idx, input_stride, output_stride,
-                 compute_dim, weight_coeff, idx_bound, window_size, Ydata);
+      section_idx = (compute_dim == dim_idx + 1) ? sub_sec_idx : section_idx;
+      LoopInDimN(Xdata, dim_idx + 1, sub_sec_idx, section_idx, input_stride,
+                 output_stride, compute_dim, weight_coeff, idx_bound,
+                 window_size, Ydata);
     }
     return;
   }
-  int32_t x_stride = compute_dim == output_stride.size() - 1 ? 0 : output_stride[compute_dim + 1];
+  int64_t x_stride = compute_dim == int64_t(output_stride.size()) - 1 ? 0 : 1;
   InterpolateLoopForSingleDim(
       Xdata, output_stride[dim_idx] / output_stride[dim_idx + 1], section_idx,
       output_stride[compute_dim], x_stride, weight_coeff, idx_bound,
@@ -559,88 +563,107 @@ void ResizeBiCubicAA(int64_t batch_size,
                            XdataBase, YdataBase, alloc, tp);
 }
 
-/*
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+
 template <typename T>
-void UpsampleTrilinear(int64_t batch_size,
-                       int64_t num_channels,
-                       int64_t input_depth,
-                       int64_t input_height,
-                       int64_t input_width,
-                       int64_t output_depth,
-                       int64_t output_height,
-                       int64_t output_width,
-                       float depth_scale,
-                       float height_scale,
-                       float width_scale,
-                       const std::vector<float>& roi,
-                       bool use_extrapolation,
-                       float extrapolation_value,
-                       const Tensor* X,
-                       T* YdataBase,
-                       AllocatorPtr& alloc,
-                       const GetOriginalCoordinateFunc& get_original_coordinate,
-                       concurrency::ThreadPool* tp) {
+void UpsampleTrilinearAA(int64_t batch_size,
+                          int64_t num_channels,
+                          int64_t input_depth,
+                          int64_t input_height,
+                          int64_t input_width,
+                          int64_t output_depth,
+                          int64_t output_height,
+                          int64_t output_width,
+                          float depth_scale,
+                          float height_scale,
+                          float width_scale,
+                          const std::vector<float>& roi,
+                          bool use_extrapolation,
+                          float extrapolation_value,
+                          const Tensor* X,
+                          T* YdataBase,
+                          AllocatorPtr& alloc,
+                          const GetOriginalCoordinateFunc& get_original_coordinate,
+                          concurrency::ThreadPool* tp) {
+
+  //using ACtype = typename AccumulateType<T>::type;
+  if constexpr (std::is_same<T, float>::value != true){
+    return;
+  }
   const auto* XdataBase = X->Data<T>();
   int64_t input_paras[] = {input_height, input_width, input_depth};
   int64_t output_paras[] = {output_height, output_width, output_depth};
   float scale_paras[] = {height_scale, width_scale, depth_scale};
+
   TriLinearParamsAA p;
   SetupUpsampleFilterAA(p, input_paras, output_paras, scale_paras, roi,
                         alloc, get_original_coordinate, X->GetElementType(), true, false);
 
+  auto* buffer = alloc->Alloc(sizeof(T) * input_height * output_width *
+                              input_depth * num_channels);
+  auto temp1 = BufferUniquePtr(buffer, BufferDeleter(alloc));
+
+  buffer = alloc->Alloc(sizeof(T) * output_height * output_width *
+                        input_depth * num_channels);
+  auto temp2 = BufferUniquePtr(buffer, BufferDeleter(alloc));
+
+  InlinedVector<int64_t> in_shape = {batch_size, input_height, input_width,
+                                     num_channels};
+  InlinedVector<int64_t> tmp_shape = {batch_size, input_height, output_width,
+                                      num_channels};
+  InlinedVector<int64_t> out_shape = {batch_size, output_height, output_width,
+                                      num_channels};
+  InlinedVector<int64_t> in_stride = {1, 1, 1, 1, 1, 1};
+  InlinedVector<int64_t> tmp_stride = in_stride;
+  InlinedVector<int64_t> out_stride = in_stride;
+  for (int i = in_shape.size() - 1; i >= 0; i--) {
+    in_stride[i] = in_stride[i + 1] * in_shape[i];
+    tmp_stride[i] = tmp_stride[i + 1] * tmp_shape[i];
+    out_stride[i] = out_stride[i + 1] * out_shape[i];
+  }
+
+  if(use_extrapolation){
+    YdataBase[0] = extrapolation_value;
+  }
   for (int64_t n = 0; n < batch_size; ++n) {
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, static_cast<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
           const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
+          const auto* weight = static_cast<const float*>(p.dim_y.weight_coefficients.get());
+          T* Ydata = static_cast<T*>(temp1.get());
+
+          LoopInDimN<T>(Xdata, 2, c, 0, in_stride, tmp_stride, 5,
+                        weight, p.dim_x.bound, p.dim_x.window_size,
+                        Ydata);
+        });
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, static_cast<std::ptrdiff_t>(num_channels),
+        [&](std::ptrdiff_t c) {
+          auto Xdatabase_temp = static_cast<T*>(temp1.get());
+          const T* Xdata = Xdatabase_temp + (c) * (input_depth * input_height * output_width);
+          const auto* weight = static_cast<const float*>(p.dim_y.weight_coefficients.get());
+          T* Ydata = static_cast<T*>(temp2.get());
+          LoopInDimN<T>(Xdata, 2, c, 0, tmp_stride, out_stride, 4,
+                        weight, p.dim_y.bound, p.dim_y.window_size,
+                        Ydata);
+        });
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, static_cast<std::ptrdiff_t>(num_channels),
+        [&](std::ptrdiff_t c) {
+          auto Xdatabase_temp = static_cast<T*>(temp2.get());
+          const auto* weight = static_cast<const float*>(p.dim_y.weight_coefficients.get());
+
+          const T* Xdata = Xdatabase_temp + (c) * (input_depth * output_height * output_width);
           T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
-          for (int64_t z = 0; z < output_depth; ++z) {
-            for (int64_t y = 0; y < output_height; ++y) {
-              for (int64_t x = 0; x < output_width; ++x) {
-                // when use_extrapolation is set and original index of x or y is out of the dim range
-                // then use extrapolation_value as the output value.
-                if (use_extrapolation &&
-                    ((p.z_original[narrow<size_t>(z)] < 0 || p.z_original[narrow<size_t>(z)] > static_cast<float>(input_depth - 1)) ||
-                     (p.dim_y.original[narrow<size_t>(y)] < 0 || p.dim_y.original[narrow<size_t>(y)] > static_cast<float>(input_height - 1)) ||
-                     (p.dim_x.original[narrow<size_t>(x)] < 0 || p.dim_x.original[narrow<size_t>(x)] > static_cast<float>(input_width - 1)))) {
-                  Ydata[output_width * output_height * z + output_width * y + x] =
-                      static_cast<T>(extrapolation_value);
-                  continue;
-                }
-
-                // subscript ordering in the variable - (xyz)
-                T X111 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
-                T X211 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
-                T X121 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
-                T X221 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
-
-                T X112 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
-                T X212 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
-                T X122 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
-                T X222 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
-
-                Ydata[output_width * output_height * z + output_width * y + x] =
-                    static_cast<T>(p.dx2[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X111 +
-                                   p.dx1[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X211 +
-                                   p.dx2[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X121 +
-                                   p.dx1[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X221 +
-
-                                   p.dx2[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X112 +
-                                   p.dx1[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X212 +
-                                   p.dx2[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X122 +
-                                   p.dx1[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X222);
-              }
-            }
-          }
-          Xdata += input_depth * input_height * input_width;
-          Ydata += output_depth * output_width * output_height;
+          LoopInDimN<T>(Xdata, 2, c, 0, tmp_stride, out_stride, 3,
+                        weight, p.dim_z.bound, p.dim_z.window_size,
+                        Ydata);
         });
   }
 }
-*/
 
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)

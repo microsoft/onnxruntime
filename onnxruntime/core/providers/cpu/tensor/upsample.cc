@@ -1244,11 +1244,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         const int64_t output_width = is_3D ? output_dims[2] : output_dims[4];
 
         if (antialias_) {
-          UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
+          UpsampleTrilinearAA(batch_size, num_channels, input_depth, input_height, input_width,
                             output_depth, output_height, output_width,
                             is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
                             is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                            X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
+                            X, Y->MutableData<T>(), alloc, get_original_coordinate_,
                             output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
