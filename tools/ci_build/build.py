@@ -492,7 +492,7 @@ def parse_arguments():
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument(
-        "--skip_and_perform_filtered_tensorrt_tests",
+        "--skip_and_perform_filtered_tests",
         action="store_true",
         help="Skip time-consuming and only perform filtered tests for TensorRT EP",
     )
@@ -882,7 +882,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if args.skip_and_perform_filtered_tensorrt_tests else "OFF"),
+        + ("ON" if args.skip_and_perform_filtered_tests else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
@@ -1888,7 +1888,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
-            if args.use_tensorrt and not args.skip_and_perform_filtered_tensorrt_tests
+            if args.use_tensorrt and not args.skip_and_perform_filtered_tests
                 # TensorRT 8.5 needs more time to run tests on Windows
                 ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "72000"]
             else:
