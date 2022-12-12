@@ -182,7 +182,7 @@ NcclContextV2::NcclContextV2() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
 
   // Initialize global Parallel Group NCCL Communicator
-  auto ret = CreateNcclCommByMPI(rank_, world_size_, &comm_);
+  auto ret = CreateNcclCommByMPI(world_size_, rank_, &comm_);
   ORT_ENFORCE(ret.IsOK());
 
 #else
