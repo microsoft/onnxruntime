@@ -69,6 +69,11 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
       displayName: 'Install dependencies'
 
+    - script: |
+        ccache -s
+        ccache -z
+      displayName: Show Cache stats and Clear protolbuf stats.
+
     - task: Cache@2
       inputs:
         key: 'ccache | "$(Agent.OS)"'
@@ -102,7 +107,8 @@ jobs:
 
     - script: |
         ccache -s
-      displayName: Show Cache -stats
+        ccache -z
+      displayName: Show Cache stats
 
     - task: PublishPipelineArtifact@1
       inputs:
