@@ -30,17 +30,21 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
-      - name: Upload C API docs
-        uses: actions/upload-artifact@v1
+      - uses: actions/upload-artifact@v3
         with:
+          name: capidocs
           path: build/doxygen/html
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
-      - name: Download C API docs
-        uses: actions/download-artifact@v1
+      - name: Clean C API directory
+        run: |
+          rm -rf docs/api/c
+          mkdir -p docs/api/c
+      - uses: actions/download-artifact@v3
         with:
-          path: docs/api/c
+          name: capidocs
+          working-directory: docs/api/c
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
