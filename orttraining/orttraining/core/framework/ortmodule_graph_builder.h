@@ -87,16 +87,16 @@ class OrtModuleGraphBuilder {
   Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
   /**
-   * Get inference/gradient model.
-   * @return The optimized inference/gradient model serialized to string.
+   * Get gradient model.
+   * @return The optimized gradient model serialized to string.
    */
-  std::string GetModel() const;
+  std::string GetGradientModel() const;
 
   /**
-   * Get inference optimized model.
-   * @return The gradient model serialized to string.
+   * Get inference/forward model. If it's training mode, the forward model is optimized.
+   * @return The inference/gradient model serialized to string.
    */
-  std::string GetInferenceOptimizedModel() const;
+  std::string GetForwardModel() const;
 
   /**
    * Get the graphs information.
@@ -106,10 +106,10 @@ class OrtModuleGraphBuilder {
 
  private:
   // Set concrete shapes for graph inputs.
-  void SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
+  Status SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
 
   // Apply graph transformers
-  Status OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names);
+  Status OptimizeForwardGraph(std::unordered_set<std::string>& x_node_arg_names);
 
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);
@@ -131,8 +131,10 @@ class OrtModuleGraphBuilder {
   void UpdatePythonOpInputsRequireGradInfo(
       const std::unordered_map<std::string, std::vector<int64_t>>& python_op_input_require_grad_info);
 
-  std::shared_ptr<onnxruntime::Model> model_;
-  std::shared_ptr<onnxruntime::Model> inference_optimized_model_;
+  std::shared_ptr<onnxruntime::Model> original_model_;
+  // For training case, the forward_model_ is the model after applying training graph transformers.
+  // For inference case, the forward_model_ is same as original_model_ and have concrete shapes set if required.
+  std::shared_ptr<onnxruntime::Model> forward_model_;
   std::shared_ptr<onnxruntime::Model> gradient_model_;
   GraphInfo graph_info_;
 

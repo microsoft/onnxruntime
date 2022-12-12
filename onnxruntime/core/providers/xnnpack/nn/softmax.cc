@@ -50,8 +50,8 @@ bool IsQuantizedSoftmax(QuantizedOpType quant_op_type) {
 }
 }  // namespace
 
-bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
-                                         const GraphViewer& graph) {
+bool Softmax::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                  const GraphViewer& graph) {
   bool supported = false;
   if (IsQuantizedSoftmax(GetQuantizedOpType(node_unit)) &&
       IsQuantSoftmaxSupported(node_unit, graph) == false) {
@@ -110,7 +110,7 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
   return supported;
 }
 
-Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
+Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
   const auto& node = info.node();
   auto input_defs = node.InputDefs();
   int x_dtype = 0;
@@ -194,6 +194,7 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   if (X_shape.Size() == 0) {
     return Status::OK();
   }
+  pthreadpool_t t_pool = GetThreadPool();
   const size_t N = X_shape.SizeToDimension(axis_);
   // const size_t D = X_shape.SizeFromDimension(axis_); // the step D is 1
   xnn_status status = xnn_status_invalid_state;
@@ -203,20 +204,20 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
         N,
         X->Data<uint8_t>(),
         Y->MutableData<uint8_t>(),
-        nullptr);
+        t_pool);
   } else {
     status = xnn_setup_softmax_nc_f32(
         op0_.get(),
         N,
         X->Data<float>(),
         Y->MutableData<float>(),
-        nullptr);
+        t_pool);
   }
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_",
                            OpTypeToString(op_type_), " returned ", status);
   }
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

@@ -2,10 +2,10 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from collections import defaultdict
 from logging import getLogger
 from typing import List, Union
 
-from onnx import GraphProto
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -29,7 +29,10 @@ class Fusion:
         self.node_name_to_graph_name: dict = {}
         self.this_graph_name: str = None
         # It is optional that subclass updates fused_count since we will also check nodes_to_add to get counter.
-        self.fused_count: int = 0
+        self.fused_count: defaultdict = defaultdict(int)
+
+    def increase_counter(self, fused_op_name):
+        self.fused_count[fused_op_name] += 1
 
     def apply(self):
         logger.debug(f"start {self.description} fusion...")
@@ -46,9 +49,14 @@ class Fusion:
                 self.fuse(node, input_name_to_nodes, output_name_to_node)
 
         op_list = [node.op_type for node in self.nodes_to_add]
-        count = max(self.fused_count, op_list.count(self.fused_op_type))
-        if count > 0:
-            logger.info(f"Fused {self.description} count: {count}")
+        if self.fused_count:
+            for key, value in self.fused_count.items():
+                if value:
+                    logger.info(f"Fused {key} count: {value}")
+        else:
+            count = op_list.count(self.fused_op_type)
+            if count > 0:
+                logger.info(f"Fused {self.description} count: {count}")
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)

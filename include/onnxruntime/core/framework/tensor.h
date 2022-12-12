@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
@@ -189,7 +189,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<typename gsl::span<T>::index_type>(shape_.Size()));
+    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(shape_.Size()));
   }
 
   void* MutableDataRaw(MLDataType type) {
@@ -248,7 +248,7 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   /**
    * Get the strides of the tensor.
    */
@@ -276,7 +276,7 @@ class Tensor final {
 
   void ReleaseBuffer();
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   bool CheckIsContiguous() const;
 #endif
 
@@ -289,7 +289,7 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   mutable TensorShapeVector strides_;
   bool is_contiguous_ = true;
 #endif

@@ -6,10 +6,11 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -77,6 +78,13 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / 2;
 
+  // If input_ids's shape is ['batch_size', 1] then use next token as input_ids.
+  // Otherwise in the case of shape ['batch_size', 'sequence'], use sequence as input_ids.
+  const ONNX_NAMESPACE::TensorShapeProto* input_ids_shape = subgraph_inputs[0]->Shape();
+  if (input_ids_shape->dim(1).has_dim_value() && input_ids_shape->dim(1).dim_value() == 1) {
+    use_sequence_as_input_ids_ = false;
+  }
+
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
   constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
@@ -125,23 +133,39 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
-    void* stream) {
+    void* stream,
+    bool use_sequence_as_input_ids,
+    int cur_len,
+    transformers::Sequences& sequences) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.
   AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Get<Tensor>().Location());
 
   // Copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
-  int64_t dims[] = {batch_beam_size, 1};
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
+  int sequence_length = !use_sequence_as_input_ids ? 1 : cur_len;
+  int64_t dims[] = {batch_beam_size, sequence_length};
   TensorShape input_ids_shape(&dims[0], 2);
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
-  ORT_RETURN_IF_ERROR(device_copy_int32_func(
-      input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>(),
-      beam_next_tokens,
-      stream,
-      DeviceCopyDirection::hostToDevice));
+  int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+
+  if (!use_sequence_as_input_ids_){
+    ORT_RETURN_IF_ERROR(device_copy_int32_func(
+    input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>(),
+    beam_next_tokens,
+    stream,
+    DeviceCopyDirection::hostToDevice));
+  }else{
+    for (int i = 0; i < batch_beam_size; i++) {
+      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+      const int32_t* sequence_data = sequence.data();
+      for (int j = 0; j < cur_len; j++) {
+        input_ids_data[i * cur_len + j] = sequence_data[j];
+      }
+    }
+  }
 
   // The ordering is the same as used in Setup.
   decoder_feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
@@ -161,7 +185,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
   // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
-  for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
+  for (size_t j = static_cast<size_t>(4) - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
       OrtValue expanded_hidden_states;

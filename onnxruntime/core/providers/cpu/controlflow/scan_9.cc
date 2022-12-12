@@ -21,7 +21,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -167,14 +167,14 @@ void Scan<9>::Init(const OpKernelInfo& info) {
   auto num_loop_state_vars = info.GetInputCount() - num_scan_inputs_;
   auto num_scan_outputs = info.GetOutputCount() - num_loop_state_vars;
 
-  ReadDirections(info, "scan_input_directions", input_directions_, num_scan_inputs_);
-  ReadDirections(info, "scan_output_directions", output_directions_, num_scan_outputs);
+  ReadDirections(info, "scan_input_directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
+  ReadDirections(info, "scan_output_directions", output_directions_, onnxruntime::narrow<size_t>(num_scan_outputs));
 
   if (info.GetAttrs("scan_input_axes", input_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
                 "Number of entries in 'scan_input_axes' was ", input_axes_.size(), " but expected ", num_scan_inputs_);
   } else {
-    input_axes_.resize(num_scan_inputs_, 0);
+    input_axes_.resize(onnxruntime::narrow<size_t>(num_scan_inputs_), 0);
   }
 
   if (info.GetAttrs("scan_output_axes", output_axes_).IsOK()) {
@@ -182,7 +182,7 @@ void Scan<9>::Init(const OpKernelInfo& info) {
                 "Number of entries in 'scan_output_axes' was ", output_axes_.size(), " but expected ",
                 num_scan_outputs);
   } else {
-    output_axes_.resize(num_scan_outputs, 0);
+    output_axes_.resize(onnxruntime::narrow<size_t>(num_scan_outputs), 0);
   }
 
   device_helpers_.transpose_func = [](const gsl::span<const size_t>& permutations, const Tensor& input,
@@ -282,7 +282,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
                              " dimensions or more but input had shape of ", input_shape);
 
     auto seq_len_dim = input_axes_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables];
-    auto this_seq_len = input_shape[seq_len_dim];
+    auto this_seq_len = input_shape[onnxruntime::narrow<size_t>(seq_len_dim)];
 
     if (sequence_len_ < 0) {
       sequence_len_ = this_seq_len;

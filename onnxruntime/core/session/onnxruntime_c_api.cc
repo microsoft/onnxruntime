@@ -17,6 +17,7 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
 #include "core/graph/constants.h"
@@ -51,6 +52,14 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 #include "orttraining/training_api/include/ort_training_apis.h"
 #endif
 
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
+namespace onnxruntime {
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+}
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
@@ -75,6 +84,7 @@ using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
 using onnxruntime::ToOrtStatus;
 using onnxruntime::common::Status;
+using onnxruntime::narrow;
 
 using namespace onnxruntime;
 
@@ -159,6 +169,16 @@ ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env)
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env,
+                    OrtLoggingLevel log_severity_level) {
+  API_IMPL_BEGIN
+  LoggingManager* default_logging_manager = ort_env->GetLoggingManager();
+  int severity_level = static_cast<int>(log_severity_level);
+  default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity_level));
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len,
                                 _Inout_ OrtAllocator* allocator, OrtValue& value) {
   TensorShape tensor_shape(shape, shape_len);
@@ -185,11 +205,11 @@ ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape
 ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
                                 void* p_data, size_t p_data_len, OrtValue& ort_value) {
   TensorShape tensor_shape(shape, shape_len);
-  if (std::any_of(tensor_shape.GetDims().cbegin(), tensor_shape.GetDims().cend(), [](int64_t v) { return v < 0; })) {
+  if (std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(), [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
 
-  auto elem_count = gsl::narrow<size_t>(tensor_shape.Size());
+  auto elem_count = narrow<size_t>(tensor_shape.Size());
   size_t size_to_allocate;
   if (!IAllocator::CalcMemSizeForArray(ml_type->Size(), elem_count, &size_to_allocate)) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "size overflow");
@@ -235,7 +255,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
   auto element_type = sparse_tensor_type->GetElementType();
   assert(element_type->AsPrimitiveDataType() != nullptr);
   TensorShape shape(dense_shape, dense_shape_len);
-  if (std::any_of(shape.GetDims().cbegin(), shape.GetDims().cend(),
+  if (std::any_of(shape.GetDims().begin(), shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
@@ -280,7 +300,7 @@ SparseTensor& ValidateFillInputArgs(OrtValue* v, const TensorShape& values_shape
       ORT_THROW("Strings can only reside in CPU memory");
     }
   }
-  if (std::any_of(values_shape.GetDims().cbegin(), values_shape.GetDims().cend(),
+  if (std::any_of(values_shape.GetDims().begin(), values_shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     ORT_THROW("tried Filling sparse tensor with negative value in values shape");
   }
@@ -305,7 +325,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
   TensorShape values_t_shape(values_shape, values_shape_len);
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);
 
-  auto values_size = gsl::narrow<size_t>(values_t_shape.Size());
+  auto values_size = narrow<size_t>(values_t_shape.Size());
   auto indices_span = gsl::make_span(indices_data, indices_num);
 
   if (sparse_tensor.IsDataTypeString()) {
@@ -339,7 +359,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
 #if !defined(DISABLE_SPARSE_TENSORS)
   TensorShape values_t_shape(values_shape, values_shape_len);
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);
-  auto values_size = gsl::narrow<size_t>(values_t_shape.Size());
+  auto values_size = narrow<size_t>(values_t_shape.Size());
 
   auto inner_indices_span = gsl::make_span(inner_indices_data, inner_indices_num);
   auto outer_indices_span = gsl::make_span(outer_indices_data, outer_indices_num);
@@ -377,7 +397,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);
 
   TensorShape indices_t_shape(indices_shape_data, indices_shape_len);
-  if (std::any_of(indices_t_shape.GetDims().cbegin(), indices_t_shape.GetDims().cend(),
+  if (std::any_of(indices_t_shape.GetDims().begin(), indices_t_shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     ORT_THROW("tried Filling sparse tensor with negative value in block sparse indices shape");
   }
@@ -422,7 +442,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorWithValuesAsOrtValue, _In_ const 
   }
   TensorShape tensor_dense_shape(dense_shape, dense_shape_len);
   TensorShape tensor_values_shape(values_shape, values_shape_len);
-  if (std::any_of(tensor_values_shape.GetDims().cbegin(), tensor_values_shape.GetDims().cend(),
+  if (std::any_of(tensor_values_shape.GetDims().begin(), tensor_values_shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
@@ -765,6 +785,12 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
     }
 
+    if (!input[i]) {
+      std::ostringstream ostr;
+      ostr << "NULL input supplied for input " << input_names[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+    }
+
     feed_names[i] = input_names[i];
     auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
 
@@ -804,6 +830,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     if (value.Fence())
       value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (output[i] == nullptr) {
+      GSL_SUPPRESS(r .11)
       output[i] = new OrtValue(value);
     }
   }
@@ -844,6 +871,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
+  GSL_SUPPRESS(r .11)
   *out = new OrtIoBinding(std::move(binding));
   return nullptr;
   API_IMPL_END
@@ -959,6 +987,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
 
   OrtValue** out_ptr = ortvalues_alloc.get();
   for (const auto& out_value : outputs) {
+    GSL_SUPPRESS(r .11)
     *out_ptr = new OrtValue(out_value);
     ++out_ptr;
     ++created;
@@ -1299,6 +1328,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* ses
   auto p = session->GetModelMetadata();
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
+  GSL_SUPPRESS(r .11)
   *out = reinterpret_cast<OrtModelMetadata*>(new ModelMetadata(*p.second));
   return nullptr;
   API_IMPL_END
@@ -1549,7 +1579,7 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int in
 
 ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const void* data_elem, size_t num_elems,
                                       size_t elem_size) {
-  auto len = gsl::narrow<size_t>(tensor.Shape().Size());
+  auto len = narrow<size_t>(tensor.Shape().Size());
   if (num_elems < len) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array is too short");
   }
@@ -1559,7 +1589,7 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const
     const std::string* strings = reinterpret_cast<const std::string*>(data_elem);
     auto str_span = gsl::make_span(strings, num_elems);
     auto* dst = tensor.MutableData<std::string>();
-    std::copy(str_span.cbegin(), str_span.cend(), dst);
+    std::copy(str_span.begin(), str_span.end(), dst);
   }
   return nullptr;
 }
@@ -1586,7 +1616,7 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_valu
   auto result = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(one_tensor.DataType(), tensor_shape.GetDims().data(),
                                                                   tensor_shape.NumDimensions(), one_tensor.DataRaw(),
-                                                                  gsl::narrow<size_t>(one_tensor.Shape().Size()),
+                                                                  narrow<size_t>(one_tensor.Shape().Size()),
                                                                   allocator, *result));
   *out = result.release();
   return nullptr;
@@ -1745,7 +1775,7 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelperTensor(const Tensor& tensor, Te
   ORT_API_RETURN_IF_ERROR(CreateTensorImplForSeq(data_type,
                                                  tensor.Shape().GetDims().data(), tensor.Shape().NumDimensions(),
                                                  out));
-  size_t num_elements = gsl::narrow<size_t>(tensor.Shape().Size());
+  size_t num_elements = narrow<size_t>(tensor.Shape().Size());
   ORT_API_RETURN_IF_ERROR(c_api_internal::PopulateTensorWithData(out, tensor.IsDataTypeString(),
                                                                  tensor.DataRaw(), num_elements, data_type->Size()));
   return nullptr;
@@ -1959,7 +1989,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, _In_z_ const char* domain_name, 
               "Specified domain and type names combination does not refer to a registered opaque type");
   const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
-  std::unique_ptr<OrtValue> ort_val(new OrtValue);
+  std::unique_ptr<OrtValue> ort_val = std::make_unique<OrtValue>();
   non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
   *out = ort_val.release();
   API_IMPL_END
@@ -1981,6 +2011,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
+GSL_SUPPRESS(r .11)
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
@@ -1989,7 +2020,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   // and use a single string object to hold all the names.
   constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
-  const int available_count = gsl::narrow<int>(available_providers.size());
+  const int available_count = narrow<int>(available_providers.size());
   char** const out = new char*[available_count];
   if (out) {
     for (int i = 0; i < available_count; i++) {
@@ -2017,8 +2048,10 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   API_IMPL_BEGIN
   if (ptr) {
     for (int i = 0; i < providers_length; i++) {
+      GSL_SUPPRESS(r .11)
       delete[] ptr[i];
     }
+    GSL_SUPPRESS(r .11)
     delete[] ptr;
   }
   API_IMPL_END
@@ -2113,6 +2146,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
+  GSL_SUPPRESS(r .11)
   *out = new OrtArenaCfg();
   (*out)->max_mem = max_mem;
   (*out)->arena_extend_strategy = arena_extend_strategy;
@@ -2159,7 +2193,7 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
 
 ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out) {
   API_IMPL_BEGIN
-  std::unique_ptr<PrepackedWeightsContainer> container(new PrepackedWeightsContainer());
+  std::unique_ptr<PrepackedWeightsContainer> container = std::make_unique<PrepackedWeightsContainer>();
   *out = reinterpret_cast<OrtPrepackedWeightsContainer*>(container.release());
   return nullptr;
   API_IMPL_END
@@ -2570,25 +2604,43 @@ static constexpr OrtApi ort_api_1_to_12 = {
 
     // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::GetTrainingApi,
+    &OrtApis::SessionOptionsAppendExecutionProvider_CANN,
+    &OrtApis::CreateCANNProviderOptions,
+    &OrtApis::UpdateCANNProviderOptions,
+    &OrtApis::GetCANNProviderOptionsAsString,
+    &OrtApis::ReleaseCANNProviderOptions,
+    // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::MemoryInfoGetDeviceType,
+    &OrtApis::UpdateEnvWithCustomLogLevel,
 };
+
+
+
+
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
-static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void*) == 118, "Size of version 2 API cannot change");
-static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void*) == 124, "Size of version 3 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void*) == 126, "Size of version 4 API cannot change");
-static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Size of version 5 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void *) == 101, "Size of version 1 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void *) == 118, "Size of version 2 API cannot change");
+static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void *) == 124,
+              "Size of version 3 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void *) == 126,
+              "Size of version 4 API cannot change");
+static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void *) == 149, "Size of version 5 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void *) == 157, "Size of version 6 API cannot change");
 static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void *) == 218, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void *) == 224, "Size of version 13 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.13.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+static_assert(std::string_view(ORT_VERSION) == "1.14.0",
+              "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 // 2. If there were any APIs added to ort_api_1_to_13 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)

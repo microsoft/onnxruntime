@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm.h"
+
+#include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
+#include "contrib_ops/rocm/bert/transformer_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -93,21 +95,20 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
-  size_t element_size = sizeof(T);
   typedef typename ToHipType<T>::MappedType HipT;
 
   return LaunchSkipLayerNormKernel<HipT>(
-          Stream(),
-          reinterpret_cast<HipT*>(output->MutableData<T>()),
-          reinterpret_cast<const HipT*>(input->Data<T>()),
-          reinterpret_cast<const HipT*>(skip->Data<T>()),
-          reinterpret_cast<const HipT*>(gamma->Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->Data<T>()) : nullptr,
-          (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
-          epsilon_,
-          hidden_size,
-          static_cast<int>(element_count),
-          element_size);
+      IsTunableOpEnabled(),
+      Stream(),
+      reinterpret_cast<HipT*>(output->MutableData<T>()),
+      reinterpret_cast<const HipT*>(input->Data<T>()),
+      reinterpret_cast<const HipT*>(skip->Data<T>()),
+      reinterpret_cast<const HipT*>(gamma->Data<T>()),
+      (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->Data<T>()) : nullptr,
+      (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
+      epsilon_,
+      hidden_size,
+      static_cast<int>(element_count));
 }
 
 }  // namespace rocm

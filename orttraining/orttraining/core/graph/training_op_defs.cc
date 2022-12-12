@@ -2476,24 +2476,6 @@ Example 4:
         propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Sin")
-      .AllowUncheckedAttributes()
-      .Input(0, "dY", "Sin output's grad", "T")
-      .Input(1, "X", "Input tensor", "T")
-      .Output(0, "dX", "Sin input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           {{"X_1"}, "Cos", {"X"}},
-           {{"dX"}, "Mul", {"X_1", "dY"}}}));
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2651,6 +2633,19 @@ Example 4:
 
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuickGeluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("QuickGeluGrad")
+      .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
       .SetDomain(kMSDomain)
@@ -3682,7 +3677,9 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOp's ", i, "th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i));
+                      "PythonOp's ", i, "th input type must be ",
+                      TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)), " but got ",
+                      TensorProto_DataType_Name(inferred_input_type->tensor_type().elem_type()));
         }
 
         // The first output is a pointer which points to
@@ -3971,6 +3968,53 @@ Return true if all elements are true and false otherwise.
       .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<13>)
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FakeQuant)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "FakeQuant operator that fuses quantization->dequantization pattern into a single node. "
+          "FakeQuant takes in a non quantized tensor as input and generates a non quantized tensor as output. "
+          "But internally, it will perform Quantization->Dequantization operation that simulates the effects of "
+          "quantization within the model. Loss in numerical precision introduced by model quantization is "
+          "corrected by adjusting the model weights through the FakeQuant op.")
+      .Input(0, "input", "Tensor to be fake quantized.", "T")
+      .Input(1, "scale",
+             "Quantization scale. It must be a scalar, which implies per-tensor quantization. "
+             "The scalar value must be greater than 0.",
+             "T")
+      .Input(2, "zero_point",
+             "Quantization zero point as non quantized type. It must be a scalar, which implies per-tensor "
+             "quantization.",
+             "T")
+      .Output(0, "output", "Input tensor after it has been fake quantized. It has the same shape as the input.", "T")
+      .Output(1, "mask",
+              "Mask where values indicate if the quantized value was in qmin, qmax range. "
+              "Needed for gradient computation. It has the same shape as the input.",
+              "T_BOOL")
+      .Attr(
+          "quant_min",
+          "Minimum quantization value.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "quant_max",
+          "Maximum quantization value.",
+          AttributeProto::INT,
+          static_cast<int64_t>(255))
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the input tensor type to float tensors.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain the gradient quantization mask type to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        propagateShapeFromInputToOutput(ctx, 0, 1);
+      });
 }
 
 }  // namespace training

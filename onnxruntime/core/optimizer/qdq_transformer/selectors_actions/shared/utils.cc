@@ -62,6 +62,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetConvTransposeOpVersionsMap() {
+  return {{"ConvTranspose", {}}};
+}
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
   return {{"MatMul", {}}};
 }
@@ -105,6 +108,14 @@ void RegisterConvSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterConvTransposeSelector(Selectors& qdq_selectors) {
+  // register selector for ConvTranspose op
+  // it shares selector with Conv op, they have the same input/output def.
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetConvTransposeOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<MatMulNodeGroupSelector>();
@@ -133,6 +144,7 @@ void SelectorManager::CreateSelectors() {
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
+  RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
   RegisterWhereSelector(qdq_selectors_);

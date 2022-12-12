@@ -31,8 +31,8 @@ bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& graph) {
 }  // namespace
 
 // MaxPool doesn't have any quantization params
-bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
-                                         const GraphViewer& graph) {
+bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                  const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   if (IsQuantizedMaxPool(qtype) && IsValidQuantMaxPool(node_unit, graph) == false) {
@@ -102,7 +102,7 @@ bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
 }
 
 MaxPool::MaxPool(const OpKernelInfo& info)
-    : OpKernel(info),
+    : XnnpackKernel(info),
       pool_attrs_{info, "MaxPool", info.node().SinceVersion()} {
   uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs_.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs_.pads[1]);
@@ -137,10 +137,11 @@ MaxPool::MaxPool(const OpKernelInfo& info)
 
   // input is NHWC and we only support input with 4 dims. we checked C, H, W were all known in the op support checker
   const auto& X_arg = *Node().InputDefs()[0];
-  const auto& X_shape = *X_arg.Shape();
-  int64_t H = X_shape.dim(1).dim_value();
-  int64_t W = X_shape.dim(2).dim_value();
-  int64_t C = X_shape.dim(3).dim_value();
+  auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X_arg.Shape());
+
+  int64_t H = X_shape[1];
+  int64_t W = X_shape[2];
+  int64_t C = X_shape[3];
 
   // create NCHW shape to calculate most of the output shape. 'N' is set in Compute.
   TensorShapeVector input_shape{1, C, H, W};
@@ -219,19 +220,20 @@ Status MaxPool::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
+  pthreadpool_t t_pool = GetThreadPool();
   xnn_status status = xnn_status_invalid_state;
   if (maxpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_max_pooling2d_nhwc_f32(op0_.get(), N, H, W,
                                               X.Data<float>(), Y->MutableData<float>(),
-                                              nullptr /*threadpool */);  // TBD: how to handle threading
+                                              t_pool /*threadpool */);
   } else if (maxpool_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_max_pooling2d_nhwc_u8(op0_.get(), N, H, W,
                                              X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-                                             nullptr /*threadpool */);  // TBD: how to handle threading
+                                             t_pool /*threadpool */);
   } else {
     status = xnn_setup_max_pooling2d_nhwc_s8(op0_.get(), N, H, W,
                                              X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                             nullptr /*threadpool */);  // TBD: how to handle threading
+                                             t_pool /*threadpool */);
   }
 
   if (status != xnn_status_success) {
@@ -239,7 +241,7 @@ Status MaxPool::Compute(OpKernelContext* context) const {
                            OpTypeToString(maxpool_type_), " returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

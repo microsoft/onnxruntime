@@ -9,7 +9,7 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
-if (onnxruntime_USE_NUPHAR_TVM)
+if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
@@ -125,7 +125,7 @@ function(AddTest)
       ${TEST_SRC_DIR}/xctest/ortxctest.m
       ${TEST_SRC_DIR}/xctest/xcgtest.mm
       ${_UT_SOURCES})
-
+    onnxruntime_configure_target(${_UT_TARGET}_xc)
     if(_UT_DYN)
       target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock onnxruntime ${CMAKE_DL_LIBS}
               Threads::Threads)
@@ -223,12 +223,13 @@ else()  # minimal and/or reduced ops build
     "${TEST_SRC_DIR}/platform/*.cc"
     )
 
-  if (onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     list(APPEND onnxruntime_test_framework_src_patterns
       "${TEST_SRC_DIR}/framework/ort_model_only_test.cc"
     )
+  endif()
 
-  else() # reduced ops build
+  if (NOT onnxruntime_MINIMAL_BUILD)
     file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/ir/*.cc"
       "${TEST_SRC_DIR}/ir/*.h"
@@ -320,6 +321,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
 endif()
 
+if (onnxruntime_USE_CANN)
+  file(GLOB_RECURSE onnxruntime_test_providers_cann_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cann/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
@@ -357,7 +365,7 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
-if ((NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_NUPHAR) OR onnxruntime_EXTENDED_MINIMAL_BUILD)
+if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/internal_testing/*"
     )
@@ -443,6 +451,10 @@ if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
 endif()
 
+if(onnxruntime_USE_CANN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cann)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -472,17 +484,6 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if(onnxruntime_USE_NUPHAR)
-  # the test case under nuphar_tvm is only to verify some basic tvm show case, which is already out of date
-  # it doesn't have relationship to nuphar directly. consider we have an official tvm execution provider now,
-  # keep those test cases doesn't bring any value now.
-
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
-endif()
-
 if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
@@ -500,7 +501,6 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
-    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
@@ -594,14 +594,8 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
-if(onnxruntime_USE_ROCM)
-  find_library(HIP_LIB amdhip64 REQUIRED)
-  list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
-endif()
-
-
 if(WIN32)
-  if (onnxruntime_USE_NUPHAR_TVM)
+  if (onnxruntime_USE_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
   endif()
 endif()
@@ -610,7 +604,9 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
-#without auto initialize onnxruntime
+#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common). 
+#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same 
+#process and you won't know which one you are testing.
 onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -620,7 +616,7 @@ if(MSVC)
 else()
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+          ${nsync_SOURCE_DIR}/public)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -628,7 +624,8 @@ endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
+
 
 
 if (onnxruntime_USE_DML)
@@ -653,17 +650,17 @@ if(MSVC)
 else()
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+          ${nsync_SOURCE_DIR}/public)
 endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   #TODO: fix the warnings, they are dangerous
   target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers)
+        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers Boost::mp11 safeint_interface)
 
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR}
+target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -686,10 +683,6 @@ if (onnxruntime_ENABLE_TRAINING)
   if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
     list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
   endif()
-endif()
-
-if (onnxruntime_USE_NUPHAR)
-  list(APPEND all_tests ${onnxruntime_test_nuphar_src})
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -737,7 +730,7 @@ AddTest(
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
   LIBS
     onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
-    onnx_test_data_proto nlohmann_json::nlohmann_json
+    onnx_test_data_proto
   DEPENDS ${all_dependencies}
   TEST_ARGS ${test_all_args}
 )
@@ -766,7 +759,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 if (onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_test_all PRIVATE -D__HIP_PLATFORM_HCC__=1)
+  target_compile_options(onnxruntime_test_all PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
@@ -799,7 +792,7 @@ endif()
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_test_data_proto)
+onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
 
 #
 # onnxruntime_ir_graph test data
@@ -864,6 +857,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
   endif()
   if (onnxruntime_USE_DNNL)
+    if(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+      message(FATAL_ERROR "--dnnl_opencl_root required")
+    elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+      message(FATAL_ERROR "--dnnl_gpu_runtime required")
+    elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+      #file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
+      #set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
+      #set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
+      target_compile_definitions(onnxruntime_test_all PUBLIC -DDNNL_GPU_RUNTIME=OCL)
+    endif()
     list(APPEND onnx_test_libs dnnl)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
@@ -871,7 +874,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if(WIN32)
-    if (onnxruntime_USE_NUPHAR_TVM)
+    if (onnxruntime_USE_TVM)
       add_custom_command(
         TARGET ${test_data_target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
@@ -928,7 +931,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
-if (onnxruntime_USE_NUPHAR_TVM)
+if (onnxruntime_USE_TVM)
   if (WIN32)
     target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
   endif()
@@ -993,6 +996,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
+    if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
+    endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
@@ -1002,9 +1008,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     add_test(NAME onnx_test_pytorch_converted
-      COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
+      COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-converted)
     add_test(NAME onnx_test_pytorch_operator
-      COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
+      COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-operator)
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -1017,7 +1023,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
   file(GLOB onnxruntime_eager_mode_test_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/eager/*.cc"
     )
-  add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
+  onnxruntime_add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
   target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header}
           ${onnxruntime_exec_src_dir}
@@ -1098,9 +1104,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 
   if (onnxruntime_BUILD_SHARED_LIB)
+    #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
+    #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless. 
     set(onnxruntime_perf_test_libs
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
-            onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
+            onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
     if(NOT WIN32)
@@ -1131,7 +1139,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
-  if (onnxruntime_USE_NUPHAR_TVM)
+  if (onnxruntime_USE_TVM)
     if (WIN32)
       target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
     endif()
@@ -1141,6 +1149,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
     target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
+    target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
     set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
     #################################################################
@@ -1261,21 +1270,25 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
   target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
           ${CMAKE_CURRENT_BINARY_DIR})
-  set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+  if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+    target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
+  endif()
   if(NOT WIN32)
-    list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
+    target_link_libraries(onnxruntime_mlas_test PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    list(APPEND onnxruntime_mlas_test_libs ${android_shared_libs})
-  endif()
-  list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
-  target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
+    target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
+  endif()  
+  
   if(WIN32)
     target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
   endif()
   if (onnxruntime_LINK_LIBATOMIC)
     target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
   endif()
+  target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
+
   set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
   if (onnxruntime_BUILD_WEBASSEMBLY)
     if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
@@ -1286,6 +1299,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
+if (NOT onnxruntime_BUILD_WEBASSEMBLY)
 if (onnxruntime_USE_CUDA)
   onnxruntime_add_shared_library_module(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
                                                           ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
@@ -1297,6 +1311,7 @@ else()
   onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 endif()
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
@@ -1344,7 +1359,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
   endif()
 endif()
-
+endif()
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
@@ -1360,7 +1375,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
   add_dependencies(test_execution_provider onnxruntime_providers_shared onnx ${ABSEIL_LIBS})
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS})
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS} Boost::mp11)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})

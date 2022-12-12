@@ -163,13 +163,13 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
 
   std::vector<float> ComputeOutputScale(const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale) const {
     const int64_t output_scale_size = b_scale->Shape().Size();
-    std::vector<float> output_scales(output_scale_size);
+    std::vector<float> output_scales(onnxruntime::narrow<size_t>(output_scale_size));
     auto a_scale_value = *(a_scale->Data<float>());
     const auto* b_scale_data = b_scale->Data<float>();
     for (int64_t i = 0; i < output_scale_size; i++) {
-      output_scales[i] = (alpha_ * a_scale_value * b_scale_data[i]);
+      output_scales[onnxruntime::narrow<size_t>(i)] = (alpha_ * a_scale_value * b_scale_data[i]);
       if (nullptr != y_scale) {
-        output_scales[i] /= *(y_scale->Data<float>());
+        output_scales[onnxruntime::narrow<size_t>(i)] /= *(y_scale->Data<float>());
       }
     }
     return output_scales;

@@ -101,8 +101,8 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
            // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
-           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
-            kTensorrtExecutionProvider, kNnapiExecutionProvider, kQnnExecutionProvider});
+           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kTensorrtExecutionProvider,
+            kNnapiExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)

@@ -363,7 +363,7 @@ class PlannerImpl {
       }
     }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
     // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
     // strided tensors at the corresponding position, this output will generate a strided tensor
     // and share the data from the corresponding input specified in MayStridedOutputsMap.
@@ -605,10 +605,10 @@ class PlannerImpl {
         UseCount(name)++;
 
         bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
                                                [&name](const NodeArg* value) {
                                                  return value && value->Name() == name;
-                                               }) != outer_scope_node_args_.cend();
+                                               }) != outer_scope_node_args_.end();
         bool is_subgraph = (parent_node_ != nullptr);
 
         // If it's a graph input or outer scope node arg, set its plan.
@@ -1018,11 +1018,11 @@ class PlannerImpl {
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
           ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
-#endif  // ENABLE_TRAINING
+#endif  // ENABLE_STRIDED_TENSORS
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif

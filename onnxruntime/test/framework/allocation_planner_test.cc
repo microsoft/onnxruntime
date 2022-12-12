@@ -166,7 +166,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;   // an uinary kernel with may_strided_input
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_;  // an unary kernel with may_strided_output
 #endif
@@ -194,7 +194,7 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
     may_strided_input_kernel_ = KernelDefBuilder()
                                     .SetName("Abs")
                                     .Provider(kCpuExecutionProvider)
@@ -243,7 +243,7 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*external_outputs_kernel_, input, output);
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   onnxruntime::Node* AddMayStridedInputNode(std::string& input, std::string& output) {
     return AddNode(*may_strided_input_kernel_, input, output);
   }
@@ -262,15 +262,19 @@ class PlannerTest : public ::testing::Test {
         state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
-    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
-      auto st = reg->Register(
+    const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
+    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
+                                             kernel_type_str_resolver)) {
+      ASSERT_STATUS_OK(reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
-                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<DummyOpKernel>(info); return Status::OK(); }));
-      ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
+                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                             out = std::make_unique<DummyOpKernel>(info);
+                             return Status::OK();
+                           })));
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 
@@ -301,7 +305,7 @@ class PlannerTest : public ::testing::Test {
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     constexpr bool remove_initializers = false;
-    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
+    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
@@ -476,7 +480,7 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckFreed(2, {X3});
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 TEST_F(PlannerTest, MayStridedTest1) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3");

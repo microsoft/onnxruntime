@@ -117,7 +117,9 @@ RCT_EXPORT_METHOD(postprocess
 
   // dims
   NSArray *dims = @[
-    [NSNumber numberWithInt:1], [NSNumber numberWithInt:static_cast<int>(height)],
+    [NSNumber numberWithInt:1],
+    [NSNumber numberWithInt:1],
+    [NSNumber numberWithInt:static_cast<int>(height)],
     [NSNumber numberWithInt:static_cast<int>(width)]
   ];
   inputTensorMap[@"dims"] = dims;
@@ -129,7 +131,7 @@ RCT_EXPORT_METHOD(postprocess
   NSString *data = [byteBufferRef base64EncodedStringWithOptions:0];
   inputTensorMap[@"data"] = data;
 
-  inputDataMap[@"flatten_2_input"] = inputTensorMap;
+  inputDataMap[@"Input3"] = inputTensorMap;
 
   return inputDataMap;
 }
@@ -137,7 +139,7 @@ RCT_EXPORT_METHOD(postprocess
 - (NSDictionary *)postprocess:(NSDictionary *)result {
   NSMutableString *detectionResult = [NSMutableString string];
 
-  NSDictionary *outputTensor = [result objectForKey:@"Identity"];
+  NSDictionary *outputTensor = [result objectForKey:@"Plus214_Output_0"];
 
   NSString *data = [outputTensor objectForKey:@"data"];
   NSData *buffer = [[NSData alloc] initWithBase64EncodedString:data options:0];

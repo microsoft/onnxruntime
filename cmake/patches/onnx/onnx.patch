@@ -1,0 +1,25 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8e595855..789ec80a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -545,20 +545,9 @@ endif()
+ if(MSVC)
+   target_compile_options(onnx_proto
+                          PRIVATE /MP
+-                                 /wd4244 #'argument': conversion from 'google::
+-                                         #protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
+                                  ${EXTRA_FLAGS})
+   target_compile_options(onnx
+                          PRIVATE /MP
+-                                 /wd4244 # 'argument': conversion from 'google::
+-                                         # protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
+-                                 /wd4996 # The second parameter is ignored.
+                                  ${EXTRA_FLAGS})
+   if(ONNX_USE_PROTOBUF_SHARED_LIBS)
+       target_compile_options(onnx_proto

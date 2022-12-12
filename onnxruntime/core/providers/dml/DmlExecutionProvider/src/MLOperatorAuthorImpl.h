@@ -133,6 +133,8 @@ public:
         m_isClosed = true;
     }
 
+    virtual ~Closable() {}
+
 protected:
     void VerifyNotClosed() const
     {
@@ -296,7 +298,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
  public:
     OnnxTensorWrapper() = default;
 
-    OnnxTensorWrapper(onnx::TensorProto* impl);
+    OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath);
 
     uint32_t STDMETHODCALLTYPE GetDimensionCount() const noexcept override;
 
@@ -366,9 +368,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     }
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
         ) const noexcept override
     {
         return E_NOTIMPL;
@@ -426,14 +426,10 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override;
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
-        ) const noexcept override;
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
+    ) const noexcept override;
 
 private:
-    void SetDmlProperties(_In_ const MLOperatorKernelDmlProperties* dmlProperties) const;
-
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
     ComPtr<IWinmlExecutionProvider> m_winmlProvider;
@@ -654,5 +650,5 @@ bool TryGetStaticInputShapes(const onnxruntime::Node& node, EdgeShapes& inputSha
 bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputShapes);
 bool ContainsEmptyDimensions(const EdgeShapes& shapes, gsl::span<const uint32_t> ignoredShapeIndices = gsl::span<const uint32_t>());
 
-std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer);
+std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer, const onnxruntime::Path& modelPath);
 }    // namespace Windows::AI::MachineLearning::Adapter

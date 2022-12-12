@@ -47,6 +47,17 @@ struct OP_SigmoidGrad : public CtxSigmoidGrad {
 };
 
 template <typename T>
+struct OP_QuickGeluGrad : public CtxQuickGeluGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& x) const {
+    T v = x * static_cast<T>(alpha);
+    T one = static_cast<T>(1.f);
+    T zero = static_cast<T>(0.f);
+    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+    return dy * sigmoid * (one + v * (one - sigmoid));
+  }
+};
+
+template <typename T>
 struct OP_TanhGrad : public CtxTanhGrad {
   __device__ __inline__ T operator()(const T& dy, const T& y) const {
     return dy * ((T)1 - y * y);

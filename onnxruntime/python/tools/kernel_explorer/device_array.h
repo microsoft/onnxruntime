@@ -5,8 +5,27 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/tunable/util.h"
+
+#define CALL_THROW CUDA_CALL_THROW
+#define MALLOC cudaMalloc
+#define FREE cudaFree
+#define MEMCPY cudaMemcpy
+#define MEMCPY_HOST_TO_DEVICE cudaMemcpyHostToDevice
+#define MEMCPY_DEVICE_TO_HOST cudaMemcpyDeviceToHost
+#elif USE_ROCM
 #include "core/providers/rocm/rocm_common.h"
-#include "contrib_ops/rocm/bert/util.h"
+#include "core/providers/rocm/tunable/util.h"
+
+#define CALL_THROW HIP_CALL_THROW
+#define MALLOC hipMalloc
+#define FREE hipFree
+#define MEMCPY hipMemcpy
+#define MEMCPY_HOST_TO_DEVICE hipMemcpyHostToDevice
+#define MEMCPY_DEVICE_TO_HOST hipMemcpyDeviceToHost
+#endif
 
 namespace py = pybind11;
 
@@ -18,15 +37,15 @@ class DeviceArray {
     py::buffer_info buf = x.request();
     size_ = buf.size;
     itemsize_ = buf.itemsize;
-    HIP_CALL_THROW(hipMalloc(&x_device_, size_ * itemsize_));
+    CALL_THROW(MALLOC(&x_device_, size_ * itemsize_));
     x_host_ = x.request().ptr;
-    HIP_CALL_THROW(hipMemcpy(x_device_, x_host_, size_ * itemsize_, hipMemcpyHostToDevice));
+    CALL_THROW(MEMCPY(x_device_, x_host_, size_ * itemsize_, MEMCPY_HOST_TO_DEVICE));
   }
   DeviceArray(const DeviceArray&) = delete;
   DeviceArray& operator=(DeviceArray&) = delete;
 
   void UpdateHostNumpyArray() {
-    HIP_CALL_THROW(hipMemcpy(x_host_, x_device_, size_ * itemsize_, hipMemcpyDeviceToHost));
+    CALL_THROW(MEMCPY(x_host_, x_device_, size_ * itemsize_, MEMCPY_DEVICE_TO_HOST));
   }
 
   void* ptr() const {
@@ -34,7 +53,7 @@ class DeviceArray {
   }
 
   ~DeviceArray() {
-    HIP_CALL_THROW(hipFree(x_device_));
+    CALL_THROW(FREE(x_device_));
   }
 
  private:
@@ -45,3 +64,10 @@ class DeviceArray {
 };
 
 }  // namespace onnxruntime
+
+#undef CALL_THROW
+#undef MALLOC
+#undef FREE
+#undef MEMCPY
+#undef MEMCPY_HOST_TO_DEVICE
+#undef MEMCPY_DEVICE_TO_HOST

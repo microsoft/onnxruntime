@@ -3,15 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger, _are_deterministic_algorithms_enabled, _use_deterministic_algorithms
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
-from ._execution_agent import InferenceAgent
-from .debug_options import DebugOptions
-from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
+import warnings
+
+import onnx
+import torch
 
 from onnxruntime.capi import _pybind_state as C
-import torch
-import warnings
+
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from ._execution_agent import InferenceAgent
+from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
+from .debug_options import DebugOptions
 
 
 class InferenceManager(GraphExecutionManager):
@@ -89,7 +92,7 @@ class InferenceManager(GraphExecutionManager):
                 build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
                     # If model was exported, then initialize the graph builder
-                    self._initialize_graph_builder(training=False)
+                    self._initialize_graph_builder()
 
                 # Build the inference graph
                 if build_graph:
@@ -151,9 +154,10 @@ class InferenceManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     def _build_graph(self):
-        """Build an optimized inference graph using the module_graph_builder"""
+        """Build an inference graph using the module_graph_builder"""
 
         super()._build_graph()
+        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_forward_model())
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,

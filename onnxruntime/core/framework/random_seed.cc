@@ -3,14 +3,13 @@
 
 #include "random_seed.h"
 #include "random_generator.h"
-#include "core/common/gsl_suppress.h"
 #include <atomic>
 #include <chrono>
 
 namespace onnxruntime {
 namespace utils {
 
-// "Global initializer calls a non-constexpr function." 
+// "Global initializer calls a non-constexpr function."
 //TODO: Fix the warning. The variable should be put in the environment class.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)

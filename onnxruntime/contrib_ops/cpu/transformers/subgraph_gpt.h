@@ -28,6 +28,7 @@ class GptSubgraph : public Subgraph {
       int pad_token_id,
       gsl::span<int32_t>& sequence_lengths,
       OrtValue& expanded_input_ids,
+      const OrtValue* attn_mask_value,
       std::vector<OrtValue>& feeds,
       const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,

@@ -1,6 +1,7 @@
 import os
 import tempfile
 
+import numpy as np
 import onnx
 import torch
 from orttraining_test_onnxblock import _get_models
@@ -20,7 +21,7 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
 
 def _create_training_models():
     # Given
-    device = "cuda"
+    device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
@@ -81,11 +82,11 @@ def test_train_step():
         fetches = model(forward_inputs)
 
         # Calculate loss using pytorch model to compare it with Module's output.
-        pt_outputs = pt_model(torch.from_numpy(inputs).to("cuda"))
+        pt_outputs = pt_model(torch.from_numpy(inputs))
         loss_fn = torch.nn.CrossEntropyLoss()
-        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).to("cuda").long())
+        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).long())
 
-        assert fetches[0] == pt_loss.item()
+        assert np.allclose(fetches[0], pt_loss.detach().numpy())
 
 
 def test_eval_step():
@@ -141,6 +142,32 @@ def test_optimizer_step():
         # TODO : Check if parameters changed from before and after optimizer step.
 
 
+def test_get_and_set_lr():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
+        )
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, state)
+        optimizer = Optimizer(optimizer_file_path, model)
+
+        # Test get and set learning rate.
+        lr = optimizer.get_learning_rate()
+        assert round(lr, 3) == 0.001
+
+        optimizer.set_learning_rate(0.5)
+        new_lr = optimizer.get_learning_rate()
+
+        assert np.isclose(new_lr, 0.5)
+        assert lr != new_lr
+
+
 def test_training_module_checkpoint():
     # Initialize Models
     simple_model, onnx_model, _, _, _ = _create_training_models()
@@ -167,3 +194,85 @@ def test_training_module_checkpoint():
 
         # TODO : Load checkpoint to a zeroed model and assert parameters are different.
         assert os.path.exists(checkpoint_save_path)
+
+
+def test_copy_buffer_to_parameters():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
+
+    # Generating random data for testing.
+    inputs = torch.randn(64, 784).numpy()
+    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
+    forward_inputs = [inputs, labels]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
+        )
+        state = CheckpointState(checkpoint_file_path)
+
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, state)
+        optimizer = Optimizer(optimizer_file_path, model)
+
+        # Keep a copy of the parameters.
+        old_output_params = model.get_contiguous_parameters()
+
+        # Run a Training Step.
+        model.train()
+        model(forward_inputs)
+        optimizer.step()
+
+        # Get the new parameters.
+        output_params = model.get_contiguous_parameters()
+        # Make sure old params are different from new params.
+        assert not np.array_equal(old_output_params.numpy(), output_params.numpy())
+
+        # Copy the old parameters to the model.
+        model.copy_buffer_to_parameters(old_output_params)
+
+        # Get the saved parameters.
+        saved_params = model.get_contiguous_parameters()
+
+        # Make sure the saved parameters are the same as the old parameters.
+        assert np.array_equal(old_output_params.numpy(), saved_params.numpy())
+
+
+def test_export_model_for_inferencing():
+    # Initialize Models
+    simple_model, onnx_model, _, eval_model, _ = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, eval_model_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, eval_model=eval_model
+        )
+
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+
+        # Create a Module.
+        model = Module(model_file_path, state, eval_model_file_path)
+
+        # Export inference model
+        inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
+        model.export_model_for_inferencing(inference_model_file_path, ["output-0"])
+        assert os.path.exists(inference_model_file_path)
+
+
+def test_cuda_execution_provider():
+    # Initialize Models
+    simple_model, onnx_model, _, _, pt_model = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path = _get_test_models_path(temp_dir, simple_model, onnx_model)
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module.
+        model = Module(model_file_path, state, device="cuda")
+        params = model.get_contiguous_parameters()
+
+        # Check if parameters are moved to cuda.
+        assert params.device_name() == "Cuda"

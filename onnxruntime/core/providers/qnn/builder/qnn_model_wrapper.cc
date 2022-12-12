@@ -291,22 +291,22 @@ bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
   switch (onnx_data_type) {
     // QNN use -offest for some reason
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      auto int8_span = gsl::make_span(unpacked_tensor).as_span<const int8_t>();
+      auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
       offset_value = -(int8_span.data()[0]);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      auto uint8_span = gsl::make_span(unpacked_tensor).as_span<const uint8_t>();
+      auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(unpacked_tensor));
       offset_value = 0 - (uint8_span.data()[0]);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      auto int32_span = gsl::make_span(unpacked_tensor).as_span<const int32_t>();
+      auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpacked_tensor));
       offset_value = -(int32_span.data()[0]);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
-      auto uint32_span = gsl::make_span(unpacked_tensor).as_span<const uint32_t>();
+      auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(unpacked_tensor));
       offset_value = 0 - (uint32_span.data()[0]);
       break;
     }

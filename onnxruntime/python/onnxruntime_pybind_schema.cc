@@ -62,7 +62,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::ArmNNProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_DML
-            onnxruntime::DMLProviderFactoryCreator::Create(0),
+            onnxruntime::DMLProviderFactoryCreator::Create(0, /*skip_software_device_check*/ true),
 #endif
 #ifdef USE_NNAPI
             onnxruntime::NnapiProviderFactoryCreator::Create(0),
@@ -75,6 +75,12 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #endif
 #ifdef USE_XNNPACK
             onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}),
+#endif
+#ifdef USE_CANN
+            []() {
+              OrtCANNProviderOptions provider_options{};
+              return CannProviderFactoryCreator::Create(&provider_options);
+            }(),
 #endif
         };
 

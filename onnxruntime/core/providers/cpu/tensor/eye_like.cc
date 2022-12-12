@@ -15,8 +15,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     float, double, uint64_t, int64_t, int32_t);
 }
 
-using EyeLikeDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, EyeLike, Output, 0);
 using EnabledEyeLikeDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, EyeLike, Output, 0);
 
@@ -26,11 +24,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint(
             "T1",
-            BuildKernelDefConstraintsFromTypeList<EyeLikeDataTypes>(),
             BuildKernelDefConstraintsFromTypeList<EnabledEyeLikeDataTypes>())
         .TypeConstraint(
             "T2",
-            BuildKernelDefConstraintsFromTypeList<EyeLikeDataTypes>(),
             BuildKernelDefConstraintsFromTypeList<EnabledEyeLikeDataTypes>()),
     EyeLike);
 
@@ -41,8 +37,8 @@ struct ComputeDispatchTarget {
     const auto& output_shape = output.Shape();
     auto output_mat = EigenMatrixMapRowMajor<T>(
         output.MutableData<T>(),
-        output_shape[0],
-        output_shape[1]);
+        onnxruntime::narrow<size_t>(output_shape[0]),
+        onnxruntime::narrow<size_t>(output_shape[1]));
 
     output_mat.setZero();
 
@@ -50,7 +46,7 @@ struct ComputeDispatchTarget {
       return;
     }
 
-    output_mat.diagonal(k).array() = static_cast<T>(1);
+    output_mat.diagonal(onnxruntime::narrow<ptrdiff_t>(k)).array() = static_cast<T>(1);
   }
 };
 }  // namespace

@@ -104,7 +104,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(pads_size == 2 * static_cast<size_t>(dimension_count),
                 "Pads tensor size should be equal to twice the input dimension count ");
 
-    pads.reserve(2 * dimension_count);
+    pads.reserve(2LL * dimension_count);
     for (size_t i = 0; i < pads_size; ++i) {
       pads.push_back(pads_tensor_raw_data[i]);
     }

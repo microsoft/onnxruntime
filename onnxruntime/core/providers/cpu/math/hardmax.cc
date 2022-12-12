@@ -68,8 +68,8 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     intermediate_output = std::move(temp_output);
   }
 
-  size_t tmp_N = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(axis);
-  size_t tmp_D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(axis);
+  size_t tmp_N = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(axis));
+  size_t tmp_D = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(axis));
 
   // Math::RowwiseMax expects int N and D.
   if (tmp_N * tmp_D > INT32_MAX || tmp_N > INT32_MAX || tmp_D > INT32_MAX) {
@@ -102,7 +102,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   // Even if we had to transpose the input, it is safe to go with X_shape.Size() which computes
   // the size of the buffer from the original input's shape as even if we do transpose, the size
   // of the transposed buffer will be the same as the original input's buffer
-  math::Set<float, CPUMathUtil>(X_shape.Size(), 0.f, Y_data, &CPUMathUtil::Instance());
+  math::Set<float, CPUMathUtil>(onnxruntime::narrow<ptrdiff_t>(X_shape.Size()), 0.f, Y_data, &CPUMathUtil::Instance());
 
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < D; ++j) {

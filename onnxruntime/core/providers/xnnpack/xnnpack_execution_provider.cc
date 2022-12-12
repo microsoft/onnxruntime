@@ -15,7 +15,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
-#include <xnnpack.h>
+#include "xnnpack_init.h"
 
 namespace onnxruntime {
 
@@ -39,6 +39,13 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
       ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, type, Op)>
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, Resize);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
@@ -51,12 +58,22 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
                                       kDynamicDomainByCreate, 1, QLinearSoftmax);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
+
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
+
       KERNEL_CREATE_INFO(11, Conv),
+      KERNEL_CREATE_INFO(11, ConvTranspose),
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose),
+      KERNEL_CREATE_INFO(1, QLinearConvTranspose),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
       KERNEL_CREATE_INFO(11, AveragePool),
@@ -65,6 +82,22 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax)>,
       BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul)>,
 
       //  quantization op
       KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
@@ -88,14 +121,23 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace xnnpack;
 
-XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
+XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
+  if (info.xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
+    // otherwise, the pthreadpool will be starved and harm performance a lot.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  }
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  const OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
+  // for one reason, we have to store allocator and keep it alive among the whole life cycle of process.
+  // 1. xnn_initialize only take effect at the first call,it means the first allocator is shared
+  // by all following xnnpack EP sessions. A static allocator is used to extend its life cycle.
+  const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
   auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
   if (!cpu_alloc) {
@@ -104,13 +146,14 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 
     if (!cpu_alloc) {
       // create our allocator
-      AllocatorCreationInfo allocator_info(
+      const AllocatorCreationInfo allocator_info(
           [](int) {
+            // lazy create the allocator
             return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
                                                                 OrtAllocatorType::OrtDeviceAllocator));
           });
-
-      cpu_alloc = CreateAllocator(allocator_info);
+      // only the first time we create the allocator do we pass in the xnn_allocator
+      cpu_alloc = stored_allocator ? stored_allocator : CreateAllocator(allocator_info);
       // enable sharing of our allocator
       allocator_manager.InsertAllocator(cpu_alloc);
     }
@@ -118,9 +161,12 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  // TODO: Create `struct xnn_allocator` that wraps cpu_allocator, and provide in the call to xnn_initialize so that
-  //       xnnpack is using the ORT allocator.
-  xnn_status st = xnn_initialize(nullptr);
+  if (!stored_allocator) {
+    stored_allocator = cpu_alloc;
+  }
+
+  xnn_allocator->context = cpu_alloc.get();
+  const xnn_status st = xnn_initialize(xnn_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
@@ -131,8 +177,9 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   static const InlinedHashSet<std::string_view> dynamic_schema_set = {"QLinearSoftmax"};
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
-                                                ? "QLinear" + node_unit.OpType() : node_unit.OpType();
-  return dynamic_schema_set.contains(key);
+                        ? "QLinear" + node_unit.OpType()
+                        : node_unit.OpType();
+  return dynamic_schema_set.count(key) > 0;
 }
 
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
@@ -182,7 +229,7 @@ static void AddComputeCapabilityForEachNodeInNodeUnit(
 
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+    const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
 
   std::shared_ptr<KernelRegistry> registry = GetKernelRegistry();
@@ -210,7 +257,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
 
     bool request_node = false;
     // any node in NodeUnit will trigger IsNodeSupported, so we just check once.
-    if (node_unit_supported_result.count(&node_unit)) {
+    if (node_unit_supported_result.count(&node_unit) > 0) {
       continue;
     } else if (node_unit.GetNode().GetExecutionProviderType() == "") {
       // unassigned node.
@@ -280,6 +327,7 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
   xnn_deinitialize();
+  pthreadpool_destroy(xnnpack_thread_pool_);
 }
 
 }  // namespace onnxruntime

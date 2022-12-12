@@ -6,7 +6,6 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/gsl_suppress.h"
 #include "core/session/ort_apis.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
@@ -65,12 +64,12 @@ namespace {
 struct BrokenTest {
   std::string test_name_;
   std::string reason_;
-  std::set<std::string> broken_versions_ = {};  // apply to all versions if empty
+  std::set<std::string> broken_opset_versions_ = {};  // apply to all versions if empty
   BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {
   }
 
-  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions)
-      : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {
+  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& opversions)
+      : test_name_(std::move(name)), reason_(std::move(reason)), broken_opset_versions_(opversions) {
   }
 
   bool operator<(const struct BrokenTest& test) const {
@@ -82,8 +81,8 @@ struct BrokenTest {
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
 #endif
 
-void SkipTest() {
-  GTEST_SKIP() << "Skipping single test";
+void SkipTest(const std::string& reason = "") {
+  GTEST_SKIP() << "Skipping single test " << reason;
 }
 
 TEST_P(ModelTest, Run) {
@@ -107,23 +106,22 @@ TEST_P(ModelTest, Run) {
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will
     // fail. That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    SkipTest();
+    SkipTest(" tensorrt only support opset 14 or 15");
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
-    SkipTest();
+    SkipTest(" dnnl doesn't support opset 10");
     return;
   }
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    SkipTest();
+    SkipTest("It has training domain");
     return;
   }
 #endif
-  // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -133,9 +131,9 @@ TEST_P(ModelTest, Run) {
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
+      {"constantofshape_float_ones", "test data bug", {"opset9", "opset10"}},
+      {"constantofshape_int_zeros", "test data bug",  {"opset9", "opset10"}},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"opset9", "opset10"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
@@ -143,7 +141,7 @@ TEST_P(ModelTest, Run) {
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"onnx141"}},
+      {"shrink", "test case is wrong", {"opset9"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
@@ -181,7 +179,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.",  {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -195,6 +193,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_1_end_negative_1", "type error", {}},
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
+      {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -205,46 +204,62 @@ TEST_P(ModelTest, Run) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"opset12"}},
       {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob",
        "type error",
-       {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"onnx170"}},
+       {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"opset12"}},
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob",
        "type error",
-       {"onnx170"}},
-      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_none_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_3d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_sum_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_sum", "type error", {"onnx170"}},
+       {"opset12"}},
+      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_none_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_3d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_sum_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_sum", "type error", {"opset12"}},
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob",
        "type error",
-       {"onnx170"}},
-      {"softmax_cross_entropy_none_weights", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_none", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
+       {"opset12"}},
+      {"softmax_cross_entropy_none_weights", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_none", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
+      // models from model zoo
+      {"BERT-Squad-int8", "failed in training", {"opset12"}},
+      {"DenseNet-121-12-int8", "failed in training", {"opset12"}},
+      {"EfficientNet-Lite4-int8", "failed in training", {"opset11"}},
+      {"EfficientNet-Lite4-qdq", "failed in training", {"opset11"}},
+      {"Faster R-CNN R-50-FPN-int8", "failed in training", {"opset12"}},
+      {"Inception-1-int8", "failed in training", {"opset12"}},
+      {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
+      {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
+      {"ResNet50-qdq", "failed in training", {"opset12"}},
+      {"ResNet50_int8", "failed in training", {"opset12"}},
+      {"ResNet50-int8", "failed in training", {"opset12"}},
+      {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
+      {"SSD-int8", "failed in training", {"opset12"}},
+      {"VGG 16-int8", "failed in training", {"opset12"}},
+      {"YOLOv3-12-int8", "failed in training", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
@@ -593,18 +608,18 @@ TEST_P(ModelTest, Run) {
   {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
-    auto model_version = model_info->GetModelVersion();
+    auto opset_version = model_info->GetNominalOpsetVersion();
     if (iter != broken_tests.end() &&
-        (model_version == TestModelInfo::unknown_version || iter->broken_versions_.empty() ||
-         iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
-      SkipTest();
+        (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
+         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
+      SkipTest("It's in broken_tests");
       return;
     }
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
       std::string keyword = *iter2;
       if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-        SkipTest();
+        SkipTest("It's in broken_tests_keyword");
         return;
       }
     }
@@ -653,9 +668,9 @@ TEST_P(ModelTest, Run) {
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptionsV2 params{0, 0,       nullptr, 1000, 1, 1 << 30,
+          OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0,       0,    0, 0,       0, nullptr, 0, nullptr, 0, 0};
+                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
           ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
         } else {
           OrtTensorRTProviderOptionsV2* ep_option;
@@ -788,7 +803,7 @@ TEST_P(ModelTest, Run) {
           const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
           if (v == nullptr)
             continue;
-          ret = VerifyValueInfo(*v, Ort::Unowned<Ort::Value>{actual_output_value});
+          ret = VerifyValueInfo(*v, actual_output_value);
           compare_result = ret.first;
           ASSERT_EQ(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
 
@@ -811,6 +826,7 @@ TEST_P(ModelTest, Run) {
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
   provider_names.push_back(ORT_TSTR("cpu"));
+
 #ifdef USE_TENSORRT
   provider_names.push_back(ORT_TSTR("tensorrt"));
 #endif
@@ -841,6 +857,9 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_ARMNN
   provider_names.push_back(ORT_TSTR("armnn"));
+#endif
+#ifdef USE_DML
+  provider_names.push_back(ORT_TSTR("dml"));
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
@@ -917,6 +936,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("cntk_simple_seg"),
       ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
@@ -928,7 +949,16 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded")};
+      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded"),
+      // models from model zoo
+      ORT_TSTR("Tiny YOLOv3"),
+      ORT_TSTR("BERT-Squad"),
+      ORT_TSTR("YOLOv3"),
+      ORT_TSTR("Candy"),
+      ORT_TSTR("SSD"),
+      ORT_TSTR("ResNet101_DUC_HDC-12"),
+      ORT_TSTR("YOLOv3-12")
+      };
   static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                   ORT_TSTR("mlperf_ssd_mobilenet_300"),
                                                   ORT_TSTR("mask_rcnn"),
@@ -1041,7 +1071,12 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("mask_rcnn"),
                                                     ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512")};
+                                                    ORT_TSTR("zfnet512"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC-12"),
+                                                    ORT_TSTR("FCN ResNet-101"),
+                                                    ORT_TSTR("SSD")
+    };
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
@@ -1055,9 +1090,14 @@ TEST_P(ModelTest, Run) {
 #endif
 
 // TENSORRT/OpenVino has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_OPENVINO)
-    paths.push_back("/data/onnx");
+#if !defined(USE_OPENVINO)
+#if !defined(_WIN32)
+    paths.push_back(ORT_TSTR("/data/onnx"));
+#else
+    paths.push_back(ORT_TSTR("c:\\local\\data\\onnx"));
 #endif
+#endif
+
     while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();
@@ -1074,7 +1114,6 @@ TEST_P(ModelTest, Run) {
           std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
           if (!HasExtensionOf(filename_str, ORT_TSTR("onnx")))
             return true;
-
           std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
           if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
             test_case_name = test_case_name.substr(5);
@@ -1124,9 +1163,12 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
   std::replace(name.begin(), name.end(), '/', '_');
   std::replace(name.begin(), name.end(), '\\', '_');
 
+  // in case there's whitespace in directory name
+  std::replace(name.begin(), name.end(), ' ', '_');
+
   // Note: test name only accepts '_' and alphanumeric
-  // remove '.' and '-'
-  char chars[] = ".-";
+  // remove '.', '-', ':'
+  char chars[] = ".-:()";
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }

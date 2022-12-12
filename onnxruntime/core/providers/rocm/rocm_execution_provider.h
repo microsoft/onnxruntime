@@ -17,6 +17,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:
@@ -69,7 +71,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   // Release all buffers added by
   // AddDeferredReleaseCPUPtr using
   // GPU callback (so it's async).
-  Status EnqueueDeferredRelease();
+  Status EnqueueDeferredRelease(bool actually_defer = true);
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
@@ -79,12 +81,30 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
+    // In some ROCm async
+    if (count_or_bytes == 0)
+      return nullptr;
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
+                                        count_or_bytes);
+  }
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const IKernelLookup& kernel_lookup) const override;
 
   int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
@@ -97,17 +117,13 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  template <typename T>
-  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
-  }
-
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+
+  void EnableTunableOp();
+  void DisableTunableOp();
+  bool IsTunableOpEnabled() const;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
@@ -118,8 +134,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   hipStream_t stream_ = nullptr;
 
   // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
-  // CUDA kernels running on my_stream (type: cudaStream_t).
-  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
+  // HIP kernels running on my_stream (type: hipStream_t).
+  // Buffers' release is enqueued as a HIP callback onto the associated stream (aka
   // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
   // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
   // by CPU Allocator's Free function.

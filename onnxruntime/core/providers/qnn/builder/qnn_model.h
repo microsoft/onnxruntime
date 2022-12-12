@@ -36,7 +36,7 @@ class QnnModel {
 
   Status SetupQnnInputOutput();
 
-  Status ExecuteGraph(Ort::CustomOpApi& ort, OrtKernelContext* context);
+  Status ExecuteGraph(const Ort::KernelContext& context);
 
   const std::unordered_map<std::string, size_t>& GetInputs() const { return model_input_index_map_; }
 

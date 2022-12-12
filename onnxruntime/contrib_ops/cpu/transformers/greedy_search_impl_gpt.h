@@ -4,6 +4,8 @@
 #pragma once
 #include <algorithm>
 #include <vector>
+
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_base.h"
 
 namespace onnxruntime {
@@ -81,12 +83,14 @@ Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengt
                                               IAllocatorUniquePtr<char>& buffer) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
+  const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(6);
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
                                           this->implicit_inputs_,
                                           this->parameters_->num_beams,
                                           this->parameters_->pad_token_id,
                                           sequence_lengths,
                                           expanded_input_ids,
+                                          attn_mask_value,
                                           feeds,
                                           this->create_inputs_func_,
                                           this->add_to_feeds_func_,
@@ -217,7 +221,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
       bool increase_position = (iteration_counter > 1);
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids, increase_position,
-                                      next_tokens.as_span<const int32_t>()));
+                                      ReinterpretAsSpan<const int32_t>(next_tokens)));
     }
     fetches.clear();
   }
@@ -225,7 +229,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   // Copy the sequences to output
   gsl::span<int32_t> output = output_sequences->MutableDataAsSpan<int32_t>();
   for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
-    auto batch_output = output.subspan(batch_id * parameters->max_length, parameters->max_length);
+    auto batch_output = output.subspan(
+      static_cast<size_t>(batch_id) * parameters->max_length,
+      parameters->max_length);
     gsl::span<const int32_t> sequence_source = greedy_state.sequences.GetSequence(batch_id);
     gsl::copy(sequence_source, batch_output);
   }

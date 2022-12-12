@@ -256,7 +256,7 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     sub_graph->nodes.push_back(node->Index());
 
     for (const auto* input : node->InputDefs()) {
-      if (!input->Type()) {
+      if (!input->Exists()) {
         // skip the placeholder inputs
         continue;
       }

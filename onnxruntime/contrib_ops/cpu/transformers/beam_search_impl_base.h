@@ -32,6 +32,12 @@ struct BeamSearchState : public IBeamSearchState<T> {
 
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
+    this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+
+    constexpr size_t max_parts_of_vocab = 128;
+    size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * num_beams * 2 * 2;
+    this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size);
+
     if (use_position) {
       this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
     }
@@ -50,9 +56,11 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
+  BufferUniquePtr next_scores_buffer_;
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
+  BufferUniquePtr topk_temp_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {
@@ -141,11 +149,13 @@ class BeamSearchBase : public GenerateBase  {
     parameters_->ParseFromInputs(&context);
   }
 
+  ~BeamSearchBase() override = default;
+
   // Initialize by validating all the inputs, and allocating the output tensors.
-  Status Initialize();
+  Status Initialize() override;
 
   // Validate inputs.
-  Status CheckInputs(const OpKernelContextInternal& context);
+  Status CheckInputs(const OpKernelContextInternal& context) override;
 
  protected:
   // Process logits and append next tokens to sequences.
@@ -181,7 +191,7 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                                             context.Input<Tensor>(0),     // input_ids
                                             context.Input<Tensor>(7),     // vocab_mask
                                             context.Input<Tensor>(8),     // prefix_vocab_mask
-                                            context.Input<Tensor>(10)));  // attention_mask
+                                            context.Input<Tensor>(9)));  // attention_mask
 
   return Status::OK();
 }

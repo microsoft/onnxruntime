@@ -70,9 +70,13 @@ def optimize_by_onnxruntime(
         optimized_model_path (str): the path of optimized model
     """
     assert opt_level in [1, 2, 99]
+    from torch import version as torch_version
+
     import onnxruntime
 
-    if use_gpu and "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+    if use_gpu and not set(onnxruntime.get_available_providers()).isdisjoint(
+        ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+    ):
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
@@ -99,13 +103,21 @@ def optimize_by_onnxruntime(
             onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs
         )
     else:
-        session = onnxruntime.InferenceSession(
-            onnx_model_path, sess_options, providers=["CUDAExecutionProvider"], **kwargs
+        gpu_ep = []
+
+        if torch_version.cuda:
+            gpu_ep.append("CUDAExecutionProvider")
+        elif torch_version.hip:
+            gpu_ep.append("MIGraphXExecutionProvider")
+            gpu_ep.append("ROCMExecutionProvider")
+
+        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
+        assert set(onnxruntime.get_available_providers()).isdisjoint(
+            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
-        assert "CUDAExecutionProvider" in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
-    logger.debug("Save optimized model by onnxruntime to {}".format(optimized_model_path))
+    logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
     return optimized_model_path
 
 
@@ -219,10 +231,14 @@ def optimize_model(
     if opt_level is None:
         opt_level = default_opt_level
 
+    # Disable constant sharing to avoid model proto str mismatch in test. Ideally the optimizer should not
+    # affect other fusions. We can update the expected model proto once the ConstantSharing optimizer logic becomes
+    # stable.
+    disabled_optimizers = ["ConstantSharing"]
     temp_model_path = None
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
-        disabled_optimizers = (
+        disabled_optimizers += (
             []
             if only_onnxruntime
             else [
@@ -242,7 +258,12 @@ def optimize_model(
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
         # CPU provider is used here so that there is no extra node for GPU memory copy.
-        temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
+        temp_model_path = optimize_by_onnxruntime(
+            input,
+            use_gpu=False,
+            opt_level=1,
+            disabled_optimizers=disabled_optimizers,
+        )
 
     if only_onnxruntime and not temp_model_path:
         logger.warning("Please specify a positive value for opt_level when only_onnxruntime is True")

@@ -179,7 +179,8 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-QNNExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const std::vector<const KernelRegistry*>&) const {
+QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                                    const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (graph_viewer.IsSubgraph()) {
@@ -275,10 +276,10 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      Ort::CustomOpApi ort{*api};
+    compute_info.compute_func = [](FunctionState state, const OrtApi*, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
       qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-      Status result = model->ExecuteGraph(ort, context);
+      Status result = model->ExecuteGraph(ctx);
       return result;
     };
 

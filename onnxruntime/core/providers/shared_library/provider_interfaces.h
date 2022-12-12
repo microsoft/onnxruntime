@@ -30,6 +30,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class PhiloxGenerator;
+class RandomGenerator;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
@@ -182,8 +183,7 @@ struct ProviderHost {
 #endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                             const std::string& provider_type,
-                                                             gsl::span<const KernelRegistry* const> kernel_registries,
+                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                              gsl::span<const NodeIndex> tentative_nodes) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
@@ -224,7 +224,7 @@ struct ProviderHost {
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const std::vector<const KernelRegistry*>& kernel_registries) = 0;
+                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
@@ -248,6 +248,9 @@ struct ProviderHost {
   virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
   virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
   virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512_BF16(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAMX_BF16(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512Skylake(const CPUIDInfo* p) = 0;
 
   // logging::Logger
   virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
@@ -495,7 +498,7 @@ struct ProviderHost {
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
   virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
   virtual void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) = 0;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   virtual void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) = 0;
   virtual void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) = 0;
 #endif
@@ -506,7 +509,6 @@ struct ProviderHost {
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
   virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
-  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) = 0;
 
   // PrimitiveDataTypeBase
   virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
@@ -665,6 +667,10 @@ struct ProviderHost {
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
 
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
+  virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
+  virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
+  virtual bool Graph__IsSubgraph(const Graph* p) = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
@@ -818,7 +824,7 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   virtual gsl::span<const int64_t> Tensor__Strides(const Tensor* p) = 0;
   virtual bool Tensor__IsContiguous(const Tensor* p) = 0;
   virtual void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
@@ -865,6 +871,10 @@ struct ProviderHost {
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 #endif
+#endif
+
+#if defined(USE_CANN)
+  virtual RandomGenerator& RandomGenerator__Default() = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;

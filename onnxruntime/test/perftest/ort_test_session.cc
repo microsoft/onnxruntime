@@ -74,6 +74,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
     bool trt_context_memory_sharing_enable = false;
+    bool trt_layer_norm_fp32_fallback = false;
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -213,8 +214,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_context_memory_sharing_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_layer_norm_fp32_fallback") {
+        if (value == "true" || value == "True") {
+          trt_layer_norm_fp32_fallback = true;
+        } else if (value == "false" || value == "False") {
+          trt_layer_norm_fp32_fallback = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback'] \n");
       }
     }
     OrtTensorRTProviderOptionsV2 tensorrt_options;
@@ -237,6 +246,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     tensorrt_options.trt_context_memory_sharing_enable = trt_context_memory_sharing_enable;
+    tensorrt_options.trt_layer_norm_fp32_fallback = trt_layer_norm_fp32_fallback;
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
@@ -285,7 +295,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
+        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
+                                                           "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                           "GPU.0_FP16", "GPU.1_FP16", "VAD-M_FP16",
+                                                           "MYRIAD_FP16", "VAD-F_FP32"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
         } else if (value.find("HETERO:") == 0) {
@@ -295,7 +308,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else if (value.find("AUTO:") == 0) {
           device_type = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from HETERO/MULTI/AUTO options available. \n");
+          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+                    "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
+                    "'GPU.0_FP16', 'GPU.1_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from"
+                    " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;
@@ -532,7 +548,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
-    session_options.AppendExecutionProvider("XNNPACK", {});
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+    session_options.AppendExecutionProvider(
+        "XNNPACK", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
@@ -699,8 +717,8 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
           dim = 1;
         }
       }
-      // default allocator doesn't have to be freed by user
-      auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
+
+      auto allocator = Ort::AllocatorWithDefaultOptions();
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
       InitializeTensorWithSeed(seed, input_tensor);

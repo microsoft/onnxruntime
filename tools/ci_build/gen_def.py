@@ -67,7 +67,7 @@ with open(args.output_source, "w") as file:
 
         # external symbols are removed, xnnpack ep will be created via the standard ORT API.
         # https://github.com/microsoft/onnxruntime/pull/11798
-        if c not in ("winml", "cuda", "migraphx", "qnn", "snpe", "xnnpack"):
+        if c not in ("winml", "cuda", "migraphx", "qnn", "snpe", "xnnpack", "cann"):
             file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c, c))
     file.write("void* GetFunctionEntryByName(const char* name){\n")
     for symbol in symbols:

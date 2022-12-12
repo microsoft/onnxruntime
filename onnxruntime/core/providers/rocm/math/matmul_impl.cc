@@ -1,14 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Remove cudaDeviceProp in LaunchFastGeluKernel.
-// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
-// Licensed under the MIT License.
-
 #include "core/providers/rocm/math/matmul_impl.h"
 
 #include "core/providers/rocm/rocm_allocator.h"
 #include "core/providers/rocm/rocm_kernel.h"
+#include "core/providers/rocm/tunable/gemm.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -83,13 +80,16 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
   int64_t stride_A, stride_B, stride_C, batch_count;
 
   if (helper.OutputOffsets().size() == 1) {
-    ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
-        op->RocblasHandle(), transB, transA, static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()), static_cast<int>(helper.K()), &alpha,
+    using tunable::blas::BlasOp;
+    BlasOp transA = transa ? BlasOp::Trans : BlasOp::NonTrans;
+    BlasOp transB = transb ? BlasOp::Trans : BlasOp::NonTrans;
+    return tunable::blas::column_major::Gemm(
+        op->IsTunableOpEnabled(), op->Stream(),
+        op->RocblasHandle(), transB, transA, static_cast<int64_t>(helper.N()),
+        static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.K()), t_alpha,
         reinterpret_cast<const HipT*>(right_x_data), ldb,
-        reinterpret_cast<const HipT*>(left_x_data), lda, &zero,
-        reinterpret_cast<HipT*>(output_y_data), ldc));
-    return Status::OK();
+        reinterpret_cast<const HipT*>(left_x_data), lda, t_zero,
+        reinterpret_cast<HipT*>(output_y_data), ldc);
   } else if (CanUseStridedBatchedGemm(left_shape, right_shape,
                                       transa, transb, trans_batch_a, trans_batch_b,
                                       stride_A, stride_B, stride_C, batch_count)) {
@@ -133,58 +133,18 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
   return Status::OK();
 }
 
-template Status MatMulImpl<float>(const RocmKernel* op,
-                                  MatMulComputeHelper& helper,
-                                  const float* left_x_data,
-                                  const float* right_x_data,
-                                  float* output_y_data,
-                                  const TensorShape& left_shape,
-                                  const TensorShape& right_shape,
-                                  bool transa,
-                                  bool transb,
-                                  bool trans_batch_a,
-                                  bool trans_batch_b,
-                                  const float t_alpha,
-                                  const float t_zero);
-template Status MatMulImpl<double>(const RocmKernel* op,
-                                   MatMulComputeHelper& helper,
-                                   const double* left_x_data,
-                                   const double* right_x_data,
-                                   double* output_y_data,
-                                   const TensorShape& left_shape,
-                                   const TensorShape& right_shape,
-                                   bool transa,
-                                   bool transb,
-                                   bool trans_batch_a,
-                                   bool trans_batch_b,
-                                   const float t_alpha,
-                                   const float t_zero);
-template Status MatMulImpl<MLFloat16>(const RocmKernel* op,
-                                      MatMulComputeHelper& helper,
-                                      const MLFloat16* left_x_data,
-                                      const MLFloat16* right_x_data,
-                                      MLFloat16* output_y_data,
-                                      const TensorShape& left_shape,
-                                      const TensorShape& right_shape,
-                                      bool transa,
-                                      bool transb,
-                                      bool trans_batch_a,
-                                      bool trans_batch_b,
-                                      const float t_alpha,
-                                      const float t_zero);
-template Status MatMulImpl<BFloat16>(const RocmKernel* op,
-                                     MatMulComputeHelper& helper,
-                                     const BFloat16* left_x_data,
-                                     const BFloat16* right_x_data,
-                                     BFloat16* output_y_data,
-                                     const TensorShape& left_shape,
-                                     const TensorShape& right_shape,
-                                     bool transa,
-                                     bool transb,
-                                     bool trans_batch_a,
-                                     bool trans_batch_b,
-                                     const float t_alpha,
-                                     const float t_zero);
+#define SPECIALIZED_IMPL(T)                                                                    \
+  template Status MatMulImpl<T>(const RocmKernel* op, MatMulComputeHelper& helper,             \
+                                const T* left_x_data, const T* right_x_data, T* output_y_data, \
+                                const TensorShape& left_shape, const TensorShape& right_shape, \
+                                bool transa, bool transb,                                      \
+                                bool trans_batch_a, bool trans_batch_b,                        \
+                                const float t_alpha, const float t_zero);
+
+SPECIALIZED_IMPL(float)
+SPECIALIZED_IMPL(double)
+SPECIALIZED_IMPL(MLFloat16)
+SPECIALIZED_IMPL(BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

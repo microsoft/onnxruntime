@@ -7,7 +7,7 @@
 #include <utility>
 #include <string>
 
-#include "core/framework/op_kernel.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/providers/utils.h"
@@ -18,12 +18,12 @@ class GraphViewer;
 class NodeUnit;
 namespace xnnpack {
 
-class AveragePool : public OpKernel {
+class AveragePool : public XnnpackKernel {
  public:
   explicit AveragePool(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  static bool IsAveragePoolOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
+  static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
   const PoolAttributes pool_attrs_;

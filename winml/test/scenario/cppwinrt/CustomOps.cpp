@@ -8,7 +8,6 @@
 #include "filehelpers.h"
 #include <fstream>
 #include <MemoryBuffer.h>
-#include <gsl/gsl>
 #include "CustomOperatorProvider.h"
 #include "CustomOps.h"
 
@@ -593,7 +592,7 @@ static void CustomKernelWithCustomSchema() {
     floatTensorEdgeDesc.edgeType = MLOperatorEdgeType::Tensor;
     floatTensorEdgeDesc.tensorDataType = MLOperatorTensorDataType::Float;
 
-    MLOperatorEdgeTypeConstrant kernelConstraint = {"T", &floatTensorEdgeDesc, 1};
+    MLOperatorEdgeTypeConstrant kernelConstraint = {"T1", &floatTensorEdgeDesc, 1};
 
     MLOperatorKernelDescription kernelDesc =
         {
@@ -602,7 +601,7 @@ static void CustomKernelWithCustomSchema() {
             7,
             MLOperatorExecutionType::Cpu,
             &kernelConstraint,
-            1};
+            testCases[caseIndex].useTypeLabel ? 1u : 0u};
 
     if (!testCases[caseIndex].attributeDefaultsInSchema) {
       kernelDesc.defaultAttributes = defaultAttributes;

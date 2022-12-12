@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/xnnpack/detail/utils.h"
 
@@ -11,12 +11,12 @@ namespace onnxruntime {
 class GraphViewer;
 namespace xnnpack {
 
-class Softmax final : public OpKernel {
+class Softmax final : public XnnpackKernel {
  public:
   Softmax(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
-  static bool IsSoftmaxOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
+  static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
   int axis_;
