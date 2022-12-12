@@ -767,7 +767,7 @@ void DataOps::populate_op_mode_supported() {
 }
 
 bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_list) {
-  bool auto_support = true;
+  bool auto_support = false;
   for (size_t i = 0; i < op_list.size(); i++) {
 
     if (op_list[i].optype == name) {
@@ -817,7 +817,7 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
       }
     }
   }
-  if (auto_support==true){
+  if (device_id_.find("AUTO") == 0 && auto_support==true){
     return true;
   }
   return false;
