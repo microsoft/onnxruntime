@@ -16,11 +16,19 @@ parameters:
 - name: ScriptName
   type: string
   default: "tools/ci_build/get_docker_image.py" 
-
+- name: UpdateDepsTxt
+  type: boolean
+  default: true
+  
 steps:
+
+- ${{ if eq(parameters.UpdateDepsTxt, true)}}:
+  - template: download-deps.yml  
+
 - ${{ if contains(parameters.Dockerfile, 'manylinux') }}:
     - checkout: manylinux
     - script: |
+        set -e -x 
         mv manylinux onnxruntime
         mv onnxruntime ..
         cd ..
@@ -49,3 +57,12 @@ steps:
         --docker-build-args "${{ parameters.DockerBuildArgs }}" \
         --repository "${{ parameters.Repository }}"
     displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+
+- ${{ if and(eq(parameters.UpdateDepsTxt, true), or(eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29'),eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c'))) }}:
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
+    inputs:
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir /build/deps
+      workingDirectory: $(Build.BinariesDirectory)
+      pythonInterpreter: /usr/bin/python3

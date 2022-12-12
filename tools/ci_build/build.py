@@ -952,6 +952,10 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
+    # By default cmake does not check TLS/SSL certificates. Here we turn it on.
+    # But, in some cases you may also need to supply a CA file.
+    add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
+    add_default_definition(cmake_extra_defines, "FETCHCONTENT_QUIET", "OFF")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     if args.use_winml:
@@ -1299,7 +1303,7 @@ def generate_build_tree(
                 + os.pathsep
                 + os.environ["PATH"]
             )
-
+        preinstalled_dir = Path(build_dir) / config
         run_subprocess(
             cmake_args
             + [
@@ -1315,6 +1319,9 @@ def generate_build_tree(
                     else "OFF"
                 ),
                 "-DCMAKE_BUILD_TYPE={}".format(config),
+                "-DCMAKE_PREFIX_PATH={}/{}/installed".format(build_dir, config)
+                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                else "",
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,
@@ -2124,7 +2131,17 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml, use_snpe
+    source_dir,
+    build_dir,
+    configs,
+    use_cuda,
+    use_openvino,
+    use_tensorrt,
+    use_dnnl,
+    use_tvm,
+    use_winml,
+    use_snpe,
+    enable_training_on_device,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2143,7 +2160,12 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = '/p:ExecutionProvider="None"'
     package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
-    if use_winml:
+    if enable_training_on_device:
+        if use_cuda:
+            package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
+        else:
+            package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training"'
+    elif use_winml:
         package_name = '/p:OrtPackageId="Microsoft.AI.MachineLearning"'
         target_name = "/t:CreateWindowsAIPackage"
     elif use_openvino:
@@ -2203,7 +2225,7 @@ def build_nuget_package(
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            if use_openvino or use_tvm:
+            if not use_winml:
                 # user needs to make sure nuget is installed and added to the path variable
                 nuget_exe = "nuget.exe"
             else:
@@ -2230,12 +2252,11 @@ def build_nuget_package(
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
-def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl):
+def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_on_device):
     # Currently only running tests on windows.
     if not is_windows():
         return
     csharp_source_dir = os.path.join(source_dir, "csharp")
-    is_linux_build = derive_linux_build_property()
 
     # define macros based on build args
     macros = ""
@@ -2247,6 +2268,8 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
         macros += "USE_DNNL;"
     if use_cuda:
         macros += "USE_CUDA;"
+    if enable_training_on_device:
+        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;"
 
     define_constants = ""
     if macros != "":
@@ -2261,10 +2284,9 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     cmd_args = [
         "dotnet",
         "test",
-        "test\\Microsoft.ML.OnnxRuntime.Tests\\Microsoft.ML.OnnxRuntime.Tests.csproj",
+        "test\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj",
         "--filter",
         "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
-        is_linux_build,
         define_constants,
         ort_build_dir,
     ]
@@ -2804,10 +2826,19 @@ def main():
                 args.use_tvm,
                 args.use_winml,
                 args.use_snpe,
+                args.enable_training_on_device,
             )
 
     if args.test and args.build_nuget:
-        run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
+        run_csharp_tests(
+            source_dir,
+            build_dir,
+            args.use_cuda,
+            args.use_openvino,
+            args.use_tensorrt,
+            args.use_dnnl,
+            args.enable_training_on_device,
+        )
 
     if args.gen_doc:
         # special case CI where we create the build config separately to building

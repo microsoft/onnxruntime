@@ -285,9 +285,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.set_denormal_as_zero = set_denormal_as_zero;
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
-        to.auto_set_affinity = to.thread_pool_size == 0 &&
-                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                               to.affinity_vec_len == 0;
         to.allow_spinning = allow_intra_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
@@ -296,10 +293,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
         to.custom_thread_creation_options = session_options.custom_thread_creation_options;
         to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+        if (session_options_.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, to.affinity_str)) {
+          ORT_ENFORCE(!to.affinity_str.empty(), "Affinity string must not be empty");
+        }
+        to.auto_set_affinity = to.thread_pool_size == 0 &&
+                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                               to.affinity_str.empty();
 
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
+
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
@@ -309,10 +313,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         bool allow_inter_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.inter_op_param;
-        // If the thread pool can use all the processors, then
-        // we set thread affinity.
-        to.auto_set_affinity =
-            to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
+        to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
         std::basic_stringstream<ORTCHAR_T> ss;
         if (to.name) {
           ss << to.name << ORT_TSTR("-");
@@ -1403,19 +1404,26 @@ common::Status InferenceSession::Initialize() {
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
-        std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                    execution_providers_.Get(kDmlExecutionProvider));
-        if (dmlGraphFusionTransformer == nullptr) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+        bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
+                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+        if (dml_graph_fusion_enabled) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
+                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+          if (dmlGraphFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
         }
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
-        std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
-        if (dmlOperatorFusionTransformer == nullptr) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+        bool dml_operator_fusion_enabled = session_options_.graph_optimization_level >= TransformerLevel::Level2;
+        if (dml_operator_fusion_enabled) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
+          if (dmlOperatorFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
         }
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
       }
 #endif
 

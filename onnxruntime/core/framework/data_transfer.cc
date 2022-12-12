@@ -7,7 +7,7 @@
 #include "core/framework/sparse_tensor.h"
 #endif
 #include "core/framework/ortdevice.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #include "core/framework/copy.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
@@ -50,14 +50,16 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     return Status::OK();
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   if (!src.IsContiguous() || !dst.IsContiguous()) {
     auto dst_stride_vec = dst.Strides();
     auto src_stride_vec = src.Strides();
     onnxruntime::TensorShapeVector dst_stride{dst_stride_vec.begin(), dst_stride_vec.end()};
     onnxruntime::TensorShapeVector src_stride{src_stride_vec.begin(), src_stride_vec.end()};
-    return DispatchStridedCopy<element_type_lists::All>(nullptr, dst, dst.ByteOffset(), dst_stride, src.Shape(), src,
-                                                        src_stride);
+    return DispatchStridedCopy<element_type_lists::All>(nullptr,
+                                                        dst, 0, dst_stride,
+                                                        src.Shape(),
+                                                        src, 0, src_stride);
   } else {
 #endif
     // Copying only happens between two same size tensors.
@@ -71,7 +73,7 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     }
 
     return Status::OK();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   }
 #endif
 }

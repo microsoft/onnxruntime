@@ -163,21 +163,29 @@ namespace DmlGraphFusionHelper
             if (iter != initializerNameToInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
-                size_t tensorByteSize = 0;
+                size_t tensorByteSize = 0;                
+                std::vector<uint8_t> unpackedExternalTensor;
+
                 std::unique_ptr<std::byte[]> unpackedTensor;
 
                 //auto& initializer = iter->second;
                 auto* initializer = iter->second.first;
 
                 // The tensor may be stored as raw data or in typed fields.
-                if (initializer->has_raw_data())
+                if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
+                {
+                    THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
+                    tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
+                    tensorByteSize = unpackedExternalTensor.size();
+                }
+                else if (initializer->has_raw_data())
                 {
                     tensorPtr = (std::byte*)(initializer->raw_data().c_str());
                     tensorByteSize = initializer->raw_data().size();
                 }
                 else
                 {
-                    std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer);
+                    std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer, graph.ModelPath());
                     tensorPtr = unpackedTensor.get();
 
                     // Free the initializer if this is the last usage of it.
