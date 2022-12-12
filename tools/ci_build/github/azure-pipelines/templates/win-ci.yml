@@ -52,16 +52,12 @@ parameters:
   type: string
   default: 'onnxruntime'
 
-- name: timeoutInMinutes 
-  type: number 
-  default: 300 
-
 jobs:
 - job: Windows_Packaging_${{ parameters.job_name_suffix }}
   workspace:
     clean: all
   pool: ${{ parameters.ort_build_pool_name }}
-  timeoutInMinutes:  ${{ parameters.timeoutInMinutes }}  
+  timeoutInMinutes: 300  
 
   steps:
     - checkout: self
