@@ -244,7 +244,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // NOTE: `padded_vocab_size` MAY be different from `vocab_size`.
   // But the following implementation should work correctly if they are the same
   // or different.
-  int padded_vocab_size = static_cast<int>(logits_shape[2]);
+  auto padded_vocab_size = static_cast<int>(logits_shape[2]);
 
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
 
@@ -475,11 +475,16 @@ Status GreedySearchProcessLogits(
   typedef typename ToCudaType<T>::MappedType CudaT;
   const CudaT* logits_data = reinterpret_cast<const CudaT*>(logits.Get<Tensor>().Data<T>());
 
-  // Logits has shape (batch_size, input_length, vocab_size),
+  // Logits has shape (batch_size, input_length, padded_vocab_size),
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
+
+  // NOTE: `padded_vocab_size` MAY be different from `vocab_size`.
+  // But the following implementation should work correctly if they are the same
+  // or different.
+  auto padded_vocab_size = static_cast<int>(logits_shape[2]);
 
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
 
@@ -489,13 +494,18 @@ Status GreedySearchProcessLogits(
   gsl::span<T>& next_token_scores = greedy_state->next_token_scores;
 
   // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
-  const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
+  // Move the pointer in increments of padded_vocab_size to account for any padding
+  // if any in the logits weight of the MatMul.
+  const CudaT* current_logits = logits_data + (input_length - 1) * padded_vocab_size;
   for (int i = 0; i < batch_beam_size; i++) {
+    // We only copy what is relevant (i.e.) vocab_size as padded_vocab_size will contain
+    // some logits corresponding to the "padded" vocab size which we will ignore
+    // for token generation.
     gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
     gsl::span<T> target = next_token_scores.subspan(i * vocab_size, vocab_size);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                          cudaMemcpyDeviceToDevice, cuda_stream));
-    current_logits += input_length * vocab_size;
+    current_logits += input_length * padded_vocab_size;
   }
 
 #ifdef DEBUG_GENERATION
