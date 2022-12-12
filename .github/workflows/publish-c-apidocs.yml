@@ -38,6 +38,11 @@ jobs:
         with:
           ref: gh-pages
           clean: false
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/c
