@@ -151,27 +151,35 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
   const char* provider_;
 };
 
+// Custom kernel that outputs the lengths of all input strings.
 struct MyCustomKernelWithVariadicIO {
   explicit MyCustomKernelWithVariadicIO(const OrtKernelInfo* /* info */) {}
 
   void Compute(OrtKernelContext* context);
 };
 
+// Custom op with 1 variadic input (string) and 1 variadic output (int64_t)
 struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, MyCustomKernelWithVariadicIO> {
   MyCustomOpWithVariadicIO() = default;
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelWithVariadicIO(info); };
-  const char* GetName() const { return "VariadicNode"; }
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new MyCustomKernelWithVariadicIO(info);
+  }
+  constexpr const char* GetName() const noexcept { return "VariadicNode"; }
 
-  size_t GetInputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; };
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const {
+  constexpr size_t GetInputTypeCount() const noexcept { return 1; }
+  constexpr ONNXTensorElementDataType GetInputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+  }
+  constexpr OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const noexcept {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
 
-  size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+  constexpr size_t GetOutputTypeCount() const noexcept { return 1; }
+  constexpr ONNXTensorElementDataType GetOutputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  };
+  constexpr OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const noexcept {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
 };
@@ -186,21 +194,25 @@ struct MyStubKernel {
 struct MyInvalidVariadicInputCustomOp : Ort::CustomOpBase<MyInvalidVariadicInputCustomOp, MyStubKernel> {
   MyInvalidVariadicInputCustomOp() = default;
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyStubKernel(info); };
-  const char* GetName() const { return "VariadicNode"; }
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyStubKernel(info); }
+  constexpr const char* GetName() const noexcept { return "VariadicNode"; }
 
-  size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; };
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const {
+  constexpr size_t GetInputTypeCount() const noexcept { return 2; }
+  constexpr ONNXTensorElementDataType GetInputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+  }
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const noexcept {
     // Incorrectly specify that the first input is variadic. This will generate an error because only the last
     // input can be marked variadic.
     return index == 0 ? OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC :
                         OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
   }
 
-  size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+  constexpr size_t GetOutputTypeCount() const noexcept { return 1; };
+  constexpr ONNXTensorElementDataType GetOutputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  };
+  constexpr OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const noexcept {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
 };
@@ -209,18 +221,22 @@ struct MyInvalidVariadicInputCustomOp : Ort::CustomOpBase<MyInvalidVariadicInput
 struct MyInvalidVariadicOutputCustomOp : Ort::CustomOpBase<MyInvalidVariadicOutputCustomOp, MyStubKernel> {
   MyInvalidVariadicOutputCustomOp() = default;
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyStubKernel(info); };
-  const char* GetName() const { return "VariadicNode"; }
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyStubKernel(info); }
+  constexpr const char* GetName() const noexcept { return "VariadicNode"; }
 
-  size_t GetInputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; };
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const {
+  constexpr size_t GetInputTypeCount() const noexcept { return 1; }
+  constexpr ONNXTensorElementDataType GetInputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+  }
+  constexpr OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const noexcept {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
 
-  size_t GetOutputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const {
+  constexpr size_t GetOutputTypeCount() const noexcept { return 2; }
+  constexpr ONNXTensorElementDataType GetOutputType(size_t /*index*/) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  }
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const noexcept {
     // Incorrectly specify that the first output is variadic. This will generate an error because only the last
     // output can be marked variadic.
     return index == 0 ? OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC :

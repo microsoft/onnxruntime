@@ -166,7 +166,7 @@ void MyCustomKernelWithVariadicIO::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
   std::array<const int64_t, 1> output_shape = {1};
 
-  size_t num_inputs = kcontext.GetInputCount();
+  const size_t num_inputs = kcontext.GetInputCount();
 
   // Each output is set to the length of the corresponding input string.
   for (size_t i = 0; i < num_inputs; ++i) {
