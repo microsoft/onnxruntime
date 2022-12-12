@@ -30,13 +30,15 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
-      - uses: actions/upload-artifact@v1
+      - name: Upload C API docs
+        uses: actions/upload-artifact@v1
         with:
           path: build/doxygen/html
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
-      - uses: actions/download-artifact@v1
+      - name: Download C API docs
+        uses: actions/download-artifact@v1
         with:
           path: docs/api/c
       - name: Build with Jekyll
