@@ -40,17 +40,14 @@ jobs:
         with:
           source: ./
           destination: ./_site
-      - name: Debug
-        run: |
-          ls -al _site
       - name: Move API docs into target area
         run: |
           sudo rm -rf _site/docs/api/c
           sudo mv build/doxygen/html _site/docs/api/c
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: "./"
+          path: "./_site"
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
