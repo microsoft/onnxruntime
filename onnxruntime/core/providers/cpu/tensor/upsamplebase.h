@@ -404,7 +404,7 @@ class UpsampleBase {
 
     InlinedHashSet<int64_t> axes_set(axes_.begin(), axes_.end());
     if (keep_aspect_ratio_policy_ != STRETCH) {
-      float scale_in_policy;
+      float scale_in_policy = 0.0f;
       if (keep_aspect_ratio_policy_ == NOT_LARGER) {
         scale_in_policy = std::numeric_limits<float>::max();
         for (size_t i = 0; i < scales.size(); i++) {
