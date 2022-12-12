@@ -175,16 +175,18 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       for (size_t i = 0; i < input_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
 
-        // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
-        // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
+        // The OrtCustomOp interface did not support the methods to query input/output characteristics before
+        // ORT API version 8.
         if (op->version >= min_ort_ver_io_opt) {
           auto characteristic = op->GetInputCharacteristic(op, i);
 
+          // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
           } else if ((op->version >= min_ort_ver_io_var) &&
                      (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-            // Variadic I/O is only supported after API version 14.
+            // Only the last input can be variadic.
+            ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
           }
         }
@@ -204,16 +206,18 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       for (size_t i = 0; i < output_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
 
-        // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
-        // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
+        // The OrtCustomOp interface did not support the methods to query input/output characteristics before
+        // ORT API version 8.
         if (op->version >= min_ort_ver_io_opt) {
           auto characteristic = op->GetOutputCharacteristic(op, i);
 
+          // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
           } else if ((op->version >= min_ort_ver_io_var) &&
                      (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-            // Variadic I/O is only supported after API version 14.
+            // Only the last output can be variadic.
+            ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
           }
         }

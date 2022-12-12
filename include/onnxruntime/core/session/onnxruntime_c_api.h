@@ -3629,7 +3629,9 @@ struct OrtApi {
 // Specify if the inputs/outputs are one of:
 // 1) Non-optional (input/output must be present in the node)
 // 2) Optional (input/output may be absent in the node)
-// 3) Variadic: The input/output may accept zero or more inputs/outputs.
+// 3) Variadic: Only the last input or output of a custom op may be marked as variadic. A variadic input or output
+//              specifies 1 or more operands. The operands must be of the same type, unless the
+//              type is ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED.
 typedef enum OrtCustomOpInputOutputCharacteristic {
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
