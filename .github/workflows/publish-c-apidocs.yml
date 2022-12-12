@@ -30,18 +30,15 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
-          rm -rf ../../doxygen-1.9.5
-      - name: Debug
-        run: |
-          ls
-          find .
-      - name: Move API docs into target area
-        run: |
-          mkdir -p docs/api
-          sudo mv build/doxygen/html docs/api/c
+      - uses: actions/upload-artifact@v1
+        with:
+          path: build/doxygen/html
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
+      - uses: actions/download-artifact@v1
+        with:
+          path: docs/api/c
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
