@@ -47,10 +47,18 @@ jobs:
         with:
           source: ./
           destination: ./_site
+      - name: Debug 3
+        run: |
+          pwd
+          find .
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/c
           mv build/doxygen/html docs/api/c
+      - name: Debug 4
+        run: |
+          pwd
+          find .
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
