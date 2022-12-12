@@ -56,8 +56,20 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(string modelPath)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(modelPath, _builtInSessionOptions);
+            Init(null, modelPath, _builtInSessionOptions);
         }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model file
+        /// </summary>
+        /// <param name="env"></param>
+        /// <param name="modelPath"></param>
+        public InferenceSession(OrtEnv env, string modelPath)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(env, modelPath, _builtInSessionOptions);
+        }
+
 
         /// <summary>
         /// Constructs an InferenceSession from a model file and it will use 
@@ -71,7 +83,23 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(string modelPath, PrePackedWeightsContainer prepackedWeightsContainer)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(modelPath, _builtInSessionOptions, prepackedWeightsContainer);
+            Init(null, modelPath, _builtInSessionOptions, prepackedWeightsContainer);
+        }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model file and it will use 
+        /// the provided pre-packed weights container to store and share pre-packed buffers 
+        /// of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="env">Environment</param>
+        /// <param name="modelPath">Model path</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(OrtEnv env, string modelPath, PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(env, modelPath, _builtInSessionOptions, prepackedWeightsContainer);
         }
 
 
@@ -81,8 +109,19 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="modelPath"></param>
         /// <param name="options"></param>
         public InferenceSession(string modelPath, SessionOptions options)
+            : this(null, modelPath, options)
         {
-            Init(modelPath, options);
+        }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model file, with some additional session options
+        /// </summary>
+        /// <param name="env"></param>
+        /// <param name="modelPath"></param>
+        /// <param name="options"></param>
+        public InferenceSession(OrtEnv env, string modelPath, SessionOptions options)
+        {
+            Init(env, modelPath, options);
         }
 
 
@@ -98,8 +137,25 @@ namespace Microsoft.ML.OnnxRuntime
         /// managed by the user and it must outlive any sessions reliant on it</param>
         public InferenceSession(string modelPath, SessionOptions options,
             PrePackedWeightsContainer prepackedWeightsContainer)
+            : this(null, modelPath, options, prepackedWeightsContainer)
         {
-            Init(modelPath, options, prepackedWeightsContainer);
+        }
+        
+        /// <summary>
+        /// Constructs an InferenceSession from a model file, with some additional session options
+        /// and it will use the provided pre-packed weights container to store and share pre-packed buffers 
+        /// of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="env">Environment</param>
+        /// <param name="modelPath">Model path</param>
+        /// <param name="options">Session options</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(OrtEnv env, string modelPath, SessionOptions options,
+            PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            Init(env, modelPath, options, prepackedWeightsContainer);
         }
 
         /// <summary>
@@ -109,7 +165,18 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(byte[] model)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(model, _builtInSessionOptions);
+            Init(null, model, _builtInSessionOptions);
+        }
+        
+        /// <summary>
+        /// Constructs an InferenceSession from a model data in byte array
+        /// </summary>
+        /// <param name="env"></param>
+        /// <param name="model"></param>
+        public InferenceSession(OrtEnv env, byte[] model)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(env, model, _builtInSessionOptions);
         }
 
         /// <summary>
@@ -124,7 +191,23 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(byte[] model, PrePackedWeightsContainer prepackedWeightsContainer)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(model, _builtInSessionOptions, prepackedWeightsContainer);
+            Init(null, model, _builtInSessionOptions, prepackedWeightsContainer);
+        }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model data (in byte array) and it will use 
+        /// the provided pre-packed weights container to store and share pre-packed buffers 
+        /// of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="env">Environment</param>
+        /// <param name="model">Model as byte array</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(OrtEnv env, byte[] model, PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(env, model, _builtInSessionOptions, prepackedWeightsContainer);
         }
 
         /// <summary>
@@ -134,7 +217,18 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public InferenceSession(byte[] model, SessionOptions options)
         {
-            Init(model, options);
+            Init(null, model, options);
+        }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model data in byte array, with some additional session options
+        /// </summary>
+        /// <param name="env"></param>
+        /// <param name="model"></param>
+        /// <param name="options"></param>
+        public InferenceSession(OrtEnv env, byte[] model, SessionOptions options)
+        {
+            Init(env, model, options);
         }
 
         /// <summary>
@@ -150,8 +244,26 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(byte[] model, SessionOptions options,
                                 PrePackedWeightsContainer prepackedWeightsContainer)
         {
-            Init(model, options, prepackedWeightsContainer);
+            Init(null, model, options, prepackedWeightsContainer);
         }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model data (in byte array) with some additional
+        /// session options and it will use the provided pre-packed weights container to store
+        /// and share pre-packed buffers of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="env">Environment</param>
+        /// <param name="model">Model as byte array</param>
+        /// <param name="options">Session Options</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(OrtEnv env, byte[] model, SessionOptions options,
+                                PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            Init(env, model, options, prepackedWeightsContainer);
+        }
+
         /// <summary>
         /// Meta data regarding the input nodes, keyed by input names
         /// </summary>
@@ -765,18 +877,17 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region private methods
 
-        private void Init(string modelPath, SessionOptions options,
+        private void Init(OrtEnv env, string modelPath, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
-            var envHandle = OrtEnv.Handle;
+            var envHandle = env?.Handle ?? OrtEnv.Instance().Handle;
             var session = IntPtr.Zero;
 
             if (prepackedWeightsContainer == null)
             {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
             }
-
             else
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
@@ -787,24 +898,21 @@ namespace Microsoft.ML.OnnxRuntime
             InitWithSessionHandle(session, options);
         }
 
-        private void Init(byte[] modelData, SessionOptions options,
+        private void Init(OrtEnv env, byte[] modelData, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
-            var envHandle = OrtEnv.Handle;
+            var envHandle = env?.Handle ?? OrtEnv.Instance().Handle;
             var session = IntPtr.Zero;
 
             if (prepackedWeightsContainer == null)
             {
-
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
             }
-
             else
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArrayWithPrepackedWeightsContainer(
                     envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, prepackedWeightsContainer.Pointer,
                     out session));
-
             }
 
             InitWithSessionHandle(session, options);

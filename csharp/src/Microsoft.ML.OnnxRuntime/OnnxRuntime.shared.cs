@@ -43,44 +43,47 @@ namespace Microsoft.ML.OnnxRuntime
         ORT_PROJECTION_WINML = 5,
     }
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    public delegate void OrtLoggingFunction(IntPtr param, OrtLoggingLevel severity, string category, string logid, string code_location, string message);
+
     /// <summary>
     /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv)
     /// </summary>
     public sealed class OrtEnv : SafeHandle
     {
-        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
+        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(CreateDefaultOrtEnv);
         private static LogLevel envLogLevel = LogLevel.Warning;
+        private readonly bool _owned;
+        private OrtLoggingFunction _loggingFunction;
 
         #region private methods
-        private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
-    : base(IntPtr.Zero, true)
+        private static OrtEnv CreateDefaultOrtEnv()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out handle));
+            IntPtr envHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out envHandle));
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(envHandle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+                return new OrtEnv(envHandle, true);
             }
             catch (OnnxRuntimeException)
             {
-                ReleaseHandle();
+                NativeMethods.OrtReleaseEnv(envHandle);
                 throw;
             }
         }
         #endregion
 
         #region internal methods
-        /// <summary>
-        /// Returns a handle to the native `OrtEnv` instance held by the singleton C# `OrtEnv` instance
-        /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
-        /// during lazy initialization
-        /// </summary>
-        internal static IntPtr Handle
+
+        internal IntPtr Handle => handle;
+
+        internal OrtEnv(IntPtr allocInfo, bool owned)
+            : base(allocInfo, true)
         {
-            get
-            {
-                return _instance.Value.handle;
-            }
+            _owned = owned;
         }
+
         #endregion
 
         #region public methods
@@ -88,9 +91,30 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Returns an instance of OrtEnv
         /// It returns the same instance on every call - `OrtEnv` is singleton
+        /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
         /// </summary>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
         public static OrtEnv Instance() { return _instance.Value; }
+
+        public OrtEnv(OrtLoggingFunction logging_function, LogLevel log_level, IntPtr log_param)
+            : base (IntPtr.Zero, true)
+        {
+            _loggingFunction = logging_function; // prevent GC
+            var logFunctionPtr = Marshal.GetFunctionPointerForDelegate(_loggingFunction);
+
+            IntPtr envHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnvWithCustomLogger(logFunctionPtr, log_param, log_level, @"CSharpOnnxRuntime", out handle));
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+            }
+            catch (OnnxRuntimeException)
+            {
+                NativeMethods.OrtReleaseEnv(handle);
+                throw;
+            }
+            _owned = true;
+        }
 
         /// <summary>
         /// Enable platform telemetry collection where applicable
@@ -173,13 +197,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Overrides SafeHandle.IsInvalid
         /// </summary>
         /// <value>returns true if handle is equal to Zero</value>
-        public override bool IsInvalid
-        {
-            get
-            {
-                return (handle == IntPtr.Zero);
-            }
-        }
+        public override bool IsInvalid => handle == IntPtr.Zero;
 
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
@@ -188,8 +206,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
-            NativeMethods.OrtReleaseEnv(handle);
+            if (_owned)
+            {
+                NativeMethods.OrtReleaseEnv(handle);
+            }
             handle = IntPtr.Zero;
+            _loggingFunction = null;
             return true;
         }
         #endregion
