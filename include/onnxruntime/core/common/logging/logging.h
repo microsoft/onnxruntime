@@ -137,11 +137,6 @@ class LoggingManager final {
   static const Logger& DefaultLogger();
 
   /**
-    Return a boolean indicating if the default logger has been initialized
-  */
-  static bool HasDefaultLogger() { return nullptr != s_default_logger_; }
-
-  /**
      Change the minimum severity level for log messages to be output by the default logger.
      @param severity The severity.
   */
