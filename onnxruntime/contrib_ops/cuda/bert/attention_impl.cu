@@ -187,40 +187,27 @@ Status QkvToContext(
 
   T* scratch1 = qkv + elements_q + elements_k + elements_v;
 
-  if (use_fused_kernel) {
+  if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
 
-    const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+    const int S = use_fused_causal ? sequence_length : fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+
     // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
     const int B = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
+
     fused_fp16_runner->setup(S, B);
 
-    fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
-    return Status::OK();
-  } else if (use_fused_causal) {
-    int* sequence_offset = reinterpret_cast<int*>(scratch1);
-    LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-    FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-
-    const int S = sequence_length;
-    // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
-    const int B = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
-    fused_fp16_runner->setup(S, B);
-
-    fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
+    if (use_fused_kernel) {
+      fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
+      return Status::OK();
+    } else {
+      fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
+    }
   }
-
-  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                               sequence_length, total_sequence_length);
-  T* scratch2 = scratch1 + (bytes / element_size);
-
-  cublasSetStream(cublas, stream);
 
   // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
   // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
@@ -259,12 +246,18 @@ Status QkvToContext(
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(qk_head_size));
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
+  cublasSetStream(cublas, stream);
+
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N,
       total_sequence_length, sequence_length, qk_head_size,
       &alpha, k, qk_head_size, present_size_per_batch_k,
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, temp_matrix_size, batches, prop));
+
+  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
+                                               sequence_length, total_sequence_length);
+  T* scratch2 = scratch1 + (bytes / element_size);
 
   // Apply softmax and store result R to scratch2: BxNxSxT
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
