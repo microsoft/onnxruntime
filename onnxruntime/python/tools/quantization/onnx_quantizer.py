@@ -694,7 +694,9 @@ class ONNXQuantizer:
         if self.is_per_channel():
             packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         else:
-            packed_bias_scale_initializer = onnx.helper.make_tensor(quantized_bias_scale_name, onnx_proto.TensorProto.FLOAT, [], bias_scale_data)
+            packed_bias_scale_initializer = onnx.helper.make_tensor(
+                quantized_bias_scale_name, onnx_proto.TensorProto.FLOAT, [], bias_scale_data
+            )
         self.model.initializer().extend([packed_bias_scale_initializer])
 
         # update zero initializer
@@ -703,7 +705,9 @@ class ONNXQuantizer:
         if self.is_per_channel():
             packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
         else:
-            packed_bias_zp_initializer = onnx.helper.make_tensor(quantized_bias_zp_name, self.weight_qType, [], bias_zp_data)
+            packed_bias_zp_initializer = onnx.helper.make_tensor(
+                quantized_bias_zp_name, self.weight_qType, [], bias_zp_data
+            )
         self.model.initializer().extend([packed_bias_zp_initializer])
 
         assert bias_name not in self.quantized_value_map
