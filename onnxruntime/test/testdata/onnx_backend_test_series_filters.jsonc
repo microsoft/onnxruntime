@@ -222,6 +222,7 @@
         "^test_max_float64.*",
         "^test_min_float64.*",
         "^test_gather_negative_indices.*",
+        "^test_gridsample",
         "^test_sce.*",
         "^test_nllloss.*",
         "^test_upsample_nearest.*",
