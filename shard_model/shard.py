@@ -300,7 +300,7 @@ def shard_model(model, shard_specs, output_name, rank, num_layers):
             assert arg_type is not None, f'can not find arg {arg_name} in the graph'
             new_arg = helper.make_tensor_value_info(f'{arg_name}_all_reduce', arg_type, arg_shape)
             allreduce_node = helper.make_node(
-                            "NcclAllReduce",
+                            "NcclAllReduceV2",
                             [arg_name],
                             [new_arg.name],
                             domain = "com.microsoft",
