@@ -1,0 +1,409 @@
+{
+    // If possible, add a test to onnx_backend_test_series_overrides.jsonc instead of this file.
+    // This file results in skipping tests, that one allows looser tolerance.
+    //
+    // This file contains several lists which describe the tests to skip.
+    // Use file onnx_backend_test_series_overrides.jsonc to specify looser tolerance on test cases if necessary.
+    //
+    // each item in the list can be either of the following 2 types:
+    //
+    // 1) a regular expression string to match one or more test cases
+    //
+    //    example:  "^test_adagrad"
+    //    - matches all tests with their names start with "test_adagrad"
+    //
+    // 2) an array of 2 items, in which the 2 items are:
+    //    - a regular expression string to match one or more opset
+    //    - a regular expression string to match one or more test cases
+    //
+    //    example:  ["opset10", "^test_mod_float_mixed_sign_example"]
+    //    - matches all tests with their names start with "test_mod_float_mixed_sign_example" in opset10
+    //
+    //
+    // There are 2 scripts using this file currently:
+    // - /js/node/test/test-utils.ts
+    // - /onnxruntime/test/python/onnx_backend_test_series.py
+    //
+    // See also: https://github.com/microsoft/onnxruntime/blob/main/docs/How_To_Update_ONNX_Dev_Notes.md
+    //
+
+    // Tests that are failing temporarily and should be fixed
+    "current_failing_tests": [
+        "^test_adagrad",
+        "^test_adagrad_multiple",
+        "^test_batchnorm_epsilon_old",
+        "^test_batchnorm_epsilon_training_mode",
+        "^test_batchnorm_example_old",
+        "^test_batchnorm_example_training_mode",
+        "^test_gathernd_example_int32_batch_dim1",
+        "^test_max_int16",
+        "^test_max_int8",
+        "^test_max_uint16",
+        "^test_max_uint8",
+        "^test_min_int16",
+        "^test_min_int8",
+        "^test_min_uint16",
+        "^test_min_uint8",
+        "^test_momentum",
+        "^test_momentum_multiple",
+        "^test_nesterov_momentum",
+        "^test_pow_types_float32_uint32",
+        "^test_pow_types_float32_uint64",
+        "^test_gradient_of_add_and_mul",
+        "^test_gradient_of_add",
+        "^test_batchnorm_example_training_mode",
+        "^test_batchnorm_epsilon_training_mode",
+        "^test_MaxPool2d_stride_padding_dilation_cpu", // result approximation error; need to be updated in ONNX
+        "^test_maxunpool_export_with_output_shape", // result mismatch
+        "^test_resize_downsample_scales_cubic_align_corners", // results mismatch with onnx tests
+        "^test_resize_downsample_scales_linear_align_corners", // results mismatch with onnx tests
+        "^test_adam", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
+        "^test_adam_multiple", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
+        "^test_training_dropout.*", // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
+        "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Resize(13)
+        "^test_resize_downsample_scales_cubic_cpu",
+        "^test_resize_downsample_scales_linear_cpu",
+        "^test_resize_downsample_scales_nearest_cpu",
+        "^test_resize_downsample_sizes_cubic_cpu",
+        "^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu",
+        "^test_resize_downsample_sizes_nearest_cpu",
+        "^test_resize_tf_crop_and_resize_cpu",
+        "^test_resize_upsample_scales_cubic_A_n0p5_exclude_outside_cpu",
+        "^test_resize_upsample_scales_cubic_align_corners_cpu",
+        "^test_resize_upsample_scales_cubic_asymmetric_cpu",
+        "^test_resize_upsample_scales_cubic_cpu",
+        "^test_resize_upsample_scales_linear_align_corners_cpu",
+        "^test_resize_upsample_scales_linear_cpu",
+        "^test_resize_upsample_scales_nearest_cpu",
+        "^test_resize_upsample_sizes_cubic_cpu",
+        "^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu",
+        "^test_resize_upsample_sizes_nearest_cpu",
+        "^test_resize_upsample_sizes_nearest_floor_align_corners_cpu",
+        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu",
+        // Following tests are for opset 14 ops and are not yet implemented in ORT
+        "^test_gru_batchwise_cpu",
+        "^test_identity_sequence_cpu",
+        "^test_lstm_batchwise_cpu",
+        "^test_simple_rnn_batchwise_cpu",
+        "^test_sub_uint8_cpu",
+        "^test_mul_uint8_cpu",
+        "^test_add_uint8_cpu",
+        "^test_div_uint8_cpu",
+        // Optional operators are supported in ORT but the ONNX backend test runner
+        // doesn't yet have capability to deal with optional type test data.
+        // These tests have been validated using the in-house onnx_test_runner.
+        // Uncomment here once the ONNX backend test runner is able to handle
+        // optional type test data.
+        // https://github.com/onnx/onnx/issues/3608
+        // TODO: Once ONNX #3608 is solved and these tests are removed from exclusion,
+        // we need to figure out a way to keep these tests in the exclusion list for
+        // builds that have disabled support for the optional type.
+        "^test_optional_*",
+        "^test_if_opt",
+        "^test_loop16_seq_none",
+        "^test_identity_opt",
+        // Following tests are for opset 16 ops and are not yet implemented in ORT
+        "^test_roialign_aligned_*",
+        "^test_scatternd_*",
+        "^test_scatter_elements_with_duplicate_indices",
+        //GPU failures
+        "^test_batchnorm_epsilon_training_mode_cuda",
+        "^test_batchnorm_example_training_mode_cuda",
+        "^test_convtranspose_autopad_same_cpu",
+        "^test_sub_uint8_cuda",
+        "^test_simple_rnn_batchwise_cuda",
+        "^test_mul_uint8_cuda",
+        "^test_lstm_batchwise_cuda",
+        "^test_gru_batchwise_cuda",
+        "^test_div_uint8_cuda",
+        "^test_add_uint8_cuda",
+        "^test_roialign_aligned_*"
+    ],
+    "current_failing_tests_x86": [
+        "^test_vgg19",
+        "^test_zfnet512",
+        "^test_bvlc_alexnet"
+    ],
+    "current_failing_tests_DNNL": [
+        "^test_range_float_type_positive_delta_expanded",
+        "^test_range_int32_type_negative_delta_expanded",
+        "^test_averagepool_2d_ceil",
+        "^test_maxpool_2d_ceil",
+        "^test_maxpool_2d_dilations",
+        "^test_maxpool_2d_uint8",
+        "^test_maxpool_with_argmax_2d_precomputed_pads_cpu", // maxpool test will fail if built with --traning-enabled
+        "^test_maxpool_with_argmax_2d_precomputed_strides_cpu", // maxpool test will fail if built with --traning-enabled
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+    ],
+    "current_failing_tests_NNAPI": [
+        "^test_maxpool_2d_uint8",
+        "^test_negative_log_likelihood.*",
+        "^test_softmax_cross_entropy.*"
+    ],
+    "current_failing_tests_OPENVINO_MYRIAD": [
+        "^test_range",
+        "^test_dynamicquantizelinear",
+        "^test_operator_index",
+        "^test_scatter_elements_with_negative_indices", // Does not support negative indices
+        "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
+        "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
+        "^test_neg",
+        "^test_basic_conv_with_padding",
+        "^test_basic_conv_without_padding",
+        "^test_conv_with_strides_and_asymmetric_padding",
+        "^test_conv_with_strides_no_padding",
+        "^test_conv_with_strides_padding",
+        "^test_sequence_insert_at_back",
+        "^test_sequence_insert_at_front",
+        "^test_min_one_input",
+        "^test_max_one_input",
+        "^test_sum_one_input",
+        "^test_loop13_seq",
+        "^test_if_seq",
+        "^test_gather_elements_negative_indices"
+    ],
+    "current_failing_tests_OPENVINO_GPU": [
+        "^test_div",
+        // temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
+        // single test pass for vgg19, need furture investigation
+        "^test_vgg19",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_operator_permute2",
+        "^test_operator_repeat",
+        "^test_operator_repeat_dim_overflow",
+        "^test_add_bcast.*",
+        "^test_batchnorm_epsilon.*",
+        "^test_div_bcast.*",
+        "^test_mul_bcast.*",
+        "^test_pow_bcast_array.*",
+        "^test_sub_bcast.*",
+        "^test_batchnorm_example.*",
+        "^test_clip_default_inbounds.*",
+        "^test_pow_types_int32_int32.*",
+        "^test_pow_types_int64_int64.*",
+        "^test_resize_upsample_sizes_nearest_ceil_half_pixel",
+        "^test_resize_upsample_sizes_nearest_floor_align_corners",
+        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric",
+        "^test_unique_not_sorted_without_axis",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_sce.*",
+        "^test_nllloss.*",
+        "^test_gather_negative_indices.*",
+        "^test_reduce_sum_do_not_keepdims*", // Does not support axes as input
+        "^test_reduce_sum_keepdims*",
+        "^test_reduce_sum_default_axes_keepdims*",
+        "^test_reduce_sum_negative_axes_keepdims*",
+        "^test_reduce_sum_empty_axes_input_noop*",
+        "^test_unsqueeze_*", // Does not support axes as input
+        "^test_sequence_insert_at_back",
+        "^test_sequence_insert_at_front",
+        "^test_loop13_seq",
+        "^test_if",
+        "^test_if_seq",
+        "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
+        "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
+        "^test_pow_types_int", // currently the two inputs with int32 dtype not supported on GPU,
+        "^test_neg",
+        "^test_convtranspose",
+        "^test_convtranspose_dilations",
+        "^test_upsample_nearest.*", //Disabled as not supported in opset13
+        "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
+        "^test_maxpool_with_argmax_2d_precomputed_pads" //Disabled as it throws segfault
+    ],
+    "current_failing_tests_OPENVINO_CPU_FP32": [
+        "^test_operator_permute2",
+        "^test_operator_repeat",
+        "^test_operator_repeat_dim_overflow",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_max_float64.*",
+        "^test_min_float64.*",
+        "^test_gather_negative_indices.*",
+        "^test_sce.*",
+        "^test_nllloss.*",
+        "^test_upsample_nearest.*",
+        "^test_reduce_sum_do_not_keepdims*", // Does not support axes as input
+        "^test_reduce_sum_default_axes_keepdims*",
+        "^test_reduce_sum_empty_axes_input_noop*",
+        "^test_scatter_elements_with_negative_indices_cpu",
+        "^test_squeeze_*", // Does not support axes as input
+        "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
+        "^test_loop11",
+        "^test_loop13_seq",
+        "^test_if",
+        "^test_if_seq",
+        "^test_sequence_insert_at_back",
+        "^test_sequence_insert_at_front",
+        "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
+        "^test_maxpool_with_argmax_2d_precomputed_pads", //Disabled as it throws segfault
+        "^test_resize_downsample_scales_cubic", // Runs but there's accuracy mismatch
+        "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
+        "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
+        "^test_training_dropout_mask", // Runs but there's accuracy mismatch
+        "^test_training_dropout_default" // Runs but there's accuracy mismatch
+    ],
+    "current_failing_tests_MIGRAPHX": [
+        "^test_constant_pad_cpu",
+        "^test_round_cpu",
+        "^test_lrn_default_cpu",
+        "^test_lrn_cpu",
+        "^test_dynamicquantizelinear_expanded_cpu",
+        "^test_dynamicquantizelinear_max_adjusted_cpu",
+        "^test_dynamicquantizelinear_max_adjusted_expanded_cpu",
+        "^test_dynamicquantizelinear_min_adjusted_cpu",
+        "^test_dynamicquantizelinear_min_adjusted_expanded_cpu",
+        "^test_range_float_type_positive_delta_expanded_cpu",
+        "^test_range_int32_type_negative_delta_expanded_cpu",
+        "^test_operator_symbolic_override_nested_cpu",
+        "^test_negative_log_likelihood_loss",
+        "^test_softmax_cross_entropy",
+        "^test_greater_equal",
+        "^test_if_seq_cpu",
+        "^test_loop11_cpu",
+        "^test_loop13_seq_cpu",
+        "^test_sequence_insert_at_back_cpu",
+        "^test_sequence_insert_at_front_cpu",
+        "^test_nonmaxsuppression_two_classes_cpu",
+        "^test_nonmaxsuppression_two_batches_cpu",
+        "^test_nonmaxsuppression_suppress_by_IOU_cpu",
+        "^test_nonmaxsuppression_suppress_by_IOU_and_scores_cpu",
+        "^test_nonmaxsuppression_limit_output_size_cpu",
+        "^test_nonmaxsuppression_identical_boxes_cpu",
+        "^test_nonmaxsuppression_flipped_coordinates_cpu",
+        "^test_nonmaxsuppression_center_point_box_format_cpu"
+    ],
+    "current_failing_tests_pure_DML": [
+        "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
+        "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu",
+        "^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
+        "^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu",
+        "^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_cpu",
+        "^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded_cpu",
+        "^test_asin_example_cpu",
+        "^test_dynamicquantizelinear_cpu",
+        "^test_dynamicquantizelinear_expanded_cpu",
+        "^test_resize_downsample_scales_linear_cpu",
+        "^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu",
+        "^test_resize_downsample_sizes_nearest_cpu",
+        "^test_resize_upsample_sizes_nearest_cpu",
+        "^test_roialign_cpu",
+        "^test_dft_axis_cpu",
+        "^test_dft_cpu",
+        "^test_dft_inverse_cpu"
+    ],
+    // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
+    "tests_with_pre_opset7_dependencies": [
+        "^test_AvgPool1d",
+        "^test_AvgPool1d_stride",
+        "^test_AvgPool2d",
+        "^test_AvgPool2d_stride",
+        "^test_AvgPool3d",
+        "^test_AvgPool3d_stride1_pad0_gpu_input",
+        "^test_AvgPool3d_stride",
+        "^test_BatchNorm1d_3d_input_eval",
+        "^test_BatchNorm2d_eval",
+        "^test_BatchNorm2d_momentum_eval",
+        "^test_BatchNorm3d_eval",
+        "^test_BatchNorm3d_momentum_eval",
+        "^test_GLU",
+        "^test_GLU_dim",
+        "^test_Linear",
+        "^test_PReLU_1d",
+        "^test_PReLU_1d_multiparam",
+        "^test_PReLU_2d",
+        "^test_PReLU_2d_multiparam",
+        "^test_PReLU_3d",
+        "^test_PReLU_3d_multiparam",
+        "^test_PoissonNLLLLoss_no_reduce",
+        "^test_Softsign",
+        "^test_operator_add_broadcast",
+        "^test_operator_add_size1_broadcast",
+        "^test_operator_add_size1_right_broadcast",
+        "^test_operator_add_size1_singleton_broadcast",
+        "^test_operator_addconstant",
+        "^test_operator_addmm",
+        "^test_operator_basic",
+        "^test_operator_mm",
+        "^test_operator_non_float_params",
+        "^test_operator_params",
+        "^test_operator_pow",
+        "^test_nllloss_NC",
+        "^test_nllloss_NCd1",
+        "^test_nllloss_NCd1d2",
+        "^test_nllloss_NCd1d2d3d4d5_none_no_weight",
+        "^test_nllloss_NCd1d2d3d4d5_none_no_weight_expanded",
+        "^test_nllloss_NCd1d2d3_none_no_weight_negative_ii",
+        "^test_nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded",
+        "^test_nllloss_NCd1d2d3_sum_weight_high_ii",
+        "^test_nllloss_NCd1d2d3_sum_weight_high_ii_expanded",
+        "^test_nllloss_NCd1d2_expanded",
+        "^test_nllloss_NCd1d2_reduction_mean",
+        "^test_nllloss_NCd1d2_reduction_mean_expanded",
+        "^test_nllloss_NCd1d2_reduction_sum",
+        "^test_nllloss_NCd1d2_reduction_sum_expanded",
+        "^test_nllloss_NCd1d2_with_weight_reduction_sum_ii",
+        "^test_nllloss_NCd1d2_with_weight_reduction_sum_ii_expanded",
+        "^test_nllloss_NCd1_expanded",
+        "^test_nllloss_NC_expanded",
+        "^test_sce_mean_3d",
+        "^test_sce_mean_3d_expanded",
+        "^test_sce_mean_3d_log_prob",
+        "^test_sce_mean_3d_log_prob_expanded",
+        "^test_sce_mean",
+        "^test_sce_mean_expanded",
+        "^test_sce_mean_log_prob",
+        "^test_sce_mean_log_prob_expanded",
+        "^test_sce_NCd1d2d3d4d5_mean_weight",
+        "^test_sce_NCd1d2d3d4d5_mean_weight_expanded",
+        "^test_sce_NCd1d2d3d4d5_mean_weight_log_prob",
+        "^test_sce_NCd1d2d3d4d5_mean_weight_log_prob_expanded",
+        "^test_sce_NCd1d2d3d4d5_none_no_weight",
+        "^test_sce_NCd1d2d3d4d5_none_no_weight_expanded",
+        "^test_sce_NCd1d2d3d4d5_none_no_weight_log_prob",
+        "^test_sce_NCd1d2d3d4d5_none_no_weight_log_prob_expanded",
+        "^test_sce_NCd1d2d3_none_no_weight_negative_ii",
+        "^test_sce_NCd1d2d3_none_no_weight_negative_ii_expanded",
+        "^test_sce_NCd1d2d3_none_no_weight_negative_ii_log_prob",
+        "^test_sce_NCd1d2d3_none_no_weight_negative_ii_log_prob_expanded",
+        "^test_sce_NCd1d2d3_sum_weight_high_ii",
+        "^test_sce_NCd1d2d3_sum_weight_high_ii_expanded",
+        "^test_sce_NCd1d2d3_sum_weight_high_ii_log_prob",
+        "^test_sce_NCd1d2d3_sum_weight_high_ii_log_prob_expanded",
+        "^test_sce_none",
+        "^test_sce_none_expanded",
+        "^test_sce_none_log_prob",
+        "^test_sce_none_log_prob_expanded",
+        "^test_sce_sum",
+        "^test_sce_sum_expanded",
+        "^test_sce_sum_log_prob",
+        "^test_sce_sum_log_prob_expanded"
+    ],
+    "unsupported_usages": [
+        "^test_convtranspose_1d", // ConvTransponse supports 4-D only
+        "^test_convtranspose_3d"
+    ],
+    "failing_permanently": [
+        // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
+        // e.g. 0.296140194 -> "0.2961402" not "0.29614019". ORT produces the latter with precision set to 8, which
+        // doesn"t match the expected output that was generated with numpy.
+        "^test_cast_FLOAT_to_STRING",
+        "^test_castlike_FLOAT_to_STRING",
+        "^test_castlike_FLOAT_to_STRING_expanded",
+        // The test cases for Bernoulli op are for informational purpose. The generator operator is
+        // non-deterministic and may not produce the same values in different implementations
+        // even if a seed is specified.
+        "^test_bernoulli_*"
+    ],
+    "failing_permanently_nodejs_binding": [
+        // those test cases are no longer available in later opset version
+        ["opset10", "^test_mod_float_mixed_sign_example"],
+        ["opset11", "^test_unique_not_sorted_without_axis"]
+    ],
+    "test_with_types_disabled_due_to_binary_size_concerns": [
+        "^test_bitshift_right_uint16",
+        "^test_bitshift_left_uint16"
+    ]
+}

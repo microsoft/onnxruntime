@@ -1,0 +1,6 @@
+Model was created by running 
+
+python -m onnxruntime.tools.qdq_helpers.optimize_qdq_model <ORT root>\onnxruntime\test\testdata\qdq_with_multi_consumer_dq_nodes.onnx <ORT root>\onnxruntime\test\testdata\transform
+qdq_with_multi_consumer_dq_nodes.fixed.onnx
+
+This results in a model that has duplicated DequantizeLinear (DQ) nodes so that each QDQ node group has no shared nodes. The CommonSubexpressionElimination optimizer could potentially combine these duplicated DQ nodes, which would break the QDQ handling. Due to this we ignore DQ nodes in that optimizer. 

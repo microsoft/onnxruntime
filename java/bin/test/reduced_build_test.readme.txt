@@ -1,0 +1,11 @@
+reduced_build_test.onnx_model_with_excluded_ops contains a node using the internal ORT SampleOp, 
+which no real model uses as it's an example not an actual operator. Due to this, new models being 
+added to test data should not create a scenario where SampleOp accidentally becomes required.
+
+reduced_build_test.onnx_model_with_excluded_ops is intentionally named to not have a '.onnx' extension 
+so that the reduced build configuration generation script ignores it, and doesn't add SampleOp as a required
+operator to required_ops.config or required_ops_and_types.config.
+
+If the operator reduction runs correctly, SampleOp should always be excluded, and 
+reduced_build_test.onnx_model_with_excluded_ops should never be able to be loaded. A unit test verifies
+this behavior.
