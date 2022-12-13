@@ -86,6 +86,28 @@ void CudaStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
 
+struct CpuBuffersInfo {
+  // This struct stores the information needed
+  // to release CPU buffers allocated for GPU kernels.
+  // It's used to enqueue their release after
+  // associated GPU kernels in a CUDA stream.
+
+  // This is a CPU allocator in CUDA EP.
+  // It must be the one used to allocate the
+  // following pointers.
+  AllocatorPtr allocator;
+  // buffers[i] is the i-th pointer added by
+  // AddDeferredReleaseCPUPtr for a specific
+  // CUDA stream. For example, this fields
+  // should contain all values in
+  // deferred_release_buffer_pool_[my_stream]
+  // when release my_stream's buffers.
+  void** buffers;
+  // CPU buffer buffers[i].
+  // Number of buffer points in "buffers".
+  size_t n_buffers;
+};
+
 static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
   std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>();
   info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));

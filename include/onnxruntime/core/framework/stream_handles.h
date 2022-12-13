@@ -166,25 +166,5 @@ class IStreamCommandHandleRegistry {
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
 
-struct CpuBuffersInfo {
-  // This struct stores the information needed
-  // to release CPU buffers allocated for GPU kernels.
-  // It's used to enqueue their release after
-  // associated GPU kernels in a CUDA stream.
 
-  // This is a CPU allocator in CUDA EP.
-  // It must be the one used to allocate the
-  // following pointers.
-  AllocatorPtr allocator;
-  // buffers[i] is the i-th pointer added by
-  // AddDeferredReleaseCPUPtr for a specific
-  // CUDA stream. For example, this fields
-  // should contain all values in
-  // deferred_release_buffer_pool_[my_stream]
-  // when release my_stream's buffers.
-  void** buffers;
-  // CPU buffer buffers[i].
-  // Number of buffer points in "buffers".
-  size_t n_buffers;
-};
 }  // namespace onnxruntime
