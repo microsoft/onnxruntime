@@ -87,6 +87,7 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_transformers_tool_test \
+              --use_cache \
               --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
             ccache -s"
       workingDirectory: $(Build.SourcesDirectory)
