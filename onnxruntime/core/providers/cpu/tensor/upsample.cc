@@ -1187,6 +1187,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                      height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
                                      X, Y->MutableData<T>(), alloc, get_original_coordinate_,
                                      output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+            } else {
               if (!is_2D &&
                   (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
                    Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {

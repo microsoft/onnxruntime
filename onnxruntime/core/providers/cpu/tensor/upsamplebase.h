@@ -81,10 +81,6 @@ class UpsampleBase {
     axes_ = info.GetAttrsOrDefault<int64_t>("axes");
     antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
-    // antialias_ = true;                       //===================================================
-    // keep_aspect_ratio_policy_ = NOT_LARGER;  //================================
-    // axes_ = {1, 2};
-
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
     // Coordinate transformation mode attr was introduced in version 11.
@@ -327,6 +323,11 @@ class UpsampleBase {
       for (auto& scale : scales) {
         ORT_ENFORCE(scale > 0, "Scale value should be greater than 0.");
       }
+    }
+
+    if(antialias_){
+      ORT_ENFORCE((UpsampleMode::LINEAR == mode || UpsampleMode::CUBIC == mode),
+                  "attribute antialias only support LINEAR mode and CUBIC.");
     }
 
     if (UpsampleMode::LINEAR == mode) {
