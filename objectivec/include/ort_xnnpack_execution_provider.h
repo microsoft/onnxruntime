@@ -16,7 +16,7 @@ extern "C" {
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * Options for configuring the CoreML execution provider.
+ * Options for configuring the Xnnpack execution provider.
  */
 @interface ORTXnnpackExecutionProviderOptions : NSObject
 
