@@ -41,7 +41,7 @@ git submodule update --init
   ```
 
 ## CUDA
-**Ubuntu 18.04, CUDA 10.2, CuDNN 8**
+**Ubuntu 20.04, CUDA 11.4, CuDNN 8**
 
 1. Update submodules
 ```

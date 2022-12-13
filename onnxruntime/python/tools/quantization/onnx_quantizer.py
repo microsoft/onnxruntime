@@ -1057,7 +1057,6 @@ class ONNXQuantizer:
             if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
                 continue
             self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
-
         quantization_params = {}
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
