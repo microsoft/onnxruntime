@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 
 #include "core/common/span_utils.h"

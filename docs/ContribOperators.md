@@ -400,6 +400,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
+<dt><tt>init_decoder</tt> : graph</dt>
+<dd>The subgraph for the first decoding run. It will be called once before `decoder` subgraph. This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs</dd>
 <dt><tt>model_type</tt> : int</dt>
 <dd>model type: 0 for GPT-2; 1 for encoder decoder like T5</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>
@@ -1699,9 +1701,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>decoder_start_token_id</tt> : int</dt>
 <dd>The id of the token that indicates decoding starts.</dd>
 <dt><tt>encoder</tt> : graph</dt>
-<dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dd>The subgraph for initialization of encoder and decoder. It will be called once before `decoder` subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
+<dt><tt>init_decoder</tt> : graph</dt>
+<dd>The subgraph for the first decoding run. It will be called once before `decoder` subgraph. This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs</dd>
 <dt><tt>model_type</tt> : int</dt>
 <dd>model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>

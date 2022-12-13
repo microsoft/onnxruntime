@@ -34,6 +34,7 @@
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"
+#include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -89,22 +90,28 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
   if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
-      ORT_RETURN_IF_ERROR(gpt_subgraph_->Setup(session_state, subgraph_session_state));
+      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
+                                                                   subgraph_session_state, parameters_);
+
+      auto status = res.first;
+      if (!status.IsOK()) {
+        return status;
+      }
+
+      gpt_subgraph_ = std::move(res.second);
       decoder_feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
-      parameters_.SetSubgraphParameters(gpt_subgraph_->vocab_size,
-                                        gpt_subgraph_->num_heads,
-                                        gpt_subgraph_->head_size,
-                                        gpt_subgraph_->num_layers);
     } else if (attribute_name == "init_decoder") {
       ORT_ENFORCE(init_run_gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      init_run_gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
-      ORT_RETURN_IF_ERROR(init_run_gpt_subgraph_->Setup(session_state, subgraph_session_state));
+      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
+                                                                   subgraph_session_state, parameters_);
+
+      auto status = res.first;
+      if (!status.IsOK()) {
+        return status;
+      }
+
+      init_run_gpt_subgraph_ = std::move(res.second);
       init_run_decoder_feeds_fetches_manager_ = init_run_gpt_subgraph_->GetFeedsFetchesManager();
-      parameters_.SetSubgraphParameters(init_run_gpt_subgraph_->vocab_size,
-                                        init_run_gpt_subgraph_->num_heads,
-                                        init_run_gpt_subgraph_->head_size,
-                                        init_run_gpt_subgraph_->num_layers);
     }
 
   } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {

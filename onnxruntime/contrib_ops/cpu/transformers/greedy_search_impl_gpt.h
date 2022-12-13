@@ -13,7 +13,17 @@ namespace contrib {
 
 namespace transformers {
 
-// Beam search implementation for GPT-2 model.
+namespace gpt_details {
+// Some common helpers that can be shared around
+std::pair<Status, std::unique_ptr<GptSubgraph>> CreateGptSubgraphAndUpdateParameters(
+    const Node& node,
+    const SessionState& session_state,
+    const std::string& attribute_name,
+    const SessionState& subgraph_session_state,
+    /*out*/ BeamSearchParameters& parameters);
+}  // namespace gpt_details
+
+// Greedy search implementation for GPT-2 model.
 template <typename T>
 class GreedySearchGpt : public GreedySearchBase<T> {
  public:
