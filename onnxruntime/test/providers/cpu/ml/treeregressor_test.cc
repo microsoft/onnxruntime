@@ -312,6 +312,7 @@ TEST(MLOpTest, TreeRegressorMultiTargetMin) {
   GenTreeAndRunTest<float>(3, X, base_values, results, "MIN", false);
   GenTreeAndRunTest<float>(1, X, base_values, results, "MIN", true);
   GenTreeAndRunTest<float>(3, X, base_values, results, "MIN", true);
+  GenTreeAndRunTest<float>(3, X, base_values, results, "MIN", false, 109 * 8);
 }
 
 TEST(MLOpTest, TreeRegressorMultiTargetMax) {
@@ -550,6 +551,7 @@ TEST(MLOpTest, TreeRegressorSingleTargetSum) {
   GenTreeAndRunTest1(3, "SUM", false);
   GenTreeAndRunTest1(1, "SUM", true);
   GenTreeAndRunTest1(3, "SUM", true);
+  GenTreeAndRunTest1(3, "SUM", false, 1023);
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetSum_as_tensor) {
