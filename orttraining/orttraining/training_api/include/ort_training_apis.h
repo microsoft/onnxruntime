@@ -14,10 +14,10 @@ ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTr
 
 ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
-ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputName, _In_ const OrtTrainingSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
-ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputName, _In_ const OrtTrainingSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
 ORT_API_STATUS_IMPL(ResetGrad, _Inout_ OrtTrainingSession* session);
@@ -56,7 +56,7 @@ ORT_API_STATUS_IMPL(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
 ORT_API_STATUS_IMPL(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
                     _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
-ORT_API(void, ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* session);
+ORT_API(void, ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* checkpoint_state);
 
 ORT_API(void, ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session);
 

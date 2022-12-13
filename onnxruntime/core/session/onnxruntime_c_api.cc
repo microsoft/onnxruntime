@@ -2614,6 +2614,7 @@ static constexpr OrtApi ort_api_1_to_14 = {
     // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
+    &OrtApis::SetGlobalIntraOpThreadAffinity,
 };
 
 

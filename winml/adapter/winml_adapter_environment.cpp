@@ -28,7 +28,7 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
     if (profiling_function_) {
       OrtProfilerEventRecord ort_event_record = {};
       ort_event_record.category_ = static_cast<OrtProfilerEventCategory>(event_record.cat);
-      ort_event_record.category_name_ = onnxruntime::profiling::event_categor_names_[event_record.cat];
+      ort_event_record.category_name_ = onnxruntime::profiling::event_category_names_[event_record.cat];
       ort_event_record.duration_ = event_record.dur;
       ort_event_record.event_name_ = event_record.name.c_str();
       ort_event_record.execution_provider_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) ? event_record.args["provider"].c_str() : nullptr;
