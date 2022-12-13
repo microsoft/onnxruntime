@@ -669,6 +669,8 @@ def parse_arguments():
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
 
+    parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
+
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -952,6 +954,9 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
+    if args.use_cache:
+        cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+        cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
