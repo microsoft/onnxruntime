@@ -19,7 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
                                             error:(NSError**)error {
   try {
     NSDictionary* provider_options = @{
-      @"intra_thread_num" : [NSString stringWithFormat:@"%d", options.intra_thread_num]
+      @"intra_op_num_threads" : [NSString stringWithFormat:@"%d", options.intra_op_num_threads]
     };
     return appendExecutionProvider(@"xnnpack", provider_options, error);
   }

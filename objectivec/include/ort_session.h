@@ -109,7 +109,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Appends an execution provider to the session configuration options.
  * The execution provider list is ordered by decreasing priority
  * @param providerName Provider name. For example, "xnnpack".
- * @param providerOptions Provider-specific options. For example, for provider "xnnpack", {"intra_thread_num": "2"}.
+ * @param providerOptions Provider-specific options. For example, for provider "xnnpack", {"intra_op_num_threads": "2"}.
  * @param error Optional error information set if an error occurs.
  * @return Whether the execution provider was appended successfully
  */

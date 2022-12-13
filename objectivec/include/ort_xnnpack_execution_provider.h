@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * How many threads used for the Xnnpack execution provider.
  */
-@property int intra_thread_num;
+@property int intra_op_num_threads;
 
 @end
 

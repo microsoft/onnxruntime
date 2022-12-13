@@ -220,7 +220,7 @@ NS_ASSUME_NONNULL_BEGIN
   NSError* err = nil;
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
   ORTXnnpackExecutionProviderOptions* XnnpackOptions = [[ORTXnnpackExecutionProviderOptions alloc] init];
-  XnnpackOptions.intra_thread_num = 2;
+  XnnpackOptions.intra_op_num_threads = 2;
 
   BOOL appendResult = [sessionOptions appendXnnpackExecutionProviderWithOptions:XnnpackOptions
                                                                           error:&err];
