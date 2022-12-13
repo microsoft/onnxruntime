@@ -19,7 +19,7 @@ if (WIN32)
   function(vcpkg_install PACKAGE_NAME)
     add_custom_command(
       OUTPUT ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO
-      COMMAND sudo ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
+      COMMAND ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
       WORKING_DIRECTORY ${VCPKG_SRC}
       DEPENDS vcpkg)
 
@@ -41,6 +41,15 @@ if (WIN32)
   vcpkg_install(zlib)
   vcpkg_install(pthread)
   vcpkg_install(b64)
+
+  add_dependencies(getb64 getpthread)
+  add_dependencies(getpthread getzlib)
+  add_dependencies(getzlib getboost-stacktrace)
+  add_dependencies(getboost-stacktrace getboost-interprocess)
+  add_dependencies(getboost-interprocess getre2)
+  add_dependencies(getre2 getrapidjson)
+  add_dependencies(getrapidjson getopenssl-windows)
+  add_dependencies(getopenssl-windows getopenssl)
 
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
