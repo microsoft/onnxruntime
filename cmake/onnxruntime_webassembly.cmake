@@ -211,7 +211,6 @@ else()
                         -s VERBOSE=0 \
                         -s NO_FILESYSTEM=1 \
                         ${WASM_API_EXCEPTION_CATCHING} \
-                        --closure 1 \
                         --no-entry")
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -224,7 +223,7 @@ else()
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=1 -s DEMANGLE_SUPPORT=1")
   else()
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0")
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0 --closure 1")
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.

@@ -46,10 +46,6 @@ class Split final : public OpKernel, public SplitBase {
   Split(const OpKernelInfo& info) : OpKernel(info), SplitBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
-
- private:
-  template <typename T>
-  Status ComputeImpl(OpKernelContext& context, const Tensor& input) const;
 };
 
 }  // namespace onnxruntime

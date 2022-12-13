@@ -306,6 +306,10 @@ def generate_files(line_list, args):
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
+    is_training_package = args.package_name in [
+        "Microsoft.ML.OnnxRuntime.Training",
+        "Microsoft.ML.OnnxRuntime.Training.Gpu",
+    ]
 
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and (
@@ -379,6 +383,16 @@ def generate_files(line_list, args):
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
         + '" target="build\\native\\include" />'
     )
+
+    if is_training_package:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(
+                args.sources_path, "orttraining\\orttraining\\training_api\\include\\onnxruntime_training_c_api.h"
+            )
+            + '" target="build\\native\\include" />'
+        )
 
     if args.execution_provider == "tvm":
         files_list.append(
