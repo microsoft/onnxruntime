@@ -134,7 +134,7 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                            const GetOriginalCoordinateFunc& get_original_coordinate,
                            const int32_t dtype, bool exclude_outside, const bool is_nchw);
 template <class T>
-inline constexpr bool is_8bit_v = is_same<T, int8_t>::value || is_same<T, uint8_t>::value;
+inline constexpr bool is_8bit_v = std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value;
 
 template <typename T>
 void UpsampleBaseAA(FilterParamsAA& p,
