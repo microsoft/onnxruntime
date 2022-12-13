@@ -60,13 +60,13 @@ struct FilterParamsAA {
 
 struct BilinearParamsAA : FilterParamsAA {
   float filter(float x) const override {
-    if (x < 0.0) {
+    if (x < 0.0f) {
       x = -x;
     }
-    if (x < 1.0) {
-      return 1.0 - x;
+    if (x < 1.0f) {
+      return 1.0f - x;
     }
-    return 0.0;
+    return 0.0f;
   }
 };
 
@@ -77,28 +77,28 @@ struct BiCubicParamsAA : FilterParamsAA {
   float filter(float x) const override {
     /* https://en.wikipedia.org/wiki/Bicubic_interpolation#Bicubic_convolution_algorithm
      */
-    if (x < 0.0) {
+    if (x < 0.0f) {
       x = -x;
     }
-    if (x < 1.0) {
-      return ((cubic_coeff_a + 2.0) * x - (cubic_coeff_a + 3.0)) * x * x + 1;
+    if (x < 1.0f) {
+      return ((cubic_coeff_a + 2.0f) * x - (cubic_coeff_a + 3.0f)) * x * x + 1;
     }
-    if (x < 2.0) {
-      return (((x - 5) * x + 8) * x - 4) * cubic_coeff_a;
+    if (x < 2.0f) {
+      return (((x - 5.0f) * x + 8.f) * x - 4.f) * cubic_coeff_a;
     }
-    return 0.0;
+    return 0.0f;
   }
 };
 
 struct TriLinearParamsAA : FilterParamsAA {
   float filter(float x) const override {
-    if (x < 0.0) {
+    if (x < 0.0f) {
       x = -x;
     }
-    if (x < 1.0) {
-      return 1.0 - x;
+    if (x < 1.0f) {
+      return 1.0f - x;
     }
-    return 0.0;
+    return 0.0f;
   }
 };
 
@@ -129,12 +129,12 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
 
 template <typename T>
 void UpsampleBaseAA(FilterParamsAA& p,
-                    const int32_t batch_size,
-                    const int32_t num_channels,
-                    const int32_t input_height,
-                    const int32_t input_width,
-                    const int32_t output_height,
-                    const int32_t output_width,
+                    const int64_t batch_size,
+                    const int64_t num_channels,
+                    const int64_t input_height,
+                    const int64_t input_width,
+                    const int64_t output_height,
+                    const int64_t output_width,
                     const bool use_extrapolation,
                     const float extrapolation_value,
                     const T* const XdataBase,
@@ -153,20 +153,20 @@ void UpsampleBaseAA(FilterParamsAA& p,
   int32_t mag_factor = 1 << (22 - 1);
   using ACtype = typename AccumulateType<T>::type;
 
-  for (int32_t n = 0; n < batch_size; ++n) {
+  for (int64_t n = 0; n < batch_size; ++n) {
     auto* temp_buffer = static_cast<T*>(image_temp_buffer.get());
     // horizon interpolate
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, num_channels,
         [&](std::ptrdiff_t c) {
           const T* const Xdata =
-              XdataBase + (n * num_channels + static_cast<int32_t>(c)) *
+              XdataBase + (n * num_channels + (c)) *
                               (input_height * input_width);
-          T* const Ydata = temp_buffer + (n * num_channels + static_cast<int32_t>(c)) *
+          T* const Ydata = temp_buffer + (n * num_channels + (c)) *
                                              (input_height * output_width);
-          for (int32_t y = 0; y < input_height; ++y) {
-            for (int32_t x = 0; x < output_width; ++x) {
-              const int32_t output_offset = output_width * y + x;
+          for (int64_t y = 0; y < input_height; ++y) {
+            for (int64_t x = 0; x < output_width; ++x) {
+              const int64_t output_offset = output_width * y + x;
               // when use_extrapolation is set and original index of x or y is out of the dim range
               // then use extrapolation_value as the output value.
               if (use_extrapolation &&
@@ -182,8 +182,8 @@ void UpsampleBaseAA(FilterParamsAA& p,
               const auto* weight_coeff =
                   reinterpret_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
                   p.dim_x.window_size * x;
-              int32_t xmin = p.dim_x.bound[x * 2];
-              int32_t xmax = p.dim_x.bound[x * 2 + 1];
+              int64_t xmin = p.dim_x.bound[x * 2];
+              int64_t xmax = p.dim_x.bound[x * 2 + 1];
               for (; xmin < xmax; ++xmin) {
                 output += Xdata[y * input_width + xmin] * (*weight_coeff++);
               }
@@ -203,14 +203,14 @@ void UpsampleBaseAA(FilterParamsAA& p,
         tp, num_channels,
         [&](std::ptrdiff_t c) {
           const T* const Xdata =
-              temp_buffer + (n * num_channels + static_cast<int32_t>(c)) *
+              temp_buffer + (n * num_channels + (c)) *
                                 (input_height * output_width);
           T* const Ydata =
-              YdataBase + (n * num_channels + static_cast<int32_t>(c)) *
+              YdataBase + (n * num_channels + (c)) *
                               (output_height * output_width);
-          for (int32_t y = 0; y < output_height; ++y) {
-            for (int32_t x = 0; x < output_width; ++x) {
-              const int32_t output_offset = output_width * y + x;
+          for (int64_t y = 0; y < output_height; ++y) {
+            for (int64_t x = 0; x < output_width; ++x) {
+              const int64_t output_offset = output_width * y + x;
               if (use_extrapolation &&
                   ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
                    (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
@@ -225,8 +225,8 @@ void UpsampleBaseAA(FilterParamsAA& p,
               const auto* weight_coeff =
                   reinterpret_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) +
                   p.dim_y.window_size * y;
-              int32_t ymin = p.dim_y.bound[y * 2];
-              int32_t ymax = p.dim_y.bound[y * 2 + 1];
+              int64_t ymin = p.dim_y.bound[y * 2];
+              int64_t ymax = p.dim_y.bound[y * 2 + 1];
               for (; ymin < ymax; ++ymin) {
                 output +=
                     Xdata[ymin * output_width + x] * (*weight_coeff++);
@@ -245,12 +245,12 @@ void UpsampleBaseAA(FilterParamsAA& p,
 }
 
 template <typename T>
-void UpsampleBilinearAA(const int32_t batch_size,
-                        const int32_t num_channels,
-                        const int32_t input_height,
-                        const int32_t input_width,
-                        const int32_t output_height,
-                        const int32_t output_width,
+void UpsampleBilinearAA(const int64_t batch_size,
+                        const int64_t num_channels,
+                        const int64_t input_height,
+                        const int64_t input_width,
+                        const int64_t output_height,
+                        const int64_t output_width,
                         const float height_scale,
                         const float width_scale,
                         const std::vector<float>& roi,
@@ -276,12 +276,12 @@ void UpsampleBilinearAA(const int32_t batch_size,
 }
 
 template <typename T>
-void NhwcUpsampleBilinearAA(const int32_t batch_size,
-                            const int32_t num_channels,
-                            const int32_t input_height,
-                            const int32_t input_width,
-                            const int32_t output_height,
-                            const int32_t output_width,
+void NhwcUpsampleBilinearAA(const int64_t batch_size,
+                            const int64_t num_channels,
+                            const int64_t input_height,
+                            const int64_t input_width,
+                            const int64_t output_height,
+                            const int64_t output_width,
                             const float height_scale,
                             const float width_scale,
                             const std::vector<float>& roi,
@@ -307,12 +307,12 @@ void NhwcUpsampleBilinearAA(const int32_t batch_size,
 }
 
 template <typename T>
-void NhwcResizeBiCubicAA(const int32_t batch_size,
-                         const int32_t num_channels,
-                         const int32_t input_height,
-                         const int32_t input_width,
-                         const int32_t output_height,
-                         const int32_t output_width,
+void NhwcResizeBiCubicAA(const int64_t batch_size,
+                         const int64_t num_channels,
+                         const int64_t input_height,
+                         const int64_t input_width,
+                         const int64_t output_height,
+                         const int64_t output_width,
                          const float height_scale,
                          const float width_scale,
                          float cubic_coeff_a,
@@ -341,12 +341,12 @@ void NhwcResizeBiCubicAA(const int32_t batch_size,
 
 template <typename T>
 void NhwcUpsampleBasicAA(FilterParamsAA& p,
-                         const int32_t batch_size,
-                         const int32_t num_channels,
-                         const int32_t input_height,
-                         const int32_t input_width,
-                         const int32_t output_height,
-                         const int32_t output_width,
+                         const int64_t batch_size,
+                         const int64_t num_channels,
+                         const int64_t input_height,
+                         const int64_t input_width,
+                         const int64_t output_height,
+                         const int64_t output_width,
                          const bool use_extrapolation,
                          const float extrapolation_value,
                          const T* const XdataBase,
@@ -365,7 +365,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
   using ACtype = typename AccumulateType<T>::type;
   int32_t mag_factor = 1 << (22 - 1);
 
-  for (int32_t n = 0; n < batch_size; ++n) {
+  for (int64_t n = 0; n < batch_size; ++n) {
     auto* temp_buffer = static_cast<T*>(image_temp_buffer.get());
 
     // horizon interpolate
@@ -379,12 +379,12 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
           T* const Ydata =
               temp_buffer + n * (input_height * output_width) * num_channels;
           for (std::ptrdiff_t i = first; i < last; ++i) {
-            const int32_t x = static_cast<int32_t>(i % output_width);
-            const int32_t y = static_cast<int32_t>(i / output_width);
+            const auto x = static_cast<int32_t>(i % output_width);
+            const auto y = static_cast<int32_t>(i / output_width);
             T* const Ydata_with_offset = Ydata + (output_width * y + x) * num_channels;
             if (use_extrapolation && ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
                                       (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
-              for (int32_t c = 0; c < num_channels; ++c) {
+              for (int64_t c = 0; c < num_channels; ++c) {
                 Ydata_with_offset[c] = static_cast<T>(extrapolation_value);
               }
               continue;
@@ -393,9 +393,9 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
             const auto* weight_coeff =
                 reinterpret_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
                 p.dim_x.window_size * x;
-            int32_t xmin = p.dim_x.bound[x * 2];
-            int32_t xmax = p.dim_x.bound[x * 2 + 1];
-            for (int32_t c = 0; c < num_channels; ++c) {
+            int64_t xmin = p.dim_x.bound[x * 2];
+            int64_t xmax = p.dim_x.bound[x * 2 + 1];
+            for (int64_t c = 0; c < num_channels; ++c) {
               const auto* weight_coeff_start = weight_coeff;
               ACtype output = 0;
               if constexpr (is_8bit_data) {
@@ -428,13 +428,13 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
           T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
 
           for (std::ptrdiff_t i = first; i < last; ++i) {
-            const int32_t x = static_cast<int32_t>(i % output_width);
-            const int32_t y = static_cast<int32_t>(i / output_width);
+            const auto x = static_cast<int32_t>(i % output_width);
+            const auto y = static_cast<int32_t>(i / output_width);
             T* const Ydata_with_offset = Ydata + (output_width * y + x) * num_channels;
 
             if (use_extrapolation && ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
                                       (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
-              for (int32_t c = 0; c < num_channels; ++c) {
+              for (int64_t c = 0; c < num_channels; ++c) {
                 Ydata_with_offset[c] = static_cast<T>(extrapolation_value);
               }
               continue;
@@ -442,10 +442,10 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
 
             const auto* weight_coeff =
                 reinterpret_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) + p.dim_y.window_size * y;
-            int32_t ymin = p.dim_y.bound[y * 2];
-            int32_t ymax = p.dim_y.bound[y * 2 + 1];
+            int64_t ymin = p.dim_y.bound[y * 2];
+            int64_t ymax = p.dim_y.bound[y * 2 + 1];
 
-            for (int32_t c = 0; c < num_channels; ++c) {
+            for (int64_t c = 0; c < num_channels; ++c) {
               const auto* weight_coeff_start = weight_coeff;
               ACtype output = 0;
               if constexpr (is_8bit_data) {
@@ -469,12 +469,12 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
 }
 
 template <typename T>
-inline void InterpolateCompute(const T* Xdata, const int32_t stride,
+inline void InterpolateCompute(const T* Xdata, const int64_t stride,
                                const float* weight_coeff,
                                const int64_t* idx_bound, T* Ydata) {
   float output = 0;
 
-  for (int32_t idx = idx_bound[0]; idx < idx_bound[1]; ++idx) {
+  for (int64_t idx = idx_bound[0]; idx < idx_bound[1]; ++idx) {
     output += Xdata[idx * stride] * (*weight_coeff++);
   }
   *Ydata = static_cast<T>(output);
@@ -482,10 +482,10 @@ inline void InterpolateCompute(const T* Xdata, const int32_t stride,
 
 template <typename T>
 inline void InterpolateLoopForSingleDim(
-    const T* Xdata, int32_t dim_size, int32_t section_idx,
-    const int32_t y_stride, const int32_t x_stride, const float* weight_coeff,
-    const std::vector<int64_t>& idx_bound, int32_t window_size, T* Ydata) {
-  for (int32_t step = 0; step < dim_size; ++step) {
+    const T* Xdata, int64_t dim_size, int64_t section_idx,
+    const int64_t y_stride, const int64_t x_stride, const float* weight_coeff,
+    const std::vector<int64_t>& idx_bound, int64_t window_size, T* Ydata) {
+  for (int64_t step = 0; step < dim_size; ++step) {
     InterpolateCompute(
         Xdata, y_stride,
         &weight_coeff[(x_stride == 0) ? window_size * step
@@ -502,14 +502,14 @@ LoopInDimN(const T* Xdata_base, int64_t dim_idx, int64_t pre_level_idx, int64_t 
            const InlinedVector<int64_t>& input_stride,
            const InlinedVector<int64_t>& output_stride, const int64_t compute_dim,
            const float* weight_coeff, const std::vector<int64_t>& idx_bound,
-           int32_t window_size, T* Ydata_base) {
-  const int32_t x_ofs =
+           int64_t window_size, T* Ydata_base) {
+  const int64_t x_ofs =
       pre_level_idx * ((compute_dim == dim_idx) ? 0 : input_stride[dim_idx]);
 
   const T* const Xdata = Xdata_base + x_ofs;
   T* const Ydata = Ydata_base + pre_level_idx * output_stride[dim_idx];
   if (dim_idx < int64_t(input_stride.size()) - 2) {
-    for (int32_t sub_sec_idx = 0;
+    for (int64_t sub_sec_idx = 0;
          sub_sec_idx < output_stride[dim_idx] / output_stride[dim_idx + 1];
          ++sub_sec_idx) {
       section_idx = (compute_dim == dim_idx + 1) ? sub_sec_idx : section_idx;
@@ -618,7 +618,7 @@ void UpsampleTrilinearAA(int64_t batch_size,
   InlinedVector<int64_t> in_stride = {1, 1, 1, 1, 1, 1};
   InlinedVector<int64_t> tmp_stride = in_stride;
   InlinedVector<int64_t> out_stride = in_stride;
-  for (int i = in_shape.size() - 1; i >= 0; i--) {
+  for (int64_t i = int64_t(in_shape.size() - 1); i >= 0; i--) {
     in_stride[i] = in_stride[i + 1] * in_shape[i];
     tmp_stride[i] = tmp_stride[i + 1] * tmp_shape[i];
     out_stride[i] = out_stride[i + 1] * out_shape[i];

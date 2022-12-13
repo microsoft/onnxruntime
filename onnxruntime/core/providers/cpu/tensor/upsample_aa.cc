@@ -29,9 +29,10 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                            AllocatorPtr& alloc,
                            const GetOriginalCoordinateFunc& get_original_coordinate,
                            const int32_t dtype, bool exclude_outside, const bool is_nchw) {
-  auto compute_weight_coefficients = [&alloc, &roi, &get_original_coordinate, dtype, exclude_outside](const FilterParamsAA& p, const int32_t input_size,
-                                                                                                      const int32_t output_size,
-                                                                                                      int32_t rindex,
+  auto compute_weight_coefficients = [&alloc, &roi, &get_original_coordinate, dtype, exclude_outside](const FilterParamsAA& p,
+                                                                                                      const int64_t input_size,
+                                                                                                      const int64_t output_size,
+                                                                                                      size_t rindex,
                                                                                                       std::vector<int64_t>& bound_idx,
                                                                                                       std::vector<float>& original_idx,
                                                                                                       const float rscale,
@@ -44,7 +45,7 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
     // value while iterating the output image tensor
     float scale = 1.0f / rscale;
     float support =
-        (scale >= 1.0) ? (p.support_size * 0.5) * scale : p.support_size * 0.5;
+        (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
 
     int32_t window_size = SafeInt<int32_t>(ceilf(support)) * 2 + 1;
     const SafeInt<size_t> scale_buffer_size = sizeof(float) * (window_size)*output_size;
@@ -55,20 +56,20 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
     // Get pointers to appropriate memory locations in the scratch buffer
     auto* scale_data = static_cast<float*>(weight_coefficients.get());
     int64_t xmin = 0, xmax = 0;
-    float inv_scale = (scale >= 1.0) ? 1.0 / scale : 1.0;
+    float inv_scale = (scale >= 1.0f) ? 1.0f / scale : 1.0f;
 
     const auto roi_start = roi.size() / 2 - (rindex + 1);
     const auto roi_end = roi.size() - (rindex + 1);
 
     for (int32_t i = 0; i < output_size; i++) {
       // double center = (i + 0.5) * scale;
-      float center = 0.5 + (scale == 1 ? static_cast<float>(i)
-                                       : get_original_coordinate(static_cast<float>(i), rscale,
-                                                                 static_cast<float>(output_size),
-                                                                 static_cast<float>(input_size),
-                                                                 roi[roi_start], roi[roi_end]));
+      float center = 0.5f + (scale == 1.0f ? static_cast<float>(i)
+                                           : get_original_coordinate(static_cast<float>(i), rscale,
+                                                                     static_cast<float>(output_size),
+                                                                     static_cast<float>(input_size),
+                                                                     roi[roi_start], roi[roi_end]));
       original_idx.emplace_back(center);
-      double total_weight = 0.0;
+      float total_weight = 0.0;
 
       int64_t xmin_real = static_cast<int64_t>(center - support + 0.5);
       int64_t xmax_real = static_cast<int64_t>(center + support + 0.5);
@@ -82,10 +83,10 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
 
       auto* scale_buffer = &scale_data[i * window_size];
       int32_t* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
-      int32_t x = 0;
+      int64_t x = 0;
       xmax -= xmin;
       for (; x < xmax; x++) {
-        double w = p.filter((x + xmin - center + 0.5) * inv_scale);
+        float w = p.filter((x + xmin - center + 0.5f) * inv_scale);
         scale_buffer[x] = w;
         total_weight += w;
       }
