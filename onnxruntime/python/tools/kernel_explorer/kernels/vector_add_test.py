@@ -50,7 +50,7 @@ def test_vector_add(size, dtype):
 
 
 @dataclass
-class VectorAddStatus(ke.BandwidthStatus):
+class VectorAddMetric(ke.BandwidthMetric):
     size: int
 
     def report(self):
@@ -71,7 +71,7 @@ def profile_vector_add_func(size, dtype, func):
     duration_ms = my_op.Profile()
     total_bytes = size * 3 * (dtype_to_bytes(dtype))
 
-    ke.report(VectorAddStatus(func, dtype, duration_ms, total_bytes, size))
+    ke.report(VectorAddMetric(func, dtype, duration_ms, total_bytes, size))
 
 
 def profile_with_args(size, dtype, sort):

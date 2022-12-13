@@ -3,11 +3,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-"""Wrapper for native _kernel_explorer.so library"""
+"""This file provides wrapper for native _kernel_explorer.so library and benchmark reporter for operator"""
 
 import ctypes
 import os
 import sys
+from abc import abstractmethod
+from contextlib import contextmanager
+from dataclasses import dataclass
 
 build_dir = os.environ.get("KERNEL_EXPLORER_BUILD_DIR", None)
 if build_dir is None:
@@ -61,15 +64,10 @@ import _kernel_explorer  # noqa
 # pylint: disable=wrong-import-position, disable=unused-import, disable=wildcard-import
 from _kernel_explorer import *  # noqa
 
-"""Benchmark Reporter"""
 
-from abc import abstractmethod
-from contextlib import contextmanager
-from dataclasses import dataclass
-
-
+# Benchmark Reporter
 @dataclass
-class InstanceStatus:
+class MetricBase:
     name: str
     dtype: str
     milliseconds_duration: float
@@ -88,11 +86,11 @@ class InstanceStatus:
 
     @abstractmethod
     def report(self) -> str:
-        ...
+        raise NotImplementedError()
 
 
 @dataclass
-class ComputeStatus(InstanceStatus):
+class ComputeMetric(MetricBase):
     FLOPs: int
 
     @property
@@ -101,7 +99,7 @@ class ComputeStatus(InstanceStatus):
 
 
 @dataclass
-class BandwidthStatus(InstanceStatus):
+class BandwidthMetric(MetricBase):
     bytes: int
 
     @property
@@ -117,7 +115,7 @@ class InstanceBenchmarkReporter:
     def set_sort(self, sort):
         self.sort = sort
 
-    def flush(self):
+    def make_report(self):
         self.reporters.sort()
         for item in self.reporters:
             print(item.report())
@@ -126,20 +124,20 @@ class InstanceBenchmarkReporter:
     def receive(self, status):
         self.reporters.append(status)
         if not self.sort:
-            self.flush()
+            self.make_report()
 
 
-_repoter = InstanceBenchmarkReporter()
+_reporter = InstanceBenchmarkReporter()
 
 
 @contextmanager
 def benchmark(sort):
-    _repoter.set_sort(sort)
+    _reporter.set_sort(sort)
     try:
         yield
     finally:
-        _repoter.flush()
+        _reporter.make_report()
 
 
 def report(status):
-    _repoter.receive(status)
+    _reporter.receive(status)

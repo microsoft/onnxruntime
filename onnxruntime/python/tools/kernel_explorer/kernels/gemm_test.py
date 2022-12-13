@@ -101,7 +101,7 @@ def test_gemm_tunable_bert_cases(dtype, size, transab):
 
 
 @dataclass
-class GemmStatus(ke.ComputeStatus):
+class GemmMetric(ke.ComputeMetric):
     transa: bool
     transb: bool
     m: int
@@ -145,17 +145,15 @@ def profile_gemm_func(f, transa: bool, transb: bool, dtype: str, m: int, n: int,
             duration_ms = my_gemm.Profile()
         FLOPs = m * k * n * 2
 
-        ke.report(GemmStatus(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k))
+        ke.report(GemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k))
 
 
 def profile_with_args(transa, transb, dtype, m, n, k, sort):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
-    with ke.benchmark(sort):
-        profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), transa, transb, dtype, m, n, k)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
     with ke.benchmark(sort):
+        profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), transa, transb, dtype, m, n, k)
         profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), transa, transb, dtype, m, n, k)
-    with ke.benchmark(sort):
         profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), transa, transb, dtype, m, n, k)
 
 
@@ -163,7 +161,7 @@ def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
             profile_with_args(False, False, dtype, m, n, k, True)
-        print()
+            print()
 
 
 if __name__ == "__main__":

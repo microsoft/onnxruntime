@@ -85,7 +85,7 @@ def test_skip_layer_norm(bert_sizes, dtype):
 
 
 @dataclass
-class SkipLayerNormStatus(ke.BandwidthStatus):
+class SkipLayerNormMetric(ke.BandwidthMetric):
     batch_size: int
     seq_len: int
     hidden_size: int
@@ -121,7 +121,7 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
         duration_ms = my_op.Profile()
     total_bytes = (input_x.size * 3 + bias.size * 3) * dtype_to_bytes(dtype)
 
-    ke.report(SkipLayerNormStatus(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
+    ke.report(SkipLayerNormMetric(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
 def profile_with_args(batch_size, seq_len, hidden_size, dtype, sort=True):
