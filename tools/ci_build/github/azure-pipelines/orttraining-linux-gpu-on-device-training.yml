@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Linux_GPU_OnDeviceTraining
+- job: Onnxruntime_Linux_GPU_TrainingAPIs
 
   timeoutInMinutes: 120
   pool: 'Onnxruntime-Linux-GPU-NC6sv3'
@@ -15,11 +15,11 @@ jobs:
     parameters:
       RunDockerBuildArgs: |
         -o ubuntu20.04 -d gpu -e \
-        -t onnxruntime_ondevicetraining_tests_image \
+        -t onnxruntime_training_apis_tests_image \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
-          --enable_training_on_device \
+          --enable_training_apis \
           --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
           --build_wheel \
           --skip_tests \
@@ -27,7 +27,7 @@ jobs:
         -u
       DisplayName: 'Build onnxruntime'
 
-  # Entry point for all on device training tests
+  # Entry point for all ort training api tests
   - script: |
       docker run \
         --gpus all \
@@ -35,10 +35,10 @@ jobs:
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
-        onnxruntime_ondevicetraining_tests_image \
+        onnxruntime_training_apis_tests_image \
           /build/RelWithDebInfo/launch_test.py \
-            --cwd /build/RelWithDebInfo --cmd_line_with_args "python orttraining_on_device_training_tests.py --cwd /build/RelWithDebInfo" \
-    displayName: 'Run On-Device Training Tests'
+            --cwd /build/RelWithDebInfo --cmd_line_with_args "python orttraining_training_apis_tests.py --cwd /build/RelWithDebInfo" \
+    displayName: 'Run ORT Training APIs Tests'
     condition: succeededOrFailed()
     timeoutInMinutes: 120
   - template: templates/component-governance-component-detection-steps.yml

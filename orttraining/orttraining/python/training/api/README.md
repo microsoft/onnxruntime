@@ -3,7 +3,7 @@
 This is a simple guide on how to use onnxruntime training APIs.
 
 ### What's needed for training?
-The on-device training APIs need the following files for performing training
+The ort training APIs need the following files for performing training
 1. The training onnx model.
 2. The eval onnx model (optional).
 3. The optimizer onnx model.

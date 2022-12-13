@@ -141,11 +141,10 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
-option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
-# For on-device training ort build, onnxruntime_ENABLE_TRAINING must be ON.
-option(onnxruntime_ENABLE_TRAINING_ON_DEVICE "Enable training on device." OFF)
+option(onnxruntime_ENABLE_TRAINING "Enable full training functionality. Includes ORTModule and ORT Training APIs" OFF)
+# For building with onnxruntime_ENABLE_TRAINING_APIS, onnxruntime_ENABLE_TRAINING must be ON.
+option(onnxruntime_ENABLE_TRAINING_APIS "Enable ort training apis." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
-option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
@@ -201,10 +200,22 @@ if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    message(FATAL_ERROR "To build for on-device training, the training build must be enabled (onnxruntime_ENABLE_TRAINING).")
-  endif()
+# ENABLE_TRAINING includes all training functionality
+# The following 2 entry points
+# 1. ORTModule
+# 2. ORT Training APIs
+# It includes all the feature additions as well like
+# 1. Python OP
+# 2. Aten Fallback
+# 3. Strided Tensors
+# 4. All training ops including communication and  collectives ops
+# 5. ONNXBlock (Front end for training preparation when using training apis)
+# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
+# when using python env
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_TRAINING_APIS ON)
+  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
 if (APPLE)
@@ -350,10 +361,6 @@ set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
 set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
-
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_ATEN ON)
-endif()
 
 find_package(Threads)
 find_package(Patch)
@@ -750,7 +757,7 @@ function(onnxruntime_configure_target target_name)
   #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   #endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
     target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
   endif()
   if (onnxruntime_ENABLE_LTO)
@@ -967,7 +974,7 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+if (onnxruntime_ENABLE_TRAINING_APIS)
   include_directories(
     ${REPO_ROOT}/orttraining/orttraining/training_api/include/
   )
@@ -1252,8 +1259,8 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  add_compile_definitions(ENABLE_TRAINING_ON_DEVICE)
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  add_compile_definitions(ENABLE_TRAINING_APIS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
