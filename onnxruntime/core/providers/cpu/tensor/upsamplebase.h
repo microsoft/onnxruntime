@@ -5,7 +5,7 @@
 
 #include <string>
 #include <vector>
-#include "core/common/inlined_containers.h"
+#include <unordered_set>
 #include <core/common/safeint.h>
 #include <core/common/narrow.h>
 #ifndef SHARED_PROVIDER
@@ -403,7 +403,7 @@ class UpsampleBase {
       }
     }
 
-    InlinedHashSet<int64_t> axes_set(axes_.begin(), axes_.end());
+    std::unordered_set<int64_t> axes_set(axes_.begin(), axes_.end());
     if (keep_aspect_ratio_policy_ != STRETCH) {
       float scale_in_policy = 0.0f;
       if (keep_aspect_ratio_policy_ == NOT_LARGER) {
