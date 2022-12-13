@@ -70,7 +70,7 @@ struct OrtTrainingApi {
    * This function returns the number of outputs of the training model so that the user can
    * allocate space for the number of outputs when TrainStep is invoked.
    *
-   * \param[in] sess The training session which has working knowledge of the training model.
+   * \param[in] sess The training session which owns the training model.
    * \param[out] out Number of user outputs in the training model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -83,7 +83,7 @@ struct OrtTrainingApi {
    * This function returns the number of outputs of the eval model so that the user can
    * allocate space for the number of outputs when EvalStep is invoked.
    *
-   * \param[in] sess The training session which has working knowledge of the eval model.
+   * \param[in] sess The training session which owns the eval model.
    * \param[out] out Number of user outputs in the eval model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -101,7 +101,7 @@ struct OrtTrainingApi {
    * will be scheduled to be reset just before the new gradients are computed on the next invocation
    * of TrainStep.
    *
-   * \param[in] session The training session which has working knowledge of the eval model.
+   * \param[in] session The training session which owns the eval model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -116,7 +116,7 @@ struct OrtTrainingApi {
    * The gradients computed are stored inside the training session so they can be later consumed
    * by the OptimizerStep function.
    *
-   * \param[in] sess The training session which has working knowledge of the eval model.
+   * \param[in] sess The training session which owns the eval model.
    * \param[in] run_options Run options for this training step.
    * \param[in] inputs_len Number of user inputs to the training model.
    * \param[in] inputs The user inputs to the training model.
@@ -135,7 +135,7 @@ struct OrtTrainingApi {
    * This function performs an eval step that computes the outputs of the eval model for the given inputs.
    * The eval step is performed based on the eval model that was provided to the training session.
    *
-   * \param[in] sess The training session which has working knowledge of the eval model.
+   * \param[in] sess The training session which owns the eval model.
    * \param[in] run_options Run options for this eval step.
    * \param[in] inputs_len Number of user inputs to the eval model.
    * \param[in] inputs The user inputs to the eval model.
@@ -189,7 +189,7 @@ struct OrtTrainingApi {
    * The updated parameters are stored inside the training session so that they can be used by the next
    * TrainStep function call.
    *
-   * \param[in] sess The training session which has working knowledge of the optimizer model.
+   * \param[in] sess The training session which owns the optimizer model.
    * \param[in] run_options Run options for this eval step.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -198,7 +198,7 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess,
                   _In_opt_ const OrtRunOptions* run_options);
 
-  /** \brief Registers the use of the Linear learning rate scheduler for the training session.
+  /** \brief Registers a Linear learning rate scheduler for the training session.
    *
    * Register a Linear learning rate scheduler with the given learning rate scheduler parameters.
    * Users must specify the initial learning rate that should be used with this learning rate scheduler
@@ -319,7 +319,7 @@ struct OrtTrainingApi {
 
   /** \brief Sets the seed used for random number generation in Onnxruntime.
    *
-   * Use this to get reproducible results.
+   * Use this to get deterministic results.
    *
    * \param[in] seed The seed to be set.
    *
@@ -330,9 +330,7 @@ struct OrtTrainingApi {
 
   /** \brief Retrieves the number of user inputs in the training model.
    *
-   * This function returns the number of inputs of the training model.
-   *
-   * \param[in] sess The training session which has working knowledge of the training model.
+   * \param[in] sess The training session which owns the training model.
    * \param[out] out Number of user inputs in the training model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -342,9 +340,7 @@ struct OrtTrainingApi {
 
   /** \brief Retrieves the number of user inputs in the eval model.
    *
-   * This function returns the number of inputs of the eval model.
-   *
-   * \param[in] sess The training session which has working knowledge of the eval model.
+   * \param[in] sess The training session which owns the eval model.
    * \param[out] out Number of user inputs in the eval model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -352,9 +348,9 @@ struct OrtTrainingApi {
    */
   ORT_API2_STATUS(TrainingSessionGetEvalModelInputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
-  /** \brief Retrieves the name of the user input at given index.
+  /** \brief Retrieves the name of the user input at given index in the training model.
    *
-   * \param[in] sess The training session which has working knowledge of the training model.
+   * \param[in] sess The training session which owns the training model.
    * \param[out] out Number of user inputs in the eval model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -363,6 +359,14 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
                   _In_ OrtAllocator* allocator, _Outptr_ char** output);
 
+  /** \brief Retrieves the name of the user input at given index in the eval model.
+   *
+   * \param[in] sess The training session which owns the training model.
+   * \param[out] out Number of user inputs in the eval model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
   ORT_API2_STATUS(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
                   _In_ OrtAllocator* allocator, _Outptr_ char** output);
 };

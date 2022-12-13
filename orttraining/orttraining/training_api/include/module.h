@@ -111,16 +111,16 @@ struct Module {
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
 
-  // Returns the input count for training graph
+  // Returns the user input count for training graph
   size_t GetTrainingModelInputCount() const noexcept;
 
-  // Returns the input count for eval graph
+  // Returns the user input count for eval graph
   size_t GetEvalModelInputCount() const noexcept;
 
-  // Returns the input name for train graph at given index
+  // Returns the user input name for train graph at given index
   std::string GetTrainingModelInputName(size_t index) const;
 
-  // Returns the input name for eval graph at given index
+  // Returns the user input name for eval graph at given index
   std::string GetEvalModelInputName(size_t index) const;
 
  private:

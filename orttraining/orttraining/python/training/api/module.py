@@ -81,8 +81,11 @@ class Module:
         return self.train(False)
 
     def lazy_reset_grad(self):
-        """
-        Lazily resets the gradient of the parameters.
+        """ Lazily resets the training gradients.
+
+        This function sets the internal state of the module such that the module gradients
+        will be scheduled to be reset just before the new gradients are computed on the next invocation
+        of train().
         """
         return self._model.lazy_reset_grad()
 
@@ -126,4 +129,5 @@ class Module:
         """
         Exports the model for inferencing.
         """
+        self._model.export_model_for_inferencing(inference_model_uri, graph_output_names)
         self._model.export_model_for_inferencing(inference_model_uri, graph_output_names)
