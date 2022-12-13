@@ -459,8 +459,9 @@ class UpsampleBase {
         roi_tmp[i] = 1;
       }
       for (size_t i = 0; i < axes_.size(); i++) {
-        roi_tmp[static_cast<size_t>(axes_[i])] = (roi_array[i]);
-        roi_tmp[i + axes_[i]] = (roi_array[axes_.size() + i]);
+        auto v_in_axes = static_cast<size_t>(axes_[i]);
+        roi_tmp[v_in_axes] = (roi_array[i]);
+        roi_tmp[i + v_in_axes] = (roi_array[axes_.size() + i]);
       }
       roi_array = roi_tmp;
     }

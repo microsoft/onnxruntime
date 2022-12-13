@@ -37,7 +37,7 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                                                                                                       std::vector<float>& original_idx,
                                                                                                       const float rscale,
                                                                                                       BufferUniquePtr& weight_coefficients) -> int64_t {
-    bound_idx.reserve(output_size * 2);
+    bound_idx.reserve(static_cast<size_t>(output_size) * 2);
     // For each index in the output height and output width, cache its corresponding "weights/scales" for its
     // corresponding indices in the input which proportionately indicates how much they will influence the final
     // pixel value in the output

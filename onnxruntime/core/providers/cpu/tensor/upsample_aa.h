@@ -152,8 +152,9 @@ void UpsampleBaseAA(FilterParamsAA& p,
                     concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
-  auto image_temp_buffer = BufferUniquePtr(alloc->Alloc(input_height *
-                                                        output_width * num_channels * sizeof(T)),
+  auto image_temp_buffer = BufferUniquePtr(alloc->Alloc(static_cast<size_t>(input_height *
+                                                                            output_width * num_channels) *
+                                                        sizeof(T)),
                                            BufferDeleter(alloc));
 
   using ACtype = typename AccumulateType<T>::type;
@@ -360,8 +361,9 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
                          concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
-  auto image_temp_buffer = BufferUniquePtr(alloc->Alloc(input_height *
-                                                        output_width * num_channels * sizeof(T)),
+  auto image_temp_buffer = BufferUniquePtr(alloc->Alloc(static_cast<size_t>(input_height *
+                                                                            output_width * num_channels) *
+                                                        sizeof(T)),
                                            BufferDeleter(alloc));
 
   using ACtype = typename AccumulateType<T>::type;
@@ -606,12 +608,12 @@ void UpsampleTrilinearAA(int64_t batch_size,
   SetupUpsampleFilterAA(p, input_paras, output_paras, scale_paras, roi,
                         alloc, get_original_coordinate, X->GetElementType(), true, false);
 
-  auto* buffer = alloc->Alloc(sizeof(T) * input_height * output_width *
-                              input_depth * num_channels);
+  auto* buffer = alloc->Alloc(sizeof(T) * static_cast<size_t>(input_height * output_width *
+                                                              input_depth * num_channels));
   auto temp1 = BufferUniquePtr(buffer, BufferDeleter(alloc));
 
-  buffer = alloc->Alloc(sizeof(T) * output_height * output_width *
-                        input_depth * num_channels);
+  buffer = alloc->Alloc(sizeof(T) * static_cast<size_t>(output_height * output_width *
+                                                        input_depth * num_channels));
   auto temp2 = BufferUniquePtr(buffer, BufferDeleter(alloc));
 
   InlinedVector<int64_t> in_shape = {batch_size, input_height, input_width,
@@ -623,7 +625,7 @@ void UpsampleTrilinearAA(int64_t batch_size,
   InlinedVector<int64_t> in_stride = {1, 1, 1, 1, 1, 1};
   InlinedVector<int64_t> tmp_stride = in_stride;
   InlinedVector<int64_t> out_stride = in_stride;
-  for (int64_t i = int64_t(in_shape.size() - 1); i >= 0; i--) {
+  for (size_t i = (in_shape.size() - 1); int64_t(i) >= 0; i--) {
     in_stride[i] = in_stride[i + 1] * in_shape[i];
     tmp_stride[i] = tmp_stride[i + 1] * tmp_shape[i];
     out_stride[i] = out_stride[i + 1] * out_shape[i];
