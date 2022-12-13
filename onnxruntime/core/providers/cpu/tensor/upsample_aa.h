@@ -467,7 +467,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
 }
 
 template <typename T, typename ACType>
-inline void InterpolateCompute(const T* Xdata, FilterParamsAA& p, 
+inline void InterpolateCompute(const T* Xdata, FilterParamsAA& p,
                                const int64_t stride,
                                const ACType* weight_coeff,
                                const int64_t* idx_bound, T* Ydata) {
@@ -475,12 +475,12 @@ inline void InterpolateCompute(const T* Xdata, FilterParamsAA& p,
   if constexpr (is_8bit_v<T>) {
     output = ConstValue::mag_factor;
   }
-  const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
   for (int64_t idx = idx_bound[0]; idx < idx_bound[1]; ++idx) {
     output += Xdata[idx * stride] * (*weight_coeff++);
   }
   if constexpr (is_8bit_v<T>) {
+    const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
     *Ydata = static_cast<T>(clip8_lookups[output >> 22]);
   } else if constexpr (std::is_same<T, int32_t>::value) {
     *Ydata = p.round_up(output);
