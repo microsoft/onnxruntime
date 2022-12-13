@@ -164,7 +164,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     }
 
     constexpr uint32_t min_ort_ver_io_opt = 8;   // Minimum ORT version supporting optional input/output.
-    constexpr uint32_t min_ort_ver_io_var = 13;  // Minimum ORT version supporting variadic input/output.
+    constexpr uint32_t min_ort_ver_io_var = 14;  // Minimum ORT version supporting variadic input/output.
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
     for (const auto* op : domain->custom_ops_) {
@@ -176,7 +176,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
 
         // The OrtCustomOp interface did not support the methods to query input/output characteristics before
-        // ORT API version 8.
+        // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
         if (op->version >= min_ort_ver_io_opt) {
           const auto characteristic = op->GetInputCharacteristic(op, i);
 
@@ -207,7 +207,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
 
         // The OrtCustomOp interface did not support the methods to query input/output characteristics before
-        // ORT API version 8.
+        // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
         if (op->version >= min_ort_ver_io_opt) {
           const auto characteristic = op->GetOutputCharacteristic(op, i);
 
