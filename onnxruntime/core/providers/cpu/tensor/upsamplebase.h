@@ -381,7 +381,7 @@ class UpsampleBase {
     if (axes_.size()) {
       std::vector<int64_t> output_dim_tmp(output_dims.begin(), output_dims.end());
       for (size_t i = 0; i < axes_.size(); i++) {
-        output_dim_tmp[i] = output_dims[axes_[i]];
+        output_dim_tmp[i] = output_dims[static_cast<size_t>(axes_[i])];
       }
       memcpy(mutable_out_dim, output_dim_tmp.data(), output_dim_tmp.size() * sizeof(int64_t));
     }
@@ -442,7 +442,7 @@ class UpsampleBase {
     if (axes_.size()) {
       std::vector<float> scales_tmp(scales);
       for (size_t i = 0; i < axes_.size(); i++) {
-        scales_tmp[i] = scales[axes_[i]];
+        scales_tmp[i] = scales[static_cast<size_t>(axes_[i])];
       }
       memcpy(mutable_scale, scales_tmp.data(), scales.size() * sizeof(float));
     }
@@ -459,7 +459,7 @@ class UpsampleBase {
         roi_tmp[i] = 1;
       }
       for (size_t i = 0; i < axes_.size(); i++) {
-        roi_tmp[axes_[i]] = (roi_array[i]);
+        roi_tmp[static_cast<size_t>(axes_[i])] = (roi_array[i]);
         roi_tmp[i + axes_[i]] = (roi_array[axes_.size() + i]);
       }
       roi_array = roi_tmp;
