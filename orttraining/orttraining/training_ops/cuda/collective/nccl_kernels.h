@@ -29,7 +29,18 @@ class NcclReduceScatter final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-class NcclAllGatherV2 final : public NcclKernel {
+/*
+ * Defines new version of Nccl classes that independent with training::DistributedContext
+ * only rely on MPI
+ */
+class NcclAllReduceV2 final : public NcclKernelV2 {
+ public:
+  explicit NcclAllReduceV2(const OpKernelInfo& info);
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+class NcclAllGatherV2 final : public NcclKernelV2 {
  public:
   explicit NcclAllGatherV2(const OpKernelInfo& info);
 

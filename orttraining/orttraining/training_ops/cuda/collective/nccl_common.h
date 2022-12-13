@@ -59,5 +59,43 @@ class NcclKernel : public CudaKernel {
 
 ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type);
 
+// -----------------------------------------------------------------------
+// Defines a new version of nccl classes
+// that independent with training::DistributedRunContext, only rely on MPI
+// -----------------------------------------------------------------------
+class NcclContextV2 final {
+ public:
+  NcclContextV2();
+  ~NcclContextV2();
+
+  ncclComm_t Comm() {
+    return comm_;
+  }
+
+  int Rank() const {
+    return rank_;
+  }
+
+  int Size() const {
+    return world_size_;
+  }
+
+ private:
+  ncclComm_t comm_;
+  int rank_;
+  int world_size_;
+};
+
+// -----------------------------------------------------------------------
+// Base class for NCCL kernels version 2
+// -----------------------------------------------------------------------
+class NcclKernelV2 : public CudaKernel {
+ public:
+  explicit NcclKernelV2(const OpKernelInfo& info);
+
+ protected:
+  NcclContextV2* nccl_ = nullptr;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

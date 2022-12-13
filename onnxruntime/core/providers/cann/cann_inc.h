@@ -6,3 +6,4 @@
 
 #include <acl/acl.h>
 #include <acl/acl_op_compiler.h>
+#include <acl/ops/acl_cblas.h>

@@ -3,6 +3,9 @@
 
 #include "optimizer_api.h"
 
+#include "core/graph/constants.h"
+#include "core/common/make_string.h"
+
 #include <algorithm>
 #include "core/common/gsl.h"
 #include <iostream>
@@ -966,6 +969,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   gather.SetAttributeInt("axis", 0);
   node.SetInput(i, gather_output);
 }
+
 #if !defined(USE_CUDA) && !defined(USE_ROCM)
 static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
@@ -1700,7 +1704,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
 // See https://github.com/microsoft/onnxruntime/pull/10824 for
 // a similar fix applied to the CPU Resize kernel.
 // Per tests included in #10824, the ROCM EP also generates
-// incorrect results when this handler is used, so the Resize 
+// incorrect results when this handler is used, so the Resize
 // handler is not enabled even for those builds.
 #if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
@@ -1749,10 +1753,10 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
-  if (domain == "" || domain == "ai.onnx") {
+  if (domain == onnxruntime::kOnnxDomain || domain == onnxruntime::kOnnxDomainAlias) {
     key = std::string(op_type);
-  } else if (domain == "com.microsoft") {
-    key = "com.microsoft." + std::string(op_type);
+  } else if (domain == onnxruntime::kMSDomain) {
+    key = onnxruntime::MakeString(domain, ".", op_type);
   } else {
     return nullptr;
   }
@@ -2032,10 +2036,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
-  static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
-                                                                      "AveragePool", "GlobalAveragePool", "MaxPool",
-                                                                      "GlobalMaxPool", "LRN", "GridSample",
-                                                                      "DepthToSpace", "SpaceToDepth"};
+  static std::unordered_set<std::string_view> layout_sensitive_ops = {
+      "Conv", "QLinearConv", "BatchNormalization",
+      "AveragePool", "GlobalAveragePool", "MaxPool",
+      "GlobalMaxPool", "LRN", "GridSample",
+      "DepthToSpace", "SpaceToDepth", "ConvTranspose", "MaxUnpool"};
 
   return layout_sensitive_ops;
 }
