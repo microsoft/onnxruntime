@@ -52,7 +52,7 @@ jobs:
     - task: Cache@2
       inputs:
         key: 'ccache | "$(Agent.OS)" | protocol'
-        path: $(CCACHE_DIR)/protocol
+        path: $(CCACHE_DIR)
         restoreKeys: |
           ccache | "$(Agent.OS)" | protocol
       displayName: ccache protocol
@@ -77,7 +77,7 @@ jobs:
     - task: Cache@2
       inputs:
         key: 'ccache | "$(Agent.OS)" | onnxruntime'
-        path: $(CCACHE_DIR)/onnxruntime
+        path: $(CCACHE_DIR)
         restoreKeys: |
           ccache | "$(Agent.OS)" | onnxruntime
       displayName: ccache MacOS Build
