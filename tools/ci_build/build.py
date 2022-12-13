@@ -491,9 +491,7 @@ def parse_arguments():
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument(
-        "--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all"
-    )
+    parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
     parser.add_argument(
         "--skip_and_perform_filtered_tests",
         action="store_true",
