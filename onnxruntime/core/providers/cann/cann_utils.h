@@ -8,6 +8,7 @@
 #include <utility>
 #include <iomanip>
 #include <string>
+#include <memory>
 
 #include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"
@@ -123,6 +124,7 @@ Status aclrtblasGemmEx(aclTransType transA,
 
 bool FileExist(const std::string& file_name);
 void GenerateHashValue(const std::string string, HashValue& hash_value);
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 }  // namespace cann
 }  // namespace onnxruntime

@@ -21,9 +21,9 @@
 #include "core/providers/cann/npu_data_transfer.h"
 
 using onnxruntime::cann::BuildONNXModel;
-using onnxruntime::cann::CannModelPreparation;
 using onnxruntime::cann::ParserONNXModel;
 using onnxruntime::cann::SupportONNXModel;
+using onnxruntime::cann::CannModelPreparation;
 using onnxruntime::common::Status;
 
 namespace onnxruntime {
@@ -1315,7 +1315,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
     names_[node_name] = names2index;
 
     std::string string_model;
-    auto model = graph_body_viewer.CreateModel(*GetLogger(), true);
+    auto model = cann::CreateModel(graph_body_viewer, *GetLogger());
     auto model_proto = model->ToProto();
     graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);

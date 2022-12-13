@@ -769,15 +769,10 @@ struct ProviderHostImpl : ProviderHost {
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
-  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger, bool is_domain_onnx_only) override {
-    std::unordered_map<std::string, int> domain_to_version_map;
-    if (is_domain_onnx_only)
-      domain_to_version_map[kOnnxDomain] = graph_viewer->DomainToVersionMap().at(kOnnxDomain);
-    else
-      domain_to_version_map = graph_viewer->DomainToVersionMap();
+  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
     return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
-                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), domain_to_version_map,
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
 #else
                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
 #endif  // ORT_MINIMAL_BUILD
@@ -1015,8 +1010,22 @@ struct ProviderHostImpl : ProviderHost {
 
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
+
   void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
     MurmurHash3::x86_128(key, len, seed, out);
+  }
+
+  std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+    std::unordered_map<std::string, int> domain_to_version_map;
+    domain_to_version_map[kOnnxDomain] = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
+
+    return std::make_unique<Model>(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+#if !defined(ORT_MINIMAL_BUILD)
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}), domain_to_version_map,
+#else
+                                   IOnnxRuntimeOpSchemaRegistryList(), domain_to_version_map,
+#endif  // ORT_MINIMAL_BUILD
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 #endif
 

@@ -677,5 +677,11 @@ RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__De
 void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
   return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
+
+namespace cann {
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  return g_host->cann__CreateModel(graph_viewer, logger);
+}
+}  // namespace cann
 #endif
 }  // namespace onnxruntime
