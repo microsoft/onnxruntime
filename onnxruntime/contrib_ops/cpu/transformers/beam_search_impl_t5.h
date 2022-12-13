@@ -133,6 +133,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       buffer,
       decoder_input_ids));
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
+#endif
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,
                                              encoder_feeds,
@@ -245,6 +248,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     }
 #endif
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    const_cast<SessionState&>(this->decoder_session_state_).IncrementGraphExecutionCounter();
+#endif
     status = utils::ExecuteSubgraph(this->decoder_session_state_,
                                     decoder_feeds_fetches_manager,
                                     decoder_feeds,

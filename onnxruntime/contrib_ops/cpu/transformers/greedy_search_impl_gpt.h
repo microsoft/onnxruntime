@@ -217,6 +217,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fet
     // For the first iteration use the init_run_decoder subgraph (if present)
     if (iteration_counter++ == 0 &&
         init_run_decoder_session_state_ != nullptr) {
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+      const_cast<SessionState&>(this->init_run_decoder_session_state_).IncrementGraphExecutionCounter();
+#endif
       status = utils::ExecuteSubgraph(*init_run_decoder_session_state_,
                                       *init_run_feeds_fetches_manager,
                                       feeds,
@@ -226,6 +229,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fet
                                       this->context_.GetTerminateFlag(),
                                       this->context_.Logger());
     } else {
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+      const_cast<SessionState&>(this->decoder_session_state_).IncrementGraphExecutionCounter();
+#endif
       status = utils::ExecuteSubgraph(this->decoder_session_state_,
                                       feeds_fetches_manager,
                                       feeds,
