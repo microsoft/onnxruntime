@@ -33,7 +33,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             void* stream,
             onnxruntime::concurrency::ThreadPool* /*threadpool*/,
             Tensor& output_values,
-            Tensor& output_indices) {
+            Tensor& output_indices,
+            int64_t dimension_along_axis) {
   ORT_ENFORCE(nullptr != input);
   int32_t rank = static_cast<int32_t>(input->Shape().NumDimensions());
 
@@ -49,8 +50,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
     elem_nums_cuda[i] *= elem_nums_cuda[i + 1];
   }
 
-  int64_t dimension = input_shape[axis];
-  int64_t N = elem_nums_cuda[0] / dimension;
+  int64_t padded_dimension = input_shape[axis];
+  int64_t N = elem_nums_cuda[0] / padded_dimension;
 
   output_values = std::move(*Tensor::Create(input->DataType(), output_shape, allocator));
   output_indices = std::move(*Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, std::move(allocator)));
@@ -68,7 +69,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                            static_cast<int64_t>(largest),
                            static_cast<int64_t>(sorted),
                            N,
-                           dimension);
+                           dimension_along_axis,
+                           &padded_dimension);
   } else if (input->IsDataType<MLFloat16>()) {
     return TopKImpl<MLFloat16>(nullptr,
                                reinterpret_cast<cudaStream_t>(stream),
@@ -82,7 +84,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                                static_cast<int64_t>(largest),
                                static_cast<int64_t>(sorted),
                                N,
-                               dimension);
+                               dimension_along_axis,
+                               &padded_dimension);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -320,6 +323,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
+      parameters->vocab_size,
       (parameters->min_length > 0 && current_sequence_length < parameters->min_length) ? parameters->eos_token_id : -1,
       reinterpret_cast<int32_t*>(sequences_buffer.get()),
       parameters->max_length,
@@ -400,7 +404,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
     std::unique_ptr<Tensor> topk_tokens = Tensor::CreateDefault();
     ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                             *topk_scores, *topk_tokens));
+                             *topk_scores, *topk_tokens, next_token_scores_shape[axis]));
 
 #ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", *(topk_scores.get()));
@@ -545,6 +549,7 @@ Status GreedySearchProcessLogits(
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
+      is_reuse_logits_buffer ? padded_vocab_size : parameters->vocab_size,
       (parameters->min_length > 0 && current_sequence_length < parameters->min_length) ? parameters->eos_token_id : -1,
       reinterpret_cast<int32_t*>(sequences_buffer.get()),
       parameters->max_length,
@@ -565,7 +570,8 @@ Status GreedySearchProcessLogits(
   ORT_UNUSED_PARAMETER(output_scores);
 
   // next_tokens = torch.argmax(scores, dim=-1)
-  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
+  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size),
+                                      is_reuse_logits_buffer ? padded_vocab_size : vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
   auto element_type = DataTypeImpl::GetType<T>();
   OrtValue next_token_scores_value;
@@ -586,7 +592,7 @@ Status GreedySearchProcessLogits(
   auto topk_scores = Tensor::CreateDefault();
   auto topk_indices = Tensor::CreateDefault();
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           *topk_scores, *topk_indices));
+                           *topk_scores, *topk_indices, static_cast<int64_t>(parameters->vocab_size)));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));

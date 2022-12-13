@@ -38,7 +38,8 @@ using TopkFunc = std::function<Status(
     void* stream,  // cudaStream_t
     onnxruntime::concurrency::ThreadPool* threadpool,
     Tensor& output_values,
-    Tensor& output_indices)>;
+    Tensor& output_indices,
+    int64_t dimension_along_axis)>;
 
 // Create subgraph inputs: input_ids, position_ids and attention_mask (for GPT-2).
 using CreateGptInputsFunc = std::function<Status(
@@ -89,16 +90,16 @@ using ProcessLogitsFunc = std::function<Status(
 
 template <typename T>
 using GreedySearchProcessLogitsFunc = std::function<Status(
-    const OrtValue& logits,                                     // logits output of subgraph
-    transformers::IGreedySearchState<T>* greedy_state,          // state
-    transformers::ISequences* sequences,                        // sequences
-    AllocatorPtr& allocator,                                    // default allocator
-    onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-    transformers::ILogitsProcessorList* logits_processors,      // logits processors
-    const transformers::IBeamSearchParameters* parameters,      // parameters
-    int step,                                                   // iteration counter
-    void* stream,                                               // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IBeamSearchParameters* parameters,  // parameters
+    int step,                                               // iteration counter
+    void* stream,                                           // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
@@ -170,7 +171,8 @@ Status TopK(
     void* stream,
     onnxruntime::concurrency::ThreadPool* threadpool,
     Tensor& output_values,
-    Tensor& output_indices);
+    Tensor& output_indices,
+    int64_t dimension_along_axis_override);
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,

@@ -23,7 +23,9 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             void* /*stream*/,
             onnxruntime::concurrency::ThreadPool* threadpool,
             Tensor& output_values,
-            Tensor& output_indices) {
+            Tensor& output_indices,
+            int64_t dimension_along_axis) {
+  ORT_UNUSED_PARAMETER(dimension_along_axis);
   if (input->IsDataType<float>()) {
     return GetTopK<float>(input, axis, k, largest, sorted, allocator, threadpool, output_values, output_indices);
   }
@@ -357,7 +359,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   Tensor topk_scores;
   Tensor topk_indices;
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           topk_scores, topk_indices));
+                           topk_scores, topk_indices, next_token_scores_dims[axis]));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", topk_scores);
@@ -397,16 +399,16 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 template <typename T>
 Status GreedySearchProcessLogits(
-  const OrtValue& logits,                                     // logits output of subgraph
-  transformers::IGreedySearchState<T>* greedy_state,          // state
-  transformers::ISequences* sequences,                        // sequences
-  AllocatorPtr& allocator,                                    // default allocator
-  onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-  transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IBeamSearchParameters* parameters,      // parameters
-  int step,                                                   // iteration counter
-  void* stream,                                               // cuda stream (for CUDA only)
-  const transformers::IConsoleDumper* dumper) {               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IBeamSearchParameters* parameters,  // parameters
+    int step,                                               // iteration counter
+    void* stream,                                           // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper) {           // tensor dumper
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -467,16 +469,17 @@ Status GreedySearchProcessLogits(
   Tensor topk_scores;
   Tensor topk_indices;
   ORT_RETURN_IF_ERROR(
-    TopK(&input,
-         axis,
-         top_k,
-         largest,
-         sorted,
-         allocator,
-         stream,
-         thread_pool,
-         topk_scores,
-         topk_indices));
+      TopK(&input,
+           axis,
+           top_k,
+           largest,
+           sorted,
+           allocator,
+           stream,
+           thread_pool,
+           topk_scores,
+           topk_indices,
+           next_token_scores_shape[axis]));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", topk_scores);
