@@ -44,7 +44,7 @@ void cumulate_and_filter(gsl::span<T>& next_token_scores,
     if (cumulative_probs[offset] <= 1 - parameters->top_p) {
       filter_scores(sorted_indices, next_token_scores, parameters, offset);
     }
-    for (size_t j = 1; j < static_cast<size_t>(parameters->vocab_size - parameters->min_tokens_to_keep); j++) {
+    for (size_t j = 1; j < static_cast<size_t>(parameters->vocab_size) - static_cast<size_t>(parameters->min_tokens_to_keep); j++) {
       cumulative_probs[j + offset] += cumulative_probs[j + offset - 1];
       if (cumulative_probs[j + offset] <= 1 - parameters->top_p) {
         filter_scores(sorted_indices, next_token_scores, parameters, j + offset);
@@ -65,7 +65,7 @@ Status Sample(AllocatorPtr& allocator,
 
   gsl::span<T>& sorted_scores = sampling_state->sorted_scores;
   memcpy(sorted_scores.data(), next_token_scores.data(), next_token_scores.size_bytes());
-  std::vector<size_t> sorted_indices(parameters->batch_size * parameters->vocab_size);
+  std::vector<size_t> sorted_indices(static_cast<size_t>(parameters->batch_size) * static_cast<size_t>(parameters->vocab_size));
 
   std::function<bool(T, T)> predicator;
   if (parameters->custom_sampling) {
