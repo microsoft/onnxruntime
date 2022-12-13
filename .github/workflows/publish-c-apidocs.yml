@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - include/onnxruntime/core/session
 
   workflow_dispatch:
 
