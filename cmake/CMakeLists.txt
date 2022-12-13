@@ -3,6 +3,9 @@
 
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.24)
+
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
