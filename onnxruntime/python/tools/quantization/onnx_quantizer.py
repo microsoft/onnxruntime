@@ -706,7 +706,7 @@ class ONNXQuantizer:
             packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
         else:
             packed_bias_zp_initializer = onnx.helper.make_tensor(
-                quantized_bias_zp_name, self.weight_qType, [], bias_zp_data
+                quantized_bias_zp_name, onnx_proto.TensorProto.INT32, [], bias_zp_data
             )
         self.model.initializer().extend([packed_bias_zp_initializer])
 
