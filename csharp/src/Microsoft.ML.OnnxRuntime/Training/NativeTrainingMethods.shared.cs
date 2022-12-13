@@ -133,21 +133,21 @@ namespace Microsoft.ML.OnnxRuntime
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelOutputCount(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     out UIntPtr count);
 
             public static DOrtGetTrainingModelOutputCount OrtGetTrainingModelOutputCount;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelOutputCount(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     out UIntPtr count);
 
             public static DOrtGetEvalModelOutputCount OrtGetEvalModelOutputCount;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelOutputName(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     UIntPtr index,
                                                     IntPtr /*(OrtAllocator*)*/ allocator,
                                                     out IntPtr /*(char**)*/name);
@@ -156,7 +156,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelOutputName(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     UIntPtr index,
                                                     IntPtr /*(OrtAllocator*)*/ allocator,
                                                     out IntPtr /*(char**)*/name);
@@ -165,7 +165,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtResetGrad(
-                                                    IntPtr /*(OrtSession*)*/ session);
+                                                    IntPtr /*(OrtTrainingSession*)*/ session);
 
             public static DOrtResetGrad OrtResetGrad;
 
@@ -233,11 +233,11 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtSchedulerStep OrtSchedulerStep;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void DOrtReleaseTrainingSession(IntPtr /*(OrtSession*)*/session);
+            public delegate void DOrtReleaseTrainingSession(IntPtr /*(OrtTrainingSession*)*/session);
             public static DOrtReleaseTrainingSession OrtReleaseTrainingSession;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtSession*)*/session);
+            public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtCheckpointState*)*/checkpointState);
             public static DOrtReleaseCheckpointState OrtReleaseCheckpointState;
 
 #endregion TrainingSession API

@@ -122,18 +122,22 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
                   !copy_shape.empty(),
               "src and dst must have same shape and not be rank 0.");
 
-  const std::size_t dims = copy_shape.size();
-  // We will iterate over the output dimensions
-  int64_t num_iterations = 1;
-  for (std::size_t dim = 0; dim < dims; dim++) {
-    num_iterations *= copy_shape[dim];
+  const int64_t total_num_elements_to_copy = copy_shape_in.Size();
+
+  ORT_ENFORCE(total_num_elements_to_copy >= 0, "copy shape must have non-negative size");
+
+  if (total_num_elements_to_copy == 0) {
+    // empty edge case
+    return;
   }
 
-  if (num_iterations <= 1) {
+  if (total_num_elements_to_copy == 1) {
     // scalar edge case
     dst[0] = src[0];
     return;
   }
+
+  const std::size_t dims = copy_shape.size();
 
   // TODOs for when we have strided tensors:
   // - Reorder dimensions so that we iterate along the smallest strides first
@@ -151,7 +155,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
     std::ptrdiff_t contiguous_span_size = static_cast<std::ptrdiff_t>(dims == 2 ? copy_shape[1] : copy_shape[0]);
 
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(num_iterations),
+        thread_pool, static_cast<std::ptrdiff_t>(total_num_elements_to_copy),
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
         [src_stride, dst_stride, dst, src, contiguous_span_size](std::ptrdiff_t first, std::ptrdiff_t last) {
           // get the current inner and outer index
@@ -196,7 +200,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
     const TensorShapeVector& const_copy_shape = copy_shape;
 
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(num_iterations),
+        thread_pool, static_cast<std::ptrdiff_t>(total_num_elements_to_copy),
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
         [&const_copy_shape, &const_dst_strides, dst, src, &const_src_strides, dims](std::ptrdiff_t first,
                                                                                     std::ptrdiff_t last) {
@@ -234,6 +238,7 @@ inline bool StridedCopyIfEnabled(concurrency::ThreadPool* thread_pool,
                                  const TensorShapeVector& dst_strides,
                                  const TensorShape& copy_shape,
                                  const Tensor& src,
+                                 std::ptrdiff_t src_offset,
                                  const TensorShapeVector& src_strides) {
   constexpr bool enabled = utils::HasTypeWithSameSize<EnabledTypes, T>();
   if constexpr (enabled) {
@@ -242,7 +247,7 @@ inline bool StridedCopyIfEnabled(concurrency::ThreadPool* thread_pool,
     StridedCopy<T>(thread_pool,
                    reinterpret_cast<T*>(dst.MutableDataRaw()) + dst_offset,
                    dst_strides, copy_shape,
-                   reinterpret_cast<const T*>(src.DataRaw()),
+                   reinterpret_cast<const T*>(src.DataRaw()) + src_offset,
                    src_strides);
   }
 
@@ -259,40 +264,41 @@ Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
                            const TensorShapeVector& dst_strides,
                            const TensorShape& copy_shape,
                            const Tensor& src,
+                           std::ptrdiff_t src_offset,
                            const TensorShapeVector& src_strides) {
   ORT_ENFORCE(dst.DataType() == src.DataType(), "src and dst types must match");
 
   bool supported = false;
   if (src.IsDataTypeString()) {
-    if (utils::HasType<EnabledDataTypes, std::string>()) {
+    if constexpr (utils::HasType<EnabledDataTypes, std::string>()) {
       supported = true;
       StridedCopy(thread_pool, dst.MutableData<std::string>() + dst_offset, dst_strides, copy_shape,
-                  src.Data<std::string>(), src_strides);
+                  src.Data<std::string>() + src_offset, src_strides);
     }
   } else {
     const auto element_size = src.DataType()->Size();
     switch (element_size) {
       case sizeof(uint32_t):
         supported = StridedCopyIfEnabled<EnabledDataTypes, uint32_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                     copy_shape, src, src_strides);
+                                                                     copy_shape, src, src_offset, src_strides);
         break;
       case sizeof(uint64_t):
         supported = StridedCopyIfEnabled<EnabledDataTypes, uint64_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                     copy_shape, src, src_strides);
+                                                                     copy_shape, src, src_offset, src_strides);
         break;
       case sizeof(uint16_t):
         supported = StridedCopyIfEnabled<EnabledDataTypes, uint16_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                     copy_shape, src, src_strides);
+                                                                     copy_shape, src, src_offset, src_strides);
         break;
       case sizeof(uint8_t):
         static_assert(sizeof(bool) == sizeof(uint8_t), "Need to enable separate case for 'bool' on this platform.");
         supported = StridedCopyIfEnabled<EnabledDataTypes, uint8_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                    copy_shape, src, src_strides);
+                                                                    copy_shape, src, src_offset, src_strides);
         break;
       // It's possible that bool is not 1 byte. static_assert above checks if we need to enable this on a platform.
-      //case sizeof(bool):
+      // case sizeof(bool):
       //  supported = StridedCopyIfEnabled<EnabledDataTypes, bool>(thread_pool, dst, dst_offset, dst_strides,
-      //                                                           copy_shape, src, src_strides);
+      //                                                           copy_shape, src, src_offset, src_strides);
       //  break;
       default:
         // leave 'supported' as false
