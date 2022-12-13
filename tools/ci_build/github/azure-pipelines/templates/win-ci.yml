@@ -115,9 +115,9 @@ jobs:
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
         ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }}'
+          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
         ${{ else }}:
-          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --skip_and_perform_filtered_tests'
+          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
         workingDirectory: '$(Build.BinariesDirectory)'
  
     - task: VSBuild@1
