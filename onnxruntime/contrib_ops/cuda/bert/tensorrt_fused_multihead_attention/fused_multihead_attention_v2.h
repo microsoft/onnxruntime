@@ -3075,11 +3075,11 @@ class FusedMultiHeadAttentionXMMAKernelV2 : public TFusedMultiHeadAttentionXMMAK
     // Provide debug information if the kernel is missing in the pool.
     if (findIter == mFunctions.end()) {
       std::stringstream configss;
-      configss << "s: " << params.s << " d: " << params.d << " interleaved?: "
-               << params.interleaved << " forceUnroll?: " << forceUnroll
-               << "withRelativePositionBias?: " << withRelativePositionBias
-               << "flash_attention?: " << flash_attention
-               << "causal_mask?: " << causal_mask;
+      configss << "Failed to find kernel: s=" << params.s << " d=" << params.d << " interleaved="
+               << params.interleaved << " forceUnroll=" << forceUnroll
+               << " withRelativePositionBias=" << withRelativePositionBias
+               << " flash_attention=" << flash_attention
+               << " causal_mask=" << causal_mask;
       ORT_ENFORCE(findIter != mFunctions.end(), configss.str().c_str());
     }
 

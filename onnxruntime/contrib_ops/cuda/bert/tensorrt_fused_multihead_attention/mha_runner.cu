@@ -136,7 +136,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
     // fallback to original fmha_v2 when head_size <= 64 and seq_len <- 128
     use_flash_attention = interface->mEnableFlashAttention;
-    if (use_flash_attention && params.d <= 64 && params.s <= 128) {
+    if (params.d <= 64 && params.s <= 128) {
       use_flash_attention = false;
       // get max sequence length
       if (params.s > 64) {
