@@ -19,7 +19,7 @@ if (WIN32)
   function(vcpkg_install PACKAGE_NAME)
     add_custom_command(
       OUTPUT ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO
-      COMMAND ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
+      COMMAND sudo ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
       WORKING_DIRECTORY ${VCPKG_SRC}
       DEPENDS vcpkg)
 
