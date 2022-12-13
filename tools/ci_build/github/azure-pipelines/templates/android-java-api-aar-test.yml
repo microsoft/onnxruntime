@@ -72,7 +72,7 @@ jobs:
         --test-series "master" \
         --locale "en_US" \
         --build-dir ./app/build/outputs/apk/androidTest/debug \
-        --token $(app_center_api_token)
+        --token $(app_center_api_token_2)
     displayName: Run E2E tests using App Center
     workingDirectory: $(Build.BinariesDirectory)
 
