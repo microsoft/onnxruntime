@@ -1668,6 +1668,9 @@ struct CustomOpBase : OrtCustomOp {
 #endif
     OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputCharacteristic(index); };
     OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
+
+    OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicInputMinArity(); };
+    OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -1686,6 +1689,18 @@ struct CustomOpBase : OrtCustomOp {
   // Default implemention of GetInputMemoryType() that returns OrtMemTypeDefault
   OrtMemType GetInputMemoryType(size_t /*index*/) const {
     return OrtMemTypeDefault;
+  }
+
+  // Default implementation of GetVariadicInputMinArity() returns 1 to specify that a variadic input
+  // should expect at least 1 argument.
+  int GetVariadicInputMinArity() const {
+    return 1;
+  }
+
+  // Default implementation of GetVariadicOutputMinArity() returns 1 to specify that a variadic output
+  // should produce at least 1 output value.
+  int GetVariadicOutputMinArity() const {
+    return 1;
   }
 };
 

@@ -3629,9 +3629,10 @@ struct OrtApi {
 // Specify if the inputs/outputs are one of:
 // 1) Non-optional (input/output must be present in the node)
 // 2) Optional (input/output may be absent in the node)
-// 3) Variadic: Only the last input or output of a custom op may be marked as variadic. A variadic input or output
-//              specifies 1 or more operands. The operands must be of the same type, unless the
-//              type is ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED.
+// 3) Variadic: A variadic input or output specifies N (i.e., the minimum arity) or more operands.
+//              Only the last input or output of a custom op may be marked as variadic.
+//              The operands must be of the same type, unless the input/output element type is
+//              ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED.
 typedef enum OrtCustomOpInputOutputCharacteristic {
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
@@ -3675,6 +3676,14 @@ struct OrtCustomOp {
   // the execution provider. If the inputs need to be with different memory tyeps,
   // this function can be overriden to return the specific memory types.
   OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the minimum number of input arguments expected for the variadic input.
+  // Applicable only for custom ops that have a variadic input.
+  int(ORT_API_CALL* GetVariadicInputMinArity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns the minimum number of output values expected for the variadic output.
+  // Applicable only for custom ops that have a variadic output.
+  int(ORT_API_CALL* GetVariadicOutputMinArity)(_In_ const struct OrtCustomOp* op);
 };
 
 /*

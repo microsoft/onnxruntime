@@ -191,6 +191,14 @@ struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, My
   constexpr OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const noexcept {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
+
+  constexpr int GetVariadicInputMinArity() const noexcept {
+    return 1;
+  }
+
+  constexpr int GetVariadicOutputMinArity() const noexcept {
+    return 1;
+  }
 };
 
 // Custom op with 2 inputs (required, variadic) and 2 outputs (required, variadic)
