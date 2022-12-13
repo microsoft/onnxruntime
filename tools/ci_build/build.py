@@ -178,8 +178,11 @@ def parse_arguments():
     # Training options
     parser.add_argument("--enable_nvtx_profile", action="store_true", help="Enable NVTX profile in ORT.")
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profile in ORT.")
-    parser.add_argument("--enable_training", action="store_true",
-        help="Enable full training functionality in ORT. Includes ORTModule and ORT Training APIs.")
+    parser.add_argument(
+        "--enable_training",
+        action="store_true",
+        help="Enable full training functionality in ORT. Includes ORTModule and ORT Training APIs.",
+    )
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ort training apis.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
 
