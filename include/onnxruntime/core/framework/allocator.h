@@ -8,7 +8,6 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
-#include "core/framework/stream_handles.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -48,6 +47,11 @@ constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr size_t kAllocAlignment = 256;
 
 class IAllocator;
+class Stream;
+namespace synchronize {
+class Notification;
+}
+using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
 void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 template <typename T>
@@ -187,5 +191,4 @@ using AllocatorPtr = std::shared_ptr<IAllocator>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);
-
 }  // namespace onnxruntime

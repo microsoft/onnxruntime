@@ -109,7 +109,8 @@ struct CpuBuffersInfo {
 };
 
 static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
-  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
+  std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>();
+  info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
   // Uncomment the following line to check if all previous stream
   // operations are done correctly.
   // checkCudaErrors(tmp->status);
@@ -117,7 +118,6 @@ static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
     info->allocator->Free(info->buffers[i]);
   }
   delete[] info->buffers;
-  delete info;
 }
 
 Status CudaStream::CleanUpOnRunEnd() {
@@ -126,14 +126,14 @@ Status CudaStream::CleanUpOnRunEnd() {
   // Release the ownership of cpu_buffers_info so that the underlying
   // object will keep alive until the end of ReleaseCpuBufferCallback.
   if (release_cpu_buffer_on_cuda_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
-    auto cpu_buffers_info = new CpuBuffersInfo;
+    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;
     cpu_buffers_info->buffers = new void*[deferred_cpu_buffers_.size()];
     for (size_t i = 0; i < deferred_cpu_buffers_.size(); ++i) {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
     cpu_buffers_info->n_buffers = deferred_cpu_buffers_.size();
-    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(static_cast<cudaStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info));
+    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(static_cast<cudaStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info.release()));
   } else {
     // for cuda graph case, if we launch the host function to cuda stream
     // it seems be captured in cuda graph and replay, which cause wrong deletion.

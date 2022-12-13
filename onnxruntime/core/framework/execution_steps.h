@@ -3,7 +3,6 @@
 #pragma once
 
 #include "core/framework/sequential_execution_plan.h"
-#include "core/framework/stream_handles.h"
 #include "core/framework/stream_execution_context.h"
 
 namespace onnxruntime {

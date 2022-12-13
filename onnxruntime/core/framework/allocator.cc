@@ -4,7 +4,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/stream_handles.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"

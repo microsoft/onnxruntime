@@ -8,7 +8,6 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 

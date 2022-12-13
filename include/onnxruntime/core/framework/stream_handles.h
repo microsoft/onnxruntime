@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 #include "core/common/status.h"
 
@@ -103,6 +104,8 @@ class Stream {
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
   std::unordered_map<Stream*, uint64_t> other_stream_clock_{};
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Stream);
 };
 
 namespace synchronize {
@@ -142,7 +145,6 @@ class Notification {
 // EP can register the handle to the executor.
 // in the POC, just use primitive function pointer
 // TODO: use a better way to dispatch handles.
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
 // an interface of a simple registry which hold the handles EP registered.
@@ -163,5 +165,6 @@ class IStreamCommandHandleRegistry {
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
+
 
 }  // namespace onnxruntime
