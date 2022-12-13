@@ -81,7 +81,7 @@ class Module:
         return self.train(False)
 
     def lazy_reset_grad(self):
-        """ Lazily resets the training gradients.
+        """Lazily resets the training gradients.
 
         This function sets the internal state of the module such that the module gradients
         will be scheduled to be reset just before the new gradients are computed on the next invocation
