@@ -306,7 +306,7 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
       totalTime += it.real_time.count();
     }
   }
-  stream << std::setw(20) << std::left << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
+  stream << std::setw(20) << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
   std::cout << std::endl;
   std::cout << "Full device name: " << deviceName << std::endl;
   std::cout << std::endl;
