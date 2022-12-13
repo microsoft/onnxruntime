@@ -16,6 +16,10 @@ jobs:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
   pool: Linux-CPU-2019
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: none
