@@ -257,7 +257,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLinearLRScheduler, _Inout_ OrtTrain
         return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
             optimizer, warmup_step_count, total_step_count);
       },
-                                 std::optional<float>(initial_lr)));
+                                 initial_lr));
 
   return status;
   API_IMPL_END
