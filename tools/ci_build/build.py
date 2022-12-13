@@ -883,7 +883,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if args.test_all_timeout is "10800" else "OFF"),
+        + ("ON" if args.test_all_timeout == "10800" else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
