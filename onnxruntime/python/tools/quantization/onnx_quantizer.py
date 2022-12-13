@@ -692,7 +692,7 @@ class ONNXQuantizer:
         quantized_bias_scale_name = quantized_bias_name + "_scale"
         bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
         if self.is_per_channel():
-            packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, )
+            packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         else:
             packed_bias_scale_initializer = onnx.helper.make_tensor(quantized_bias_scale_name, onnx_proto.TensorProto.FLOAT, [], bias_scale_data)
         self.model.initializer().extend([packed_bias_scale_initializer])
