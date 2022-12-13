@@ -190,7 +190,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
-  data.gemm_buffer = reinterpret_cast<const CudaT*>(gemm_buffer.get());
+  data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   data.bias = nullptr;  // bias has been added
   data.query = nullptr;
   data.key = nullptr;
