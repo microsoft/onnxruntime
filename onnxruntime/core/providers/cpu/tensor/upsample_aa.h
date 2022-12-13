@@ -21,6 +21,9 @@
 #endif
 namespace onnxruntime {
 
+namespace ConstValue {
+constexpr int32_t mag_factor = 1 << (22 - 1);
+}
 struct FilterParamsBaseAA {
   std::vector<int64_t> bound;
   std::vector<float> original;
@@ -33,15 +36,11 @@ struct FilterParamsAA {
   float cubic_coeff_a = -0.75f;
 
   /* Handles values form -640 to 639. */
-  uint8_t* clip8_lookups_table;
+  uint8_t* clip8_lookups_table{nullptr};
 
   FilterParamsBaseAA dim_x;
   FilterParamsBaseAA dim_y;
   FilterParamsBaseAA dim_z;
-
-  // taken from
-  // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
-  // src/libImaging/Resample.c#L20-L29
 
   static int32_t round_up(float f) {
     return ((int32_t)((f) >= 0.0 ? (f) + 0.5F : (f)-0.5F));
@@ -59,6 +58,9 @@ struct FilterParamsAA {
 };
 
 struct BilinearParamsAA : FilterParamsAA {
+  // taken from
+  // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
+  // src/libImaging/Resample.c#L20-L29
   float filter(float x) const override {
     if (x < 0.0f) {
       x = -x;
@@ -109,6 +111,11 @@ struct AccumulateType {
 };
 
 template <>
+struct AccumulateType<int32_t> {
+  using type = float;
+};
+
+template <>
 struct AccumulateType<float> {
   using type = float;
 };
@@ -126,6 +133,8 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                            AllocatorPtr& alloc,
                            const GetOriginalCoordinateFunc& get_original_coordinate,
                            const int32_t dtype, bool exclude_outside, const bool is_nchw);
+template <class T>
+inline constexpr bool is_8bit_v = is_same<T, int8_t>::value || is_same<T, uint8_t>::value;
 
 template <typename T>
 void UpsampleBaseAA(FilterParamsAA& p,
@@ -143,14 +152,10 @@ void UpsampleBaseAA(FilterParamsAA& p,
                     concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
-  constexpr bool is_8bit_data =
-      (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value);
-
   auto image_temp_buffer = BufferUniquePtr(alloc->Alloc(input_height *
                                                         output_width * num_channels * sizeof(T)),
                                            BufferDeleter(alloc));
 
-  int32_t mag_factor = 1 << (22 - 1);
   using ACtype = typename AccumulateType<T>::type;
 
   for (int64_t n = 0; n < batch_size; ++n) {
@@ -176,8 +181,8 @@ void UpsampleBaseAA(FilterParamsAA& p,
                 continue;
               }
               ACtype output = 0;
-              if constexpr (is_8bit_data) {
-                output = mag_factor;
+              if constexpr (is_8bit_v<T>) {
+                output = ConstValue::mag_factor;
               }
               const auto* weight_coeff =
                   reinterpret_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
@@ -188,12 +193,12 @@ void UpsampleBaseAA(FilterParamsAA& p,
                 output += Xdata[y * input_width + xmin] * (*weight_coeff++);
               }
 
-              if constexpr (is_8bit_data) {
+              if constexpr (is_8bit_v<T>) {
                 Ydata[output_offset] = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
                 Ydata[output_offset] = p.round_up(output);
               } else {
-                Ydata[output_offset] = static_cast<T>(output);
+                Ydata[output_offset] = (output);
               }
             }
           }
@@ -219,8 +224,8 @@ void UpsampleBaseAA(FilterParamsAA& p,
               }
 
               ACtype output = 0;
-              if constexpr (is_8bit_data) {
-                output = mag_factor;
+              if constexpr (is_8bit_v<T>) {
+                output = ConstValue::mag_factor;
               }
               const auto* weight_coeff =
                   reinterpret_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) +
@@ -231,7 +236,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
                 output +=
                     Xdata[ymin * output_width + x] * (*weight_coeff++);
               }
-              if constexpr (is_8bit_data) {
+              if constexpr (is_8bit_v<T>) {
                 Ydata[output_offset] = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
                 Ydata[output_offset] = p.round_up(output);
@@ -355,15 +360,11 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
                          concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
-  constexpr bool is_8bit_data =
-      (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value);
-
   auto image_temp_buffer = BufferUniquePtr(alloc->Alloc(input_height *
                                                         output_width * num_channels * sizeof(T)),
                                            BufferDeleter(alloc));
 
   using ACtype = typename AccumulateType<T>::type;
-  int32_t mag_factor = 1 << (22 - 1);
 
   for (int64_t n = 0; n < batch_size; ++n) {
     auto* temp_buffer = static_cast<T*>(image_temp_buffer.get());
@@ -398,17 +399,14 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
             for (int64_t c = 0; c < num_channels; ++c) {
               const auto* weight_coeff_start = weight_coeff;
               ACtype output = 0;
-              if constexpr (is_8bit_data) {
-                output = mag_factor;
+              if constexpr (is_8bit_v<T>) {
+                output = ConstValue::mag_factor;
               }
-              for (int idx = xmin; idx < xmax; ++idx) {
-                // printf("%f*%f + ", *weight_coeff_start, Xdata[(y * input_width + idx) * num_channels + c]);
-
+              for (int64_t idx = xmin; idx < xmax; ++idx) {
                 output += Xdata[(y * input_width + idx) * num_channels + c] *
                           (*weight_coeff_start++);
               }
-              // printf("=%f\n", output);
-              if constexpr (is_8bit_data) {
+              if constexpr (is_8bit_v<T>) {
                 Ydata_with_offset[c] = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
                 Ydata_with_offset[c] = p.round_up(output);
@@ -448,14 +446,14 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
             for (int64_t c = 0; c < num_channels; ++c) {
               const auto* weight_coeff_start = weight_coeff;
               ACtype output = 0;
-              if constexpr (is_8bit_data) {
-                output = mag_factor;
+              if constexpr (is_8bit_v<T>) {
+                output = ConstValue::mag_factor;
               }
-              for (int idy = ymin; idy < ymax; ++idy) {
+              for (int64_t idy = ymin; idy < ymax; ++idy) {
                 output += Xdata[(idy * output_width + x) * num_channels + c] *
                           (*weight_coeff_start++);
               }
-              if constexpr (is_8bit_data) {
+              if constexpr (is_8bit_v<T>) {
                 Ydata_with_offset[c] = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
                 Ydata_with_offset[c] = p.round_up(output);
@@ -468,26 +466,37 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
   }
 }
 
-template <typename T>
-inline void InterpolateCompute(const T* Xdata, const int64_t stride,
-                               const float* weight_coeff,
+template <typename T, typename ACType>
+inline void InterpolateCompute(const T* Xdata, FilterParamsAA& p, 
+                               const int64_t stride,
+                               const ACType* weight_coeff,
                                const int64_t* idx_bound, T* Ydata) {
-  float output = 0;
+  ACType output = 0;
+  if constexpr (is_8bit_v<T>) {
+    output = ConstValue::mag_factor;
+  }
+  const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
   for (int64_t idx = idx_bound[0]; idx < idx_bound[1]; ++idx) {
     output += Xdata[idx * stride] * (*weight_coeff++);
   }
-  *Ydata = static_cast<T>(output);
+  if constexpr (is_8bit_v<T>) {
+    *Ydata = static_cast<T>(clip8_lookups[output >> 22]);
+  } else if constexpr (std::is_same<T, int32_t>::value) {
+    *Ydata = p.round_up(output);
+  } else {  // float double
+    *Ydata = output;
+  }
 }
 
-template <typename T>
+template <typename T, typename ACType>
 inline void InterpolateLoopForSingleDim(
-    const T* Xdata, int64_t dim_size, int64_t section_idx,
-    const int64_t y_stride, const int64_t x_stride, const float* weight_coeff,
+    const T* Xdata, FilterParamsAA& p, int64_t dim_size, int64_t section_idx,
+    const int64_t y_stride, const int64_t x_stride, const ACType* weight_coeff,
     const std::vector<int64_t>& idx_bound, int64_t window_size, T* Ydata) {
   for (int64_t step = 0; step < dim_size; ++step) {
     InterpolateCompute(
-        Xdata, y_stride,
+        Xdata, p, y_stride,
         &weight_coeff[(x_stride == 0) ? window_size * step
                                       : window_size * section_idx],
         &idx_bound[(x_stride == 0) ? step * 2 : section_idx * 2], Ydata);
@@ -496,12 +505,12 @@ inline void InterpolateLoopForSingleDim(
   }
 }
 
-template <typename T>
+template <typename T, typename ACtype>
 inline void
-LoopInDimN(const T* Xdata_base, int64_t dim_idx, int64_t pre_level_idx, int64_t section_idx,
+LoopInDimN(const T* Xdata_base, FilterParamsAA& p, int64_t dim_idx, int64_t pre_level_idx, int64_t section_idx,
            const InlinedVector<int64_t>& input_stride,
            const InlinedVector<int64_t>& output_stride, const int64_t compute_dim,
-           const float* weight_coeff, const std::vector<int64_t>& idx_bound,
+           const ACtype* weight_coeff, const std::vector<int64_t>& idx_bound,
            int64_t window_size, T* Ydata_base) {
   const int64_t x_ofs =
       pre_level_idx * ((compute_dim == dim_idx) ? 0 : input_stride[dim_idx]);
@@ -513,7 +522,7 @@ LoopInDimN(const T* Xdata_base, int64_t dim_idx, int64_t pre_level_idx, int64_t 
          sub_sec_idx < output_stride[dim_idx] / output_stride[dim_idx + 1];
          ++sub_sec_idx) {
       section_idx = (compute_dim == dim_idx + 1) ? sub_sec_idx : section_idx;
-      LoopInDimN(Xdata, dim_idx + 1, sub_sec_idx, section_idx, input_stride,
+      LoopInDimN(Xdata, p, dim_idx + 1, sub_sec_idx, section_idx, input_stride,
                  output_stride, compute_dim, weight_coeff, idx_bound,
                  window_size, Ydata);
     }
@@ -521,7 +530,7 @@ LoopInDimN(const T* Xdata_base, int64_t dim_idx, int64_t pre_level_idx, int64_t 
   }
   int64_t x_stride = compute_dim == int64_t(output_stride.size()) - 1 ? 0 : 1;
   InterpolateLoopForSingleDim(
-      Xdata, output_stride[dim_idx] / output_stride[dim_idx + 1], section_idx,
+      Xdata, p, output_stride[dim_idx] / output_stride[dim_idx + 1], section_idx,
       output_stride[compute_dim], x_stride, weight_coeff, idx_bound,
       window_size, Ydata);
 }
@@ -587,12 +596,8 @@ void UpsampleTrilinearAA(int64_t batch_size,
                           AllocatorPtr& alloc,
                           const GetOriginalCoordinateFunc& get_original_coordinate,
                           concurrency::ThreadPool* tp) {
-
-  //using ACtype = typename AccumulateType<T>::type;
-  if constexpr (std::is_same<T, float>::value != true){
-    return;
-  }
   const auto* XdataBase = X->Data<T>();
+
   int64_t input_paras[] = {input_height, input_width, input_depth};
   int64_t output_paras[] = {output_height, output_width, output_depth};
   float scale_paras[] = {height_scale, width_scale, depth_scale};
@@ -625,17 +630,20 @@ void UpsampleTrilinearAA(int64_t batch_size,
   }
 
   if(use_extrapolation){
-    YdataBase[0] = extrapolation_value;
+    YdataBase[0] = static_cast<T>(extrapolation_value);
   }
+  using ACtype = typename AccumulateType<T>::type;
+
+
   for (int64_t n = 0; n < batch_size; ++n) {
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, static_cast<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
           const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
-          const auto* weight = static_cast<const float*>(p.dim_y.weight_coefficients.get());
+          const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
           T* Ydata = static_cast<T*>(temp1.get());
 
-          LoopInDimN<T>(Xdata, 2, c, 0, in_stride, tmp_stride, 5,
+          LoopInDimN(Xdata, p, 2, c, 0, in_stride, tmp_stride, 5,
                         weight, p.dim_x.bound, p.dim_x.window_size,
                         Ydata);
         });
@@ -644,9 +652,9 @@ void UpsampleTrilinearAA(int64_t batch_size,
         [&](std::ptrdiff_t c) {
           auto Xdatabase_temp = static_cast<T*>(temp1.get());
           const T* Xdata = Xdatabase_temp + (c) * (input_depth * input_height * output_width);
-          const auto* weight = static_cast<const float*>(p.dim_y.weight_coefficients.get());
+          const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
           T* Ydata = static_cast<T*>(temp2.get());
-          LoopInDimN<T>(Xdata, 2, c, 0, tmp_stride, out_stride, 4,
+          LoopInDimN(Xdata, p, 2, c, 0, tmp_stride, out_stride, 4,
                         weight, p.dim_y.bound, p.dim_y.window_size,
                         Ydata);
         });
@@ -654,11 +662,11 @@ void UpsampleTrilinearAA(int64_t batch_size,
         tp, static_cast<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
           auto Xdatabase_temp = static_cast<T*>(temp2.get());
-          const auto* weight = static_cast<const float*>(p.dim_y.weight_coefficients.get());
+          const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
 
           const T* Xdata = Xdatabase_temp + (c) * (input_depth * output_height * output_width);
           T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
-          LoopInDimN<T>(Xdata, 2, c, 0, tmp_stride, out_stride, 3,
+          LoopInDimN(Xdata, p, 2, c, 0, tmp_stride, out_stride, 3,
                         weight, p.dim_z.bound, p.dim_z.window_size,
                         Ydata);
         });
