@@ -401,15 +401,15 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       for (batch = 0; batch < N; batch += parallel_tree_N_) {
         batch_end = std::min(N, batch + parallel_tree_N_);
         for (i = batch; i < batch_end; ++i) {
-          scores[i - batch] = {0, 0};
+          scores[SafeInt<ptrdiff_t>(i - batch)] = {0, 0};
         }
         for (j = 0; j < static_cast<size_t>(n_trees_); ++j) {
           for (i = batch; i < batch_end; ++i) {
-            agg.ProcessTreeNodePrediction1(scores[i - batch], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+            agg.ProcessTreeNodePrediction1(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
           }
         }
         for (i = batch; i < batch_end; ++i) {
-          agg.FinalizeScores1(z_data + i, scores[i - batch],
+          agg.FinalizeScores1(z_data + i, scores[SafeInt<ptrdiff_t>(i - batch)],
                               label_data == nullptr ? nullptr : (label_data + i));
         }
       }
