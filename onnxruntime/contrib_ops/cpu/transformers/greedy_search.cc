@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <functional>
 #include <string>
+#include <utility>
 #include "core/common/safeint.h"
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -54,7 +55,6 @@ REGISTER_KERNEL_TYPED(float)
 namespace transformers {
 
 namespace gpt_details {
-// Some common helpers that can be shared around
 std::pair<Status, std::unique_ptr<GptSubgraph>> CreateGptSubgraphAndUpdateParameters(
     const Node& node,
     const SessionState& session_state,
