@@ -99,6 +99,3 @@ void UpsampleBase::ComputeROIWithAxes(std::vector<float>& roi_array) const {
 }
 
 }  // namespace onnxruntime
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
