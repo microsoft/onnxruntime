@@ -67,6 +67,7 @@ class UpsampleBase {
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
+    antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
@@ -79,7 +80,6 @@ class UpsampleBase {
     keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
 
     axes_ = info.GetAttrsOrDefault<int64_t>("axes");
-    antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
@@ -109,7 +109,7 @@ class UpsampleBase {
     cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", -0.75f);
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
-    if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == 0 || mode_ != LINEAR)) {
+    if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {
       ORT_THROW(
           "exclude_outside can be set to 1 only when mode is CUBIC or LINEAR when antialias_ is on"
           ". Current mode is set to " +
@@ -162,7 +162,7 @@ class UpsampleBase {
   GetNearestPixelFunc get_nearest_pixel_;
   float cubic_coeff_a_;
   bool exclude_outside_;
-  bool antialias_;
+  bool antialias_{false};
   float extrapolation_value_;
   bool use_nearest2x_optimization_ = false;
 
@@ -325,9 +325,9 @@ class UpsampleBase {
       }
     }
 
-    if(antialias_){
+    if (antialias_) {
       ORT_ENFORCE((UpsampleMode::LINEAR == mode || UpsampleMode::CUBIC == mode),
-                  "attribute antialias only support LINEAR mode and CUBIC.");
+                  "when set antialias on, Resize only supports LINEAR mode and CUBIC.");
     }
 
     if (UpsampleMode::LINEAR == mode) {
