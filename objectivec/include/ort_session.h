@@ -108,7 +108,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
 * Append a ExecutionProvider in new interface, now we support xnnpack
 * @param providerName Provider name. For example, "xnnpack".
-* @param providerOptions for example, {"intra_thread_num":2}
+* @param providerOptions Provider-specific options. For example, for provider "xnnpack", {"intra_thread_num": "2"}.
 * @param error Optional error information set if an error occurs.
 * @return True if appendEP success or False
 */
