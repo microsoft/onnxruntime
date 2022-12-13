@@ -113,7 +113,7 @@ NS_ASSUME_NONNULL_BEGIN
 * @return True if appendEP success or False
 */
 - (BOOL)appendExecutionProvider:(NSString*)providerName
-                providerOptions:(NSDictionary*)providerOptions
+                providerOptions:(NSDictionary<NSString*, NSString*>*)providerOptions
                           error:(NSError**)error;
 /**
  * Sets the number of threads used to parallelize the execution within nodes.
