@@ -223,7 +223,11 @@ NS_ASSUME_NONNULL_BEGIN
   XnnpackOptions.intra_thread_num = 2;
 
   BOOL appendResult = [sessionOptions appendXnnpackExecutionProviderWithOptions:XnnpackOptions
-                                                                         error:&err];
+                                                                          error:&err];
+  // Without xnnpack EP in building also can pass the test
+  if (!appendResult && [category isEqualToString:@"XNNPACK execution provider is not supported in this build. "]) {
+    return;
+  }
 
   ORTAssertBoolResultSuccessful(appendResult, err);
 

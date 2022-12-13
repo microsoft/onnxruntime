@@ -5,14 +5,6 @@
 
 #import "ort_session.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#ifdef __cplusplus
-}
-#endif
-
 NS_ASSUME_NONNULL_BEGIN
 
 /**
@@ -39,7 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @return Whether the provider was enabled successfully.
  */
 - (BOOL)appendXnnpackExecutionProviderWithOptions:(ORTXnnpackExecutionProviderOptions*)options
-                                           error:(NSError**)error;
+                                            error:(NSError**)error;
 
 @end
 

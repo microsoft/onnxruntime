@@ -216,19 +216,19 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)appendExecutionProvider:(NSString*)providerName
                 providerOptions:(NSDictionary*)providerOptions
                           error:(NSError**)error {
-    std::unordered_map<std::string, std::string> options;
-    NSArray* keys = [providerOptions allKeys];
+  std::unordered_map<std::string, std::string> options;
+  NSArray* keys = [providerOptions allKeys];
 
-    for(NSString* key in keys) {
-        NSString* value = [providerOptions objectForKey:key];
-        options.emplace(key.UTF8String, value.UTF8String);
-    }
+  for (NSString* key in keys) {
+    NSString* value = [providerOptions objectForKey:key];
+    options.emplace(key.UTF8String, value.UTF8String);
+  }
 
-    try {
-        _sessionOptions->AppendExecutionProvider(providerName.UTF8String, options);
-        return YES;
-    }
-    ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error);
+  try {
+    _sessionOptions->AppendExecutionProvider(providerName.UTF8String, options);
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error);
 }
 
 - (BOOL)setIntraOpNumThreads:(int)intraOpNumThreads
