@@ -51,7 +51,7 @@ if (onnxruntime_USE_ROCM)
 # ROCM provider sources are generated, need to add include directory for generated headers
   target_include_directories(onnxruntime_session PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
-if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
 

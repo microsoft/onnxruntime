@@ -114,7 +114,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       re2::re2
     )
 
-    if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    if (onnxruntime_ENABLE_TRAINING)
       bundle_static_library(onnxruntime_webassembly tensorboard)
     endif()
 
@@ -192,7 +192,7 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
