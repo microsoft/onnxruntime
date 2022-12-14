@@ -191,7 +191,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
             min_arity = op->GetVariadicInputMinArity(op);
-            is_homogeneous = op->GetVariadicInputHomogeneity(op);
+            is_homogeneous = static_cast<bool>(op->GetVariadicInputHomogeneity(op));
           }
         }
 
@@ -228,7 +228,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
             min_arity = op->GetVariadicOutputMinArity(op);
-            is_homogeneous = op->GetVariadicOutputHomogeneity(op);
+            is_homogeneous = static_cast<bool>(op->GetVariadicOutputHomogeneity(op));
           }
         }
 

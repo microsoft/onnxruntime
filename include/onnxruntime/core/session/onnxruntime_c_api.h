@@ -3703,17 +3703,19 @@ struct OrtCustomOp {
   // Applicable only for custom ops that have a variadic input.
   int(ORT_API_CALL* GetVariadicInputMinArity)(_In_ const struct OrtCustomOp* op);
 
-  // Returns true if all arguments of a variadic input have to be of the same type (homogeneous).
+  // Returns true (non-zero) if all arguments of a variadic input have to be of the same type (homogeneous),
+  // and false (zero) otherwise.
   // Applicable only for custom ops that have a variadic input.
-  bool(ORT_API_CALL* GetVariadicInputHomogeneity)(_In_ const struct OrtCustomOp* op);
+  int(ORT_API_CALL* GetVariadicInputHomogeneity)(_In_ const struct OrtCustomOp* op);
 
   // Returns the minimum number of output values expected for the variadic output.
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputMinArity)(_In_ const struct OrtCustomOp* op);
 
-  // Returns true if all outputs values of a variadic output have to be of the same type (homogeneous).
+  // Returns true (non-zero) if all outputs values of a variadic output have to be of the same type (homogeneous),
+  // and false (zero) otherwise.
   // Applicable only for custom ops that have a variadic output.
-  bool(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
+  int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
 };
 
 /*
