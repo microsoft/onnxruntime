@@ -171,6 +171,16 @@ try:
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
+                    
+        def _rewrite_ld_preload_cloud(self):
+            with open("onnxruntime/capi/_ld_preload.py", "a") as f:
+                f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
+                f.write("try:\n")
+                f.write('    zlib_path = util.find_library("zlib1")\n')
+                f.write('    zlib = CDLL(zlib_path,mode=RTLD_GLOBAL)\n')
+                f.write("except OSError:\n")
+                f.write("    import os\n")
+                f.write('    os.environ["ORT_ZLIB_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -272,6 +282,9 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
+            else:
+                if "onnxruntime_cloud" == package_name:
+                    self._rewrite_ld_preload_cloud()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
                 assert self.dist_dir is not None
