@@ -2,7 +2,8 @@ name: Update Python API Docs
 on:
   push:
     branches:
-      - master
+      - main
+  workflow_dispatch:
 
 jobs:
   publish:

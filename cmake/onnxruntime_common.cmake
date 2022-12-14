@@ -115,7 +115,7 @@ target_include_directories(onnxruntime_common
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
 
-target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET})
+target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS})
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 

@@ -124,7 +124,7 @@ std::string Profiler::EndProfiling() {
 
   for (size_t i = 0; i < events_.size(); ++i) {
     auto& rec = events_[i];
-    profile_stream_ << R"({"cat" : ")" << event_categor_names_[rec.cat] << "\",";
+    profile_stream_ << R"({"cat" : ")" << event_category_names_[rec.cat] << "\",";
     profile_stream_ << "\"pid\" :" << rec.pid << ",";
     profile_stream_ << "\"tid\" :" << rec.tid << ",";
     profile_stream_ << "\"dur\" :" << rec.dur << ",";

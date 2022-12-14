@@ -30,7 +30,7 @@ public:
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
         uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
         onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
+        std::vector<uint32_t> onnxAxes(static_cast<size_t>(inputDimCount) - static_cast<size_t>(onnxAxis));
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         assert(m_inputTensorDescs.size() == 3);
@@ -175,24 +175,27 @@ public:
             ++currentNodeIndex;
         }
 
-        DML_INPUT_GRAPH_EDGE_DESC biasInputEdge = {};
-        biasInputEdge.GraphInputIndex = 2;
-        biasInputEdge.ToNodeIndex = biasCastOpDesc.Desc ? currentNodeIndex : 0;
-        biasInputEdge.ToNodeInputIndex = biasCastOpDesc.Desc ? 0 : 2;
-        inputEdges.push_back(std::move(biasInputEdge));
-
-        if (biasCastOpDesc.Desc)
+        if (biasDesc.Desc)
         {
-            opDescs.push_back(&biasCastOpDesc);
+            DML_INPUT_GRAPH_EDGE_DESC biasInputEdge = {};
+            biasInputEdge.GraphInputIndex = 2;
+            biasInputEdge.ToNodeIndex = biasCastOpDesc.Desc ? currentNodeIndex : 0;
+            biasInputEdge.ToNodeInputIndex = biasCastOpDesc.Desc ? 0 : 2;
+            inputEdges.push_back(std::move(biasInputEdge));
 
-            // Link the cast op to the MVN op
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
-            intermediateEdge.FromNodeIndex = currentNodeIndex;
-            intermediateEdge.FromNodeOutputIndex = 0;
-            intermediateEdge.ToNodeIndex = 0;
-            intermediateEdge.ToNodeInputIndex = 2;
-            intermediateEdges.push_back(std::move(intermediateEdge));
-            ++currentNodeIndex;
+            if (biasCastOpDesc.Desc)
+            {
+                opDescs.push_back(&biasCastOpDesc);
+
+                // Link the cast op to the MVN op
+                DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
+                intermediateEdge.FromNodeIndex = currentNodeIndex;
+                intermediateEdge.FromNodeOutputIndex = 0;
+                intermediateEdge.ToNodeIndex = 0;
+                intermediateEdge.ToNodeInputIndex = 2;
+                intermediateEdges.push_back(std::move(intermediateEdge));
+                ++currentNodeIndex;
+            }
         }
 
         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
@@ -231,17 +234,7 @@ public:
 
 void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
-    *isSupported = false;
-
-    // Mean and InvStdDev are not supported outputs.
-    // If only Scale tensor is present then fall back to CPU. This is temporary until
-    // DML1.9.2 or DML1.10 gets released.
-    if (context->GetInputCount() < 3 || context->GetOutputCount() > 1)
-    {
-        return;
-    }
-
-    *isSupported = true;
+    *isSupported = context->GetOutputCount() == 1;
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization);

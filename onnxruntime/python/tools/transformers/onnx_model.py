@@ -1041,7 +1041,8 @@ class OnnxModel:
             logger.warning("add_prefix_to_names does not process subgraphs.")
 
         # Exclude the names of inputs and outputs of main graph (but not subgraphs)
-        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output]
+        # and empty names ("") as they have special meaning to denote missing optional inputs
+        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output] + [""]
 
         for initializer in self.model.graph.initializer:
             if initializer.name not in excluded:
