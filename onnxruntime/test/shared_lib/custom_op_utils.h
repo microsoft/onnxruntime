@@ -192,35 +192,42 @@ struct TemplatedCustomOp : Ort::CustomOpBase<TemplatedCustomOp<T>, T> {
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
     return new T(info);
   }
+
   const char* GetName() const noexcept { return op_name_; }
 
   size_t GetInputTypeCount() const noexcept { return input_types_.size(); }
+
   ONNXTensorElementDataType GetInputType(size_t index) const noexcept {
     return input_types_[index];
   }
+
   OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const noexcept {
     return input_characs_[index];
   }
+
   int GetVariadicInputMinArity() const noexcept {
     return input_min_arity_;
   }
+
   bool GetVariadicInputHomogeneity() const noexcept {
     return input_homogeneity_;
   }
 
   size_t GetOutputTypeCount() const noexcept { return output_types_.size(); }
+
   ONNXTensorElementDataType GetOutputType(size_t index) const noexcept {
     return output_types_[index];
-  };
+  }
+
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const noexcept {
     return output_characs_[index];
   }
 
   int GetVariadicOutputMinArity() const noexcept {
-    return output_min_arity_;  // At least one variadic output value.
+    return output_min_arity_;
   }
 
-  constexpr bool GetVariadicOutputHomogeneity() const noexcept {
+  bool GetVariadicOutputHomogeneity() const noexcept {
     return output_homogeneity_;
   }
 
