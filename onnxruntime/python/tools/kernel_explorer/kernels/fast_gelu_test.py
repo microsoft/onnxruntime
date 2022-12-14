@@ -5,11 +5,13 @@
 
 import re
 import sys
+from dataclasses import dataclass
 from itertools import product
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
+from utils import dtype_to_bytes
 
 
 def get_bert_sizes():
@@ -64,6 +66,19 @@ def test_fast_gelu(x_size, bias_size, dtype):
         run_fast_gelu(x_size, bias_size, dtype, f)
 
 
+@dataclass
+class FastGeluMetric(ke.BandwidthMetric):
+    batch_size: int
+    seq_len: int
+    hidden_size: int
+
+    def report(self):
+        prefix = f"{self.name:<50} {self.dtype}  batch_size={self.batch_size:<4} seq_len={self.seq_len:<4} hidden_size={self.hidden_size:<4} "
+        if self.duration > 0:
+            return prefix + f"{self.duration:.2f} us, {self.gbps:.2f} GB/s"
+        return prefix + "not supported or redundant"
+
+
 def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
     x_size = [batch_size, seq_len, hidden_size * 4]
     bias_size = hidden_size * 4
@@ -77,30 +92,26 @@ def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
     y_d = ke.DeviceArray(y)
     f = getattr(ke, func)
     my_op = f(x_d, bias_d, y_d, x.size, bias.size)
+
+    duration_ms = -1
     if my_op.IsSupported():
-        t = my_op.Profile()
-        print(
-            f"{func:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4}",
-            f"{t*1000:.2f} us",
-            f"{(x.size*2+bias.size)*x.itemsize*1e3/t/1e9:.2f} GB/s",
-        )
-    else:
-        print(
-            f"{func:<50} {dtype}  batch_size={batch_size:<4} seq_len={seq_len:<4} hidden_size={hidden_size:<4} not supported or redundant"
-        )
-        sys.stdout.flush()
+        duration_ms = my_op.Profile()
+    total_bytes = (x.size * 2 + bias.size) * dtype_to_bytes(dtype)
+
+    ke.report(FastGeluMetric(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
-def profile_with_args(batch_size, seq_len, hidden_size, dtype):
-    for func in dtype_to_funcs(dtype):
-        profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func)
-    print()
+def profile_with_args(batch_size, seq_len, hidden_size, dtype, sort):
+    with ke.benchmark(sort):
+        for func in dtype_to_funcs(dtype):
+            profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func)
 
 
 def profile():
     for dtype in dtypes:
         for bert_size in get_bert_sizes():
-            profile_with_args(*bert_size, dtype)
+            profile_with_args(*bert_size, dtype, True)
+            print()
 
 
 if __name__ == "__main__":
@@ -112,8 +123,10 @@ if __name__ == "__main__":
     group.add_argument("seq_len", type=int)
     group.add_argument("hidden_size", type=int)
     group.add_argument("dtype", choices=dtypes)
+    group.add_argument("--sort", action="store_true")
+
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype)
+        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype, args.sort)

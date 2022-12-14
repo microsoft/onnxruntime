@@ -17,6 +17,8 @@ template <typename T>
 class BeamSearchGpt : public BeamSearchBase<T> {
  public:
   BeamSearchGpt(OpKernelContextInternal& context,
+                const SessionState* init_run_decoder_session_state,
+                GptSubgraph* init_run_gpt_subgraph,
                 const SessionState& decoder_session_state,
                 GptSubgraph& gpt_subgraph,
                 concurrency::ThreadPool* thread_pool,
@@ -34,6 +36,8 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
+        init_run_decoder_session_state_(init_run_decoder_session_state),
+        init_run_gpt_subgraph_(init_run_gpt_subgraph),
         gpt_subgraph_(gpt_subgraph),
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
@@ -43,7 +47,8 @@ class BeamSearchGpt : public BeamSearchBase<T> {
 
   // Execute beam search in iterations util stopping criteria is reached.
   // In each iteration, GPT subgraph is called, and next token for each sequence is generated.
-  Status Execute(const FeedsFetchesManager& feeds_fetches_manager);
+  Status Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
+                 const FeedsFetchesManager& feeds_fetches_manager);
 
  private:
   // Prepare the inputs for first inference of subgraph
@@ -62,6 +67,8 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       gsl::span<const int32_t> beam_next_tokens,
       gsl::span<const int32_t> beam_indices);
 
+  const SessionState* init_run_decoder_session_state_ = nullptr;
+  GptSubgraph* init_run_gpt_subgraph_ = nullptr;
   GptSubgraph& gpt_subgraph_;
 
   // Device specific functions
@@ -79,6 +86,22 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(9);
+
+  if (init_run_gpt_subgraph_ != nullptr) {
+    return init_run_gpt_subgraph_->CreateInitialFeeds(input_ids,
+                                                      this->implicit_inputs_,
+                                                      this->parameters_->num_beams,
+                                                      this->parameters_->pad_token_id,
+                                                      sequence_lengths,
+                                                      expanded_input_ids,
+                                                      attn_mask_value,
+                                                      feeds,
+                                                      this->create_inputs_func_,
+                                                      this->add_to_feeds_func_,
+                                                      buffer,
+                                                      this->ort_stream_);
+  }
+
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
                                           this->implicit_inputs_,
                                           this->parameters_->num_beams,
@@ -117,7 +140,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
 }
 
 template <typename T>
-Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manager) {
+Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
+                                 const FeedsFetchesManager& feeds_fetches_manager) {
   auto status = Status::OK();
   const BeamSearchParameters* parameters = this->parameters_;
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -207,7 +231,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   int current_length = parameters->sequence_length;
   int iteration_counter = 0;
   while (current_length < parameters->max_length) {
-    iteration_counter++;
 #ifdef DEBUG_GENERATION
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
@@ -222,15 +245,29 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
     }
 #endif
 
-    status = utils::ExecuteSubgraph(this->decoder_session_state_,
-                                    feeds_fetches_manager,
-                                    feeds,
-                                    fetches,
-                                    {},
-                                    ExecutionMode::ORT_SEQUENTIAL,
-                                    this->context_.GetTerminateFlag(),
-                                    this->context_.Logger(),
-                                    this->ort_stream_);
+    // For the first iteration use the init_run_decoder subgraph (if present)
+    if (iteration_counter++ == 0 &&
+        init_run_decoder_session_state_ != nullptr) {
+      status = utils::ExecuteSubgraph(*init_run_decoder_session_state_,
+                                      *init_run_feeds_fetches_manager,
+                                      feeds,
+                                      fetches,
+                                      {},
+                                      ExecutionMode::ORT_SEQUENTIAL,
+                                      this->context_.GetTerminateFlag(),
+                                      this->context_.Logger(),
+                                      this->ort_stream_);
+    } else {
+      status = utils::ExecuteSubgraph(this->decoder_session_state_,
+                                      feeds_fetches_manager,
+                                      feeds,
+                                      fetches,
+                                      {},
+                                      ExecutionMode::ORT_SEQUENTIAL,
+                                      this->context_.GetTerminateFlag(),
+                                      this->context_.Logger(),
+                                      this->ort_stream_);
+    }
 
     ORT_RETURN_IF_ERROR(status);
 
