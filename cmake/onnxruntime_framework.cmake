@@ -45,7 +45,7 @@ if (onnxruntime_USE_CLOUD)
 
   if (WIN32)
 
-    link_directories(${VCPKG_SRC}/installed/x64-windows/lib)
+    link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
     target_link_libraries(onnxruntime_framework PRIVATE ws2_32 crypt32 Wldap32 zlib libcurl httpclient_static)
 
   else()
