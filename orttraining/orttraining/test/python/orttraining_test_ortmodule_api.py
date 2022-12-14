@@ -5535,3 +5535,51 @@ def test_eval_onnx_models():
     # BatchNormInternal is for training, while BatchNormalization is for inference.
     assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
     assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
+
+
+def test_troch_script_correctness():
+    class NeuralNetTorchScript(torch.nn.Module):
+        def __init__(self, input_size, hidden_size):
+            super(NeuralNetTorchScript, self).__init__()
+            self.ln1 = torch.nn.Linear(input_size, hidden_size)
+            self.ln2 = torch.nn.Linear(input_size, hidden_size)
+            self.softmax = torch.nn.Softmax(dim=1)
+
+        def forward(self, x, y, z):
+            return (self.ln2(self.softmax(self.ln1(x) / 8.0 - y)) * 0.25 + z).sum()
+
+    N, D, H = 32, 64, 64
+    device = "cuda"
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        os.environ["ORTMODULE_SAVE_ONNX_PATH"] = temporary_dir
+        pt_model = NeuralNetTorchScript(D, H).to(device)
+        ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="torch_script"))
+        pt_x = torch.randn(N, D, device=device, requires_grad=True)
+        pt_y = torch.randn(H, device=device, requires_grad=True)
+        pt_z = torch.randn(N, H, device=device, requires_grad=True)
+        ort_x = pt_x.clone().detach()
+        ort_y = pt_y.clone().detach()
+        ort_z = pt_z.clone().detach()
+        ort_x.requires_grad = True
+        ort_y.requires_grad = True
+        ort_z.requires_grad = True
+
+        def run_step(model, x, y, z):
+            r = model(x, y, z)
+            r.backward()  # y2's gradient will be materialized to full shape.
+            return r
+
+        pt_r = run_step(pt_model, pt_x, pt_y, pt_z)
+        ort_r = run_step(ort_model, ort_x, ort_y, ort_z)
+
+        _test_helpers.assert_values_are_close(ort_r, pt_r)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_y.grad, pt_y.grad)
+        _test_helpers.assert_values_are_close(ort_z.grad, pt_z.grad)
+
+        execution_model_path = os.path.join(temporary_dir, f"torch_script_execution_model_training.onnx")
+        assert os.path.exists(execution_model_path)
+        onnx_model = onnx.load(execution_model_path)
+        assert "TorchScript" in [node.op_type for node in onnx_model.graph.node]
+
+        del os.environ["ORTMODULE_SAVE_ONNX_PATH"]

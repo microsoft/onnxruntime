@@ -27,6 +27,9 @@
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#ifdef USE_CUDA
+#include "orttraining/core/optimizer/torch_script_fusion.h"
+#endif
 
 #include <random>
 
@@ -1085,6 +1088,37 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTest) {
   RunPartitionCorrectnessTest("testdata/transform/model_parallel/bart_self_attention_megatron_basic_test", *logger_, 2, {"input"}, {{6, 8, 4}});
 }
+
+TEST_F(GraphTransformationTests, TorchScriptFusion) {
+  auto model_uri = "testdata/bert_toy_opset14.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 17);
+  ASSERT_TRUE(op_to_count["Sub"] == 1);
+  ASSERT_TRUE(op_to_count["Mul"] == 7);
+  ASSERT_TRUE(op_to_count["Div"] == 3);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
+  ASSERT_TRUE(op_to_count["Cast"] == 7);
+  ASSERT_TRUE(op_to_count["Softmax"] == 1);
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TorchScriptFusion>();
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 10);
+  ASSERT_TRUE(op_to_count["Sub"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 2);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Cast"] == 6);
+  ASSERT_TRUE(op_to_count["Softmax"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.TorchScript"] == 6);
+}
+
 // end of USE_CUDA
 #endif
 

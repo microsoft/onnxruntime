@@ -37,6 +37,7 @@ int64_t HashScript(const std::string& script) {
   return static_cast<int64_t>(hash);
 }
 
+// DType mapping to PyTorch: https://github.com/pytorch/pytorch/blob/master/c10/core/ScalarType.h
 int OnnxDTypeToTorchDType(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
@@ -171,6 +172,16 @@ struct OpInfo {
   GetIRFunc get_ir_func_;
 };
 
+// The configs to control which Ops to fuse. It contains:
+// 1. The Op name, OpSet version list, and domain.
+// 2. The input mapping from the original Op to the aten function in PyTorch, this is useful when ONNX Op and aten
+//    function have different arguments.
+// 3. The function to check if the Op is supported, it's useful when we want to check constant values or tensor shapes.
+//    By default, it's always supported.
+// 4. The function to generate IR for the Op.
+// NOTE that PyTorch's DLPack doesn't support bool tensor for now, so if there is bool tensor as input or output, there
+// will be extra data copy (from UINT8 to BOOL), which will impact the performance, so it's better not to fuse the Ops
+// with bool input or output, such as Where.
 const OpSetVersionList OpSetV1 = {1};
 const OpSetVersionList OpSetV13_14 = {13, 14};
 const OpSetVersionList OpSetV9 = {9};
@@ -195,13 +206,6 @@ const InlinedHashMap<std::string, OpInfo> kSupportedOps{
                    [](const Graph&, const Node&, const StringVec& inputs, StringMap&, StringMap&) {
                      return FormatString("aten::div(%s, %s)", inputs[0].c_str(), inputs[1].c_str());
                    })},
-    // Where's 1st input is bool but PyTorch's DLPack doesn't support bool so extra aten::to will be introduced.
-    // Profling result also shows that Where cannot be fused with other Ops for most of the time.
-    // {"Where", OpInfo("Where", OpSetV9, kOnnxDomain, false, {0, 1, 2}, default_is_supported,
-    //                  [](const Graph&, const Node&, const StringVec& inputs, StringMap&, StringMap&) {
-    //                    return FormatString("aten::where(%s, %s, %s)", inputs[0].c_str(), inputs[1].c_str(),
-    //                                        inputs[2].c_str());
-    //                  })},
     {"Cast", OpInfo(
                  "Cast", OpSetV13, kOnnxDomain, false, {0},
                  [](const Graph&, const Node& node) {
@@ -357,6 +361,7 @@ struct Partition {
     output_ref_count += other.output_ref_count;
   }
 
+  // At least two non-no-Op nodes to form a valid partition for fusion.
   bool IsValid() const {
     size_t count = 0;
     for (const auto& node : nodes) {
@@ -459,6 +464,7 @@ Status TorchScriptFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       partitions.emplace(global_id++, partition);
     }
 
+    // Erase partitions with no further consumer to keep the map small.
     SizeTypeVec partitions_to_erase;
     for (auto& pair : partitions) {
       if (pair.second.output_ref_count == 0) {
@@ -475,6 +481,8 @@ Status TorchScriptFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       partitions.erase(id);
     }
 
+    // Clean up the non-active outputs (no extra consumer) from the dependencies sets of the partitions to
+    // keep the sets small.
     for (auto& input : node.MutableInputDefs()) {
       if (active_outputs.find(input) != active_outputs.end()) {
         active_outputs.at(input)--;
@@ -505,11 +513,6 @@ Status TorchScriptFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
   for (auto& id : partition_ids) {
     auto& partition = partitions_to_fuse.at(id);
-    std::cout << "[PARTITION] node number: " << partition.nodes.size() << std::endl;
-    for (auto& node : partition.nodes) {
-      std::cout << "    " << node->Name() << " " << node->OpType() << std::endl;
-    }
-
     NodeArgVec input_args;
     NodeArgVec output_args;
     NodeArgMap input_names;
@@ -570,8 +573,6 @@ Status TorchScriptFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     Node& fused_node = graph.AddNode(graph.GenerateNodeName("TorchScript"), "TorchScript",
                                      "Fused nodes for TorchScript", input_args, output_args, {}, kMSDomain);
     std::string graph_ir = GetGraphIR(graph_input_names, graph_input_types, graph_output_names, constants, irs);
-    std::cout << "[GRAPH] key: " << HashScript(graph_ir) << ", name: " << fused_node.Name() << std::endl
-              << graph_ir << std::endl;
     fused_node.AddAttribute("key", HashScript(graph_ir));
     fused_node.AddAttribute("script", graph_ir);
     if (!cpu_inputs.empty()) {

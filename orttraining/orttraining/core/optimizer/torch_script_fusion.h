@@ -9,6 +9,11 @@
 
 namespace onnxruntime {
 
+/**
+ * @brief Fuse sub-graphs containing simple Ops (such as elementwise Ops) into TorchScript Ops for nvFuser fallback
+ * in CUDA EP.
+ *
+ */
 class TorchScriptFusion : public GraphTransformer {
  public:
   TorchScriptFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept

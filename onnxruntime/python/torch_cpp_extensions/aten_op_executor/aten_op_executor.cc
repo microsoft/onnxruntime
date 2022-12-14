@@ -201,6 +201,7 @@ void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t 
   }
 }
 
+// Add TorchScript fallback code here so that we can reuse some code from ATen fallback.
 class GraphExecutorCache {
  public:
   static GraphExecutorCache& Instance() {
@@ -229,6 +230,8 @@ void ExecuteTorchScript(const int64_t key, const char* script, size_t input_size
     at::Tensor tensor = at::fromDLPack(dlpack_inputs[i]);
     if (dlpack_inputs[i]->dl_tensor.device.device_type == DLDeviceType::kDLCPU) {
       // Only support int[] for now (For Reshape's 2nd input).
+      // If we want to support other dtype, whether optional or not, whether list or not, we need to
+      // add arguments and more code here to handle.
       TORCH_INTERNAL_ASSERT(dlpack_inputs[i]->dl_tensor.dtype.code == DLDataTypeCode::kDLInt &&
                             dlpack_inputs[i]->dl_tensor.dtype.bits == 64);
       arguments.emplace_back(ToListIValue<int64_t, int64_t>(dlpack_inputs[i], false));

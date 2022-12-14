@@ -309,6 +309,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
 
 #ifdef ENABLE_TRAINING
+      // Enable TorchScript fusion for CUDA EP only for now.
 #ifdef USE_CUDA
       transformers.emplace_back(
           std::make_unique<TorchScriptFusion>(InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));

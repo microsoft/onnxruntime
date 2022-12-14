@@ -776,7 +776,8 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
     return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index);
   }
 #ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "TorchScript") {
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "TorchScript" &&
+      node.Domain() == kMSDomain) {
     const auto& attrs = node.GetAttributes();
     if (attrs.find("cpu_inputs") != attrs.end() && utils::HasInts(attrs.at("cpu_inputs"))) {
       for (auto cpu_input : attrs.at("cpu_inputs").ints()) {
