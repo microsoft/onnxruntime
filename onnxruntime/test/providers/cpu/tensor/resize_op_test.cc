@@ -1762,12 +1762,13 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(13);
 }
 
+/*
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
   ResizeOpTypeCheck_Ver_11_13_18<float>(18);
   ResizeOpTypeCheck_Ver_11_13_18<int32_t>(18);
   ResizeOpTypeCheck_Ver_11_13_18<int8_t>(18);
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
-}
+}*/
 
 TEST(ResizeOpTest, ResizeOpBilinear_Antialis) {
   // enumerate exclude, datatype
