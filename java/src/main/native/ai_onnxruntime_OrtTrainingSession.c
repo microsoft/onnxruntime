@@ -13,10 +13,10 @@
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    createTrainingSession
- * Signature: (JJJJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)J
+ * Signature: (JJJJJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSession
-    (JNIEnv *, jclass, jlong, jlong, jlong, jlong, jstring, jstring, jstring);
+  (JNIEnv *, jclass, jlong, jlong, jlong, jlong, jlong, jstring, jstring, jstring);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
@@ -24,39 +24,43 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSes
  * Signature: (JJ)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_closeSession
-    (JNIEnv *, jobject, jlong, jlong);
+    (JNIEnv * jniEnv, jobject jobj, jlong trainingHandle, jlong handle) {
+  (void)jniEnv; (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtTrainingApi* api = (const OrtTrainingApi*) trainingHandle;
+  api->ReleaseTrainingSession((OrtTrainingSession*)handle);
+}
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    saveCheckpoint
- * Signature: (JJLjava/lang/String;Z)V
+ * Signature: (JJJLjava/lang/String;Z)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_saveCheckpoint
-    (JNIEnv *, jobject, jlong, jlong, jstring, jboolean);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jstring, jboolean);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    getTrainOutputNames
- * Signature: (JJJ)[Ljava/lang/String;
+ * Signature: (JJJJ)[Ljava/lang/String;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOutputNames
-    (JNIEnv *, jobject, jlong, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    getEvalOutputNames
- * Signature: (JJJ)[Ljava/lang/String;
+ * Signature: (JJJJ)[Ljava/lang/String;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOutputNames
-    (JNIEnv *, jobject, jlong, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    resetGrad
- * Signature: (JJ)V
+ * Signature: (JJJ)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_resetGrad
-    (JNIEnv *, jobject, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
@@ -64,7 +68,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_resetGrad
  * Signature: (JJJJ[Ljava/lang/String;[JJ[Ljava/lang/String;JJ)[Lai/onnxruntime/OnnxValue;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
-    (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jobjectArray, jlongArray, jlong, jobjectArray, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jobjectArray, jlongArray, jlong, jobjectArray, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
@@ -72,60 +76,60 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
  * Signature: (JJJJ[Ljava/lang/String;[JJ[Ljava/lang/String;JJ)[Lai/onnxruntime/OnnxValue;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
-    (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jobjectArray, jlongArray, jlong, jobjectArray, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jobjectArray, jlongArray, jlong, jobjectArray, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    setLearningRate
- * Signature: (JJF)V
+ * Signature: (JJJF)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setLearningRate
-    (JNIEnv *, jobject, jlong, jlong, jfloat);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jfloat);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    getLearningRate
- * Signature: (JJ)F
+ * Signature: (JJJ)F
  */
 JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OrtTrainingSession_getLearningRate
-    (JNIEnv *, jobject, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    optimizerStep
- * Signature: (JJJ)V
+ * Signature: (JJJJ)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_optimizerStep
-    (JNIEnv *, jobject, jlong, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    registerLinearLRScheduler
- * Signature: (JJJJF)V
+ * Signature: (JJJJJF)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_registerLinearLRScheduler
-    (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jfloat);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jlong, jlong, jfloat);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    schedulerStep
- * Signature: (JJ)V
+ * Signature: (JJJ)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep
-    (JNIEnv *, jobject, jlong, jlong);
+  (JNIEnv *, jobject, jlong, jlong, jlong);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    getParametersSize
- * Signature: (JJZ)J
+ * Signature: (JJJZ)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_getParametersSize
-    (JNIEnv *, jobject, jlong, jlong, jboolean);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jboolean);
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    exportModelForInference
- * Signature: (JJLjava/lang/String;[Ljava/lang/String;)V
+ * Signature: (JJJLjava/lang/String;[Ljava/lang/String;)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInference
-    (JNIEnv *, jobject, jlong, jlong, jstring, jobjectArray);
+  (JNIEnv *, jobject, jlong, jlong, jlong, jstring, jobjectArray);
