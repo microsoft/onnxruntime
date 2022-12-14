@@ -15,7 +15,7 @@
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
@@ -2138,7 +2138,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::rocm::RegisterRocmContribKernels(kernel_registry));
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::rocm::RegisterRocmTrainingKernels(kernel_registry));
 #endif
 
