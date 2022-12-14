@@ -125,7 +125,7 @@ jobs:
         --test-series "master" \
         --locale "en_US" \
         --build-dir $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
-        --token $(app_center_api_token)
+        --token $(app_center_api_token_2)
     displayName: "[Mobile] Run E2E tests on App Center"
 
   # create and test full pods
@@ -172,7 +172,7 @@ jobs:
         --test-series "master" \
         --locale "en_US" \
         --build-dir $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
-        --token $(app_center_api_token)
+        --token $(app_center_api_token_2)
     displayName: "[Full] Run E2E tests on App Center"
 
   - bash: |
