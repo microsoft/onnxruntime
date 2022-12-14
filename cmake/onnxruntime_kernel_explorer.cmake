@@ -59,14 +59,6 @@ elseif (onnxruntime_USE_ROCM)
   auto_set_source_files_hip_language(${kernel_explorer_kernel_srcs} ${kernel_explorer_rocm_kernel_srcs})
   target_sources(kernel_explorer PRIVATE ${kernel_explorer_rocm_kernel_srcs})
   target_compile_definitions(kernel_explorer PRIVATE __HIP_PLATFORM_AMD__=1 __HIP_PLATFORM_HCC__=1)
-  target_link_libraries(kernel_explorer PRIVATE
-    onnxruntime_composable_kernel_includes
-    # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
-    # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
-    # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
-    device_gemm_instance
-    device_gemm_add_fastgelu_instance
-    device_gemm_fastgelu_instance)
 endif()
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
