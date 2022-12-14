@@ -171,7 +171,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
   // Phase 2: Load the checkpoint weights into the Model.
   // Call Load APIs
-  auto checkpoint_uri = MODEL_FOLDER "training_api/load_checkpoint");
+  auto checkpoint_uri = MODEL_FOLDER "training_api/load_checkpoint";
   ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_uri, p_model));
 
   // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
