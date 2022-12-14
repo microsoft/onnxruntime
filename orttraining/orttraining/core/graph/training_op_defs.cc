@@ -149,6 +149,20 @@ TensorProto ToDimensionOneTensor(T value) {
   return t;
 }
 
+std::pair<bool, int64_t> HandleDifferedInputOutputDataType(const int64_t input_elem_type,
+                                                           const int64_t output_elem_type) {
+  static std::unordered_map<::ONNX_NAMESPACE::TensorProto_DataType, int> bytes_for_elem_type = {
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16, 2},
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16, 2},
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 4},
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE, 8},
+  };
+  bool use_input_elem_type_for_compute =
+      bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_elem_type)] >= bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(output_elem_type)];
+  return std::make_pair(use_input_elem_type_for_compute,
+                        use_input_elem_type_for_compute ? input_elem_type : output_elem_type);
+}
+
 bool SCELossInternalFunBuilder(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
@@ -156,32 +170,73 @@ bool SCELossInternalFunBuilder(
   bool hasWeight = ctx.hasInput(2);
   bool hasIgnoreIndex = ctx.hasInput(3);
 
+  bool add_cast_for_input = false;
+  bool add_cast_for_output = false;
+  auto output_type_attr = ctx.getAttribute("output_type");
+  std::pair<bool, int64_t> cast_info;
+  if (output_type_attr != nullptr) {
+    const TypeProto* first_input_type_proto = ctx.getInputType(0);
+    auto output_elem_type = output_type_attr->i();
+    if (first_input_type_proto != nullptr &&
+        output_elem_type != first_input_type_proto->tensor_type().elem_type()) {
+      cast_info = HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
+                                                    output_elem_type);
+      add_cast_for_input = cast_info.first;
+      add_cast_for_output = !cast_info.first;
+    }
+  }
+
   FunctionBuilder builder(functionProto);
+
+  if (add_cast_for_input) {
+    builder.Add("scores_casted = Cast(scores)", "to", cast_info.second);
+
+    if (hasWeight) {
+      builder.Add("weights_casted = Cast(weights)", "to", cast_info.second);
+    }
+  } else {
+    builder.Add("scores_casted = Identity (scores)");
+    if (hasWeight) {
+      builder.Add("weights_casted = Identity (weights)");
+    }
+  }
 
   builder
       .Const("Shape3D", std::vector<int64_t>({0, 0, -1}))
       .Add(R"(
-        X_NCD = Reshape (scores, Shape3D)
+        X_NCD = Reshape (scores_casted, Shape3D)
         X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
         X_LogSM = LogSoftmax <axis = 2> (X_NDC)
         X_LogSM_NCD = Transpose <perm = [0, 2, 1]> (X_LogSM)
-        X_shape = Shape (scores)
+        X_shape = Shape (scores_casted)
         X_Log = Reshape (X_LogSM_NCD, X_shape)
       )");
 
   if (ctx.hasOutput(1)) {
-    builder.Add("log_prob = Identity (X_Log)");
+    builder.Add("intermediate_log_prob = Identity (X_Log)");
   }
 
   if (hasWeight)
     if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
+      builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights_casted, ignore_index)");
     else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
+      builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights_casted)");
   else if (hasIgnoreIndex)
-    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
+    builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
   else
-    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+    builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+
+  if (add_cast_for_output) {
+    builder.Add("output = Cast(intermediate_output)", "to", cast_info.second);
+    if (ctx.hasOutput(1)) {
+      builder.Add("log_prob = Cast(intermediate_log_prob)", "to", cast_info.second);
+    }
+  } else {
+    builder.Add("output = Identity (intermediate_output)");
+    if (ctx.hasOutput(1)) {
+      builder.Add("log_prob = Identity(intermediate_log_prob)");
+    }
+  }
 
   schema.BuildFunction(functionProto);
   return true;
@@ -198,6 +253,20 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
       ignore_index_as_attr ? (ctx.getAttribute("ignore_index") != nullptr) : ctx.hasInput(4);
   bool has_weight = ctx.hasInput(3);
 
+  bool add_cast_for_input = false;
+  auto output_type_attr = ctx.getAttribute("output_type");
+  std::pair<bool, int64_t> cast_info;
+  if (output_type_attr != nullptr) {
+    const TypeProto* first_input_type_proto = ctx.getInputType(0);
+    auto output_elem_type = output_type_attr->i();
+    if (first_input_type_proto != nullptr &&
+        output_elem_type != first_input_type_proto->tensor_type().elem_type()) {
+      cast_info = HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
+                                                    output_elem_type);
+      add_cast_for_input = cast_info.first;
+    }
+  }
+
   FunctionBuilder builder(functionProto);
 
   // Inputs:
@@ -205,6 +274,28 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   // log_prob : [B, C, d1, d2, ...]
   // weight : [C]
   // label : [B, d1, d2, ...]
+
+  if (add_cast_for_input) {
+    builder.Add("dY_casted = Cast(dY)", "to", cast_info.second);
+    builder.Add("log_prob_casted = Cast(log_prob)", "to", cast_info.second);
+
+    if (has_weight) {
+      builder.Add("weight_casted = Cast(weight)", "to", cast_info.second);
+    }
+
+    if (ctx.hasInput(5)) {
+      builder.Add("bias_casted = Cast(bias)", "to", cast_info.second);
+    }
+  } else {
+    builder.Add("dY_casted = Identity (dY)");
+    builder.Add("log_prob_casted = Identity (log_prob)");
+    if (has_weight) {
+      builder.Add("weight_casted = Identity (weight)");
+    }
+    if (ctx.hasInput(5)) {
+      builder.Add("bias_casted = Identity (bias)");
+    }
+  }
 
   // We decompose the forward propagation into two steps, for doing the backward prop.
   // Step 1: loss = Neg(Logsoftmax(prediction-for-true-label))
@@ -231,55 +322,55 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
       // adj_label_BD is used so we can safely index into tensor-dimensions of size [C]
       builder.Add(R"(
                     adj_label_BD = Where (ignored_BD, zero_label, label)
-                    weight_BD = Gather (weight, adj_label_BD)
-                    zero_weight = CastLike (zero_int64, weight)
+                    weight_BD = Gather (weight_casted, adj_label_BD)
+                    zero_weight = CastLike (zero_int64, weight_casted)
                     adj_weight_BD = Where (ignored_BD, zero_weight, weight_BD)
                 )");
       if (mean_reduction) {
         builder.Add(R"(
                       sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
                       grad = Div (adj_weight_BD, sum_weights)
-                      d_loss = Mul (grad, dY)
+                      d_loss = Mul (grad, dY_casted)
                   )");
       } else {
-        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+        builder.Add("d_loss = Mul (adj_weight_BD, dY_casted)");
       }
     } else {
       builder.Add(R"(
                     not_ignored_BD = Not (ignored_BD)
-                    adj_weight_BD = CastLike (not_ignored_BD, dY)
+                    adj_weight_BD = CastLike (not_ignored_BD, dY_casted)
                 )");
       if (mean_reduction) {
         builder.Add(R"(
                       sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
                       grad = Div (adj_weight_BD, sum_weights)
-                      d_loss = Mul (grad, dY)
+                      d_loss = Mul (grad, dY_casted)
                   )");
       } else {
-        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+        builder.Add("d_loss = Mul (adj_weight_BD, dY_casted)");
       }
     }
   } else {
     if (has_weight) {
-      builder.Add("elt_weight = Gather (weight, label)");
+      builder.Add("elt_weight = Gather (weight_casted, label)");
       if (mean_reduction) {
         // backward-prop for y = ReduceSum (loss * elt_weight) / ReduceSum(elt_weight)
         builder.Add(R"(
                       sum_weights = ReduceSum <keepdims = 0> (elt_weight)
                       grad = Div (elt_weight, sum_weights)
-                      d_loss = Mul(grad, dY)
+                      d_loss = Mul(grad, dY_casted)
                   )");
       } else {
         // common backward-prop for y = ReduceSum(loss * elt_weight) and y = loss * elt_weight
-        builder.Add("d_loss = Mul(elt_weight, dY)");
+        builder.Add("d_loss = Mul(elt_weight, dY_casted)");
       }
     } else {
       if (mean_reduction) {
         // backward-prop for y = ReduceSum (loss) / Size(label)
         builder.Add(R"(
                       count = Size(label)
-                      count_T = CastLike (count, dY)
-                      d_div = Div (dY, count_T)
+                      count_T = CastLike (count, dY_casted)
+                      d_div = Div (dY_casted, count_T)
                       BD = Shape (label)
                       d_loss = Expand (d_div, BD)
                   )");
@@ -287,7 +378,7 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
         // common backward-prop for y = ReduceSum(loss) and y = loss
         builder.Add(R"(
                       BD = Shape (label)
-                      d_loss = Expand (dY, BD)
+                      d_loss = Expand (dY_casted, BD)
                   )");
       }
     }
@@ -300,8 +391,8 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
                 d_loss_B1Dopt = Unsqueeze (d_loss, axes1)
                 reshape_arg = Constant < value = int64[3] {0, 0, -1} > ()
                 d_loss_B1D = Reshape (d_loss_B1Dopt, reshape_arg)
-                orig_shape = Shape (log_prob)
-                log_prob_BCD = Reshape (log_prob, reshape_arg)
+                orig_shape = Shape (log_prob_casted)
+                log_prob_BCD = Reshape (log_prob_casted, reshape_arg)
                 prob_BCD = Exp (log_prob_BCD)
             )");
 
@@ -341,7 +432,7 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   if (ctx.hasInput(5)) {
     builder.Add(R"(
                 d_logits_without_bias = Reshape (d_logits_BCD, orig_shape)
-                bias_shaped = Reshape (bias, orig_shape)
+                bias_shaped = Reshape (bias_casted, orig_shape)
                 d_logits = Add(d_logits_without_bias, bias_shaped)
               )");
   } else {
@@ -3838,6 +3929,11 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Attr("output_type",
+            "(Optional) The data type for the output tensor. "
+            "If not provided, output tensor has the same type as input tensor."
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "scores",
              "The predicted outputs with shape [batch_size, class_size], or "
              "[batch_size, class_size, D1, D2 , ..., Dk], where K is the number of dimensions.",
@@ -3861,14 +3957,26 @@ Return true if all elements are true and false otherwise.
               "Weighted loss float Tensor. If reduction is 'none', this has the "
               "shape of [batch_size], or [batch_size, D1, D2, ..., Dk] in case of "
               "K-dimensional loss. Otherwise, it is a scalar.",
-              "T")
-      .Output(1, "log_prob", "Log probability tensor. If the output of softmax is prob, its value is log(prob).", "T")
+              "TOut")
+      .Output(1, "log_prob",
+              "Log probability tensor. If the output of softmax is prob, its value is log(prob).",
+              "TOut")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
+                      "Constrain input types to float tensors.")
+      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto output_type_attr = ctx.getAttribute("output_type");
+        if (output_type_attr) {
+          propagateElemTypeFromAttributeToOutput(ctx, "output_type", 0);
+          propagateElemTypeFromAttributeToOutput(ctx, "output_type", 1);
+        } else {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
+
         std::string reduction = getAttribute(ctx, "reduction", "mean");
         if (reduction.compare("none") == 0) {
           if (hasInputShape(ctx, 1)) {
@@ -3877,11 +3985,7 @@ Return true if all elements are true and false otherwise.
         } else {
           updateOutputShape(ctx, 0, TensorShapeProto());
         }
-
-        if (ctx.getNumOutputs() == 2) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
-          propagateShapeFromInputToOutput(ctx, 0, 1);
-        }
+        propagateShapeFromInputToOutput(ctx, 0, 1);
       })
       .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
@@ -3890,6 +3994,11 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Attr("output_type",
+            "(Optional) The data type for the output tensor. "
+            "If not provided, output tensor has the same type as input tensor."
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
       .Input(2, "label",
@@ -3901,14 +4010,22 @@ Return true if all elements are true and false otherwise.
       .Input(4, "ignore_index",
              "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
              "I", OpSchema::Optional)
-      .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "T", OpSchema::Optional)
-      .Output(0, "d_logits", "gradient of logits", "T")
+      .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "TOut", OpSchema::Optional)
+      .Output(0, "d_logits", "gradient of logits", "TOut")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain to float, float16 and double tensors.")
+                      "Constrain input types to float tensors.")
+      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        auto output_type_attr = ctx.getAttribute("output_type");
+        if (output_type_attr) {
+          propagateElemTypeFromAttributeToOutput(ctx, "output_type", 0);
+        } else {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        }
+
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(

@@ -30,7 +30,8 @@ namespace onnxruntime {
 namespace rocm {
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count) {
+void dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const input_t* src, int softmax_elements,
+                                       int softmax_elements_stride, int batch_count) {
   if (softmax_elements == 0) {
     return;
   } else {
@@ -52,37 +53,59 @@ void dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const 
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
       case 0:  // 1
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 0, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 0, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 1:  // 2
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 1, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 1, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 2:  // 4
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 2, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 2, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 3:  // 8
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 3, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 3, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 4:  // 16
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 4, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 4, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 5:  // 32
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 5, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 5, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 6:  // 64
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 6, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 6, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 7:  // 128
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 7, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 7, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 8:  // 256
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 8, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 8, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 9:  // 512
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 9, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 9, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       case 10:  // 1024
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 10, is_log_softmax>), dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 10, is_log_softmax>),
+                           dim3(blocks), dim3(threads), 0, stream, dst, src, batch_count, softmax_elements_stride,
+                           softmax_elements);
         break;
       default:
         break;
@@ -90,17 +113,29 @@ void dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const 
   }
 }
 
-#define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
-template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+#define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t)                                                      \
+  template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream,          \
+                                                                                   output_t * dst,              \
+                                                                                   const input_t* src,          \
+                                                                                   int softmax_elements,        \
+                                                                                   int softmax_elements_stride, \
+                                                                                   int batch_count);            \
+  template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream,           \
+                                                                                  output_t * dst,               \
+                                                                                  const input_t* src,           \
+                                                                                  int softmax_elements,         \
+                                                                                  int softmax_elements_stride,  \
+                                                                                  int batch_count);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_SOFTMAX_IMPL(half, float, float)
 SPECIALIZED_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, const input_t* input, int softmax_elements, int softmax_elements_stride, int batch_count) {
+void dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, const input_t* input,
+                                        int softmax_elements, int softmax_elements_stride, int batch_count) {
   dim3 grid(batch_count);
   constexpr int ILP = sizeof(float4) / sizeof(input_t);
   dim3 block = SoftMax_getBlockSize(ILP, softmax_elements);
@@ -113,15 +148,24 @@ void dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, co
   }
 }
 
-#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream, output_t* output, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
-template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream, output_t* output, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                                             \
+  template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream,          \
+                                                                                    output_t * output,           \
+                                                                                    const input_t* src,          \
+                                                                                    int softmax_elements,        \
+                                                                                    int softmax_elements_stride, \
+                                                                                    int batch_count);            \
+  template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream,           \
+                                                                                   output_t * output,            \
+                                                                                   const input_t* src,           \
+                                                                                   int softmax_elements,         \
+                                                                                   int softmax_elements_stride,  \
+                                                                                   int batch_count);
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
-
-
 }
 }
