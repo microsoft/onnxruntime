@@ -654,7 +654,18 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 TEST(CApiTest, variadic_input_output_custom_op) {
   // Create a custom op with 1 variadic input and 1 variadic output.
   // The model passes in 3 string inputs and expects 3 int64_t outputs.
-  MyCustomOpWithVariadicIO custom_op(1, 1);  // min_arity of 1 for both input and output
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -703,7 +714,22 @@ TEST(CApiTest, variadic_input_output_custom_op) {
 TEST(CApiTest, mixed_variadic_input_output_custom_op) {
   // Create a custom op with 2 inputs (required, variadic) and 2 outputs (required, variadic).
   // The model passes in 3 string inputs and expects 3 int64_t outputs.
-  MyCustomOpWithMixedVariadicIO custom_op;
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -754,7 +780,18 @@ TEST(CApiTest, variadic_undef_input_output_custom_op) {
   // Both the input and output are of undefined element type and allowed to differ in type (hetergeneous).
   // The model passes in inputs (string, int64_t, and float) which are then echoed in
   // reversed order (float, int64_t, string).
-  MyCustomOpWithVariadicUndefIO custom_op;
+  TemplatedCustomOp<MyCustomEchoReversedArgsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -840,7 +877,22 @@ TEST(CApiTest, variadic_undef_input_output_custom_op) {
 TEST(CApiTest, invalid_variadic_input_not_last_custom_op) {
   // Create an invalid custom op with 2 inputs. The first input is variadic and the last is not.
   // Expect an error because only the last input may be marked as variadic.
-  MyInvalidVariadicInputCustomOp custom_op;
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -865,7 +917,22 @@ TEST(CApiTest, invalid_variadic_input_not_last_custom_op) {
 TEST(CApiTest, invalid_variadic_output_not_last_custom_op) {
   // Create an invalid custom op with 2 outputs. The first output is variadic and the last is not.
   // Expect an error because only the last output may be marked as variadic.
-  MyInvalidVariadicOutputCustomOp custom_op;
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED},
+      1,
+      true);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -890,7 +957,18 @@ TEST(CApiTest, invalid_variadic_output_not_last_custom_op) {
 TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
   // Create a custom op with a variadic input with a minimum arity of 4.
   // Expect an error because the model passes in less than 4 inputs to the op.
-  MyCustomOpWithVariadicIO custom_op(4, 1);  // min_arity of 4 and 1 for input and output, respectively.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      4,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -916,7 +994,18 @@ TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
 TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
   // Create a custom op with a variadic output with a minimum arity of 4.
   // Expect an error because the model instantiates the op with less than 4 outputs.
-  MyCustomOpWithVariadicIO custom_op(1, 4);  // min_arity of 1 and 4 for input and output, respectively.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      4,
+      true);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -941,7 +1030,18 @@ TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
 TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
   // Create a custom op with a homogeneous variadic input. The model has heterogeneous inputs,
   // so we expect an error.
-  StubCustomOpWithHomogeneousVariadicInput custom_op;
+  TemplatedCustomOp<MyCustomEchoReversedArgsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,  // Homogeneity will cause error!
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false);
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);

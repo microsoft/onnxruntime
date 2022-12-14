@@ -3653,7 +3653,8 @@ struct OrtApi {
 // 2) Optional (input/output may be absent in the node)
 // 3) Variadic: A variadic input or output specifies N (i.e., the minimum arity) or more operands.
 //              Only the last input or output of a custom op may be marked as variadic.
-//              The homogeneity of the variadic input or output determines whether all operands must be of the same type.
+//              The homogeneity of the variadic input or output determines whether all operands must be of the same
+//              tensor element type.
 typedef enum OrtCustomOpInputOutputCharacteristic {
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
