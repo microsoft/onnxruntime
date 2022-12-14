@@ -136,7 +136,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   *final_output_shape->add_dim() =
       ctx.getInputType(1)->tensor_type().shape().dim(1) *
       group;  // channels should be the second dim of second input multiply
-              // group.
+  // group.
 
   int size_of_output;
   if (output_shape_presented) {
@@ -1051,6 +1051,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Attr("vocab_size",
                                       "Size of the vocabulary. "
@@ -1092,7 +1096,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before `decoder` subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Attr("vocab_size",
                                       "Size of the vocabulary. "

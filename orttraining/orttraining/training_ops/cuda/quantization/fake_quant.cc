@@ -42,14 +42,47 @@ Status FakeQuant<T>::ComputeInternal(OpKernelContext* ctx) const {
   const CudaT* quant_zero_point = reinterpret_cast<const CudaT*>(zero_point->Data<T>());
 
   // Prepare the output, mask for gradient computation
-  auto& fake_quantized_tensor = *ctx->Output(0, input_tensor->Shape());
-  CudaT* fake_quantized_data = reinterpret_cast<CudaT*>(fake_quantized_tensor.MutableData<T>());
+  auto* fake_quantized_tensor = ctx->Output(0, input_tensor->Shape());
+  CudaT* fake_quantized_data = reinterpret_cast<CudaT*>(fake_quantized_tensor->MutableData<T>());
   bool* quantization_mask_data = ctx->Output(1, input_tensor->Shape())->MutableData<bool>();
 
   // Fake quantize the input tensor
   // TODO(bmeswani): Add support for FakeQuantPerChannel
   FakeQuantPerTensor(Stream(), input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_,
                      quant_max_, fake_quantized_data, quantization_mask_data);
+
+  return Status::OK();
+}
+
+#define REGISTER_FAKEQUANTGRAD_KERNEL_TYPED(T)                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      FakeQuantGrad,                                              \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      FakeQuantGrad<T>);
+
+REGISTER_FAKEQUANTGRAD_KERNEL_TYPED(float)
+
+template <typename T>
+Status FakeQuantGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  // Prepare the gradient wrt the output and gradient mask input
+  const auto* dY = ctx->Input<Tensor>(0);
+  const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY->Data<T>());
+  const auto* gradient_mask = ctx->Input<Tensor>(1);
+  const bool* gradient_mask_data = gradient_mask->Data<bool>();
+
+  // Prepare the output
+  auto* dX = ctx->Output(0, dY->Shape());
+  CudaT* dX_data = reinterpret_cast<CudaT*>(dX->MutableData<T>());
+
+  // Compute
+  FakeQuantGradImpl(Stream(), dY->Shape().Size(), dY_data, gradient_mask_data, dX_data);
 
   return Status::OK();
 }

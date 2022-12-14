@@ -691,13 +691,23 @@ class ONNXQuantizer:
         # update scale initializer
         quantized_bias_scale_name = quantized_bias_name + "_scale"
         bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
-        packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
+        if self.is_per_channel():
+            packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
+        else:
+            packed_bias_scale_initializer = onnx.helper.make_tensor(
+                quantized_bias_scale_name, onnx_proto.TensorProto.FLOAT, [], bias_scale_data
+            )
         self.model.initializer().extend([packed_bias_scale_initializer])
 
         # update zero initializer
         quantized_bias_zp_name = quantized_bias_name + "_zero_point"
         bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
-        packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
+        if self.is_per_channel():
+            packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
+        else:
+            packed_bias_zp_initializer = onnx.helper.make_tensor(
+                quantized_bias_zp_name, onnx_proto.TensorProto.INT32, [], bias_zp_data
+            )
         self.model.initializer().extend([packed_bias_zp_initializer])
 
         assert bias_name not in self.quantized_value_map
