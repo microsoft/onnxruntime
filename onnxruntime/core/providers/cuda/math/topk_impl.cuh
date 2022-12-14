@@ -218,7 +218,7 @@ __device__ __forceinline__ void SetByte(double* d, int64_t byte) {
 }
 
 template <typename T, int64_t THREADS, int64_t KPT>
-__global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t padded_dimension, int64_t XPT, T type_min, T type_max) {
+__global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t padded_dimension, int64_t /*XPT*/, T type_min, T type_max) {
   auto tid = threadIdx.x;
   auto bid = blockIdx.x;
   extern __shared__ char shared_mem[];

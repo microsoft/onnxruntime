@@ -522,7 +522,8 @@ Status GreedySearchProcessLogits(
 #ifdef DEBUG_GENERATION
   dumper->Print("logits", logits);
   if (is_reuse_logits_buffer) {
-    //TODO:
+    //TODO: Handle padded logits in the logits buffer before printing its contents
+    ORT_THROW("Dumping contents of logits buffer is not implemented yet");
   } else {
     dumper->Print("next_token_scores", next_token_scores.data(), batch_size, vocab_size);
   }
@@ -541,6 +542,10 @@ Status GreedySearchProcessLogits(
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
 
+  // TODO(hasesh): Can we avoid the const_cast by changing the interface of
+  // GreedySearchProcessLogits() to take in a non-const OrtValue for logits
+  // as this is the only place we will ever use the logits and it may be reasonable
+  // to allow this method to mutate/process the logits in-place
   cuda::LaunchLogitsProcessKernel<CudaT>(
       is_reuse_logits_buffer ? const_cast<CudaT*>(logits_data)
                              : reinterpret_cast<CudaT*>(next_token_scores.data()),
@@ -560,7 +565,8 @@ Status GreedySearchProcessLogits(
 
 #ifdef DEBUG_GENERATION
   if (is_reuse_logits_buffer) {
-    // TODO:
+    //TODO: Handle padded logits in the logits buffer before printing its contents
+    ORT_THROW("Dumping contents of logits buffer is not implemented yet");
   } else {
     dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, vocab_size);
   }
@@ -575,6 +581,8 @@ Status GreedySearchProcessLogits(
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
   auto element_type = DataTypeImpl::GetType<T>();
   OrtValue next_token_scores_value;
+
+  // TODO(hasesh): Same TODO as above about avoiding the const_cast here
   Tensor::InitOrtValue(element_type,
                        next_token_scores_shape,
                        is_reuse_logits_buffer
