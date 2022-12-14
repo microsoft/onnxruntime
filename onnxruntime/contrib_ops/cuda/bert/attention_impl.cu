@@ -179,16 +179,13 @@ Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
   int64_t nh = (int64_t)head_size * num_heads;
   if (nh <= max_threads_per_block) {
     const dim3 grid(sequence_length, batch_size, 2);  // 2 for k and v
-    int threads = std::min(1 << static_cast<int>(std::ceil(std::log2(head_size))), max_threads_per_block / head_size);
-    const dim3 block(threads, num_heads, 1);
+    const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
 
     AddBiasTransAppendKvToPresentSmall<T><<<grid, block, 0, stream>>>(
         qkv_buffer, biases, present, head_size, past_sequence_length, max_sequence_length);
   } else {
     const dim3 grid(num_heads, sequence_length, batch_size * 2);  // 2 for k and v
-    int threads = 1 << static_cast<int>(std::ceil(std::log2(head_size)));
-    threads = std::min(threads, max_threads_per_block);
-    const dim3 block(threads, 1, 1);
+    const dim3 block(std::min(head_size, max_threads_per_block), 1, 1);
     AddBiasTransAppendKvToPresent<T><<<grid, block, 0, stream>>>(
         qkv_buffer, biases, present, head_size, past_sequence_length, max_sequence_length);
   }
