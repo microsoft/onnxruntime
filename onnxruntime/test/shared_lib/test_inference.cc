@@ -654,7 +654,7 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 TEST(CApiTest, variadic_input_output_custom_op) {
   // Create a custom op with 1 variadic input and 1 variadic output.
   // The model passes in 3 string inputs and expects 3 int64_t outputs.
-  MyCustomOpWithVariadicIO custom_op;
+  MyCustomOpWithVariadicIO custom_op(1, 1);  // min_arity of 1 for both input and output
 
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
@@ -837,7 +837,7 @@ TEST(CApiTest, variadic_undef_input_output_custom_op) {
   }
 }
 
-TEST(CApiTest, invalid_variadic_input_custom_op) {
+TEST(CApiTest, invalid_variadic_input_not_last_custom_op) {
   // Create an invalid custom op with 2 inputs. The first input is variadic and the last is not.
   // Expect an error because only the last input may be marked as variadic.
   MyInvalidVariadicInputCustomOp custom_op;
@@ -862,7 +862,7 @@ TEST(CApiTest, invalid_variadic_input_custom_op) {
   ASSERT_TRUE(caught_exception);
 }
 
-TEST(CApiTest, invalid_variadic_output_custom_op) {
+TEST(CApiTest, invalid_variadic_output_not_last_custom_op) {
   // Create an invalid custom op with 2 outputs. The first output is variadic and the last is not.
   // Expect an error because only the last output may be marked as variadic.
   MyInvalidVariadicOutputCustomOp custom_op;
@@ -881,6 +881,57 @@ TEST(CApiTest, invalid_variadic_output_custom_op) {
     caught_exception = true;
     std::string_view exception_msg = excpt.what();
     std::string_view expected_err = "Only the last output to a custom op may be marked variadic.";
+    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+  }
+
+  ASSERT_TRUE(caught_exception);
+}
+
+TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
+  // Create a custom op with a variadic input with a minimum arity of 4.
+  // Expect an error because the model passes in less than 4 inputs to the op.
+  MyCustomOpWithVariadicIO custom_op(4, 1);  // min_arity of 4 and 1 for input and output, respectively.
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  bool caught_exception = false;
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  } catch (const Ort::Exception& excpt) {
+    caught_exception = true;
+    std::string_view exception_msg = excpt.what();
+    std::string_view expected_err = "Error Node (VariadicNode0) has input size 3 not in range [min=4, max=2147483647].";
+    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+  }
+
+  ASSERT_TRUE(caught_exception);
+}
+
+
+TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
+  // Create a custom op with a variadic output with a minimum arity of 4.
+  // Expect an error because the model instantiates the op with less than 4 outputs.
+  MyCustomOpWithVariadicIO custom_op(1, 4);  // min_arity of 1 and 4 for input and output, respectively.
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  bool caught_exception = false;
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  } catch (const Ort::Exception& excpt) {
+    caught_exception = true;
+    std::string_view exception_msg = excpt.what();
+    std::string_view expected_err = "Error Node (VariadicNode0) has output size 3 not in range [min=4, max=2147483647].";
     ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
   }
 

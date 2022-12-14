@@ -168,8 +168,10 @@ void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* a
                                           std::vector<std::vector<int64_t>>& expected_outputs);
 
 // Custom op with 1 variadic input (string) and 1 variadic output (int64_t)
+// The input and output minimum arity can be configured to test for enforcement.
 struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, MyCustomStringLengthsKernel> {
-  MyCustomOpWithVariadicIO() = default;
+  MyCustomOpWithVariadicIO(int input_min_arity, int output_min_arity) : input_min_arity_(input_min_arity),
+                                                                        output_min_arity_(output_min_arity) {}
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
     return new MyCustomStringLengthsKernel(info);
@@ -192,21 +194,25 @@ struct MyCustomOpWithVariadicIO : Ort::CustomOpBase<MyCustomOpWithVariadicIO, My
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
   }
 
-  constexpr int GetVariadicInputMinArity() const noexcept {
-    return 1;  // At least one variadic arg.
+  int GetVariadicInputMinArity() const noexcept {
+    return input_min_arity_;  // At least one variadic arg.
   }
 
   constexpr bool GetVariadicInputHomogeneity() const noexcept {
     return true;  // All inputs are of the same type.
   }
 
-  constexpr int GetVariadicOutputMinArity() const noexcept {
-    return 1;  // At least one variadic output value.
+  int GetVariadicOutputMinArity() const noexcept {
+    return output_min_arity_;  // At least one variadic output value.
   }
 
   constexpr bool GetVariadicOutputHomogeneity() const noexcept {
     return true;  // All outputs are of the same type.
   }
+
+ private:
+  int input_min_arity_;
+  int output_min_arity_;
 };
 
 // Custom op with 2 inputs (required, variadic) and 2 outputs (required, variadic)
