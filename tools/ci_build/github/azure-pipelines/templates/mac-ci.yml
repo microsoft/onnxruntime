@@ -51,7 +51,7 @@ jobs:
 
     - task: Cache@2
       inputs:
-        key: 'ccache | "$(Agent.OS)" | protocol'
+        key: 'ccache | "$(Agent.OS)" | protocol | "$(Build.SourceVersion)" '
         path: $(CCACHE_DIR)
         restoreKeys: |
           ccache | "$(Agent.OS)" | protocol
@@ -69,12 +69,17 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
       displayName: 'Install dependencies'
 
+    - script: |
+        ccache -s
+        ccache -z
+      displayName: Show Cache stats and Clear protolbuf stats.
+
     - task: Cache@2
       inputs:
-        key: 'ccache | "$(Agent.OS)"'
+        key: 'ccache | "$(Agent.OS)" | onnxruntime | "$(Build.SourceVersion)" '
         path: $(CCACHE_DIR)
         restoreKeys: |
-          ccache | "$(Agent.OS)"
+          ccache | "$(Agent.OS)" | onnxruntime
       displayName: ccache MacOS Build
 
     - ${{ if eq(parameters.BuildForAllArchs, true) }}:
@@ -102,7 +107,8 @@ jobs:
 
     - script: |
         ccache -s
-      displayName: Show Cache -stats
+        ccache -z
+      displayName: Show Cache stats
 
     - task: PublishPipelineArtifact@1
       inputs:
