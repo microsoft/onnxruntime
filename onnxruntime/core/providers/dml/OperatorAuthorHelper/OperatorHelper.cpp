@@ -2052,7 +2052,10 @@ namespace OperatorHelper
     {
         if (opsetVersion >= 13) // Axes are a dynamic input parameter.
         {
-            ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            if (kernelInformation.IsInputValid(1))
+            {
+                ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_axes);
+            }
         }
         else // Axes were a constant attribute parameter.
         {
@@ -2515,14 +2518,43 @@ namespace OperatorHelper
         m_sliceEnd = std::max<uint32_t>(static_cast<uint32_t>(trueEnd), m_sliceStart);
     }
 
-    std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         return { EdgeShapes({m_sliceEnd - m_sliceStart}) };
     }
 
-    std::vector<EdgeShapes> SizeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    std::vector<EdgeShapes> SizeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         return { EdgeShapes({}) };
+    }
+
+    std::vector<EdgeShapes> EmbedLayerNormalizationHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 3);
+
+        auto inputIdsShape = shapeInfo.GetInputTensorShape(0);
+        auto wordEmbeddingShape = shapeInfo.GetInputTensorShape(2);
+
+        // input_ids and word_embedding are 2D tensors
+        ML_CHECK_VALID_ARGUMENT(inputIdsShape.size() == 2);
+        ML_CHECK_VALID_ARGUMENT(wordEmbeddingShape.size() == 2);
+
+        uint32_t batchSize = inputIdsShape[0];
+        uint32_t sequenceLength = inputIdsShape[1];
+        uint32_t hiddenSize = wordEmbeddingShape[1];
+
+        std::vector<EdgeShapes> outputShapes;
+        outputShapes.reserve(3);
+
+        outputShapes.push_back(EdgeShapes({batchSize, sequenceLength, hiddenSize}));
+        outputShapes.push_back(EdgeShapes({batchSize}));
+
+        if (shapeInfo.GetOutputCount() == 3)
+        {
+            outputShapes.push_back(EdgeShapes({batchSize, sequenceLength, hiddenSize}));
+        }
+
+        return outputShapes;
     }
 
 } // namespace OperatorHelper

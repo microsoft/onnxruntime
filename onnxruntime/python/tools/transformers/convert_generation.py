@@ -29,6 +29,7 @@ Example 5: convert gpt2 model with greedy search:
 
 import argparse
 import logging
+import math
 import os
 import sys
 import time
@@ -40,6 +41,7 @@ import numpy as np
 import onnx
 import torch
 from benchmark_helper import Precision
+from fusion_utils import NumpyHelper
 from onnx import GraphProto, ModelProto, TensorProto
 from transformers import (
     GPT2Config,
@@ -172,11 +174,29 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(run_shape_inference=False)
 
     output_group.add_argument(
+        "-pvs",
+        "--pad_vocab_size",
+        required=False,
+        action="store_true",
+        help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size",
+    )
+    output_group.set_defaults(pad_vocab_size=True)
+
+    output_group.add_argument(
+        "-sgd",
+        "--separate_gpt2_decoder_for_init_run",
+        required=False,
+        action="store_true",
+        help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
+    )
+    output_group.set_defaults(separate_gpt2_decoder_for_init_run=False)
+
+    output_group.add_argument(
         "-i",
         "--disable_shared_initializers",
         required=False,
         action="store_true",
-        help="do not share initializers in encoder and decoder. It will increase memory usage of t5/mt5 models.",
+        help="do not share initializers in encoder and decoder for T5 or in the init decoder and decoder for GPT2. It will increase memory usage of t5/mt5/gpt2 models.",
     )
     output_group.set_defaults(disable_shared_initializers=False)
 
@@ -405,6 +425,84 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
         OnnxModel.save(out, onnx_path, save_as_external_data=use_external_data_format)
     else:
         logger.warning("Failed to run symbolic shape inference on the model.")
+
+
+def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool = True) -> bool:
+    """Pad the logits MatMul weight in the provided decoder model, which will be overwritten.
+
+    Args:
+        onnx_path (str): Path of onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+    decoder_model_proto = onnx.load_model(onnx_path, load_external_data=True)
+
+    logits_output_name = decoder_model_proto.graph.output[0].name
+
+    decoder_model = OnnxModel(decoder_model_proto)
+
+    output_name_to_node = decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    matmul_node = output_name_to_node[logits_output_name]
+    # Sanity check - the logits need to be produced by a MatMul node
+    if matmul_node.op_type != "MatMul":
+        return False
+
+    # The logits MatMul weight MUST be an initializer (or)
+    # it MUST be flowing through a Transpose whose input is
+    # an initializer
+    pad_along_axis_1 = True
+    logits_weight = decoder_model.get_initializer(matmul_node.input[1])
+    if logits_weight is None:
+        transpose_before_matmul = decoder_model.match_parent(matmul_node, "Transpose", 1)
+
+        if transpose_before_matmul is None:
+            return False
+
+        logits_weight = decoder_model.get_initializer(transpose_before_matmul.input[0])
+
+        if logits_weight is None:
+            return False
+
+        pad_along_axis_1 = False
+
+    # The logits MatMul weight MUST be fp16
+    if logits_weight.data_type != TensorProto.DataType.FLOAT16:
+        return False
+
+    # The logits MatMul weight MUST be 2-dimensional
+    if len(logits_weight.dims) != 2:
+        return False
+
+    # Pad and over-write the initializer (if needed)
+    actual_vocab_size = logits_weight.dims[1]
+
+    if (actual_vocab_size % 8) == 0:
+        # Already "padded"
+        return True
+
+    padded_vocab_size = math.ceil(actual_vocab_size / 8) * 8
+    padding = padded_vocab_size - actual_vocab_size
+
+    # TODO(hasesh): Handle cases where the fp16 data is stored in the
+    # non-raw data field
+    if logits_weight.raw_data:
+        if pad_along_axis_1:
+            padding_data = np.zeros((logits_weight.dims[0], padding), dtype=np.float16)
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=1)
+            logits_weight.dims[1] = padded_vocab_size
+        else:
+            padding_data = np.zeros((padding, logits_weight.dims[1]), dtype=np.float16)
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=0)
+            logits_weight.dims[0] = padded_vocab_size
+
+        logits_weight.raw_data = weight_with_padding.tobytes()
+    else:
+        return False
+
+    # Save the model
+    OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
+    return True
 
 
 def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
@@ -778,6 +876,218 @@ def move_initializers(
     return moved_initializers
 
 
+def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
+    """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
+       The decoder model will be over-written.
+
+    Args:
+        decoder_onnx_path (str): Path of GPT-2 decoder onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+
+    decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
+    for i in range(len(decoder_model_proto.graph.input)):
+        if (
+            decoder_model_proto.graph.input[i].name == "input_ids"
+            or decoder_model_proto.graph.input[i].name == "position_ids"
+        ):
+            shape_dim_proto = decoder_model_proto.graph.input[i].type.tensor_type.shape.dim[1]
+
+            # Clear any existing dim_param first
+            if shape_dim_proto.HasField("dim_param"):
+                shape_dim_proto.Clear()
+
+            # Update dim_value to be 1
+            shape_dim_proto.dim_value = 1
+
+    OnnxModel.save(decoder_model_proto, decoder_onnx_path, save_as_external_data=use_external_data_format)
+    return True
+
+
+def generate_gpt2_init_decoder(
+    decoder_onnx_path: str, init_decoder_onnx_path: str, use_external_data_format: bool = True
+) -> bool:
+    """Generates the initial decoder GPT2 subgraph and saves it for downstream use.
+       The initial decoder model will be saved to init_decoder_onnx_path.
+
+    Args:
+        decoder_onnx_path (str): Path of GPT-2 decoder onnx model
+        init_decoder_onnx_path (str): Path of GPT-2 init decoder onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+    init_decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
+
+    logits_output_name = init_decoder_model_proto.graph.output[0].name
+
+    gpt2_init_decoder_model = OnnxModel(init_decoder_model_proto)
+
+    output_name_to_node = gpt2_init_decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    logits_matmul_node = output_name_to_node[logits_output_name]
+
+    # Sanity check - the logits need to be produced by a MatMul node
+    if logits_matmul_node.op_type != "MatMul":
+        return False
+
+    # Try to find the last residual Add
+    # For fp16, there are Casts along the way
+    logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+        logits_matmul_node,
+        [
+            "Cast",
+            "LayerNormalization",
+            "Add",
+            "Add",
+            "Cast",
+            "MatMul",
+            "Cast",
+            "FastGelu",
+            "Cast",
+            "MatMul",
+            "Cast",
+            "LayerNormalization",
+            "Add",
+        ],
+        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    )
+
+    # Try without the Casts before and after the MatMuls
+    if logits_matmul_to_residual_add_path is None:
+        logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+            logits_matmul_node,
+            ["LayerNormalization", "Add", "Add", "MatMul", "FastGelu", "MatMul", "LayerNormalization", "Add"],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+        )
+
+    # TODO(hasesh): Are there more permutations to try before returning ?
+    if logits_matmul_to_residual_add_path is None:
+        return False
+
+    residual_add_node = logits_matmul_to_residual_add_path[-1]
+
+    residual_add_to_attention_parent_index = 0
+    residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+        residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
+    )
+
+    # Try other parent index of the residual Add node
+    if residual_add_to_attention_path is None:
+        residual_add_to_attention_parent_index = 1
+        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+            residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
+        )
+
+    # Try without the Casts before and after the MatMuls
+    if residual_add_to_attention_path is None:
+        residual_add_to_attention_parent_index = 0
+        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+            residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+        )
+
+    # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
+    if residual_add_to_attention_path is None:
+        residual_add_to_attention_parent_index = 1
+        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+            residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+        )
+
+    # TODO(hasesh): Are there more permutations to try before returning ?
+    if residual_add_to_attention_path is None:
+        return False
+
+    residual_add_to_add_parent_index = 0 if residual_add_to_attention_parent_index == 1 else 1
+    add_before_residual_add = gpt2_init_decoder_model.match_parent(
+        residual_add_node, "Add", residual_add_to_add_parent_index
+    )
+
+    if add_before_residual_add is None:
+        return False
+
+    attention = residual_add_to_attention_path[-1]
+    matmul_after_attention = residual_add_to_attention_path[-2]
+
+    slice_starts = onnx.helper.make_tensor(
+        name="SliceLastTokenStarts",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[-1],
+    )
+
+    slice_ends = onnx.helper.make_tensor(
+        name="SliceLastTokenEnds",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[-2],
+    )
+
+    slice_axes = onnx.helper.make_tensor(
+        name="SliceLastTokenAxes",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[1],
+    )
+
+    slice_steps = onnx.helper.make_tensor(
+        name="SliceLastTokenSteps",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[-1],
+    )
+
+    gpt2_init_decoder_model.add_initializer(slice_starts)
+    gpt2_init_decoder_model.add_initializer(slice_ends)
+    gpt2_init_decoder_model.add_initializer(slice_axes)
+    gpt2_init_decoder_model.add_initializer(slice_steps)
+
+    # Add Slice node to the graph such that it consumes the output of Attention
+    slice_0_output_name = "edge_modified_" + attention.output[0]
+    slice_node_0 = onnx.helper.make_node(
+        "Slice",
+        inputs=[
+            attention.output[0],
+            "SliceLastTokenStarts",
+            "SliceLastTokenEnds",
+            "SliceLastTokenAxes",
+            "SliceLastTokenSteps",
+        ],
+        outputs=[slice_0_output_name],
+        name=gpt2_init_decoder_model.create_node_name("Slice", "GatherLastToken_0_"),
+    )
+
+    # Add Slice node to the graph such that it consumes the output of Add before the residual Add
+    slice_1_output_name = "edge_modified_" + add_before_residual_add.output[0]
+    slice_node_1 = onnx.helper.make_node(
+        "Slice",
+        inputs=[
+            add_before_residual_add.output[0],
+            "SliceLastTokenStarts",
+            "SliceLastTokenEnds",
+            "SliceLastTokenAxes",
+            "SliceLastTokenSteps",
+        ],
+        outputs=[slice_1_output_name],
+        name=gpt2_init_decoder_model.create_node_name("Slice", "GatherLastToken_1_"),
+    )
+
+    # Add the 2 Slice nodes
+    gpt2_init_decoder_model.add_node(slice_node_0)
+    gpt2_init_decoder_model.add_node(slice_node_1)
+
+    # Adjust the input(s) to the nodes consuming the outputs of the added Slice nodes
+    gpt2_init_decoder_model.replace_node_input(matmul_after_attention, attention.output[0], slice_0_output_name)
+    gpt2_init_decoder_model.replace_node_input(
+        residual_add_node, add_before_residual_add.output[0], slice_1_output_name
+    )
+
+    # Topologically sort the updated graph
+    gpt2_init_decoder_model.topological_sort()
+
+    # Save the init decoder model
+    OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
+    return True
+
+
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
 
@@ -814,9 +1124,70 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"Convert model {args.model_name_or_path} to onnx ...")
             t5_to_onnx(args)
 
-    if args.run_shape_inference:
+    # We only want to pad the logits MatMul weight in the decoder for fp16 models.
+    # The inherent assumption is that fp16 models run on GPU for which all
+    # dims need to be a multiple of 8 to leverage tensor cores.
+    # NOTE: We currently only support padding the MatMul logits weight for GPT2 GreedySearch/BeamSearch.
+    # This can be expanded to other models/decoding strategies later
+    logits_matmul_weight_padded = False
+    if (
+        args.pad_vocab_size
+        and args.precision == Precision.FLOAT16
+        and is_gpt2
+        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
+    ):
+        logger.info(
+            f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
+            "The file will be overwritten."
+        )
+        logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
+        if not logits_matmul_weight_padded:
+            logger.warning(
+                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+            )
+
+    gpt2_init_decoder_generated = False
+    gpt2_init_decoder_onnx_path = None
+    if (
+        args.separate_gpt2_decoder_for_init_run
+        and is_gpt2
+        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
+    ):
+        logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
+
+        gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
+            "fp16" if args.precision == Precision.FLOAT16 else "fp32"
+        )
+
+        gpt2_init_decoder_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
+
+        gpt2_init_decoder_generated = generate_gpt2_init_decoder(
+            args.decoder_onnx, gpt2_init_decoder_onnx_path, args.use_external_data_format
+        )
+
+        if not gpt2_init_decoder_generated:
+            logger.warning(
+                "Tried and failed to generate the init decoder GPT2 model. "
+                "Performance may be sub-optimal for the initial decoding run"
+            )
+
+        # Update the graph input shapes for the non-initial decoder model to account
+        # for the fact that the sequence length will always be 1
+        if gpt2_init_decoder_generated and not update_input_shapes_for_gpt2_decoder_model(
+            args.decoder_onnx, args.use_external_data_format
+        ):
+            # Can't proceed further - better to raise an exception
+            raise ValueError(f"Could not update the input shapes for the non-initial decoder subgraph.")
+
+    # If the user explicitly requests running shape inference or if we padded/mutated
+    # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new
+    # shapes
+    if logits_matmul_weight_padded or args.run_shape_inference or gpt2_init_decoder_generated:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
+        if gpt2_init_decoder_generated:
+            logger.info(f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten.")
+            shape_inference(gpt2_init_decoder_onnx_path, args.use_external_data_format)
 
     if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -841,6 +1212,12 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if args.model_type == "gpt2":
         verify_gpt2_subgraph(decoder_model.graph, args.precision)
+
+        # If we generated the init decoder model, verify that as well
+        if gpt2_init_decoder_generated:
+            gpt2_init_decoder_model = onnx.load_model(gpt2_init_decoder_onnx_path, load_external_data=True)
+            gpt2_init_decoder_model.graph.name = f"{args.model_type} init decoder"
+            verify_gpt2_subgraph(gpt2_init_decoder_model.graph, args.precision)
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
@@ -920,6 +1297,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         ]
     )
+
+    # Explicitly pass in the vocab size via an attribute
+    if logits_matmul_weight_padded:
+        attr_to_extend.extend([onnx.helper.make_attribute("vocab_size", vocab_size)])
+
     node.attribute.extend(attr_to_extend)
 
     initializers = []
@@ -935,7 +1317,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
             initializers = get_shared_initializers(encoder_model, decoder_model)
             logger.info(
-                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in subgraphs are moved to the main graph"
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
             )
 
             # TODO(tianleiwu): investigate the following which causes error in inference
@@ -957,9 +1339,23 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             ]
         )
     else:
-        # Move initializer from subgraph to main graph could reduce memory usage in inference.
-        initializers = move_initializers(decoder_model.graph)
-        logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+        if gpt2_init_decoder_generated:
+            gpt2_init_decoder_model = onnx.load_model(gpt2_init_decoder_onnx_path, load_external_data=True)
+
+            # Move shared initializers (shared between init decoder and decoder models) to the main
+            # graph and remove them from these models
+            if not args.disable_shared_initializers:
+                # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
+                initializers = get_shared_initializers(gpt2_init_decoder_model, decoder_model)
+                logger.info(
+                    f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
+                )
+
+            node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
+        else:
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            initializers = move_initializers(decoder_model.graph)
+            logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 

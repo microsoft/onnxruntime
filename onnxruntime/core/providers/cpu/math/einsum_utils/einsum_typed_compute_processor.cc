@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "einsum_typed_compute_processor.h"
-
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 
 namespace onnxruntime {
@@ -199,7 +199,10 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   left_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   left_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
-  left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+//  left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+  for(auto & a : reduce_dims){
+    left_permutation.push_back(onnxruntime::narrow<size_t>(a));
+  }
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
   if (EinsumOp::IsTransposeRequired(current_left ? current_left->Shape().NumDimensions() : left_dims.size(),
                                     left_permutation)) {
@@ -224,7 +227,10 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   InlinedVector<size_t> right_permutation;
   right_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   right_permutation.insert(right_permutation.end(), lro.begin(), lro.end());
-  right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+//  right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+  for(auto & a : reduce_dims){
+    right_permutation.push_back(onnxruntime::narrow<size_t>(a));
+  }
   right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
   right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
   if (EinsumOp::IsTransposeRequired(current_right ? current_right->Shape().GetDims().size() : right_dims.size(),

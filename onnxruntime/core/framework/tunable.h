@@ -15,6 +15,7 @@
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -52,6 +53,17 @@ class Timer {
   StreamT stream_;
 };
 
+template <typename T, typename Arg, typename E = void>
+struct HasIsSupportedMethod {
+  constexpr static bool value = false;
+};
+
+template <typename T, typename Arg>
+struct HasIsSupportedMethod<
+    T, Arg, std::enable_if_t<std::is_same_v<decltype(std::declval<T>().IsSupported(std::declval<Arg>())), Status>>> {
+  constexpr static bool value = true;
+};
+
 // A type erased Callable wrapper. We could have used std::function<Status<const ParamsT*>> here. However, std::function
 // requires the callable object to be CopyConstructible and CopyAssignable. This is not suitable for move only functor
 // or move captured lambda. So we create a simple wrapper for our purpose here.
@@ -63,18 +75,30 @@ class Op {
  public:
   template <typename T>
   explicit Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}
+  Op(Op&&) = default;
   Status operator()(const ParamsT* param) { return (*callable_)(param); }
+  Status IsSupported(const ParamsT* param) { return (*callable_).IsSupported(param); }
 
  private:
   struct ICallable {
     virtual ~ICallable() = default;
     virtual Status operator()(const ParamsT*) = 0;
+    virtual Status IsSupported(const ParamsT*) = 0;
   };
 
   template <typename T>
   struct CallableImpl : ICallable {
     explicit CallableImpl(T&& c) : c_{std::move(c)} {}
+    CallableImpl(CallableImpl&&) = default;
     Status operator()(const ParamsT* param) override { return c_(param); }
+
+    Status IsSupported(const ParamsT* param) override {
+      if constexpr (HasIsSupportedMethod<T, const ParamsT*>::value) {
+        return c_.IsSupported(param);
+      } else {
+        return c_(param);
+      }
+    }
 
    private:
     T c_;
@@ -86,7 +110,7 @@ class Op {
 // NOTE: onnxruntime's Status currently does not have a StatusCode::UNSUPPORTED. Currently, we do not want to extend the
 // enum. So we reuse StatusCode::INVALID_ARGUMENT for this purpose. It can be interpreted as "The input argument is not
 // valid for this specialized kernel implementation.". This semantic is crucial for the tuning mechanism.
-#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...)   \
+#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...)  \
   do {                                                             \
     if (condition) {                                               \
       return ORT_MAKE_STATUS(NONE, INVALID_ARGUMENT, __VA_ARGS__); \
@@ -96,6 +120,9 @@ class Op {
 template <typename ParamsT, typename TimerT>
 class TunableOp {
  public:
+  TunableOp() = default;
+  TunableOp(TunableOp&&) = default;
+
   Status operator()(const ParamsT* params) {
     int id;
     if (tuning_) {
@@ -116,10 +143,16 @@ class TunableOp {
 
   void EnableTuning() {
     tuning_ = true;
+    for (auto nested_op_ptr : nested_tunable_ops_) {
+      nested_op_ptr->EnableTuning();
+    }
   }
 
   void DisableTuning() {
     tuning_ = false;
+    for (auto nested_op_ptr : nested_tunable_ops_) {
+      nested_op_ptr->DisableTuning();
+    }
   }
 
   // We might want to do some tricks to the `params`, e.g., some op will use a buffer for input and output at the same
@@ -143,16 +176,30 @@ class TunableOp {
     default_id_ = id;
   }
 
+  void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
+    nested_tunable_ops_.insert(op_ptr);
+    if (tuning_) {
+      op_ptr->EnableTuning();
+    } else {
+      op_ptr->DisableTuning();
+    }
+
+    // Add an op for this tunable op as well.
+    ops_.emplace_back([op_ptr](const ParamsT* params) {
+      return op_ptr->operator()(params);
+    });
+  }
+
  private:
   static void WarmUp(Op<ParamsT>& op, const ParamsT* param) {
-    const int num_iter = 4;
+    constexpr const int num_iter = 4;
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
     }
   }
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param) {
-    const int num_iter = 100;
+    constexpr const int num_iter = 100;
     TimerT timer{param->Stream()};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
@@ -163,7 +210,7 @@ class TunableOp {
   }
 
   static bool IsSupported(Op<ParamsT>& op, const ParamsT* param) {
-    Status status = op(param);
+    Status status = op.IsSupported(param);
     if (status.Category() == common::StatusCategory::NONE && status.Code() == common::StatusCode::INVALID_ARGUMENT) {
       return false;
     }
@@ -188,42 +235,49 @@ class TunableOp {
 #endif
   }
 
-  int FindFastest(const ParamsT* params) {
+ protected:
+  virtual int FindFastest(const ParamsT* params) {
+    return FindFastestImpl(params, ops_);
+  }
+
+  int FindFastestImpl(const ParamsT* params, const std::vector<Op<ParamsT>>& candidates) {
     auto op_sig = OpSignature();
     auto param_sig = params->Signature();
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
+    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
-    for (size_t i = 0; i < this->ops_.size(); i++) {
-      if (!IsSupported(ops_[i], params)) {
-        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
+
+    for (size_t i = 0; i < candidates.size(); i++) {
+      auto& candidate = const_cast<Op<ParamsT>&>(candidates[i]);
+      if (!IsSupported(candidate, params)) {
+        LOGS_DEFAULT(VERBOSE) << "FindFastestImpl found unsupported " << op_sig
+                              << '(' << param_sig << ") id=" << i;
         continue;
       }
 
-      WarmUp(ops_[i], params);
-      auto time = Profile(ops_[i], params);
+      WarmUp(candidate, params);
+      auto time = Profile(candidate, params);
       if (time < min_time) {
         min_time = time;
         id = static_cast<int>(i);
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
-    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
+    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
 
- protected:
   std::vector<Op<ParamsT>> ops_;
 
  private:
   // mapping from Signature to best impl
   std::unordered_map<std::string, int> kernel_map_;
-
   // the default impl to use when tuning is disabled
   int default_id_{0};
-
   bool tuning_{false};
+  // Registered tunable sub-ops for nested tuning
+  std::unordered_set<TunableOp<ParamsT, TimerT>*> nested_tunable_ops_;
 };
 
 }  // namespace tunable

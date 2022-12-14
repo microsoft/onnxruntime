@@ -487,7 +487,7 @@ struct KernelDefBuilder final {
     return *this;
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   KernelDefBuilder& MayStridedInput(int input_index) {
     g_host->KernelDefBuilder__MayStridedInput(this, input_index);
     return *this;
@@ -947,7 +947,7 @@ struct Tensor final {
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   gsl::span<const int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
   bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
   void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {

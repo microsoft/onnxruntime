@@ -363,7 +363,7 @@ class PlannerImpl {
       }
     }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
     // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
     // strided tensors at the corresponding position, this output will generate a strided tensor
     // and share the data from the corresponding input specified in MayStridedOutputsMap.
@@ -1018,11 +1018,11 @@ class PlannerImpl {
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
           ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
-#endif  // ENABLE_TRAINING
+#endif  // ENABLE_STRIDED_TENSORS
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif

@@ -14,6 +14,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "xnnpack_init.h"
 
@@ -39,6 +40,13 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
       ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, type, Op)>
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, Resize);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
@@ -51,12 +59,22 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
                                       kDynamicDomainByCreate, 1, QLinearSoftmax);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
+
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
+
       KERNEL_CREATE_INFO(11, Conv),
+      KERNEL_CREATE_INFO(11, ConvTranspose),
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose),
+      KERNEL_CREATE_INFO(1, QLinearConvTranspose),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
       KERNEL_CREATE_INFO(11, AveragePool),
@@ -65,6 +83,22 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax)>,
       BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul)>,
 
       //  quantization op
       KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
@@ -90,10 +124,28 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  if (info.xnn_thread_pool_size > 1) {
-    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
-    // otherwise, the pthreadpool will be starved and harm performance a lot.
-    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  int xnn_thread_pool_size = info.xnn_thread_pool_size;
+  int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
+  bool allow_intra_op_spinning = (info.session_options == nullptr) ||
+                                 (info.session_options &&
+                                  info.session_options->config_options.GetConfigOrDefault(
+                                      kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
+  if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size > 1) {
+    LOGS_DEFAULT(WARNING)
+        << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
+           "If ORT's thread pool size is > 1 and spinning is enabled, "
+           "there will be contention between the two thread pools, and performance will suffer."
+           "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
+           "or the ORT intra-op threadpool size to 1.";
+  }
+
+  if (xnn_thread_pool_size == 0) {
+    xnn_thread_pool_size = ort_thread_pool_size;
+  }
+
+  if (xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we had better disable cpu spinning for ort-threadpool.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(xnn_thread_pool_size));
   }
 }
 
@@ -146,7 +198,7 @@ static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
                         ? "QLinear" + node_unit.OpType()
                         : node_unit.OpType();
-  return dynamic_schema_set.contains(key);
+  return dynamic_schema_set.count(key) > 0;
 }
 
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
@@ -224,7 +276,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
 
     bool request_node = false;
     // any node in NodeUnit will trigger IsNodeSupported, so we just check once.
-    if (node_unit_supported_result.count(&node_unit)) {
+    if (node_unit_supported_result.count(&node_unit) > 0) {
       continue;
     } else if (node_unit.GetNode().GetExecutionProviderType() == "") {
       // unassigned node.

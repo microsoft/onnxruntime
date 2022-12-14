@@ -145,12 +145,6 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
                                  const half* past,
                                  const half* k_v,
                                  half* present);
-
-void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
-                             const int* mask_index,
-                             const int batch_size,
-                             cudaStream_t stream);
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
