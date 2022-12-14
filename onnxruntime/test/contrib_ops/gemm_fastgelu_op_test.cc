@@ -8,10 +8,23 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
 namespace gemmfastgelu {
+
+namespace {
+
+const onnxruntime::RunOptions run_options = []() {
+  onnxruntime::RunOptions options{};
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
+  return options;
+}();
+
+const constexpr auto run_with_tunable_op = &run_options;
+
+}  // namespace
 
 #if defined(USE_ROCM)
 static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& weight_data,
@@ -37,15 +50,7 @@ static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const s
     tester.AddOutput<float>("Y", output_dims, output_data);
   }
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-  tester.ConfigEps(std::move(execution_providers))
-      .RunWithConfig();
-
-  execution_providers.clear();
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
-  tester.ConfigEps(std::move(execution_providers))
+  tester.Config(run_with_tunable_op)
       .RunWithConfig();
 }
 #endif
@@ -232,15 +237,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBias_bfloat16) {
   tester.AddInput<BFloat16>("bias", bias_dims, f_B);
   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-  tester.ConfigEps(std::move(execution_providers))
-      .RunWithConfig();
-
-  execution_providers.clear();
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
-  tester.ConfigEps(std::move(execution_providers))
+  tester.Config(run_with_tunable_op)
       .RunWithConfig();
 }
 #endif
