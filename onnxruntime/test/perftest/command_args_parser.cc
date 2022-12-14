@@ -80,6 +80,7 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
       "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
+      "\t    [TensorRT only] [trt_layer_norm_fp32_fallback]: Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false trt_force_sequential_engine_build|false'\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..\n"
@@ -93,6 +94,11 @@ namespace perftest {
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
+      "\t-T [Set intra op thread affinities]: Specify intra op thread affinity string\n"
+      "\t [Example]: -T 1,2;3,4;5,6 or -T 1-2;3-4;5-6' \n"
+      "\t\t Use semicolon to separate configuration between threads.\n"
+      "\t\t E.g. 1,2;3,4;5,6 specifies affinities for three threads, the first thread will be attached to the first and second logical processor.\n"
+      "\t\t The number of affinities must be equal to intra_op_num_threads - 1\n\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -122,7 +128,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -285,6 +291,9 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'i':
         test_config.run_config.ep_runtime_config_string = optarg;
+        break;
+      case 'T':
+        test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
         break;
       case '?':
       case 'h':

@@ -58,6 +58,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
   * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
+  * <a href="#com.microsoft.QLinearWhere">com.microsoft.QLinearWhere</a>
   * <a href="#com.microsoft.QOrderedAttention">com.microsoft.QOrderedAttention</a>
   * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
   * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
@@ -69,6 +70,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
+  * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
@@ -398,12 +401,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
+<dt><tt>init_decoder</tt> : graph</dt>
+<dd>The subgraph for the first decoding run. It will be called once before `decoder` subgraph. This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs</dd>
 <dt><tt>model_type</tt> : int</dt>
 <dd>model type: 0 for GPT-2; 1 for encoder decoder like T5</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>
 <dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
+<dt><tt>vocab_size</tt> : int</dt>
+<dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
 #### Inputs (5 - 10)
@@ -1311,7 +1318,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>mask</tt> (optional) : T1</dt>
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
 <dt><tt>position_ids</tt> (optional) : T1</dt>
-<dd>2D position ids with shape (batch_size, sequence_length)</dd>
+<dd>2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)</dd>
 </dl>
 
 #### Outputs (2 - 3)
@@ -1695,15 +1702,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>decoder_start_token_id</tt> : int</dt>
 <dd>The id of the token that indicates decoding starts.</dd>
 <dt><tt>encoder</tt> : graph</dt>
-<dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dd>The subgraph for initialization of encoder and decoder. It will be called once before `decoder` subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
+<dt><tt>init_decoder</tt> : graph</dt>
+<dd>The subgraph for the first decoding run. It will be called once before `decoder` subgraph. This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs</dd>
 <dt><tt>model_type</tt> : int</dt>
 <dd>model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>
 <dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
+<dt><tt>vocab_size</tt> : int</dt>
+<dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
 #### Inputs (2 - 7)
@@ -2994,6 +3005,56 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.QLinearWhere"></a><a name="com.microsoft.qlinearwhere">**com.microsoft.QLinearWhere**</a>
+
+  Return elements, either from X or Y, depending on condition.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>condition</tt> : B</dt>
+<dd> When True (nonzero), yield x, otherwise yield y</dd>
+<dt><tt>X</tt> : T</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>x_scale</tt> : TF</dt>
+<dd>X's scale.</dd>
+<dt><tt>x_zero_point</tt> : T</dt>
+<dd>X's zero point.</dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>y_scale</tt> : TF</dt>
+<dd>Y's scale.</dd>
+<dt><tt>y_zero_point</tt> : T</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>z_scale</tt> : TF</dt>
+<dd>Z's scale.</dd>
+<dt><tt>z_zero_point</tt> : T</dt>
+<dd>Z's zero point.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Z</tt> : T</dt>
+<dd>Tensor of shape equal to the broadcasted shape of condition, X, and Y</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>B</tt> : tensor(bool)</dt>
+<dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain scale types to any float tensor type.</dd>
+<dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.QOrderedAttention"></a><a name="com.microsoft.qorderedattention">**com.microsoft.QOrderedAttention**</a>
 
   Quantized version of simplified Multi-Head Self Attention(using int8 with specific matrix Layout).
@@ -3590,6 +3651,89 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input type to 8-bit integer tensor.</dd>
 <dt><tt>T2</tt> : tensor(int32), tensor(uint32)</dt>
 <dd>Constrain output data type to 32-bit integer tensor.T2 must be tensor(uint32) when T1 is tensor(uint8),or must be tensor(int32) when T1 is tensor(int8).</dd>
+</dl>
+
+
+### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
+
+  Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
+  
+  The input has padding with shape (batch_size, sequence_length, hidden_size). This will generate two outputs:
+  output has shape (total_tokens, hidden_size); token_offset with shape (batch_size, sequence_length).
+  
+  token_offset has offsets of all non-padding tokens first, then offset of all padding tokens. It is
+  a list of batch_size * sequence_length elements, which is reshaped to 2D for convenience of shape inference.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>sequence_token_count</tt> : M</dt>
+<dd>Number of non-padding tokens in each sequence with shape (batch_size).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (total_tokens, hidden_size)</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of non-padding tokens, and those of padding tokens. Its shape is (batch_size, sequence_length)</dd>
+<dt><tt>cumulated_seq_len</tt> : M</dt>
+<dd>Cumulated sequence lengths. Its shape is (batch_size + 1)</dd>
+<dt><tt>max_seq_len</tt> : M</dt>
+<dd>Max sequence length without padding. Its shape is (1)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain sequence_token_count and token_offset to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.RestorePadding"></a><a name="com.microsoft.restorepadding">**com.microsoft.RestorePadding**</a>
+
+  Restore paddings and fill padding with zeros.
+  
+  The input has padding with shape (total_tokens, hidden_size) and token_offset with shape (batch_size, sequence_length).
+  The output has shape (batch_size, sequence_length, hidden_size).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (total_tokens, hidden_size)</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>Offset of non-padding tokens and paddings. Its shape is (batch_size, sequence_length)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain token_offset to integer types</dd>
 </dl>
 
 

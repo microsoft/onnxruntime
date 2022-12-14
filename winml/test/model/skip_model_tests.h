@@ -124,22 +124,6 @@ std::unordered_map<std::string, std::string> disabledTests(
      {"fp16_tiny_yolov2_opset8_GPU", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
      {"fp16_coreml_FNS_Candy_opset7_GPU", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
      {"mlperf_ssd_mobilenet_300_opset10_GPU", "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"},
-
-     // from model zoo
-     {"VGG_16_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"SSD_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"ShuffleNet_v2_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"ResNet50_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"ResNet50_qdq_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"MobileNet_v2_1_0_qdq_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"MobileNet_v2_1_0_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"Inception_1_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"Faster_R_CNN_R_50_FPN_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"BERT_Squad_int8_opset12_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"FCN_ResNet_50_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"FCN_ResNet_101_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"EfficientNet_Lite4_qdq_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
-     {"EfficientNet_Lite4_int8_opset11_zoo_CPU", "https://github.com/onnx/models/issues/568"},
     }
 );
 

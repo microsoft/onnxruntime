@@ -6,6 +6,7 @@
 #pragma once
 #include "core/providers/cpu/tensor/slice_compute_metadata.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/framework/ort_stl_allocator.h"
 
 namespace onnxruntime {
@@ -45,26 +46,26 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
     if (!p.second)
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'axes' has duplicates");
 
-    const auto dim_value = compute_metadata.input_dimensions_[axis];
+    const auto dim_value = compute_metadata.input_dimensions_[onnxruntime::narrow<size_t>(axis)];
 
     // process start
     auto start = raw_starts[axis_index];
     if (start < 0)
       start += dim_value;
-    compute_metadata.starts_[axis] = std::clamp(start, int64_t{0}, dim_value);
+    compute_metadata.starts_[onnxruntime::narrow<size_t>(axis)] = std::clamp(start, int64_t{0}, dim_value);
 
     // process end
     auto end = raw_ends[axis_index];
     if (end < 0)
       end += dim_value;
-    compute_metadata.ends_[axis] = std::clamp(end, int64_t{0}, dim_value);
+    compute_metadata.ends_[onnxruntime::narrow<size_t>(axis)] = std::clamp(end, int64_t{0}, dim_value);
 
     // find output dim value for this axis
-    const auto temp = compute_metadata.ends_[axis] - compute_metadata.starts_[axis];
+    const auto temp = compute_metadata.ends_[onnxruntime::narrow<size_t>(axis)] - compute_metadata.starts_[onnxruntime::narrow<size_t>(axis)];
     if (temp < 0)
-      compute_metadata.output_dims_[axis] = 0;
+      compute_metadata.output_dims_[onnxruntime::narrow<size_t>(axis)] = 0;
     else
-      compute_metadata.output_dims_[axis] = temp;
+      compute_metadata.output_dims_[onnxruntime::narrow<size_t>(axis)] = temp;
   }
 
   return Status::OK();
@@ -103,7 +104,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
     auto p = unique_axes.insert(axis);
     if (!p.second)
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'axes' has duplicates");
-    const auto dim_value = compute_metadata.input_dimensions_[axis];
+    const auto dim_value = compute_metadata.input_dimensions_[onnxruntime::narrow<size_t>(axis)];
 
     // process step
     auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
@@ -112,10 +113,10 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
 
     if (dim_value == 0) {
       // shape with empty dim. only output_dims_ matters but set everything for completeness
-      compute_metadata.steps_[axis] = step;
-      compute_metadata.starts_[axis] = 0;
-      compute_metadata.ends_[axis] = 0;
-      compute_metadata.output_dims_[axis] = 0;
+      compute_metadata.steps_[onnxruntime::narrow<size_t>(axis)] = step;
+      compute_metadata.starts_[onnxruntime::narrow<size_t>(axis)] = 0;
+      compute_metadata.ends_[onnxruntime::narrow<size_t>(axis)] = 0;
+      compute_metadata.output_dims_[onnxruntime::narrow<size_t>(axis)] = 0;
       continue;
     }
 
@@ -123,16 +124,16 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
     // as long as the clamped value is >= the size of the dimension a single step will push us past the end
     step = std::clamp(step, -dim_value, dim_value);
 
-    compute_metadata.steps_[axis] = step;
+    compute_metadata.steps_[onnxruntime::narrow<size_t>(axis)] = step;
 
     // process start
     auto start = raw_starts[axis_index];
     if (start < 0)
       start += dim_value;
     if (step < 0)
-      compute_metadata.starts_[axis] = std::clamp(start, int64_t{0}, dim_value - 1);
+      compute_metadata.starts_[onnxruntime::narrow<size_t>(axis)] = std::clamp(start, int64_t{0}, dim_value - 1);
     else
-      compute_metadata.starts_[axis] = std::clamp(start, int64_t{0}, dim_value);
+      compute_metadata.starts_[onnxruntime::narrow<size_t>(axis)] = std::clamp(start, int64_t{0}, dim_value);
 
     // process end
     auto end = raw_ends[axis_index];
@@ -151,14 +152,14 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
         end = std::clamp(end, int64_t{0}, dim_value);
     }
 
-    compute_metadata.ends_[axis] = end;
+    compute_metadata.ends_[onnxruntime::narrow<size_t>(axis)] = end;
 
     // find output dim value for this axis
-    const auto temp = static_cast<int64_t>(ceil(1.0 * (compute_metadata.ends_[axis] - compute_metadata.starts_[axis]) / step));
+    const auto temp = static_cast<int64_t>(ceil(1.0 * (compute_metadata.ends_[onnxruntime::narrow<size_t>(axis)] - compute_metadata.starts_[onnxruntime::narrow<size_t>(axis)]) / step));
     if (temp < 0)
-      compute_metadata.output_dims_[axis] = 0;
+      compute_metadata.output_dims_[onnxruntime::narrow<size_t>(axis)] = 0;
     else
-      compute_metadata.output_dims_[axis] = temp;
+      compute_metadata.output_dims_[onnxruntime::narrow<size_t>(axis)] = temp;
   }
 
   return Status::OK();

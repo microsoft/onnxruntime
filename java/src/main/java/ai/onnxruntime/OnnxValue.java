@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -8,9 +8,8 @@ import java.util.Map;
 
 /**
  * Top interface for input and output values from ONNX models. Currently implemented by {@link
- * OnnxTensor}, {@link OnnxSequence} and {@link OnnxMap}. Will be sealed to these types one day.
- *
- * <p>Does not support sparse tensors.
+ * OnnxTensor}, {@link OnnxSparseTensor}, {@link OnnxSequence} and {@link OnnxMap}. Will be sealed
+ * to these types one day.
  */
 public interface OnnxValue extends AutoCloseable {
 
@@ -21,7 +20,8 @@ public interface OnnxValue extends AutoCloseable {
     ONNX_TYPE_SEQUENCE(2),
     ONNX_TYPE_MAP(3),
     ONNX_TYPE_OPAQUE(4),
-    ONNX_TYPE_SPARSETENSOR(5);
+    ONNX_TYPE_SPARSETENSOR(5),
+    ONNX_TYPE_OPTIONAL(6);
 
     /** The id number of this type in the C API. */
     public final int value;

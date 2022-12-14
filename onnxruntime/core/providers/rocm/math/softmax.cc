@@ -179,12 +179,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   Status status;
   if (log_softmax_) {
     status = SoftMaxComputeHelper<T, T, true>(Stream(), X_data, *compute_input_shape, Y_data,
-                                           is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                 : static_cast<int64_t>(axis));
+                                              is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                    : static_cast<int64_t>(axis));
   } else {
     status = SoftMaxComputeHelper<T, T, false>(Stream(), X_data, *compute_input_shape, Y_data,
-                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                  : static_cast<int64_t>(axis));
+                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                     : static_cast<int64_t>(axis));
   }
 
   if (!status.IsOK())
