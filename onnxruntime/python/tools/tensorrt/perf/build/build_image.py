@@ -17,6 +17,7 @@ TRT_DOCKER_FILES = {
     "8.0": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_0",
     "8.2": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_2",
     "8.4": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_6_tensorrt8_4",
+    "8.5": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_5",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 

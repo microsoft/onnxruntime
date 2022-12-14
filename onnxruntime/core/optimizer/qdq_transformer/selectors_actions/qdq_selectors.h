@@ -103,6 +103,17 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
   bool int8_allowed_;
 };
 
+class WhereNodeGroupSelector : public NodeGroupSelector {
+public:
+  WhereNodeGroupSelector()= default;
+
+private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+};
+
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 // The lack of a trailing Q isn't really a QDQ node group, so we default support for that to off.
 class MatMulNodeGroupSelector : public NodeGroupSelector {
@@ -200,7 +211,10 @@ class ConvSelector : public BaseSelector {
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
-
+class WhereSelector : public BaseSelector {
+public:
+  WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
+};
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
