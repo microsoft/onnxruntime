@@ -102,10 +102,19 @@ void dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const
   }
 }
 
-#define SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(input_t, output_t, acc_t) template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(cudaStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
-template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(cudaStream_t stream, output_t* dst,
-                                                                                const input_t* src, int softmax_elements,
-                                                                                int softmax_elements_stride, int batch_count);
+#define SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                                             \
+  template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(cudaStream_t stream,         \
+                                                                                   output_t * dst,              \
+                                                                                   const input_t* src,          \
+                                                                                   int softmax_elements,        \
+                                                                                   int softmax_elements_stride, \
+                                                                                   int batch_count);            \
+  template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(cudaStream_t stream,          \
+                                                                                  output_t * dst,               \
+                                                                                  const input_t* src,           \
+                                                                                  int softmax_elements,         \
+                                                                                  int softmax_elements_stride,  \
+                                                                                  int batch_count);
 
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(half, half, float)

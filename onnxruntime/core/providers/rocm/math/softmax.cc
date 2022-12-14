@@ -32,7 +32,8 @@ Status SoftMaxComputeHelper(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   } else {
     dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, is_log_softmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+        gsl::narrow_cast<int>(N));
   }
 
   return Status::OK();
