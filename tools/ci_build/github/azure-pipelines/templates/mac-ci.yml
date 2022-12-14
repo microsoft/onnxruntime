@@ -55,7 +55,7 @@ jobs:
         path: $(CCACHE_DIR)
         restoreKeys: |
           ccache | "$(Agent.OS)" | protocol
-      displayName: ccache protocol
+      displayName: ccache protocol task
 
     - script: |
         set -e -x
