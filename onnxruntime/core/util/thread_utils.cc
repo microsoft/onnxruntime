@@ -211,6 +211,8 @@ ORT_API_STATUS_IMPL(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp
 
 ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
 #if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  ORT_UNUSED_PARAMETER(tp_options);
+  ORT_UNUSED_PARAMETER(affinity_string);
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                "Setting customized thread affinity is not supported in this build.");
 #else
