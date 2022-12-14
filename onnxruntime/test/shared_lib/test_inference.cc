@@ -887,6 +887,31 @@ TEST(CApiTest, invalid_variadic_output_custom_op) {
   ASSERT_TRUE(caught_exception);
 }
 
+TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
+  // Create a custom op with a homogeneous variadic input. The model has heterogeneous inputs,
+  // so we expect an error.
+  StubCustomOpWithHomogeneousVariadicInput custom_op;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  bool caught_exception = false;
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  } catch (const Ort::Exception& excpt) {
+    caught_exception = true;
+    std::string_view exception_msg = excpt.what();
+    std::string_view expected_err = "Type Error: Type parameter (T0) of Optype (VariadicNode) bound to different types";
+    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+  }
+
+  ASSERT_TRUE(caught_exception);
+}
+
 TEST(CApiTest, optional_input_output_custom_op_handler) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
 
