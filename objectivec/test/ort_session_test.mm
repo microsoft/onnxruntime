@@ -225,7 +225,8 @@ NS_ASSUME_NONNULL_BEGIN
   BOOL appendResult = [sessionOptions appendXnnpackExecutionProviderWithOptions:XnnpackOptions
                                                                           error:&err];
   // Without xnnpack EP in building also can pass the test
-  if (!appendResult && [[err localizedDescription] rangeOfString:@"XNNPACK execution provider is not supported in this build. "]) {
+  NSString* err_msg = [err localizedDescription];
+  if (!appendResult && [err_msg containsString:@"XNNPACK execution provider is not supported in this build. "]) {
     return;
   }
 
