@@ -14,6 +14,7 @@ namespace onnxruntime {
 namespace test {
 namespace gemmfastgelu {
 
+#if defined(USE_ROCM)
 namespace {
 
 const onnxruntime::RunOptions run_options = []() {
@@ -26,7 +27,6 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
-#if defined(USE_ROCM)
 static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& weight_data,
                                    const std::vector<float>& bias_data, const std::vector<float>& output_data,
                                    const std::vector<int64_t>& input_dims, const std::vector<int64_t>& weight_dims,
@@ -53,7 +53,6 @@ static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const s
   tester.Config(run_with_tunable_op)
       .RunWithConfig();
 }
-#endif
 
 TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
   int batch_size = 1;
@@ -83,11 +82,10 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
-#if defined(USE_ROCM)
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          false);
-#endif
 }
 
 TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
@@ -119,15 +117,12 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
-#if defined(USE_ROCM)
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          true);
-#endif
 }
 
-// CUDA and ROCm only for Float16 and BFloat16 type.
-#if defined(USE_ROCM)
 TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -156,6 +151,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          false);
@@ -190,6 +186,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          true);
