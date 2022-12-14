@@ -874,9 +874,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
              ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
            })
-      .def("reset_grad",
+      .def("lazy_reset_grad",
            [](onnxruntime::training::api::Module* model) -> void {
-             ORT_THROW_IF_ERROR(model->ResetGrad());
+             ORT_THROW_IF_ERROR(model->LazyResetGrad());
            })
       .def("copy_parameters_to_buffer",
            [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
