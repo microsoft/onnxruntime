@@ -51,7 +51,7 @@ jobs:
 
     - task: Cache@2
       inputs:
-        key: 'ccache | "$(Agent.OS)" | protocol'
+        key: 'ccache | "$(Agent.OS)" | protocol | "$(Build.SourceVersion)" '
         path: $(CCACHE_DIR)
         restoreKeys: |
           ccache | "$(Agent.OS)" | protocol
@@ -76,7 +76,7 @@ jobs:
 
     - task: Cache@2
       inputs:
-        key: 'ccache | "$(Agent.OS)" | onnxruntime'
+        key: 'ccache | "$(Agent.OS)" | onnxruntime | "$(Build.SourceVersion)" '
         path: $(CCACHE_DIR)
         restoreKeys: |
           ccache | "$(Agent.OS)" | onnxruntime
