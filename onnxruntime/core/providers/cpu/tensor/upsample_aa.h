@@ -44,7 +44,7 @@ struct FilterParamsAA {
   FilterParamsBaseAA dim_y;
   FilterParamsBaseAA dim_z;
 
-  static int32_t round_up(float f) {
+  static constexpr int32_t round_up(float f) {
     return ((int32_t)((f) >= 0.0 ? (f) + 0.5F : (f)-0.5F));
   }
 
@@ -56,6 +56,7 @@ struct FilterParamsAA {
       clip8_lookups_table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
     }
   }
+  virtual ~FilterParamsAA() = default;
   virtual float filter(float x) const = 0;
 };
 
