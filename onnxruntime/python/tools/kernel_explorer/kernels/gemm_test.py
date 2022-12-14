@@ -128,13 +128,14 @@ class GemmMetric(ke.ComputeMetric):
     k: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-        if self.duration > 0:
-            return (
-                prefix
-                + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
-            )
-        return prefix + "not supported"
+        prefix = (
+            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} "
+        )
+        if self.duration <= 0:
+            return prefix + "not supported"
+
+        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int):
@@ -174,6 +175,7 @@ def profile_with_args(dtype, transa, transb, m, n, k, sort):
         profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+    print()
 
 
 def profile():

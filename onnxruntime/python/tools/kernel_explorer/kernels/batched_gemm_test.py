@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import sys
+from dataclasses import dataclass
 from itertools import product
 
 import kernel_explorer as ke
@@ -119,6 +120,26 @@ def test_tunable_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
     _test_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 768, 768, 512, 4, alpha=alpha, beta=beta)
 
 
+@dataclass
+class BatchedGemmMetric(ke.ComputeMetric):
+    transa: bool
+    transb: bool
+    m: int
+    n: int
+    k: int
+    batch: int
+
+    def report(self):
+        prefix = (
+            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} "
+        )
+        if self.duration <= 0:
+            return prefix + "not supported"
+
+        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+
+
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -141,29 +162,21 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
     beta = 0.0
     my_gemm = f(opa, opb, m, n, k, alpha, dev_as, lda, dev_bs, ldb, beta, dev_cs, ldc, batch)
     for impl in my_gemm.ListOps():
-        if not my_gemm.SelectOp(impl):
-            print(
-                f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))}",
-                f"m={m:<4} n={n:<4} k={k:<4} batch={batch:<3} not supported",
-            )
-            sys.stdout.flush()
-            continue
-        time_ms = my_gemm.Profile()
-        time_us = time_ms * 1000
-        tflops = batch * (m * k * n * 2) / (time_ms * 1e-3) / 1e12
-        print(
-            f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))}",
-            f"m={m:<4} n={n:<4} k={k:<4} batch={batch:<3} {time_us:>8.4f} us {tflops:>5.2f} tflops",
-        )
+        duration_ms = -1
+        if my_gemm.SelectOp(impl):
+            duration_ms = my_gemm.Profile()
+        FLOPs = batch * m * k * n * 2
+        ke.report(BatchedGemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k, batch))
 
 
-def profile_with_args(dtype, transa, transb, m, n, k, batch):
+def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
     fn_rocblas = getattr(ke, "RocBlasBatchedGemm" + dtype_suffix)
     fn_tunable = getattr(ke, "BatchedGemmTunable" + dtype_suffix + transab_suffix)
-    profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
-    profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
+    with ke.benchmark(sort):
+        profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
+        profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
     print()
 
 
@@ -171,7 +184,7 @@ def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=False):
             for batch in [1, 32, 64]:
-                profile_with_args(dtype, False, False, m, n, k, batch)
+                profile_with_args(dtype, False, False, m, n, k, batch, True)
 
 
 if __name__ == "__main__":
@@ -186,8 +199,12 @@ if __name__ == "__main__":
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
     group.add_argument("batch", type=int)
+    group.add_argument("--sort", action="store_true")
+
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)
+        profile_with_args(
+            args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch, args.sort
+        )
