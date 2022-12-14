@@ -33,11 +33,10 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                                                                                                       const int64_t input_size,
                                                                                                       const int64_t output_size,
                                                                                                       size_t rindex,
-                                                                                                      std::vector<int64_t>& bound_idx,
-                                                                                                      std::vector<float>& original_idx,
+                                                                                                      FilterParamsBaseAA& param_base,
                                                                                                       const float rscale,
                                                                                                       BufferUniquePtr& weight_coefficients) -> int64_t {
-    bound_idx.reserve(static_cast<size_t>(output_size) * 2);
+    param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
     // For each index in the output height and output width, cache its corresponding "weights/scales" for its
     // corresponding indices in the input which proportionately indicates how much they will influence the final
     // pixel value in the output
@@ -68,7 +67,10 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                                                                      static_cast<float>(output_size),
                                                                      static_cast<float>(input_size),
                                                                      roi[roi_start], roi[roi_end]));
-      original_idx.emplace_back(center);
+      param_base.original.emplace_back(center - 0.5f);
+      if (center - 0.5f < 0) {
+        param_base.output_idx_bellow_zero.emplace_back(i);
+      }
       float total_weight = 0.0;
 
       int64_t xmin_real = static_cast<int64_t>(center - support + 0.5);
@@ -78,8 +80,8 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
 
       xmin = exclude_outside ? xmin_cut : xmin_real;
       xmax = exclude_outside ? xmax_cut : xmax_real;
-      bound_idx.push_back(xmin_cut);
-      bound_idx.push_back(xmax_cut);
+      param_base.bound.push_back(xmin_cut);
+      param_base.bound.push_back(xmax_cut);
 
       auto* scale_buffer = &scale_data[i * window_size];
       int32_t* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
@@ -133,7 +135,7 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
 
   const size_t width_rindex = is_nchw ? 0 : 1;
   const size_t height_rindex = is_nchw ? 1 : 2;
-  const size_t channel_rindex = is_nchw ? 2 : 3;
+  const size_t channel_rindex = is_nchw ? 2 : 2;  // only works for trilinear NC(chw)
 
   /* Handles values form -640 to 639. */
   static uint8_t clip8_lookups_table[1280];
@@ -141,12 +143,12 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
 
   p.init_clip_lookup();
   p.dim_y.window_size = compute_weight_coefficients(p, input_h_w_c[0], output_h_w_c[0], height_rindex,
-                                                    p.dim_y.bound, p.dim_y.original, scale_h_w_c[0], p.dim_y.weight_coefficients);
+                                                    p.dim_y, scale_h_w_c[0], p.dim_y.weight_coefficients);
   p.dim_x.window_size = compute_weight_coefficients(p, input_h_w_c[1], output_h_w_c[1], width_rindex,
-                                                    p.dim_x.bound, p.dim_x.original, scale_h_w_c[1], p.dim_x.weight_coefficients);
+                                                    p.dim_x, scale_h_w_c[1], p.dim_x.weight_coefficients);
   if (input_h_w_c.size() == 3) {
     p.dim_z.window_size = compute_weight_coefficients(p, input_h_w_c[2], output_h_w_c[2], channel_rindex,
-                                                      p.dim_z.bound, p.dim_z.original, scale_h_w_c[2], p.dim_z.weight_coefficients);
+                                                      p.dim_z, scale_h_w_c[2], p.dim_z.weight_coefficients);
   }
 }
 
