@@ -55,7 +55,7 @@ if (WIN32)
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
                       GIT_TAG r22.12
                       PREFIX triton
-                      CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=x64-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
+                      CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=${onnxruntime_target_platform}-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
 
