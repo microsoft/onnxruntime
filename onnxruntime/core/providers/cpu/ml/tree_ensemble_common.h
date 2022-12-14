@@ -494,11 +494,14 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       std::vector<InlinedVector<ScoreValue<ThresholdType>>> scores(parallel_tree_N_);
       size_t j, limit;
       int64_t i, batch, batch_end;
+      batch_end = std::min(N, static_cast<int64_t>(parallel_tree_N_));
+      for (i = 0; i < batch_end; ++i) {
+        scores[SafeInt<ptrdiff_t>(i)].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_));
+      }
       for (batch = 0; batch < N; batch += parallel_tree_N_) {
         batch_end = std::min(N, batch + parallel_tree_N_);
         for (i = batch; i < batch_end; ++i) {
-          scores[SafeInt<ptrdiff_t>(i)].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_));
-          std::fill(scores[SafeInt<ptrdiff_t>(i)].begin(), scores[SafeInt<ptrdiff_t>(i)].end(), ScoreValue<ThresholdType>({0, 0}));
+          std::fill(scores[SafeInt<ptrdiff_t>(i - batch)].begin(), scores[SafeInt<ptrdiff_t>(i - batch)].end(), ScoreValue<ThresholdType>({0, 0}));
         }
         for (j = 0, limit = roots_.size(); j < limit; ++j) {
           for (i = batch; i < batch_end; ++i) {
