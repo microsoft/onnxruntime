@@ -78,6 +78,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
     package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
+elif parse_arg_remove_boolean(sys.argv, "--use_cloud"):
+    package_name = "onnxruntime-cloud"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686

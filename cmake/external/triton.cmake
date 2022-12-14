@@ -60,6 +60,7 @@ if (WIN32)
                       UPDATE_COMMAND "")
 
   add_dependencies(triton ${VCPKG_DEPENDENCIES})
+
 else()
 
   ExternalProject_Add(triton
