@@ -38,14 +38,17 @@
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "orttraining/training_ops/cpu/controlflow/record.h"
-#include "orttraining/training_ops/cpu/controlflow/wait.h"
-#include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/controlflow/record.h"
+#include "orttraining/training_ops/cpu/controlflow/wait.h"
+#include "orttraining/training_ops/cpu/controlflow/yield.h"
 #endif
 
 #include "cpu_provider_shared.h"
@@ -248,16 +251,13 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING
-  void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
-  void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
+#ifdef ENABLE_TRAINING_OPS
   Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Group::Compute(context); }
   Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) override { return p->PassThrough::Compute(context); }
   void contrib__VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) override { contrib::VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
   void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) override { contrib::GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
-  Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
   // From cpu/optimizer/adamwbase.h (direct)
   Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
                                                         contrib__AdamWOptimizerBase__Prepare& prepare) override {
@@ -270,6 +270,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                       const TensorSeq* values, TensorSeq* updated_values) override {
     return p->AdamWOptimizerBase::GenerateOutputs(ctx, number_of_values, values, updated_values);
   }
+#endif
+
+#ifdef ENABLE_TRAINING
+  void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
+  void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
+  Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
 
   // From aten_op.h (direct)
   bool contrib__IsATenOperatorExecutorInitialized() override {

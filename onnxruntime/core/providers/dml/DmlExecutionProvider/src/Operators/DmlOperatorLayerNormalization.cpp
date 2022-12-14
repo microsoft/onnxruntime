@@ -57,7 +57,7 @@ public:
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
         uint32_t onnxInputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
         onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, onnxInputDimCount);
-        std::vector<uint32_t> onnxAxes(inputShapes[0].size() - onnxAxis);
+        std::vector<uint32_t> onnxAxes(inputShapes[0].size() - static_cast<size_t>(onnxAxis));
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         assert(m_inputTensorDescs.size() == 3);

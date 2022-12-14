@@ -82,7 +82,7 @@ struct ThreadOptions {
   // that are contained in a given physical core with the same index as the thread. ORT does not set any affinity
   // to the thread that is considered main (the thread that initiates the creation of the TP).
   // The process that owns the thread may consider setting its affinity.
-  std::vector<LogicalProcessors> affinity;
+  std::vector<LogicalProcessors> affinities;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
@@ -139,8 +139,7 @@ class Env {
   /// <returns>Number of physical cores</returns>
   virtual int GetNumPhysicalCpuCores() const = 0;
 
-  // This function currently doesn't support systems with more than 64 logical processors on Windows
-  virtual std::vector<LogicalProcessors> GetThreadAffinityMasks() const = 0;
+  virtual std::vector<LogicalProcessors> GetDefaultThreadAffinities() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {

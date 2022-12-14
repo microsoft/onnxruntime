@@ -74,7 +74,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
-    options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options));
+    options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif

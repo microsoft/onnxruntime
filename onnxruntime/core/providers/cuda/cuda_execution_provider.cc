@@ -16,7 +16,7 @@
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
@@ -2294,7 +2294,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(kernel_registry));
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaTrainingKernels(kernel_registry));
 #endif
 
