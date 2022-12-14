@@ -137,6 +137,56 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_saveCheckpoint
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
+ * Method:    getTrainInputNames
+ * Signature: (JJJJ)[Ljava/lang/String;
+ */
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainInputNames
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
+  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
+  const OrtTrainingSession* trainSession = (const OrtTrainingSession*)sessionHandle;
+  OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
+
+  // Setup
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, ORTJNI_StringClassName);
+
+  // Get the number of inputs
+  size_t numInputs = 0;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, trainApi->TrainingSessionGetTrainingModelInputCount(trainSession, &numInputs));
+  if (code != ORT_OK) {
+    return NULL;
+  }
+
+  int32_t numInputsInt = (int32_t) numInputs;
+  if (numInputs != (size_t) numInputsInt) {
+    throwOrtException(jniEnv, 1, "Too many inputs, expected less than 2^31");
+  }
+
+  // Allocate the return array
+  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numInputsInt, stringClazz, NULL);
+  for (int32_t i = 0; i < numInputsInt; i++) {
+    // Read out the input name and convert it to a java.lang.String
+    char* inputName = NULL;
+    code = checkOrtStatus(jniEnv, api, trainApi->TrainingSessionGetTrainingModelInputName(trainSession, i, allocator, &inputName));
+    if (code != ORT_OK) {
+      // break out on error, return array and let Java throw the exception.
+      break;
+    }
+    jstring name = (*jniEnv)->NewStringUTF(jniEnv, inputName);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
+    code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, inputName));
+    if (code != ORT_OK) {
+      // break out on error, return array and let Java throw the exception.
+      break;
+    }
+  }
+
+  return array;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    getTrainOutputNames
  * Signature: (JJJJ)[Ljava/lang/String;
  */
@@ -176,6 +226,56 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOu
     jstring name = (*jniEnv)->NewStringUTF(jniEnv, outputName);
     (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
     code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, outputName));
+    if (code != ORT_OK) {
+      // break out on error, return array and let Java throw the exception.
+      break;
+    }
+  }
+
+  return array;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtTrainingSession
+ * Method:    getEvalInputNames
+ * Signature: (JJJJ)[Ljava/lang/String;
+ */
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalInputNames
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
+  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
+  const OrtTrainingSession* trainSession = (const OrtTrainingSession*)sessionHandle;
+  OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
+
+  // Setup
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, ORTJNI_StringClassName);
+
+  // Get the number of inputs
+  size_t numInputs = 0;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, trainApi->TrainingSessionGetEvalModelInputCount(trainSession, &numInputs));
+  if (code != ORT_OK) {
+    return NULL;
+  }
+
+  int32_t numInputsInt = (int32_t) numInputs;
+  if (numInputs != (size_t) numInputsInt) {
+    throwOrtException(jniEnv, 1, "Too many inputs, expected less than 2^31");
+  }
+
+  // Allocate the return array
+  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numInputsInt, stringClazz, NULL);
+  for (int32_t i = 0; i < numInputsInt; i++) {
+    // Read out the input name and convert it to a java.lang.String
+    char* inputName = NULL;
+    code = checkOrtStatus(jniEnv, api, trainApi->TrainingSessionGetEvalModelInputName(trainSession, i, allocator, &inputName));
+    if (code != ORT_OK) {
+      // break out on error, return array and let Java throw the exception.
+      break;
+    }
+    jstring name = (*jniEnv)->NewStringUTF(jniEnv, inputName);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
+    code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, inputName));
     if (code != ORT_OK) {
       // break out on error, return array and let Java throw the exception.
       break;
@@ -237,16 +337,16 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOut
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
- * Method:    resetGrad
+ * Method:    lazyResetGrad
  * Signature: (JJJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_resetGrad
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_lazyResetGrad
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
   OrtTrainingSession* trainSession = (OrtTrainingSession*)nativeHandle;
-  checkOrtStatus(jniEnv, api, trainApi->ResetGrad(trainSession));
+  checkOrtStatus(jniEnv, api, trainApi->LazyResetGrad(trainSession));
 }
 
 /*
@@ -495,6 +595,19 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
   free((void*)inputNames);
 
   return outputArray;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtTrainingSession
+ * Method:    setSeed
+ * Signature: (JJJF)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setSeed
+    (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong trainApiHandle, jlong seed) {
+  (void)clazz;  // Required JNI parameter not needed by functions which don't need to access their host class.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
+  checkOrtStatus(jniEnv, api, trainApi->SetSeed(seed));
 }
 
 /*

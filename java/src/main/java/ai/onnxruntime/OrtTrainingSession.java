@@ -38,8 +38,10 @@ public final class OrtTrainingSession implements AutoCloseable {
   private final String evalPath;
   private final String optimizerPath;
 
+  private final Set<String> trainInputNames;
   private final Set<String> trainOutputNames;
 
+  private final Set<String> evalInputNames;
   private final Set<String> evalOutputNames;
 
   private boolean closed = false;
@@ -91,10 +93,26 @@ public final class OrtTrainingSession implements AutoCloseable {
     this.evalPath = evalPath;
     this.optimizerPath = optimizerPath;
 
+    this.trainInputNames =
+        new LinkedHashSet<>(
+            Arrays.asList(
+                getTrainInputNames(
+                    OnnxRuntime.ortApiHandle,
+                    OnnxRuntime.ortTrainingApiHandle,
+                    nativeHandle,
+                    allocator.handle)));
     this.trainOutputNames =
         new LinkedHashSet<>(
             Arrays.asList(
                 getTrainOutputNames(
+                    OnnxRuntime.ortApiHandle,
+                    OnnxRuntime.ortTrainingApiHandle,
+                    nativeHandle,
+                    allocator.handle)));
+    this.evalInputNames =
+        new LinkedHashSet<>(
+            Arrays.asList(
+                getEvalInputNames(
                     OnnxRuntime.ortApiHandle,
                     OnnxRuntime.ortTrainingApiHandle,
                     nativeHandle,
@@ -160,24 +178,43 @@ public final class OrtTrainingSession implements AutoCloseable {
     }
   }
 
-  private native void closeSession(long trainingHandle, long nativeHandle);
+  /**
+   * Returns an ordered set of the train model input names.
+   *
+   * @return The training inputs.
+   */
+  public Set<String> getTrainInputNames() {
+    return trainInputNames;
+  }
 
   /**
-   * \brief Save the training session states to a checkpoint directory on disk.
+   * Returns an ordered set of the train model output names.
    *
-   * <p>This function retrieves the training session states from the training session and serializes
-   * them to a checkpoint directory on disk. This checkpoint can later be loaded by invoking
-   * LoadCheckpoint to continue the training with the same states.
-   *
-   * <p>\param[in] checkpoint_path Path to the checkpoint directory \param[in] session The training
-   * session from where the checkpoint states are to be retrieved. \param[in] save_optimizer_state
-   * Boolean flag indicating whether or not to save the optimizer states to the checkpoint.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const
-   * OrtTrainingSession* session, bool save_optimizer_state);
+   * @return The training outputs.
    */
+  public Set<String> getTrainOutputNames() {
+    return trainOutputNames;
+  }
+
+  /**
+   * Returns an ordered set of the eval model input names.
+   *
+   * @return The evaluation inputs.
+   */
+  public Set<String> getEvalInputNames() {
+    return evalInputNames;
+  }
+
+  /**
+   * Returns an ordered set of the eval model output names.
+   *
+   * @return The evaluation outputs.
+   */
+  public Set<String> getEvalOutputNames() {
+    return evalOutputNames;
+  }
+
+  private native void closeSession(long trainingHandle, long nativeHandle);
 
   /**
    * Save out the training session state into the supplied checkpoint directory.
@@ -197,6 +234,22 @@ public final class OrtTrainingSession implements AutoCloseable {
         saveOptimizer);
   }
 
+  /**
+   * \brief Save the training session states to a checkpoint directory on disk.
+   *
+   * <p>This function retrieves the training session states from the training session and serializes
+   * them to a checkpoint directory on disk. This checkpoint can later be loaded by invoking
+   * LoadCheckpoint to continue the training with the same states.
+   *
+   * <p>\param[in] checkpoint_path Path to the checkpoint directory \param[in] session The training
+   * session from where the checkpoint states are to be retrieved. \param[in] save_optimizer_state
+   * Boolean flag indicating whether or not to save the optimizer states to the checkpoint.
+   *
+   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * <p>ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const
+   * OrtTrainingSession* session, bool save_optimizer_state);
+   */
   private native void saveCheckpoint(
       long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer)
       throws OrtException;
@@ -216,6 +269,10 @@ public final class OrtTrainingSession implements AutoCloseable {
    * sess, _Out_ size_t* out); ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputName, _In_ const
    * OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
    */
+  private native String[] getTrainInputNames(
+      long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle)
+      throws OrtException;
+
   private native String[] getTrainOutputNames(
       long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
@@ -235,6 +292,10 @@ public final class OrtTrainingSession implements AutoCloseable {
    * _Out_ size_t* out); ORT_API2_STATUS(TrainingSessionGetEvalModelOutputName, _In_ const
    * OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
    */
+  private native String[] getEvalInputNames(
+      long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle)
+      throws OrtException;
+
   private native String[] getEvalOutputNames(
       long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
@@ -256,14 +317,32 @@ public final class OrtTrainingSession implements AutoCloseable {
   /**
    * Ensures the gradients are reset to zero before the next call to {@link #trainStep}.
    *
-   * @throws OrtException If the call failed.
+   * <p>Note this is a lazy call, the gradients are cleared as part of running the next {@link
+   * #trainStep} and not before.
+   *
+   * @throws OrtException If the native call failed.
    */
-  public void resetGrad() throws OrtException {
+  public void lazyResetGrad() throws OrtException {
     checkClosed();
-    resetGrad(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+    lazyResetGrad(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
   }
 
-  private native void resetGrad(long apiHandle, long trainingHandle, long nativeHandle)
+  private native void lazyResetGrad(long apiHandle, long trainingHandle, long nativeHandle)
+      throws OrtException;
+
+  /**
+   * Sets the RNG seed used by ONNX Runtime.
+   *
+   * <p>Note this setting is global across OrtTrainingSession instances.
+   *
+   * @param seed The RNG seed.
+   * @throws OrtException If the native call failed.
+   */
+  public static void setSeed(long seed) throws OrtException {
+    setSeed(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, seed);
+  }
+
+  private static native void setSeed(long apiHandle, long trainingHandle, long seed)
       throws OrtException;
 
   /**
