@@ -37,7 +37,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         onnxruntime_training_apis_tests_image \
           /build/RelWithDebInfo/launch_test.py \
-            --cwd /build/RelWithDebInfo --cmd_line_with_args "python orttraining_training_apis_tests.py --cwd /build/RelWithDebInfo" \
+            --cwd /build/RelWithDebInfo --cmd_line_with_args "python orttraining_test_ort_apis.py --cwd /build/RelWithDebInfo" \
     displayName: 'Run ORT Training APIs Tests'
     condition: succeededOrFailed()
     timeoutInMinutes: 120

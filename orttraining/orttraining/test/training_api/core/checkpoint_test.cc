@@ -171,8 +171,8 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
   // Phase 2: Load the checkpoint weights into the Model.
   // Call Load APIs
-  PathString checkpoint_path = ORT_TSTR("testdata/training_api/load_checkpoint");
-  ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_path, p_model));
+  auto checkpoint_uri = MODEL_FOLDER "training_api/load_checkpoint");
+  ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_uri, p_model));
 
   // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
   // Load imported initializers into the Model
@@ -199,11 +199,11 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
-  /// Phase 1 - Test Preparison
+  /// Phase 1 - Test Preparation
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.
-  auto model_uri = MODEL_FOLDER "training_api/training_model.onnx";
-  auto optim_uri = MODEL_FOLDER "training_api/adamw.onnx";
+  auto model_uri = "testdata/training_api/training_model.onnx";
+  auto optim_uri = "testdata/training_api/adamw.onnx";
 
   // Generate randomized weight values using synthetic data generator.
   const int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500, fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
@@ -287,7 +287,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   ASSERT_EQ(expected_file_names, valid_file_names);
 
   /// Phase 3 - Run load checkpoint APIs.
-  /// And check the result comparible with initial optimizer state values.
+  /// Validate the result matches with initial optimizer state values.
 
   // Call Load APIs
   CheckpointState checkpoint_state_to_load;

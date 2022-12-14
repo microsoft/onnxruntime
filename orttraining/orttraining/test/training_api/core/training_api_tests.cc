@@ -149,7 +149,8 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
   /// Load test data for learning rate schedulers.
-  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
+  auto data_dir = MODEL_FOLDER "test_data_generation/lr_scheduler/";
+  PathString data_uri = ConcatPathComponent(data_dir, ToPathString(test_file_name));
   std::ifstream in{data_uri};
   // Element of vector represent a pair of <step_count, list of learning rates>>
   typedef std::vector<std::pair<int64_t, std::vector<float>>> TestDataDictType;
