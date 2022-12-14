@@ -8,6 +8,15 @@ from itertools import product
 import numpy as np
 
 
+def dtype_to_bytes(dtype):
+    type_map = {
+        "float16": 2,
+        "float32": 4,
+        "float64": 8,
+    }
+    return type_map[dtype]
+
+
 def transab_to_suffix(transab):
     return {
         (True, True): "TT",
