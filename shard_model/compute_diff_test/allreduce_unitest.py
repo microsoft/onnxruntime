@@ -30,7 +30,7 @@ def generate_allreduce_model(dtype_str, world_size, data_shape):
     A = helper.make_tensor_value_info('A', onnx_type, data_shape)
     Y = helper.make_tensor_value_info('Y', onnx_type, data_shape)
 
-    coll_node = coll('NcclAllReduce', 'A', 'Y', group_type=0)
+    coll_node = coll('NcclAllReduceV2', 'A', 'Y')
     origin_model = generate_model([coll_node], [A], [Y], None, 'origin-allreduce')
 
     onnx.checker.check_model(origin_model)
