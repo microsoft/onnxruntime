@@ -259,3 +259,20 @@ def test_export_model_for_inferencing():
         inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
         model.export_model_for_inferencing(inference_model_file_path, ["output-0"])
         assert os.path.exists(inference_model_file_path)
+
+
+def test_cuda_execution_provider():
+    # Initialize Models
+    simple_model, onnx_model, _, _, pt_model = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path = _get_test_models_path(temp_dir, simple_model, onnx_model)
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module.
+        model = Module(model_file_path, state, device="cuda")
+        params = model.get_contiguous_parameters()
+
+        # Check if parameters are moved to cuda.
+        assert params.device_name() == "Cuda"
