@@ -153,8 +153,8 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
 }
 
 template <typename T, typename ParametersT>
-Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
-                                   const FeedsFetchesManager& feeds_fetches_manager) {
+Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
+                                                const FeedsFetchesManager& feeds_fetches_manager) {
   auto status = Status::OK();
   const ParametersT* parameters = this->parameters_;
 

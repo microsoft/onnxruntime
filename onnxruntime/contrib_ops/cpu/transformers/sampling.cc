@@ -90,6 +90,8 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
     if (!gpt_subgraph_->IsOutputFloat16()) {
       GreedySearchGpt<float, SamplingParameters> impl{
           *ctx_internal,
+          nullptr, // init decoder
+          nullptr,
           *decoder_session_state,
           *gpt_subgraph_,
           thread_pool,
@@ -105,10 +107,12 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
-      return impl.Execute(*decoder_feeds_fetches_manager_);
+      return impl.Execute(nullptr, *decoder_feeds_fetches_manager_);
     } else {
       GreedySearchGpt<MLFloat16, SamplingParameters> impl{
           *ctx_internal,
+          nullptr, // init decoder
+          nullptr,
           *decoder_session_state,
           *gpt_subgraph_,
           thread_pool,
@@ -124,7 +128,7 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           update_gpt_feeds_fp16_func_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
-      return impl.Execute(*decoder_feeds_fetches_manager_);
+      return impl.Execute(nullptr, *decoder_feeds_fetches_manager_);
     }
   }
 

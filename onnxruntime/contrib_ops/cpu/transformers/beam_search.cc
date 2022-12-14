@@ -66,12 +66,12 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 
   ONNX_NAMESPACE::GraphProto proto;
 
-  if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
+  if (parameters_.model_type != IGenerationParameters::kModelTypeGpt) {
     // Make sure the encoder sub-graph attribute is present for the T5 model.
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
-  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
+  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {
     // Check if the init_decoder sub-graph attribute is present for the GPT2 model.
     if (info.GetAttr<ONNX_NAMESPACE::GraphProto>("init_decoder", &proto).IsOK()) {
       has_init_decoder_ = true;
@@ -114,7 +114,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       init_run_gpt_subgraph_ = std::move(res.second);
       init_run_decoder_feeds_fetches_manager_ = init_run_gpt_subgraph_->GetFeedsFetchesManager();
     }
-  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {
+  } else if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");

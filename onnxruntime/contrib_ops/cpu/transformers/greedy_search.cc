@@ -80,16 +80,16 @@ void GreedySearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
   // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
-  ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
-              parameters_.model_type == IBeamSearchParameters::kModelTypeT5);
+  ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt ||
+              parameters_.model_type == IGenerationParameters::kModelTypeT5);
 
   ONNX_NAMESPACE::GraphProto proto;
-  if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
+  if (parameters_.model_type != IGenerationParameters::kModelTypeGpt) {
     // Make sure the encoder sub-graph attribute is present for the T5 model.
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
-  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
+  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {
     // Check if the init_decoder sub-graph attribute is present for the GPT2 model.
     if (info.GetAttr<ONNX_NAMESPACE::GraphProto>("init_decoder", &proto).IsOK()) {
       has_init_decoder_ = true;
@@ -130,7 +130,7 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
       init_run_gpt_subgraph_ = std::move(res.second);
       init_run_decoder_feeds_fetches_manager_ = init_run_gpt_subgraph_->GetFeedsFetchesManager();
     }
-  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {  // encoder-decoder like T5
+  } else if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {  // encoder-decoder like T5
     ORT_THROW("Not Implemented");
     // if (attribute_name == "encoder") {
     //   ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
