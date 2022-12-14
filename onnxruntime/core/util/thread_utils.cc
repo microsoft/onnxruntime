@@ -88,7 +88,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   // override affinity setting if specified from customer
   if (!options.affinity_str.empty()) {
 #if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    ORT_THROW("Setting customized thread affinity is not supported in this build.");
+    ORT_THROW("Setting thread affinity is not implemented in this build.");
     return nullptr;
 #else
     to.affinities = ReadThreadAffinityConfig(options.affinity_str);
@@ -213,8 +213,8 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
 #if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   ORT_UNUSED_PARAMETER(tp_options);
   ORT_UNUSED_PARAMETER(affinity_string);
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                               "Setting customized thread affinity is not supported in this build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "Setting thread affinity is not implemented in this build.");
 #else
   if (!tp_options) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
