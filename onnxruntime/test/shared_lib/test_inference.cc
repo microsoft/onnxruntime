@@ -1036,7 +1036,7 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
       {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
       {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
       1,
-      true,  // Homogeneity will cause error!
+      true,  // Input homogeneity requirement will cause error!
       // Output config
       {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
       {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
@@ -1058,6 +1058,39 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
     std::string_view exception_msg = excpt.what();
     std::string_view expected_err = "Type Error: Type parameter (T0) of Optype (VariadicNode) bound to different types";
     ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+  }
+
+  ASSERT_TRUE(caught_exception);
+}
+
+TEST(CApiTest, invalid_variadic_output_homogeneity_custom_op) {
+  // Create a custom op with a homogeneous variadic output. The model has heterogeneous outputs,
+  // so we expect an error.
+  TemplatedCustomOp<MyCustomEchoReversedArgsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);  // Output homogeneity requirement will cause error!
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  bool caught_exception = false;
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  } catch (const Ort::Exception&) {
+    caught_exception = true;
   }
 
   ASSERT_TRUE(caught_exception);
