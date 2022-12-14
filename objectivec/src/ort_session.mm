@@ -214,7 +214,7 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (BOOL)appendExecutionProvider:(NSString*)providerName
-                providerOptions:(NSDictionary*)providerOptions
+                providerOptions:(NSDictionary<NSString*, NSString*>*)providerOptions
                           error:(NSError**)error {
   std::unordered_map<std::string, std::string> options;
   NSArray* keys = [providerOptions allKeys];
