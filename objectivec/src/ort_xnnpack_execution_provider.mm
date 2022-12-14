@@ -21,7 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
     NSDictionary* provider_options = @{
       @"intra_op_num_threads" : [NSString stringWithFormat:@"%d", options.intra_op_num_threads]
     };
-    return [self appendExecutionProvider:@"xnnpack" providerOptions:provider_options error:error];
+    return [self appendExecutionProvider:@"XNNPACK" providerOptions:provider_options error:error];
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error);
 }
