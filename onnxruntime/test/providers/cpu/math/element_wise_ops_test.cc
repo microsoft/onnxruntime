@@ -732,6 +732,18 @@ TEST(MathOpTest, Floor) {
   test.Run();
 }
 
+TEST(MathOpTest, Floor_double) {
+  OpTester test("Floor");
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<double>("X", dims,
+                        {-1.5, 0.2,
+                         -0.5, 10.3});
+  test.AddOutput<double>("Y", dims,
+                         {-2.0, 0.0,
+                          -1.0, 10.0});
+  test.Run();
+}
+
 TEST(MathOpTest, Ceil) {
   OpTester test("Ceil");
   std::vector<int64_t> dims{2, 2};
@@ -741,6 +753,24 @@ TEST(MathOpTest, Ceil) {
   test.AddOutput<float>("Y", dims,
                         {-1.0f, 1.0f,
                          0.0f, 11.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  //This test runs fine on CPU Plugin
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run();
+#endif
+}
+
+TEST(MathOpTest, Ceil_double) {
+  OpTester test("Ceil");
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<double>("X", dims,
+                        {-1.5, 0.2,
+                         -0.5, 10.3});
+  test.AddOutput<double>("Y", dims,
+                         {-1.0, 1.0,
+                          0.0, 11.0});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
   //This test runs fine on CPU Plugin
