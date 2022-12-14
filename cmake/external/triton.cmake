@@ -18,14 +18,14 @@ if (WIN32)
 
   function(vcpkg_install PACKAGE_NAME)
     add_custom_command(
-      OUTPUT ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO
-      COMMAND ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:x64-windows
+      OUTPUT ${VCPKG_SRC}/packages/${PACKAGE_NAME}_${onnxruntime_target_platform}-windows/BUILD_INFO
+      COMMAND ${VCPKG_SRC}/vcpkg install ${PACKAGE_NAME}:${onnxruntime_target_platform}-windows
       WORKING_DIRECTORY ${VCPKG_SRC}
       DEPENDS vcpkg)
 
     add_custom_target(get${PACKAGE_NAME}
       ALL
-      DEPENDS ${VCPKG_SRC}/packages/${PACKAGE_NAME}_x64-windows/BUILD_INFO)
+      DEPENDS ${VCPKG_SRC}/packages/${PACKAGE_NAME}_${onnxruntime_target_platform}-windows/BUILD_INFO)
 
     list(APPEND VCPKG_DEPENDENCIES "get${PACKAGE_NAME}")
     set(VCPKG_DEPENDENCIES ${VCPKG_DEPENDENCIES} PARENT_SCOPE)
