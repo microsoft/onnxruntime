@@ -87,6 +87,10 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   }
   // override affinity setting if specified from customer
   if (!options.affinity_str.empty()) {
+#if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    ORT_THROW("Setting customized thread affinity is not supported in this build.");
+    return nullptr;
+#else
     to.affinities = ReadThreadAffinityConfig(options.affinity_str);
     // Limiting the number of affinities to be of thread_pool_size - 1,
     // for the fact that the main thread is a special "member" of the threadpool,
@@ -101,6 +105,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     // prepend with an empty affinity as placeholder for the main thread,
     // it will be dropped later during threadpool creation.
     to.affinities.insert(to.affinities.begin(), LogicalProcessors{});
+#endif
   }
 
   to.set_denormal_as_zero = options.set_denormal_as_zero;
@@ -205,6 +210,10 @@ ORT_API_STATUS_IMPL(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp
 }
 
 ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
+#if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                               "Setting customized thread affinity is not supported in this build.");
+#else
   if (!tp_options) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
   }
@@ -220,6 +229,7 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
   }
   tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
+ #endif
 }
 
 }  // namespace OrtApis
