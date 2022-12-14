@@ -82,7 +82,7 @@ Status FakeQuantGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT* dX_data = reinterpret_cast<CudaT*>(dX->MutableData<T>());
 
   // Compute
-  FakeQuantGradImpl(Stream(), dY->Shape().Size(), dY_data, gradient_mask_data, dX_data);
+  FakeQuantGradImpl(Stream(ctx), dY->Shape().Size(), dY_data, gradient_mask_data, dX_data);
 
   return Status::OK();
 }
