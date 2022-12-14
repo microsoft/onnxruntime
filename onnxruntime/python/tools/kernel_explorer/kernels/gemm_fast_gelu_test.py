@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import sys
+from dataclasses import dataclass
 from itertools import product
 
 import kernel_explorer as ke
@@ -92,6 +93,24 @@ def test_gemmfastgelu_ck_bert_cases(dtype, size, transab):
     _test_gemmfastgelu(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 
+@dataclass
+class GemmFastGeluMetric(ke.ComputeMetric):
+    transa: bool
+    transb: bool
+    m: int
+    n: int
+    k: int
+
+    def report(self):
+        prefix = f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+        if self.duration > 0:
+            return (
+                prefix
+                + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+            )
+        return prefix + "not supported"
+
+
 def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -116,39 +135,33 @@ def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, trans
     my_op = my_func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, dev_bias, beta, dev_c, n)
 
     for impl in my_op.ListOps():
-        if not my_op.SelectOp(impl):
-            print(f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))} m={m:<4} n={n:<4} k={k:<4} not supported")
-            sys.stdout.flush()
-            continue
-
-        time_ms = my_op.Profile()
-        time_us = time_ms * 1000
+        duration_ms = -1
+        if my_op.SelectOp(impl):
+            duration_ms = my_op.Profile()
         # only counts gemm tflops because fastgelu is low order term (7 * n).
-        tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
-        print(
-            f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))}",
-            f"m={m:<4} n={n:<4} k={k:<4} {time_us:>8.4f} us {tflops:>5.2f} tflops",
-        )
+        floating_point_operations = m * k * n * 2
+
+        ke.report(GemmFastGeluMetric(impl, dtype, duration_ms, floating_point_operations, transa, transb, m, n, k))
 
 
-def profile_with_args(transa, transb, dtype, m, n, k):
+def profile_with_args(transa, transb, dtype, m, n, k, sort):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
-    profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluUnfused" + dtype_suffix), dtype, m, n, k, transa, transb)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
-    profile_gemmfastgelu_func(
-        getattr(ke, "CKGemmFastGelu" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
-    )
-    profile_gemmfastgelu_func(
-        getattr(ke, "GemmFastGeluTunable" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
-    )
+    with ke.benchmark(sort):
+        profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluUnfused" + dtype_suffix), dtype, m, n, k, transa, transb)
+        profile_gemmfastgelu_func(
+            getattr(ke, "CKGemmFastGelu" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
+        )
+        profile_gemmfastgelu_func(
+            getattr(ke, "GemmFastGeluTunable" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
+        )
 
 
 def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
-            profile_with_args(False, False, dtype, m, n, k)
+            profile_with_args(False, False, dtype, m, n, k, True)
             print()
-        print()
 
 
 if __name__ == "__main__":
@@ -162,8 +175,9 @@ if __name__ == "__main__":
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
+    group.add_argument("--sort", action="store_true")
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)
+        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k, args.sort)
