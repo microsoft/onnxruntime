@@ -497,16 +497,16 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       for (batch = 0; batch < N; batch += parallel_tree_N_) {
         batch_end = std::min(N, batch + parallel_tree_N_);
         for (i = batch; i < batch_end; ++i) {
-          scores[i].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_));
-          std::fill(scores[i].begin(), scores[i].end(), ScoreValue<ThresholdType>({0, 0}));
+          scores[SafeInt<ptrdiff_t>(i)].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_));
+          std::fill(scores[SafeInt<ptrdiff_t>(i)].begin(), scores[SafeInt<ptrdiff_t>(i)].end(), ScoreValue<ThresholdType>({0, 0}));
         }
         for (j = 0, limit = roots_.size(); j < limit; ++j) {
           for (i = batch; i < batch_end; ++i) {
-            agg.ProcessTreeNodePrediction(scores[i - batch], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+            agg.ProcessTreeNodePrediction(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
           }
         }
         for (i = batch; i < batch_end; ++i) {
-          agg.FinalizeScores(scores[i - batch], z_data + i * n_targets_or_classes_, -1,
+          agg.FinalizeScores(scores[SafeInt<ptrdiff_t>(i - batch)], z_data + i * n_targets_or_classes_, -1,
                              label_data == nullptr ? nullptr : (label_data + i));
         }
       }
