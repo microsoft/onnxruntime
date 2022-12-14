@@ -491,6 +491,12 @@ def parse_arguments():
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
+    parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
+    parser.add_argument(
+        "--skip_and_perform_filtered_tests",
+        action="store_true",
+        help="Skip time-consuming and only perform filtered tests for TensorRT EP",
+    )
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
@@ -876,6 +882,8 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
+        "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
+        + ("ON" if args.test_all_timeout == "10800" else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
@@ -1881,7 +1889,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "10800"]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
