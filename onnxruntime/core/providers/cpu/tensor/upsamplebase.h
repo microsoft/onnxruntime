@@ -67,7 +67,7 @@ class UpsampleBase {
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
-    antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 1) == 0 ? false : true;
+    antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10

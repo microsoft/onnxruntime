@@ -1725,7 +1725,7 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver_10) {
 }
 
 template <typename T>
-void ResizeOpTypeCheck_Ver_11_13(int opset_version) {
+void ResizeOpTypeCheck_Ver_11_13_18(int opset_version) {
   OpTester test("Resize", opset_version);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
@@ -1749,17 +1749,52 @@ void ResizeOpTypeCheck_Ver_11_13(int opset_version) {
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
-  ResizeOpTypeCheck_Ver_11_13<float>(11);
-  ResizeOpTypeCheck_Ver_11_13<int32_t>(11);
-  ResizeOpTypeCheck_Ver_11_13<int8_t>(11);
-  ResizeOpTypeCheck_Ver_11_13<uint8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<float>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(11);
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
-  ResizeOpTypeCheck_Ver_11_13<float>(13);
-  ResizeOpTypeCheck_Ver_11_13<int32_t>(13);
-  ResizeOpTypeCheck_Ver_11_13<int8_t>(13);
-  ResizeOpTypeCheck_Ver_11_13<uint8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<float>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(13);
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
+  ResizeOpTypeCheck_Ver_11_13_18<float>(18);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(18);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(18);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
+}
+
+TEST(ResizeOpTest, ResizeOpBilinear_Antialis) {
+  // enumerate exclude, datatype
+}
+
+TEST(ResizeOpTest, ResizeOpTrilinear_Antialis) {
+  // enumerate, datatype
+}
+
+TEST(ResizeOpTest, NhwcResizeOpBilinear_Antialis) {
+  // enumerate exclude, datatype
+}
+
+TEST(ResizeOpTest, NhwcResizeOpTrilinear_Antialis) {
+  // enumerate, datatype
+}
+
+TEST(ResizeOpTest, ResizeOpBucubic_Antialias) {
+  // enumerate exclude, datatype
+}
+
+TEST(ResizeOpTest, ResizeOp_KeepAspectRatioPolicy) {
+  // enumerate stretch not-larger not smaller
+}
+
+TEST(ResizeOpTest, ResizeOp_Axes) {
+  // enumerate exclude, datatype
 }
 
 }  // namespace test

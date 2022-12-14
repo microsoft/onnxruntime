@@ -201,7 +201,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
               if constexpr (is_8bit_v<T>) {
                 *Ydata_offset = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
-                *Ydata_offset = p.round_up(output);
+                *Ydata_offset = FilterParamsAA::round_up(output);
               } else {
                 *Ydata_offset = (output);
               }
@@ -247,7 +247,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
               if constexpr (is_8bit_v<T>) {
                 *Ydata_offset = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
-                *Ydata_offset = p.round_up(output);
+                *Ydata_offset = FilterParamsAA::round_up(output);
               } else {  // float double
                 *Ydata_offset = static_cast<T>(output);
               }
@@ -416,7 +416,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
               if constexpr (is_8bit_v<T>) {
                 Ydata_with_offset[c] = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
-                Ydata_with_offset[c] = p.round_up(output);
+                Ydata_with_offset[c] = FilterParamsAA::round_up(output);
               } else {  // float double
                 Ydata_with_offset[c] = output;
               }
@@ -630,9 +630,9 @@ void UpsampleTrilinearAA(int64_t batch_size,
 
   for (int64_t n = 0; n < batch_size; ++n) {
     concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, static_cast<std::ptrdiff_t>(num_channels * 0),
+        tp, static_cast<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
-          const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
+          const T* Xdata = XdataBase + (n * num_channels) * (input_depth * input_height * input_width);
           const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
           T* Ydata = static_cast<T*>(temp1.get());
 
@@ -642,10 +642,10 @@ void UpsampleTrilinearAA(int64_t batch_size,
         });
 
     concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, static_cast<std::ptrdiff_t>(num_channels * 0),
+        tp, static_cast<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
           auto Xdatabase_temp = static_cast<T*>(temp1.get());
-          const T* Xdata = Xdatabase_temp + (c) * (input_depth * input_height * output_width);
+          const T* Xdata = Xdatabase_temp;  //+ (c) * (input_depth * input_height * output_width);
           const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
           T* Ydata = static_cast<T*>(temp2.get());
           LoopInDimN(Xdata, p, 2, c, 0, tmp_stride1, tmp_stride2, 4,
@@ -659,8 +659,8 @@ void UpsampleTrilinearAA(int64_t batch_size,
           auto Xdatabase_temp = static_cast<T*>(temp2.get());
           const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
 
-          const T* Xdata = Xdatabase_temp + (c) * (input_depth * output_height * output_width);
-          T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
+          const T* Xdata = Xdatabase_temp;  //+ (c) * (input_depth * output_height * output_width);
+          T* Ydata = YdataBase + (n * num_channels) * (output_depth * output_height * output_width);
           LoopInDimN(Xdata, p, 2, c, 0, tmp_stride2, out_stride, 3,
                      weight, p.dim_z,
                      Ydata);
