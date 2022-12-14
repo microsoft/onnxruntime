@@ -165,7 +165,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
     auto* temp_buffer = static_cast<T*>(image_temp_buffer.get());
     // horizon interpolate
     concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, num_channels,
+        tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
           const T* const Xdata =
               XdataBase + (n * num_channels + (c)) *
@@ -380,7 +380,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
 
     // horizon interpolate
     concurrency::ThreadPool::TryParallelFor(
-        tp, static_cast<std::ptrdiff_t>(input_height) * output_width,
+        tp, static_cast<std::ptrdiff_t>(input_height * output_width),
         static_cast<double>(num_channels * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           const T* const Xdata =
@@ -428,7 +428,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
 
     // vertical interpolate
     concurrency::ThreadPool::TryParallelFor(
-        tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
+        tp, static_cast<std::ptrdiff_t>(output_height * output_width),
         static_cast<double>(num_channels * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           const T* const Xdata = temp_buffer + n * (input_height * output_width) * num_channels;
@@ -502,13 +502,13 @@ template <typename T, typename ACType>
 inline void InterpolateLoopForSingleDim(
     const T* Xdata, FilterParamsAA& p, int64_t dim_size, int64_t section_idx,
     const int64_t y_stride, const int64_t x_stride, const ACType* weight_coeff,
-    const std::vector<int64_t>& idx_bound, int64_t window_size, T* Ydata) {
+    const FilterParamsBaseAA& param_dim, T* Ydata) {
   for (int64_t step = 0; step < dim_size; ++step) {
     InterpolateCompute(
         Xdata, p, y_stride,
-        &weight_coeff[narrow<size_t>((x_stride == 0) ? window_size * step
-                                                     : window_size * section_idx)],
-        &idx_bound[narrow<size_t>((x_stride == 0) ? step * 2 : section_idx * 2)], Ydata);
+        &weight_coeff[narrow<size_t>((x_stride == 0) ? param_dim.window_size * step
+                                                     : param_dim.window_size * section_idx)],
+        &param_dim.bound[narrow<size_t>((x_stride == 0) ? step * 2 : section_idx * 2)], Ydata);
     Ydata++;
     Xdata += x_stride;
   }
@@ -519,8 +519,7 @@ inline void
 LoopInDimN(const T* Xdata_base, FilterParamsAA& p, int64_t dim_idx, int64_t pre_level_idx, int64_t section_idx,
            const InlinedVector<int64_t>& input_stride,
            const InlinedVector<int64_t>& output_stride, const int64_t compute_dim,
-           const ACtype* weight_coeff, const std::vector<int64_t>& idx_bound,
-           int64_t window_size, T* Ydata_base) {
+           const ACtype* weight_coeff, const FilterParamsBaseAA& param_dim, T* Ydata_base) {
   const int64_t x_ofs =
       pre_level_idx * ((compute_dim == dim_idx) ? 0 : input_stride[narrow<size_t>(dim_idx)]);
 
@@ -532,16 +531,16 @@ LoopInDimN(const T* Xdata_base, FilterParamsAA& p, int64_t dim_idx, int64_t pre_
          ++sub_sec_idx) {
       section_idx = (compute_dim == dim_idx + 1) ? sub_sec_idx : section_idx;
       LoopInDimN(Xdata, p, dim_idx + 1, sub_sec_idx, section_idx, input_stride,
-                 output_stride, compute_dim, weight_coeff, idx_bound,
-                 window_size, Ydata);
+                 output_stride, compute_dim, weight_coeff, param_dim,
+                 Ydata);
     }
     return;
   }
   int64_t x_stride = compute_dim == int64_t(output_stride.size()) - 1 ? 0 : 1;
   InterpolateLoopForSingleDim(
       Xdata, p, output_stride[narrow<size_t>(dim_idx)] / output_stride[narrow<size_t>(dim_idx) + 1], section_idx,
-      output_stride[narrow<size_t>(compute_dim)], x_stride, weight_coeff, idx_bound,
-      window_size, Ydata);
+      output_stride[narrow<size_t>(compute_dim)], x_stride, weight_coeff, param_dim,
+      Ydata);
 }
 
 #if defined(_MSC_VER)
@@ -653,8 +652,8 @@ void UpsampleTrilinearAA(int64_t batch_size,
           T* Ydata = static_cast<T*>(temp1.get());
 
           LoopInDimN(Xdata, p, 2, c, 0, in_stride, tmp_stride, 5,
-                        weight, p.dim_x.bound, p.dim_x.window_size,
-                        Ydata);
+                     weight, p.dim_x,
+                     Ydata);
         });
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, static_cast<std::ptrdiff_t>(num_channels),
@@ -664,8 +663,8 @@ void UpsampleTrilinearAA(int64_t batch_size,
           const auto* weight = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get());
           T* Ydata = static_cast<T*>(temp2.get());
           LoopInDimN(Xdata, p, 2, c, 0, tmp_stride, out_stride, 4,
-                        weight, p.dim_y.bound, p.dim_y.window_size,
-                        Ydata);
+                     weight, p.dim_y,
+                     Ydata);
         });
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, static_cast<std::ptrdiff_t>(num_channels),
@@ -676,8 +675,8 @@ void UpsampleTrilinearAA(int64_t batch_size,
           const T* Xdata = Xdatabase_temp + (c) * (input_depth * output_height * output_width);
           T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
           LoopInDimN(Xdata, p, 2, c, 0, tmp_stride, out_stride, 3,
-                        weight, p.dim_z.bound, p.dim_z.window_size,
-                        Ydata);
+                     weight, p.dim_z,
+                     Ydata);
         });
   }
 }
