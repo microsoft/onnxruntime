@@ -1670,7 +1670,9 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
 
     OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicInputMinArity(); };
+    OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity(); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
+    OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity(); };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -1697,10 +1699,22 @@ struct CustomOpBase : OrtCustomOp {
     return 1;
   }
 
+  // Default implementation of GetVariadicInputHomegeneity() returns true to specify that all arguments
+  // to a a variadic input should be of the same type.
+  bool GetVariadicInputHomogeneity() const {
+    return true;
+  }
+
   // Default implementation of GetVariadicOutputMinArity() returns 1 to specify that a variadic output
   // should produce at least 1 output value.
   int GetVariadicOutputMinArity() const {
     return 1;
+  }
+
+  // Default implementation of GetVariadicOutputHomegeneity() returns true to specify that all output values
+  // produced by a variadic output should be of the same type.
+  bool GetVariadicOutputHomogeneity() const {
+    return true;
   }
 };
 

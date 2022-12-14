@@ -174,6 +174,8 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/custom_op_variadic_io.onnx");
+static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR(
+    "testdata/custom_op_variadic_undef_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
@@ -744,6 +746,94 @@ TEST(CApiTest, mixed_variadic_input_output_custom_op) {
 
     int64_t* lens_data = ort_outputs[i].GetTensorMutableData<int64_t>();
     ASSERT_EQ(lens_data[0], expected_lens[i][0]);
+  }
+}
+
+TEST(CApiTest, variadic_undef_input_output_custom_op) {
+  // Create a custom op with 1 variadic input and 1 variadic output.
+  // Both the input and output are of undefined element type and allowed to differ in type (hetergeneous).
+  // The model passes in inputs (string, int64_t, and float) which are then echoed in
+  // reversed order (float, int64_t, string).
+  MyCustomOpWithVariadicUndefIO custom_op;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::ConstMemoryInfo mem_info = allocator.GetInfo();
+  std::vector<int64_t> input_dims = {1};
+
+  // Set string input.
+  std::string str_input("hello_ort");
+  Ort::Value& str_input_val = ort_inputs.emplace_back(
+      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
+                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+  str_input_val.FillStringTensorElement(str_input.c_str(), 0);
+
+  // Set int64_t input.
+  std::array<int64_t, 1> int_inps = {23};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<int64_t>(mem_info, int_inps.data(), int_inps.size(),
+                                                            input_dims.data(), input_dims.size()));
+
+  // Set float input.
+  std::array<float, 1> float_inps = {10.0f};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(mem_info, float_inps.data(), float_inps.size(),
+                                                          input_dims.data(), input_dims.size()));
+
+  std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
+  std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
+
+  Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_names.data(), output_names.size());
+  ASSERT_EQ(ort_outputs.size(), 3u);
+
+  // Validate outputs.
+
+  // First output should be a float.
+  {
+    auto& ort_output = ort_outputs[0];
+    auto type_info = ort_output.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), input_dims);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+    ASSERT_EQ(type_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+    const float* out_ptr = ort_output.GetTensorData<float>();
+    ASSERT_EQ(out_ptr[0], float_inps[0]);
+  }
+
+  // Second output should be a int64_t.
+  {
+    auto& ort_output = ort_outputs[1];
+    auto type_info = ort_output.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), input_dims);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+    ASSERT_EQ(type_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+
+    const int64_t* out_ptr = ort_output.GetTensorData<int64_t>();
+    ASSERT_EQ(out_ptr[0], int_inps[0]);
+  }
+
+  // Last output should be a string.
+  {
+    auto& ort_output = ort_outputs[2];
+    auto type_info = ort_output.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), input_dims);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+    ASSERT_EQ(type_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+    const size_t str_len = ort_output.GetStringTensorElementLength(0);
+    ASSERT_EQ(str_len, str_input.size());
+
+    std::string str;
+    str.resize(str_len);
+
+    ort_output.GetStringTensorElement(str_len, 0, str.data());
+    ASSERT_EQ(str, str_input);
   }
 }
 

@@ -204,6 +204,52 @@ void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* a
   ort_value.FillStringTensorElement(input_str.data(), 0);
 }
 
+void MyCustomEchoReversedArgsKernel::Compute(OrtKernelContext* context) {
+  Ort::KernelContext kcontext(context);
+  std::array<const int64_t, 1> output_shape = {1};
+
+  const size_t num_ios = kcontext.GetInputCount();
+
+  for (size_t i = 0; i < num_ios; ++i) {
+    const size_t out_index = num_ios - i - 1;
+    auto input = kcontext.GetInput(i);
+    auto output = kcontext.GetOutput(out_index, output_shape.data(), output_shape.size());
+
+    auto type_shape_info = input.GetTensorTypeAndShapeInfo();
+    auto elem_type = type_shape_info.GetElementType();
+
+    // Only support STRING, INT64_T, and FLOAT
+    switch (elem_type) {
+      case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: {
+        const size_t str_len = input.GetStringTensorElementLength(0);
+        std::string str;
+
+        str.resize(str_len);
+        input.GetStringTensorElement(str.size(), 0, str.data());
+        output.FillStringTensorElement(str.c_str(), 0);
+        break;
+      }
+      case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+        int64_t* out_ptr = output.GetTensorMutableData<int64_t>();
+        const int64_t* inp_ptr = input.GetTensorData<int64_t>();
+
+        out_ptr[0] = inp_ptr[0];
+        break;
+      }
+      case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+        float* out_ptr = output.GetTensorMutableData<float>();
+        const float* inp_ptr = input.GetTensorData<float>();
+
+        out_ptr[0] = inp_ptr[0];
+        break;
+      }
+      default:
+        ORT_CXX_API_THROW("MyCustomEchoReversedArgsKernel only supports tensor inputs of type STRING, INT64_T, and FLOAT",
+                          OrtErrorCode::ORT_INVALID_GRAPH);
+    }
+  }
+}
+
 void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
   // Setup inputs
   Ort::KernelContext ctx(context);

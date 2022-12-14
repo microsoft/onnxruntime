@@ -174,7 +174,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       const size_t input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
-        const bool is_homogeneous = true;
+        bool is_homogeneous = true;
         int min_arity = 1;
 
         // The OrtCustomOp interface did not support the methods to query input/output characteristics before
@@ -191,6 +191,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
             min_arity = op->GetVariadicInputMinArity(op);
+            is_homogeneous = op->GetVariadicInputHomogeneity(op);
           }
         }
 
@@ -210,7 +211,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       const size_t output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
-        const bool is_homogeneous = true;
+        bool is_homogeneous = true;
         int min_arity = 1;
 
         // The OrtCustomOp interface did not support the methods to query input/output characteristics before
@@ -227,6 +228,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
             min_arity = op->GetVariadicOutputMinArity(op);
+            is_homogeneous = op->GetVariadicOutputHomogeneity(op);
           }
         }
 
