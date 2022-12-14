@@ -45,7 +45,7 @@ class AttentionBase {
       qkv_hidden_sizes_.clear();
     }
 
-    kv_cache_past_present_ = (info.GetAttrOrDefault<int64_t>("kv_cache_past_present", 0LL) ? 1 : 0);
+    past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
 
     require_same_hidden_size_ = require_same_hidden_size;
     require_weights_ = require_weights;
@@ -74,7 +74,7 @@ class AttentionBase {
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool require_weights_;                   // whether the implementation requires weights for Q/K/V.
-  int kv_cache_past_present_;
+  bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
 };
 
 }  // namespace contrib

@@ -24,6 +24,7 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
+          .MayInplace(4, 1)                                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .InputMemoryType(OrtMemTypeCPUInput, PastSequenceLength)\
       ,                                                           \
@@ -96,7 +97,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<int64_t> present_dims{
     2, parameters.batch_size, parameters.num_heads,
-    kv_cache_past_present_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+    past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
     parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
@@ -178,7 +179,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
 
   return QkvToContext<CudaT>(
-    device_prop, cublas, Stream(), parameters, data, reinterpret_cast<void*>(fused_runner), kv_cache_past_present_);
+    device_prop, cublas, Stream(), parameters, data, reinterpret_cast<void*>(fused_runner), past_present_share_buffer_);
 }
 
 }  // namespace cuda

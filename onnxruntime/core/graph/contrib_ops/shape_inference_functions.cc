@@ -174,8 +174,8 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
           fail_shape_inference("The past input shall be 5 dimensions");
         }
 
-        int kv_cache_past_present = getAttribute(ctx, "kv_cache_past_present", 0);
-        if (kv_cache_past_present) {
+        auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
+        if (past_present_share_buffer) {
           propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
         } else {
           int64_t total_sequence_length = -1;

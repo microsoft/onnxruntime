@@ -88,7 +88,7 @@ size_t GetAttentionWorkspaceSize(
 }
 
 template <typename T>
-__global__ void AddBiasTransAppendKvToPresent(
+__global__ void AddBiasTransAppendKvToPresentSmall(
     const T* qkv, const T* biases, T* present,
     const int head_size, const int past_sequence_length, const int max_sequence_length) {
   // Input:  BxSxMxNxH  (Format 1)
@@ -103,6 +103,42 @@ __global__ void AddBiasTransAppendKvToPresent(
 
   constexpr int M = 3; // Matrix count in qkv
   const int m = blockIdx.z + 1;  // k = 1, v = 2
+
+  const int NH = N * head_size;
+  const int NHS = NH * S;
+
+  qkv += (n * head_size + (s * M + m) * NH + b * M * NHS);
+  if (biases) {
+    biases += (m * NH + n * head_size);
+  }
+
+  const int MsH = max_sequence_length * head_size;
+  const int NMsH = N * MsH;
+  const int BNMsH = B * NMsH;
+  present += ((past_sequence_length + s) * head_size + n * MsH + b * NMsH + (m-1) * BNMsH);
+
+  for (int h = threadIdx.x; h < head_size; h += blockDim.x) {
+    T bias = (biases ? biases[h] : (T)0.0f);
+    present[h] = qkv[h] + bias;
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransAppendKvToPresent(
+    const T* qkv, const T* biases, T* present,
+    const int head_size, const int past_sequence_length, const int max_sequence_length) {
+  // Input:  BxSxMxNxH  (Format 1)
+  // Output: (2, B, N, [P..P+S) of MaxS, H),
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  const int n = blockIdx.x;
+  const int s = blockIdx.y;
+  const int b = (blockIdx.z >> 1);
+  const int N = gridDim.x;
+  const int S = gridDim.y;
+  const int B = (gridDim.z >> 1);
+
+  constexpr int M = 3; // Matrix count in qkv
+  const int m = (blockIdx.z & 0x1) + 1;  // k = 1, v = 2
 
   const int NH = N * head_size;
   const int NHS = NH * S;
@@ -138,13 +174,24 @@ Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                            const T* biases,
                                            const T* qkv_buffer,
                                            T* present) {
-  const dim3 grid(sequence_length, batch_size, 2);  // 2 for k and v
-  int threads = 1 << static_cast<int>(std::ceil(std::log2(head_size)));
-  threads = std::min(threads, max_threads_per_block);
-  const dim3 block(threads, num_heads, 1);
+  ORT_ENFORCE(head_size <= (1 << 30));
 
-  AddBiasTransAppendKvToPresent<T><<<grid, block, 0, stream>>>(
-      qkv_buffer, biases, present, head_size, past_sequence_length, max_sequence_length);
+  int64_t nh = (int64_t)head_size * num_heads;
+  if (nh <= max_threads_per_block) {
+    const dim3 grid(sequence_length, batch_size, 2);  // 2 for k and v
+    int threads = std::min(1 << static_cast<int>(std::ceil(std::log2(head_size))), max_threads_per_block / head_size);
+    const dim3 block(threads, num_heads, 1);
+
+    AddBiasTransAppendKvToPresentSmall<T><<<grid, block, 0, stream>>>(
+        qkv_buffer, biases, present, head_size, past_sequence_length, max_sequence_length);
+  } else {
+    const dim3 grid(num_heads, sequence_length, batch_size * 2);  // 2 for k and v
+    int threads = 1 << static_cast<int>(std::ceil(std::log2(head_size)));
+    threads = std::min(threads, max_threads_per_block);
+    const dim3 block(threads, 1, 1);
+    AddBiasTransAppendKvToPresent<T><<<grid, block, 0, stream>>>(
+        qkv_buffer, biases, present, head_size, past_sequence_length, max_sequence_length);
+  }
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -180,7 +227,7 @@ Status QkvToContext(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     void* fused_runner,
-    int kv_cache_past_present) {
+    int past_present_share_buffer) {
   constexpr size_t element_size = sizeof(T);
   const int max_threads_per_block = prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -212,11 +259,11 @@ Status QkvToContext(
     if (data.bias == nullptr) {
       // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
       ORT_ENFORCE(qk_head_size == v_head_size);
-      ORT_ENFORCE(kv_cache_past_present == 0);
+      ORT_ENFORCE(past_present_share_buffer == 0);
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.gemm_buffer, qkv));
     } else {
-      int qkv_mask = (kv_cache_past_present ? 1 : 7);
+      int qkv_mask = (past_present_share_buffer ? 1 : 7);
       const int format = (use_fused_kernel ? 2 : 1);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
@@ -291,7 +338,7 @@ Status QkvToContext(
 
   int present_size_per_batch_k = 0;
   int present_size_per_batch_v = 0;
-  if (!kv_cache_past_present) {
+  if (!past_present_share_buffer) {
     // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
     // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
     // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
@@ -641,7 +688,7 @@ template Status QkvToContext<float>(
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
     void* fused_runner,
-    int kv_cache_past_present);
+    int past_present_share_buffer);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& prop,
@@ -650,7 +697,7 @@ template Status QkvToContext<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
     void* fused_runner,
-    int kv_cache_past_present);
+    int past_present_share_buffer);
 
 }  // namespace cuda
 }  // namespace contrib

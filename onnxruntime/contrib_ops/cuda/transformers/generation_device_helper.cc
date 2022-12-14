@@ -767,7 +767,7 @@ Status UpdateGptFeeds(
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
-    bool is_kv_cache_past_present,
+    bool past_present_share_buffer,
     int past_sequence_len) {
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -807,7 +807,7 @@ Status UpdateGptFeeds(
 
   next_inputs[2] = attention_mask;
 
-  if (is_kv_cache_past_present) {
+  if (past_present_share_buffer) {
     const int k = (static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx) + gpt_subgraph_first_past_input_idx;
     *(next_inputs[k].GetMutable<Tensor>()->MutableData<int32_t>()) = past_sequence_len;
   } else {
@@ -1010,7 +1010,7 @@ template Status UpdateGptFeeds<float>(
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
-    bool is_kv_cache_past_present,
+    bool past_present_share_buffer,
     int past_sequence_len);
 
 // Float16
@@ -1065,7 +1065,7 @@ template Status UpdateGptFeeds<MLFloat16>(
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
-    bool is_kv_cache_past_present,
+    bool past_present_share_buffer,
     int past_sequence_len);
 
 template Status UpdateDecoderFeeds<float>(

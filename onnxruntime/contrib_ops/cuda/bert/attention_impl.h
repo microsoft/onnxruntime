@@ -55,7 +55,7 @@ Status QkvToContext(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     void* fused_runner,
-    int kv_cache_past_present = 0);
+    int past_present_share_buffer = 0);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties

@@ -66,10 +66,10 @@ static void RunAttentionTest(
     int kv_sequence_length = 0,
     const std::vector<float>* key_data = nullptr,
     const std::vector<float>* value_data = nullptr,
-    bool use_kv_cache_past_present = false) {
+    bool past_present_share_buffer = false) {
   input_hidden_size = (input_hidden_size == 0 ? hidden_size : input_hidden_size);  // By default, no pruning.
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
-  use_kv_cache_past_present = use_kv_cache_past_present && use_past_state;
+  past_present_share_buffer = past_present_share_buffer && use_past_state;
 
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !is_weights_constant && !disable_cuda;
@@ -81,7 +81,7 @@ static void RunAttentionTest(
     OpTester tester("Attention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
     tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
-    tester.AddAttribute<int64_t>("kv_cache_past_present", static_cast<int64_t>(use_kv_cache_past_present ? 1 : 0));
+    tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(past_present_share_buffer ? 1 : 0));
 
     int32_t qkv_hidden_size_sum;
     int32_t v_hidden_size;
@@ -167,7 +167,7 @@ static void RunAttentionTest(
     }
 
     if (use_past_state) {
-      if (!use_kv_cache_past_present) {
+      if (!past_present_share_buffer) {
         std::vector<int64_t> past_dims = {2, batch_size, number_of_heads, past_sequence_length, head_size};
         std::vector<int64_t> present_dims = {2, batch_size, number_of_heads, total_sequence_length, head_size};
         if (use_float16) {
@@ -181,7 +181,7 @@ static void RunAttentionTest(
           }
           tester.AddOutput<float>("present", present_dims, *present_data);
         }
-      } else { // kv_cache_past_present
+      } else { // past_present_share_buffer
         std::vector<int64_t> cache_dims = {2, batch_size, number_of_heads, max_sequence_length, head_size};
         if (use_float16) {
           auto past_cache = ReorderToKvCache(ToFloat16(*past_data).data(), batch_size, past_sequence_length,
@@ -249,7 +249,7 @@ static void RunAttentionTest(
       }
     }
 
-    if (use_kv_cache_past_present) {
+    if (past_present_share_buffer) {
         std::vector<int32_t> arr_past_sequence_len(1, past_sequence_length);
         tester.AddInput<int32_t>("past_sequence_length", {1}, arr_past_sequence_len);
     } else {
@@ -303,19 +303,19 @@ static void RunAttentionTest(
     int kv_sequence_length = 0,
     const std::vector<float>* key_data = nullptr,
     const std::vector<float>* value_data = nullptr,
-    bool use_kv_cache_past_present = false) {
+    bool past_present_share_buffer = false) {
   RunAttentionTest(input_data, weights_data, false, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, extra_add_data,
-                   kv_sequence_length, key_data, value_data, use_kv_cache_past_present);
+                   kv_sequence_length, key_data, value_data, past_present_share_buffer);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, extra_add_data,
-                   kv_sequence_length, key_data, value_data, use_kv_cache_past_present);
+                   kv_sequence_length, key_data, value_data, past_present_share_buffer);
 }
 
 TEST(AttentionTest, AttentionBatch1) {
@@ -751,7 +751,7 @@ TEST(AttentionTest, AttentionUnidirectional) {
                    batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional);
 }
 
-void RawAttentionEmptyPastState(bool use_kv_cache) {
+void RawAttentionEmptyPastState(bool past_present_share_buffer) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -843,7 +843,7 @@ void RawAttentionEmptyPastState(bool use_kv_cache) {
   bool use_past_state = true;
   int past_sequence_length = 0;
 
-  if (!use_kv_cache) {
+  if (!past_present_share_buffer) {
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                     use_past_state, past_sequence_length, &past_data, &present_data);
@@ -860,11 +860,11 @@ TEST(AttentionTest, AttentionEmptyPastState) {
   RawAttentionEmptyPastState(false);
 }
 
-TEST(AttentionTest, AttentionEmptyPastState_KvCache) {
+TEST(AttentionTest, AttentionEmptyPastState_SharedPastPresent) {
   RawAttentionEmptyPastState(true);
 }
 
-void RawAttentionPastStateBatch1(bool use_kv_cache) {
+void RawAttentionPastStateBatch1(bool past_present_share_buffer) {
   int batch_size = 1;
   int sequence_length = 1;
   int hidden_size = 4;
@@ -958,7 +958,7 @@ void RawAttentionPastStateBatch1(bool use_kv_cache) {
   bool use_past_state = true;
   int past_sequence_length = 3;
 
-  if (!use_kv_cache) {
+  if (!past_present_share_buffer) {
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                     use_past_state, past_sequence_length, &past_data, &present_data);
@@ -976,11 +976,11 @@ TEST(AttentionTest, AttentionPastStateBatch1) {
   RawAttentionPastStateBatch1(false);
 }
 
-TEST(AttentionTest, AttentionPastStateBatch1_KvCache) {
+TEST(AttentionTest, AttentionPastStateBatch1_SharedPastPresent) {
   RawAttentionPastStateBatch1(true);
 }
 
-void RawAttentionPastStateBatch2(bool use_kv_cache) {
+void RawAttentionPastStateBatch2(bool past_present_share_buffer) {
   int batch_size = 2;
   int sequence_length = 1;
   int hidden_size = 4;
@@ -1088,7 +1088,7 @@ void RawAttentionPastStateBatch2(bool use_kv_cache) {
   bool use_past_state = true;
   int past_sequence_length = 3;
 
-  if (!use_kv_cache) {
+  if (!past_present_share_buffer) {
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                     use_past_state, past_sequence_length, &past_data, &present_data);
@@ -1106,11 +1106,11 @@ TEST(AttentionTest, AttentionPastStateBatch2) {
   RawAttentionPastStateBatch2(false);
 }
 
-TEST(AttentionTest, AttentionPastStateBatch2_KvCache) {
+TEST(AttentionTest, AttentionPastStateBatch2_SharedPastPresent) {
   RawAttentionPastStateBatch2(true);
 }
 
-void RawAttentionPastStateBatch2WithPadding(bool use_kv_cache) {
+void RawAttentionPastStateBatch2WithPadding(bool past_present_share_buffer) {
   int batch_size = 2;
   int sequence_length = 1;
   int hidden_size = 4;
@@ -1208,7 +1208,7 @@ void RawAttentionPastStateBatch2WithPadding(bool use_kv_cache) {
   bool use_past_state = true;
   int past_sequence_length = 3;
 
-  if (!use_kv_cache) {
+  if (!past_present_share_buffer) {
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                    use_past_state, past_sequence_length, &past_data, &present_data, kMaskIndexEndAndStart);
@@ -1226,7 +1226,7 @@ TEST(AttentionTest, AttentionPastStateBatch2WithPadding) {
   RawAttentionPastStateBatch2WithPadding(false);
 }
 
-TEST(AttentionTest, AttentionPastStateBatch2WithPadding_KvCache) {
+TEST(AttentionTest, AttentionPastStateBatch2WithPadding_SharedPastPresent) {
   RawAttentionPastStateBatch2WithPadding(true);
 }
 

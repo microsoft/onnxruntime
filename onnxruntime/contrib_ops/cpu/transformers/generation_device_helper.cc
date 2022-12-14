@@ -556,7 +556,7 @@ Status UpdateGptFeeds(
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
-    bool is_kv_cache_past_present,
+    bool past_present_share_buffer,
     int past_sequence_len) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
@@ -603,7 +603,7 @@ Status UpdateGptFeeds(
   }
   next_inputs[2] = attention_mask;
 
-  if (is_kv_cache_past_present) {
+  if (past_present_share_buffer) {
     int32_t* past_seq_len_data = const_cast<int32_t*>(next_inputs.back().Get<Tensor>().Data<int32_t>());
     *past_seq_len_data = past_sequence_len;
     return Status::OK();
@@ -870,7 +870,7 @@ template Status UpdateGptFeeds<float>(
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
-    bool is_kv_cache_past_present,
+    bool past_present_share_buffer,
     int past_sequence_len);
 
 template Status UpdateDecoderFeeds<float>(

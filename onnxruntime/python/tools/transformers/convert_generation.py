@@ -229,12 +229,12 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(vocab_mask=False)
 
     model_group.add_argument(
-        "--use_kv_cache",
+        "--past_present_share_buffer",
         required=False,
         action="store_true",
         help="Use kv_cache for past and present, currently work for gpt2 greedy search.",
     )
-    model_group.set_defaults(use_kv_cache=False)
+    model_group.set_defaults(past_present_share_buffer=False)
 
     model_group.add_argument(
         "--prefix_vocab_mask",
@@ -954,7 +954,7 @@ def kv_cache_update_decoder_subgraph(subg):
     for node in subg.node:
         if node.op_type == "Attention":
             kwargs = kwargs_of(node)
-            kwargs.update({"kv_cache_past_present" : 1})
+            kwargs.update({"past_present_share_buffer" : 1})
             nis = []
             nis.extend(node.input)
             while len(nis) < 8:
@@ -975,11 +975,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     """
     is_gpt2: bool = args.model_type == "gpt2"
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
-    use_kv_cache: bool = args.use_kv_cache and is_greedysearch
+    past_present_share_buffer: bool = args.past_present_share_buffer and is_greedysearch
 
-    print("*****************************************************")
-    print(f"**** use_kv_cache={use_kv_cache}, is_greedysearch={is_greedysearch}")
-    print("*****************************************************")
+    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}, is_greedysearch={is_greedysearch}")
 
     if is_greedysearch:
         if not is_gpt2:

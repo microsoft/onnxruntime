@@ -69,7 +69,7 @@ Status GptSubgraph::CreateInitialFeeds(
                                         buffer));
 
   auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
-  if (!is_kv_cache_past_present_) {
+  if (!past_present_share_buffer_) {
     // Initialize empty past state
     int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, 0, head_size};
     TensorShape past_shape(&past_state_dims[0], 5);

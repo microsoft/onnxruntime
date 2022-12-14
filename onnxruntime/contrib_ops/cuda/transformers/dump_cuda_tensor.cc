@@ -6,8 +6,6 @@
 #include "core/framework/print_tensor_utils.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
-#define DEBUG_GENERATION 1
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

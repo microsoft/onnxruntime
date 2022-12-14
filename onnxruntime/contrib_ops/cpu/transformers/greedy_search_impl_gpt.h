@@ -121,7 +121,7 @@ Status GreedySearchGpt<T>::UpdateFeeds(
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
-                            gpt_subgraph_.is_kv_cache_past_present_,
+                            gpt_subgraph_.past_present_share_buffer_,
                             past_sequence_length
                             );
 }
@@ -152,7 +152,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
-  if (gpt_subgraph_.is_kv_cache_past_present_) { // Reuse past and present
+  if (gpt_subgraph_.past_present_share_buffer_) { // Reuse past and present
     fetches.reserve(gpt_subgraph_.GetFirstPresentOutputIndex() + gpt_subgraph_.num_layers);
     fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
     for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
@@ -247,7 +247,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
                                       ReinterpretAsSpan<const int32_t>(next_tokens),
                                       current_length - 1));
     }
-    if (gpt_subgraph_.is_kv_cache_past_present_) {
+    if (gpt_subgraph_.past_present_share_buffer_) {
       // clear fetched values before presents[]
       for (int idx = 0; idx < gpt_subgraph_.GetFirstPresentOutputIndex(); idx++) {
         fetches[idx] = OrtValue();

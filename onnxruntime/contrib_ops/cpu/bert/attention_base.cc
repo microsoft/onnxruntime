@@ -225,23 +225,23 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              "Inputs 'past' dimension 2 shall have length of ", k_hidden_size / num_heads_);
     }
 
-    if (!kv_cache_past_present_) {
+    if (!past_present_share_buffer_) {
       past_sequence_length = past_dims[3];
     } else {
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "past_sequence_length tensor must be of one element when kv_cache_past_present is set");
+                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
       }
       past_sequence_length = *past_seq_len->Data<int32_t>();
     }
   }
 
   int64_t total_sequence_length = kv_sequence_length + past_sequence_length;
-  if (past != nullptr && kv_cache_past_present_) {
+  if (past != nullptr && past_present_share_buffer_) {
     const auto& past_dims = past->Shape().GetDims();
     if (past_dims[3] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "when kv_cache_past_present, past tensor sequence must not smaller than total_sequqnce_length ");
+                             "when past_present_share_buffer, past tensor sequence must not smaller than total_sequqnce_length ");
     }
   }
 
@@ -289,13 +289,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
-  if (kv_cache_past_present_) {
+  if (past_present_share_buffer_) {
     if (max_sequence_length <= 0) {
       max_sequence_length = past->Shape().GetDims()[3];
     }
     if (max_sequence_length != past->Shape().GetDims()[3]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "max_sequence_length not matching from mask and past when kv_cache_past_present_ is set");
+                             "max_sequence_length not matching from mask and past when past_present_share_buffer_ is set");
     }
   }
 
@@ -314,7 +314,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
-    output_parameters->kv_cache_past_present = (kv_cache_past_present_ != 0);
+    output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0);
   }
 
   return Status::OK();
