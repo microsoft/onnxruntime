@@ -1182,7 +1182,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.user_compute_stream = legacy_cuda_options->user_compute_stream;
   cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
   // Use default value as this field is not available in OrtCUDAProviderOptions
-  cuda_options_converted.cudnn_conv_use_max_workspace = 0;
+  cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
 
@@ -1668,7 +1668,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->has_user_compute_stream = 0;
   (*out)->user_compute_stream = nullptr;
   (*out)->default_memory_arena_cfg = nullptr;
-  (*out)->cudnn_conv_use_max_workspace = 0;
+  (*out)->cudnn_conv_use_max_workspace = 1;
   (*out)->enable_cuda_graph = 0;
   (*out)->cudnn_conv1d_pad_to_nc1d = 0;
   return nullptr;
