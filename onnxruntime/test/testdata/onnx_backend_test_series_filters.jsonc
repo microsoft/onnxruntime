@@ -171,6 +171,8 @@
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_operator_permute2",
+        "^test_leakyrelu",
+        "^test_leakyrelu_example",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
         "^test_add_bcast.*",
@@ -189,7 +191,10 @@
         "^test_unique_not_sorted_without_axis",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_scatter_elements_with_negative_indices",
         "^test_sce.*",
+        "^test_squeeze",
+        "^test_squeeze_negative_axes",
         "^test_nllloss.*",
         "^test_gather_negative_indices.*",
         "^test_reduce_sum_do_not_keepdims*", // Does not support axes as input
@@ -213,6 +218,14 @@
         "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
         "^test_maxpool_with_argmax_2d_precomputed_pads" //Disabled as it throws segfault
     ],
+    "current_failing_tests_OPENVINO_CPU_FP16": [
+        "^test_gridsample*",
+        "^test_reduce_sum_do_not_keepdims_example",
+        "^test_reduce_sum_do_not_keepdims_random",
+        "^test_scatter_elements_with_negative_indices",
+        "^test_squeeze",
+        "^test_squeeze_negative_axes"
+    ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
         "^test_operator_permute2",
         "^test_operator_repeat",
@@ -222,7 +235,7 @@
         "^test_max_float64.*",
         "^test_min_float64.*",
         "^test_gather_negative_indices.*",
-        "^test_gridsample",
+        "^test_gridsample*",
         "^test_sce.*",
         "^test_nllloss.*",
         "^test_upsample_nearest.*",

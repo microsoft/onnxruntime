@@ -91,12 +91,14 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
     auto cnn_network = global_context.ie_core.ReadModel(model);
 
     #ifndef NDEBUG
+    #if defined OPENVINO_2022_3
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
       serializer.run_on_model(cnn_network);
       ngraph::plot_graph(cnn_network, name+"_executable" + ".dot");
     }
+    #endif
     #endif
     return cnn_network;
   }catch (std::string const & msg) {
