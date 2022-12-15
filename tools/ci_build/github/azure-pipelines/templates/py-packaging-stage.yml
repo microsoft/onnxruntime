@@ -229,14 +229,6 @@ stages:
             **/*.obj
             **/*.pdb
             **/*.dll
-      
-      #- task: BatchScript@1
-      #  displayName: 'Add zlib to system path'
-      #  inputs:
-      #    filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
-      #    modifyEnvironment: true
-      #    arguments: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      #    workingFolder: '$(Build.BinariesDirectory)'
     
     - ${{ if not(contains(parameters.build_py_parameters, '--use_cloud')) }}:
       - powershell: |
