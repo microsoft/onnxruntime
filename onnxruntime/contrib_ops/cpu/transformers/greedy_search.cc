@@ -94,6 +94,11 @@ void GreedySearch::Init(const OpKernelInfo& info) {
     if (info.GetAttr<ONNX_NAMESPACE::GraphProto>("init_decoder", &proto).IsOK()) {
       has_init_decoder_ = true;
     }
+
+    // TODO (hasesh): Remove this once the CPU kernel supports init_decoder
+    if (has_init_decoder_ && Node().GetExecutionProviderType() != kCudaExecutionProvider) {
+      ORT_THROW("Currently, using the init_decoder attribute is only supported on CUDA");
+    }
   }
 
   // Make sure the decoder sub-graph attribute is present for all model types.
