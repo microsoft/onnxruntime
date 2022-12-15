@@ -19,7 +19,7 @@ namespace concurrency {
 // Extract affinity from affinity string.
 // Processor id from affinity string starts from 1,
 // but internally, processor id starts from 0, so here we minus the id by 1
-std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affinity_str) {
+static std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string& affinity_str) {
   ORT_TRY {
     std::vector<LogicalProcessors> logical_processors_vector;
     auto affinities = utils::SplitString(affinity_str, ";");
