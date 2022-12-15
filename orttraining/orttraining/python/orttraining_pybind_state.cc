@@ -174,15 +174,8 @@ struct PyOptimizer {
         GetTrainingORTEnv(), provider);
   }
 
-  Status Step() const { return optimizer_->Step(); }
-  Status SetLearningRate(float lr) { return optimizer_->SetLearningRate(lr); }
-  float GetLearningRate() { return optimizer_->GetLearningRate(); }
-
-  std::shared_ptr<onnxruntime::training::api::Optimizer> GetOptimizer() { return optimizer_; }
-
   virtual ~PyOptimizer() {}
 
- protected:
   PyOptimizer(std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer) {
     optimizer_ = std::move(optimizer);
   }
@@ -957,13 +950,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                           model, provider);
                     }))
       .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
-        ORT_THROW_IF_ERROR(optimizer->Step());
+        ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
       })
       .def("set_learning_rate", [](PyOptimizer* optimizer, float lr) -> void {
-        ORT_THROW_IF_ERROR(optimizer->SetLearningRate(lr));
+        ORT_THROW_IF_ERROR(optimizer->optimizer_->SetLearningRate(lr));
       })
       .def("get_learning_rate", [](PyOptimizer* optimizer) -> float {
-        return optimizer->GetLearningRate();
+        return optimizer->optimizer_->GetLearningRate();
       });
   py::class_<onnxruntime::training::api::LinearLRScheduler>
       lr_scheduler(m, "LRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");
@@ -971,7 +964,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                int64_t total_step_count,
                                int64_t warmup_step_count) {
                 auto scheduler = std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
-                    optimizer->GetOptimizer(), warmup_step_count, total_step_count);
+                    optimizer->optimizer_, warmup_step_count, total_step_count);
                 return scheduler;
               }))
       .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {

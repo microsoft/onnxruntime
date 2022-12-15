@@ -7,7 +7,7 @@ import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.training.api import CheckpointState, LRScheduler, Module, Optimizer
+from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module, Optimizer
 
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
@@ -187,7 +187,7 @@ def test_scheduler_step():
         # Create a Module and Optimizer.
         model = Module(model_file_path, state)
         optimizer = Optimizer(optimizer_file_path, model)
-        scheduler = LRScheduler(optimizer, 1, 2)
+        scheduler = LinearLRScheduler(optimizer, 1, 2)
 
         # Test get and set learning rate.
         lr = optimizer.get_learning_rate()
