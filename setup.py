@@ -285,7 +285,7 @@ try:
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
             else:
-                if "onnxruntime_cloud" == package_name:
+                if "onnxruntime-cloud" == package_name:
                     self._rewrite_ld_preload_cloud()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
