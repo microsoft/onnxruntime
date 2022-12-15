@@ -353,6 +353,7 @@ file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
 endif()
 
 find_package(Threads)
@@ -1270,7 +1271,6 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING_OPS)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
 
   if (UNIX)
