@@ -97,7 +97,8 @@ void GreedySearch::Init(const OpKernelInfo& info) {
 
     // TODO (hasesh): Remove this once the CPU kernel supports init_decoder
     if (has_init_decoder_ && Node().GetExecutionProviderType() != kCudaExecutionProvider) {
-      ORT_THROW("Currently, using the init_decoder attribute is only supported on CUDA");
+      LOGS_DEFAULT(WARNING) << "Using init_decoder subgraph attribute is not supported yet in CPU. "
+                               "So, the decoder subgraph will be used for all decoding iterations";
     }
   }
 
