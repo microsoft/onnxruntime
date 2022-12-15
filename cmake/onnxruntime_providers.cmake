@@ -671,13 +671,15 @@ if (onnxruntime_USE_TENSORRT)
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
 
-  set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+  set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.cc"
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
@@ -1194,6 +1196,8 @@ if (onnxruntime_USE_MIGRAPHX)
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/rocm_stream_handle.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/rocm_stream_handle.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
