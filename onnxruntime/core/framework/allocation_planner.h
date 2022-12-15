@@ -28,6 +28,7 @@ class ExecutionProviders;
 struct KernelCreateInfo;
 class KernelRegistryManager;
 class OrtValueNameIdxMap;
+class IStreamCommandHandleRegistry;
 
 using KernelCreateInfoMap = std::unordered_map<onnxruntime::NodeIndex, gsl::not_null<const KernelCreateInfo*>>;
 using SubgraphsKernelCreateInfoMaps = std::unordered_map<std::string, KernelCreateInfoMap>;
@@ -71,9 +72,46 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   bool enable_memory_reuse_ = true;
 };
 
+#ifdef ENABLE_STREAM
+// Given a graph with node placement information, partition the nodes into multiple sequence.
+// Each sequence can be executed in-dependently. The nodes in each sequence are executed in order,
+// but we can't assume any execution order between sequences, unless there is a data dependency.
+class IGraphPartitioner {
+ public:
+  // DeviceBasedPartition is the default, who partitions a graph based off device information.
+  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
+  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
+  // We will add more optimized partitioner later.
+  enum GraphPartitioningStrategy {
+    DeviceBasedPartition = 0,
+    Unknown,
+  };
+  virtual ~IGraphPartitioner() = default;
+  // create the partition based on the partition type.
+  // perform partition based on the user input when provided.
+  static std::unique_ptr<IGraphPartitioner> CreateGraphPartitioner(const logging::Logger& logger,
+                                                                   const std::string& configuration_file = {});
+  virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                const ExecutionProviders& execution_providers,
+                                std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                                ExecutionOrder execution_order) = 0;
+  virtual const std::string& Name() const = 0;
+  int Devices() const { return devices_; };
+
+ protected:
+  static InlinedVector<std::string> Split(const std::string& line, char splitor);
+  static InlinedHashMap<std::string, GraphPartitioningStrategy> name_type_map;
+  IGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
+  const logging::Logger& logger_;
+  std::string configuration_file_{};
+  int devices_ = 0;
+};
+#endif
+
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
+  // TODO - remove duplicated ExecutionProvider argument
   static Status CreatePlan(
       const Node* parent_node, const onnxruntime::GraphViewer& graph,
       gsl::span<const NodeArg* const> outer_scope_node_args,
@@ -83,6 +121,11 @@ class SequentialPlanner {
       const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
+#ifdef ENABLE_STREAM
+      const IStreamCommandHandleRegistry& stream_handle_registry,
+#endif
+      const std::string& partition_config_file,
+      const logging::Logger& logger,
       std::optional<SequentialExecutionPlan>& plan);
 };
 

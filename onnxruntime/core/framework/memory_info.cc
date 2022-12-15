@@ -6,6 +6,7 @@
 #include "core/framework/memory_info.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ort_value.h"
+#include "core/common/inlined_containers.h"
 
 #include <fstream>
 #include <map>

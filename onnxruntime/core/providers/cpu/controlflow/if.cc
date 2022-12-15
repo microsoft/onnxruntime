@@ -413,7 +413,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
 
   status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators,
                                   ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(),
-                                  context_.Logger());
+                                  context_.Logger(), context_.GetComputeStream());
 
   ORT_RETURN_IF_ERROR(status);
 

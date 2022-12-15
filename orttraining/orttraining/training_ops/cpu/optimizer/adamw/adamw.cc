@@ -89,7 +89,7 @@ Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_o
       const Tensor& source_tensor = values->Get(input_idx);
       Tensor target_tensor(source_tensor.DataType(),
                            source_tensor.Shape(), alloc);
-      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, target_tensor));
+      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, target_tensor, ctx->GetComputeStream()));
       updated_values->Add(std::move(target_tensor));  // Add will check for type consistency
     }
   }
@@ -157,7 +157,7 @@ Status AdamWOptimizer<T>::AdamWComputeMode1(Tensor& weight, Tensor& gradient, Te
 }
 
 template <typename T>
-Status AdamWOptimizer<T>::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const {
+Status AdamWOptimizer<T>::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor, onnxruntime::Stream* /*stream*/) const {
   CopyCpuTensor(&source_tensor, &dest_tensor);
   return Status::OK();
 }
