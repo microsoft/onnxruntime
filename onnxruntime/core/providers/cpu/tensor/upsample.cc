@@ -1295,13 +1295,13 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           NhwcResizeBiCubicAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
                               height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
                               extrapolation_value_, exclude_outside_, roi, X,
-                              Y->MutableData<float>(), alloc, get_original_coordinate_,
+                              Y->MutableData<T>(), alloc, get_original_coordinate_,
                               output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           ResizeBiCubicAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
                           height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
                           extrapolation_value_, exclude_outside_, roi, X,
-                          Y->MutableData<float>(), alloc, get_original_coordinate_,
+                          Y->MutableData<T>(), alloc, get_original_coordinate_,
                           output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         }
       } else {

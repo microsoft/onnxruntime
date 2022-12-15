@@ -1792,6 +1792,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
       test.AddAttribute("mode", v);
     } else if (k == "exclude_outside") {
       test.AddAttribute<int64_t>("exclude_outside", std::stoll(v));
+    } else if (k == "cubic_coeff_a") {
+      test.AddAttribute<float>("cubic_coeff_a", std::stof(v));
     }
   }
   // test.AddAttribute<int64_t>("antialias", 1LL);
@@ -1916,8 +1918,25 @@ TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
 
-TEST(ResizeOpTest, Antialias_Bicubic) {
-  // enumerate exclude, datatype
+TEST(ResizeOpTest, Antialias_Bicubic_Dtype) {
+  {
+    std::vector<uint8_t> X(36);
+    std::iota(X.begin(), X.end(), 0);
+    std::vector<uint8_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
+    TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
+  }
+  {
+    std::vector<int8_t> X(36);
+    std::iota(X.begin(), X.end(), 0);
+    std::vector<int8_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
+    TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
+  }
+  {
+    std::vector<int32_t> X(36);
+    std::iota(X.begin(), X.end(), 0);
+    std::vector<int32_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
+    TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
+  }
 }
 
 TEST(ResizeOpTest, KeepAspectRatioPolicy) {
