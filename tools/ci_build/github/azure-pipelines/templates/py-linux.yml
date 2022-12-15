@@ -51,7 +51,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x ${{ parameters.device }}
+        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
