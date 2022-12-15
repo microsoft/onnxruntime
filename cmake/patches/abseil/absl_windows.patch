@@ -39,5 +39,3 @@ index 0d6c1ec3..75fd935f 100644
              # The decorated name was longer than the compiler limit
              "/wd4503",
              # forcing value to bool 'true' or 'false' (performance warning)
--- 
-2.38.1.windows.1
