@@ -178,7 +178,9 @@ try:
                 f.write("try:\n")
                 f.write('    zlib_path = util.find_library("zlib1")\n')
                 f.write('    zlib = CDLL(zlib_path,mode=RTLD_GLOBAL)\n')
+                f.write('    print("found zlib in path")\n')
                 f.write("except OSError:\n")
+                f.write('    print("Failed to find zlib in path")\n')
                 f.write("    import os\n")
                 f.write('    os.environ["ORT_ZLIB_UNAVAILABLE"] = "1"\n')
 

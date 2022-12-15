@@ -231,7 +231,7 @@ stages:
             **/*.dll
       
       - task: BatchScript@1
-        displayName: 'add zlib to system path'
+        displayName: 'Add zlib to system path'
         inputs:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
           modifyEnvironment: true
