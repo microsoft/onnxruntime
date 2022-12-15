@@ -982,6 +982,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
     subg.node.extend(new_nodes)
     return subg
 
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
