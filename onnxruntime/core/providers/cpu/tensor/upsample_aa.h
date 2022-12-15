@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <type_traits>
 #include <vector>
 #include "core/common/inlined_containers_fwd.h"
@@ -166,14 +167,18 @@ void UpsampleBaseAA(FilterParamsAA& p,
   for (int64_t n = 0; n < batch_size; ++n) {
     auto* temp_buffer = static_cast<T*>(image_temp_buffer.get());
     // horizon interpolate
+
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
           const T* const Xdata =
               XdataBase + (n * num_channels + (c)) *
                               (input_height * input_width);
-          T* const Ydata = temp_buffer + (n * num_channels + (c)) *
-                                             (input_height * output_width);
+          T* const Ydata = temp_buffer + (c) * (input_height * output_width);
+          if (output_width == input_width) {
+            memcpy(temp_buffer, Xdata, sizeof(T) * output_height * output_width);
+            return;
+          }
           for (size_t y = 0; y < narrow<size_t>(input_height); ++y) {
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
               const int64_t output_offset = output_width * y + x;
@@ -212,12 +217,13 @@ void UpsampleBaseAA(FilterParamsAA& p,
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
-          const T* const Xdata =
-              temp_buffer + (n * num_channels + (c)) *
-                                (input_height * output_width);
-          T* const Ydata =
-              YdataBase + (n * num_channels + (c)) *
-                              (output_height * output_width);
+          const T* const Xdata = temp_buffer + ((c)) * (input_height * output_width);
+          T* const Ydata = YdataBase + (n * num_channels + (c)) * (output_height * output_width);
+          if (output_height == input_height) {
+            memcpy(Ydata + (n * num_channels) * (output_height * output_width), Xdata,
+                   sizeof(T) * output_height * output_width);
+            return;
+          }
           for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
             const auto* weight_coeff =
                 reinterpret_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) +
@@ -387,7 +393,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
               XdataBase +
               n * (input_height * input_width) * num_channels;
           T* const Ydata =
-              temp_buffer + n * (input_height * output_width) * num_channels;
+              temp_buffer;
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const auto x = static_cast<size_t>(i % output_width);
             const auto y = static_cast<size_t>(i / output_width);
@@ -429,7 +435,7 @@ void NhwcUpsampleBasicAA(FilterParamsAA& p,
         tp, static_cast<std::ptrdiff_t>(output_height * output_width),
         static_cast<double>(num_channels * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
-          const T* const Xdata = temp_buffer + n * (input_height * output_width) * num_channels;
+          const T* const Xdata = temp_buffer;
           T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
 
           for (std::ptrdiff_t i = first; i < last; ++i) {
@@ -620,12 +626,17 @@ void UpsampleTrilinearAA(int64_t batch_size,
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
+
           const T* const Xdata =
               temp_buffer + (n * num_channels + (c)) *
                                 (output_height * output_width * output_depth);
           T* const Ydata =
               YdataBase + (n * num_channels + (c)) *
                               (output_height * output_width * output_depth);
+          if (output_depth == input_depth) {
+            memcpy(YdataBase, Xdata, sizeof(T) * output_depth * output_height * output_width);
+            return;
+          }
           for (size_t z = 0; z < narrow<size_t>(output_depth); ++z) {
             const auto* weight_coeff =
                 reinterpret_cast<const ACtype*>(p.dim_z.weight_coefficients.get()) +
