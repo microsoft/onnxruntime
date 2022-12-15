@@ -37,10 +37,6 @@ public:
     DmlOperatorInstanceNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, kernelCreationContext.GetInputCount() != 3);
-        std::vector<std::vector<uint32_t>> inputShapes(kernelCreationContext.GetInputCount());
-        std::vector<gsl::span<const uint32_t>> inputShapeSpans(kernelCreationContext.GetInputCount());
-
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
         DmlOperator::Initialize(
             kernelCreationContext,
