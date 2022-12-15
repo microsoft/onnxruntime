@@ -176,7 +176,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
                               (input_height * input_width);
           T* const Ydata = temp_buffer + (c) * (input_height * output_width);
           if (output_width == input_width) {
-            memcpy(temp_buffer, Xdata, sizeof(T) * output_height * output_width);
+            memcpy(temp_buffer, Xdata, sizeof(T) * input_height * output_width);
             return;
           }
           for (size_t y = 0; y < narrow<size_t>(input_height); ++y) {

@@ -1809,7 +1809,7 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
 
 TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
   std::vector<float> X(16);
-  std::iota(X.begin(), X.end(), 1);
+  std::iota(X.begin(), X.end(), 1.f);
 
   std::vector<float> Y = {2.3636363f, 3.590909f, 4.818182f,
                           7.2727275f, 8.5f, 9.727273f,
@@ -1820,7 +1820,7 @@ TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
 // match pillow
 TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
   std::vector<float> X(16);
-  std::iota(X.begin(), X.end(), 1);
+  std::iota(X.begin(), X.end(), 1.f);
   std::vector<float> Y = {2.5f, 3.7f, 4.9f,
                           7.3f, 8.5f, 9.7f,
                           12.1f, 13.3f, 14.5f};
@@ -1830,7 +1830,7 @@ TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
 TEST(ResizeOpTest, Antialias_Bilinear_dtype) {
   {
     std::vector<uint8_t> X(16);
-    std::iota(X.begin(), X.end(), 0);
+    std::iota(X.begin(), X.end(), uint8_t(0));
     std::vector<uint8_t> Y = {1, 3, 4,
                               6, 8, 9,
                               11, 13, 14};
@@ -1838,7 +1838,7 @@ TEST(ResizeOpTest, Antialias_Bilinear_dtype) {
   }
   {
     std::vector<int8_t> X(16);
-    std::iota(X.begin(), X.end(), 0);
+    std::iota(X.begin(), X.end(), int8_t(0));
     std::vector<int8_t> Y = {1, 3, 4,
                              6, 8, 9,
                              11, 13, 14};
@@ -1857,7 +1857,7 @@ TEST(ResizeOpTest, Antialias_Bilinear_dtype) {
 TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
   {
     std::vector<uint8_t> X(16);
-    std::iota(X.begin(), X.end(), 0);
+    std::iota(X.begin(), X.end(), uint8_t(0));
     std::vector<uint8_t> Y = {1, 3, 4,
                               6, 8, 9,
                               11, 13, 14};
@@ -1865,7 +1865,7 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
   }
   {
     std::vector<int8_t> X(16);
-    std::iota(X.begin(), X.end(), 0);
+    std::iota(X.begin(), X.end(), int8_t(0));
     std::vector<int8_t> Y = {1, 3, 4,
                              6, 8, 9,
                              11, 13, 14};
@@ -1883,7 +1883,7 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
 
 TEST(ResizeOpTest, Antialias_Trilinear_No_ExcludeOutside) {
   std::vector<float> X(16 * 4);
-  std::iota(X.begin(), X.end(), 0);
+  std::iota(X.begin(), X.end(), 0.f);
   std::vector<float> Y = {5.7272725f, 6.9545455f, 8.181818f, 10.636364f, 11.863636f,
                           13.090909f, 15.545455f, 16.772728f, 18.f, 25.363636f,
                           26.59091f, 27.818182f, 30.272728f, 31.5f, 32.727272f,
@@ -1895,7 +1895,7 @@ TEST(ResizeOpTest, Antialias_Trilinear_No_ExcludeOutside) {
 
 TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
   std::vector<float> X(16 * 4);
-  std::iota(X.begin(), X.end(), 0);
+  std::iota(X.begin(), X.end(), 0.f);
   std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
                           27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
                           50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
@@ -1904,7 +1904,7 @@ TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
 
 TEST(ResizeOpTest, Antialias_Bicubic_No_ExcludeOutside) {
   std::vector<float> X(16);
-  std::iota(X.begin(), X.end(), 1);
+  std::iota(X.begin(), X.end(), 1.0f);
   std::vector<float> Y = {1.7750092f, 3.1200073f, 4.4650054f, 7.1550016f, 8.5f,
                           9.844998f, 12.534994f, 13.8799925f, 15.224991f};
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
@@ -1912,7 +1912,7 @@ TEST(ResizeOpTest, Antialias_Bicubic_No_ExcludeOutside) {
 
 TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
   std::vector<float> X(16);
-  std::iota(X.begin(), X.end(), 1);
+  std::iota(X.begin(), X.end(), 1.0f);
   std::vector<float> Y = {1.8044884f, 3.1435907f, 4.482693f, 7.1608977f, 8.5f,
                           9.839103f, 12.517307f, 13.856409f, 15.195512f};
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
@@ -1921,13 +1921,13 @@ TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
 TEST(ResizeOpTest, Antialias_Bicubic_Dtype) {
   {
     std::vector<uint8_t> X(36);
-    std::iota(X.begin(), X.end(), 0);
+    std::iota(X.begin(), X.end(), uint8_t(0));
     std::vector<uint8_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
     TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
   }
   {
     std::vector<int8_t> X(36);
-    std::iota(X.begin(), X.end(), 0);
+    std::iota(X.begin(), X.end(), int8_t(0));
     std::vector<int8_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
     TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
   }
