@@ -230,14 +230,15 @@ stages:
             **/*.pdb
             **/*.dll
       
-      - task: BatchScript@1
-        displayName: 'Add zlib to system path'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
-          modifyEnvironment: true
-          arguments: '$(Build.BinariesDirectory)\$(BuildConfig)'
-          workingFolder: '$(Build.BinariesDirectory)'
-
+      #- task: BatchScript@1
+      #  displayName: 'Add zlib to system path'
+      #  inputs:
+      #    filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
+      #    modifyEnvironment: true
+      #    arguments: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      #    workingFolder: '$(Build.BinariesDirectory)'
+    
+    - ${{ if not(contains(parameters.build_py_parameters, '--use_cloud')) }}:
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
