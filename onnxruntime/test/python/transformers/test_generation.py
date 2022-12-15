@@ -109,10 +109,13 @@ class TestBeamSearchGpt(unittest.TestCase):
 
     @pytest.mark.slow
     def test_greedy_search_past_present_share_buffer(self):
-        self.run_beam_search("--past_present_share_buffer --use_gpu", is_greedy=True)
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_gpu", is_greedy=True)
 
+    @pytest.mark.slow
     def test_greedy_search_past_present_share_buffer_fp16(self):
-        self.run_beam_search("--past_present_share_buffer --use_gpu -p fp16", is_greedy=True)
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
     def test_greedy_search_float16(self):

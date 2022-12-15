@@ -257,18 +257,18 @@ Status QkvToContext(
     if (data.bias == nullptr) {
       // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
       ORT_ENFORCE(qk_head_size == v_head_size);
-      unsigned qkv_mask = (past_present_share_buffer ? 1 : 7);
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
-                                         max_threads_per_block, false, data.gemm_buffer, qkv, qkv_mask));
+      int matrix_to_trans = (past_present_share_buffer ? 1 : 3);
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, matrix_to_trans, sequence_length, batch_size, qk_head_size, num_heads,
+                                         max_threads_per_block, false, data.gemm_buffer, qkv, 3));
     } else {
-      unsigned qkv_mask = (past_present_share_buffer ? 1 : 7);
       const int format = (use_fused_kernel ? 2 : 1);
+      int matrix_to_transpose = ((!use_fused_kernel && past_present_share_buffer) ? 1 : 3);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
-      LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
+      LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.gemm_buffer, data.bias, qkv,
-                             true, v_head_size, qkv_mask);
+                             true, v_head_size, 3);
       CUDA_RETURN_IF_ERROR(cudaGetLastError());
     }
   } else {  // gemm_buffer == nullptr
