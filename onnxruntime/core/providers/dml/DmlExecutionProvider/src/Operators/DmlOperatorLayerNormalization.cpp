@@ -12,52 +12,25 @@ public:
     DmlOperatorLayerNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, kernelCreationContext.GetInputCount() < 1);
-        std::vector<std::vector<uint32_t>> inputShapes(kernelCreationContext.GetInputCount());
-        std::vector<gsl::span<const uint32_t>> inputShapeSpans(kernelCreationContext.GetInputCount());
-        inputShapes[0] = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
-
-        for (uint32_t i = 1; i < kernelCreationContext.GetInputCount(); ++i)
-        {
-            auto inputShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(i);
-            ORT_THROW_HR_IF(E_INVALIDARG, inputShape.size() > inputShapes[0].size());
-
-            // Pad in front to enable broadcasting. Even though we could just insert ones and DML would accept it,
-            // metacommands are more likely to not understand a non-broadcasted scale/bias with different sizes than
-            // the input, so we force the broadcasting here.
-            inputShape.insert(inputShape.begin(), inputShapes[0].begin(), inputShapes[0].end() - inputShape.size());
-
-            // Now, if our dimension count is smaller than 4, add trailing ones to make it easier to target metacommands
-            inputShape.resize(std::max<size_t>(inputShape.size(), 4), 1);
-            inputShapes[i] = std::move(inputShape);
-            inputShapeSpans[i] = inputShapes[i];
-        }
-
-        inputShapes[0].resize(std::max<size_t>(inputShapes[0].size(), 4), 1);
-        inputShapeSpans[0] = inputShapes[0];
-
-        ORT_THROW_HR_IF(E_INVALIDARG, kernelCreationContext.GetOutputCount() != 1);
-        std::vector<gsl::span<const uint32_t>> outputShapeSpans(kernelCreationContext.GetOutputCount());
-        outputShapeSpans[0] = inputShapes[0];
-
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
 
         // Initialize Input, Scale and Bias tensors with same dimension count as Input tensor
         // because DML MVN1 has a validation which requires all 3 needs to have same dimension count
         // due to historical artifact.
-        DmlOperator::InitializeWithShapes(
+        DmlOperator::Initialize(
             kernelCreationContext,
             kernelInputIndices,
             std::nullopt,
-            inputShapeSpans,
-            outputShapeSpans);
+            std::nullopt,
+            std::nullopt,
+            kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
 
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-        uint32_t onnxInputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
-        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, onnxInputDimCount);
-        std::vector<uint32_t> onnxAxes(inputShapes[0].size() - static_cast<size_t>(onnxAxis));
+        uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
+        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
+        std::vector<uint32_t> onnxAxes(static_cast<size_t>(inputDimCount) - static_cast<size_t>(onnxAxis));
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         assert(m_inputTensorDescs.size() == 3);
