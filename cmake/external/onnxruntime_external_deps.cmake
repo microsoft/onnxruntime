@@ -265,7 +265,10 @@ FetchContent_Declare(
 onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
 if(NOT flatbuffers_FOUND)
   if(NOT TARGET flatbuffers::flatbuffers)
-    add_executable(flatbuffers::flatbuffers ALIAS flatbuffers)
+    add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
+  endif()
+  if(NOT TARGET flatbuffers::flatc)
+    add_executable(flatbuffers::flatc ALIAS flatc)
   endif()
 endif()
 
