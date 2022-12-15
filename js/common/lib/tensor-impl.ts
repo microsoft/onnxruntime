@@ -209,12 +209,6 @@ export class Tensor implements TensorInterface {
       gImagePointer = 1;
       bImagePointer = 2;
       aImagePointer = -1;
-    } else if (inputformat === 'RBG') {
-      step = 3;
-      rImagePointer = 0;
-      bImagePointer = 1;
-      gImagePointer = 2;
-      aImagePointer = -1;
     }
 
     // Updating the pointer assignments based on the output tensor format
@@ -281,12 +275,13 @@ export class Tensor implements TensorInterface {
     // filling and checking image configuration options
     if (isHTMLImageEle) {
       // HTMLImageElement - image object - format is RGBA by default
-      const pixels2DContext = document.createElement('canvas').getContext('2d');
+      let canvas = document.createElement('canvas');
+      const pixels2DContext = canvas.getContext('2d');
 
       if (pixels2DContext != null) {
         const format = 'RGBA';
-        const height = (image as HTMLImageElement).height;
-        const width = (image as HTMLImageElement).width;
+        const height = (image as HTMLImageElement).naturalHeight;
+        const width = (image as HTMLImageElement).naturalWidth;
 
         if (inputOptions !== undefined) {
           imageConfig = inputOptions;
@@ -310,7 +305,8 @@ export class Tensor implements TensorInterface {
           imageConfig.height = height;
           imageConfig.width = width;
         }
-
+        canvas.width = width;
+        canvas.height = height;
         pixels2DContext.drawImage(image as HTMLImageElement, 0, 0, width, height);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
@@ -437,8 +433,8 @@ export class Tensor implements TensorInterface {
     let image: ImageData;
     if (pixels2DContext != null) {
       // Default values for height and width & format
-      const height = this.dims[3];
-      const width = this.dims[2];
+      const width = this.dims[3];
+      const height = this.dims[2];
       const channels = this.dims[1];
 
       const inputformat =
@@ -491,7 +487,7 @@ export class Tensor implements TensorInterface {
         image.data[gImagePointer] = ((this.data[gTensorPointer++] as number) - normBias) * normMean;  // G value
         image.data[bImagePointer] = ((this.data[bTensorPointer++] as number) - normBias) * normMean;  // B value
         image.data[aImagePointer] =
-            aTensorPointer === -1 ? NaN : ((this.data[aTensorPointer++] as number) - normBias) * normMean;  // A value
+            aTensorPointer === -1 ? 255 : ((this.data[aTensorPointer++] as number) - normBias) * normMean;  // A value
       }
 
     } else {
