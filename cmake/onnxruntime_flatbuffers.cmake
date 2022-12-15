@@ -39,6 +39,6 @@ if (GDK_PLATFORM)
 namespace std { using ::getenv; }
 #endif
 ]])
-  target_compile_options(flatbuffers PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
-  target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
+  target_compile_options(flatbuffers::flatbuffers PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
+  target_compile_options(flatbuffers::flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
 endif()
