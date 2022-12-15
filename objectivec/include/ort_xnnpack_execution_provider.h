@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ORTSessionOptions (ORTSessionOptionsXnnpackEP)
 
 /**
+ * Available since 1.14.
  * Enables the Xnnpack execution provider in the session configuration options.
  * It is appended to the execution provider list which is ordered by
  * decreasing priority.
