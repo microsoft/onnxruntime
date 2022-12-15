@@ -235,7 +235,7 @@ stages:
         inputs:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
           modifyEnvironment: true
-          arguments: '$(Build.BinariesDirectory)'
+          arguments: '$(Build.BinariesDirectory)\$(BuildConfig)'
           workingFolder: '$(Build.BinariesDirectory)'
 
       - powershell: |
