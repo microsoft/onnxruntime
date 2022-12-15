@@ -200,7 +200,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
               int64_t xmax = p.dim_x.bound[x * 2 + 1];
               const auto* Xdata_offset = Xdata + y * input_width + xmin;
               for (; xmin < xmax; ++xmin) {
-                output += (*Xdata_offset) * (*weight_coeff++);
+                output += (*Xdata_offset++) * (*weight_coeff++);
               }
 
               if constexpr (is_8bit_v<T>) {
@@ -581,24 +581,25 @@ LoopInDimN(const T* Xdata_base, FilterParamsAA& p, int64_t start_dim, int64_t pr
 // very slow, Please optimize it when used in a real model
 template <typename T>
 void UpsampleTrilinearAA(int64_t batch_size,
-                          int64_t num_channels,
-                          int64_t input_depth,
-                          int64_t input_height,
-                          int64_t input_width,
-                          int64_t output_depth,
-                          int64_t output_height,
-                          int64_t output_width,
-                          float depth_scale,
-                          float height_scale,
-                          float width_scale,
-                          const std::vector<float>& roi,
-                          bool use_extrapolation,
-                          float extrapolation_value,
-                          const Tensor* X,
-                          T* YdataBase,
-                          AllocatorPtr& alloc,
-                          const GetOriginalCoordinateFunc& get_original_coordinate,
-                          concurrency::ThreadPool* tp) {
+                         int64_t num_channels,
+                         int64_t input_depth,
+                         int64_t input_height,
+                         int64_t input_width,
+                         int64_t output_depth,
+                         int64_t output_height,
+                         int64_t output_width,
+                         float depth_scale,
+                         float height_scale,
+                         float width_scale,
+                         const std::vector<float>& roi,
+                         bool use_extrapolation,
+                         float extrapolation_value,
+                         bool exclude_outside,
+                         const Tensor* X,
+                         T* YdataBase,
+                         AllocatorPtr& alloc,
+                         const GetOriginalCoordinateFunc& get_original_coordinate,
+                         concurrency::ThreadPool* tp) {
   const auto* XdataBase = X->Data<T>();
 
   int64_t input_paras[] = {input_height, input_width, input_depth};
@@ -607,7 +608,7 @@ void UpsampleTrilinearAA(int64_t batch_size,
 
   TriLinearParamsAA p;
   SetupUpsampleFilterAA(p, input_paras, output_paras, scale_paras, roi,
-                        alloc, get_original_coordinate, X->GetElementType(), true, true);
+                        alloc, get_original_coordinate, X->GetElementType(), exclude_outside, true);
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
   auto* buffer = alloc->Alloc(sizeof(T) * static_cast<size_t>(batch_size * output_height * output_width *

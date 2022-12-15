@@ -73,8 +73,8 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
       }
       float total_weight = 0.0;
 
-      int64_t xmin_real = static_cast<int64_t>(center - support + 0.5);
-      int64_t xmax_real = static_cast<int64_t>(center + support + 0.5);
+      int64_t xmin_real = static_cast<int64_t>(floor(center - support + 0.5));
+      int64_t xmax_real = static_cast<int64_t>(floor(center + support + 0.5));
       int64_t xmin_cut = std::max<int64_t>(xmin_real, (0));
       int64_t xmax_cut = std::min<int64_t>(xmax_real, input_size);
 

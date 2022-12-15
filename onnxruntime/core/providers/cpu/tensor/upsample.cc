@@ -1246,11 +1246,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
         if (antialias_) {
           UpsampleTrilinearAA(batch_size, num_channels, input_depth, input_height, input_width,
-                            output_depth, output_height, output_width,
-                            is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
-                            is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                            X, Y->MutableData<T>(), alloc, get_original_coordinate_,
-                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+                              output_depth, output_height, output_width,
+                              is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                              is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                              exclude_outside_, X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                              output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
                             output_depth, output_height, output_width,
