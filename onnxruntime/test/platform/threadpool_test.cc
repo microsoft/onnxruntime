@@ -544,6 +544,8 @@ TEST(ThreadPoolTest, TestStackSize) {
 #endif
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
   OrtThreadPoolParams tp_params;
@@ -666,6 +668,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
     }
   }
 }
+#endif
 #endif
 
 }  // namespace onnxruntime
