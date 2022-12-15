@@ -108,7 +108,7 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.run_beam_search("", is_greedy=True)
 
     @pytest.mark.slow
-    def test_greedy_search_kv_cache(self):
+    def test_greedy_search_past_present_share_buffer(self):
         self.run_beam_search("--past_present_share_buffer", is_greedy=True)
 
     @pytest.mark.slow

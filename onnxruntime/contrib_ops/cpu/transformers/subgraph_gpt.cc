@@ -26,7 +26,7 @@ Status GptSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
-    int max_seq_len_kv_cache) {
+    int max_seq_len_past_present_share_buffer) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -81,7 +81,7 @@ Status GptSubgraph::CreateInitialFeeds(
       feeds.push_back(empty_past);
     }
   } else {
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, max_seq_len_kv_cache, head_size};
+    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, max_seq_len_past_present_share_buffer, head_size};
     TensorShape past_shape(&past_state_dims[0], 5);
     // The remaining inputs are past state execpt the last one
     for (int i = first_past_input_index_; i < num_subgraph_inputs - 1; ++i) {
@@ -111,7 +111,7 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                 "Invalid GPT-2 subgraph: number of outputs shall be larger than 1 (Need past state in outputs).");
 
   ORT_RETURN_IF(!((num_subgraph_inputs == num_subgraph_outputs + 2) || (num_subgraph_inputs == num_subgraph_outputs + 3)),
-                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or 3 (if kv_cache)");
+                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or 3 (if past_present_share_buffer)");
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());

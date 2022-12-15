@@ -232,7 +232,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--past_present_share_buffer",
         required=False,
         action="store_true",
-        help="Use kv_cache for past and present, currently work for gpt2 greedy search.",
+        help="Use shared buffer for past and present, currently work for gpt2 greedy search.",
     )
     model_group.set_defaults(past_present_share_buffer=False)
 
@@ -1182,10 +1182,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         # Move initializer from subgraph to main graph could reduce memory usage in inference.
         initializers = move_initializers(decoder_model.graph)
         logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
-        if use_kv_cache:
-            print("*****************************************************")
-            print("*****kv_cache****************************************")
-            print("*****************************************************")
+        if past_present_share_buffer:
+            logger.info("*****update graph to make past and present share buffer******************")
             kv_cache_update_decoder_subgraph(decoder_model.graph)
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 

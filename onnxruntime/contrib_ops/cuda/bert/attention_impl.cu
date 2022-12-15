@@ -204,6 +204,7 @@ template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                                     const float* bias,
                                                     const float* qkv_buffer,
                                                     float* present);
+
 template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                                     const int max_sequence_length,
                                                     const int total_sequence_length,
@@ -256,11 +257,11 @@ Status QkvToContext(
     if (data.bias == nullptr) {
       // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
       ORT_ENFORCE(qk_head_size == v_head_size);
-      ORT_ENFORCE(past_present_share_buffer == 0);
+      unsigned qkv_mask = (past_present_share_buffer ? 1 : 7);
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
-                                         max_threads_per_block, false, data.gemm_buffer, qkv));
+                                         max_threads_per_block, false, data.gemm_buffer, qkv, qkv_mask));
     } else {
-      int qkv_mask = (past_present_share_buffer ? 1 : 7);
+      unsigned qkv_mask = (past_present_share_buffer ? 1 : 7);
       const int format = (use_fused_kernel ? 2 : 1);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
