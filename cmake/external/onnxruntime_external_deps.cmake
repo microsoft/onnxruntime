@@ -91,12 +91,18 @@ set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
 set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
+#flatbuffers::IsOutRange
 FetchContent_Declare(
     flatbuffers
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
     FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
 )
+if(NOT flatbuffers_FOUND)
+  if(NOT TARGET flatbuffers::flatbuffers)
+    add_executable(flatbuffers::flatbuffers ALIAS flatbuffers)
+  endif()
+endif()
 
 #Here we support two build mode:
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
