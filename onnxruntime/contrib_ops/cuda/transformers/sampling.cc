@@ -32,8 +32,6 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper_sampling;
 
 Sampling::Sampling(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::Sampling(info) {
-  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
-
   SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
