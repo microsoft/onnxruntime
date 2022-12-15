@@ -229,6 +229,14 @@ stages:
             **/*.obj
             **/*.pdb
             **/*.dll
+      
+      - task: BatchScript@1
+        displayName: 'add zlib to system path'
+        inputs:
+          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
+          modifyEnvironment: true
+          arguments: '$(Build.BinariesDirectory)'
+          workingFolder: '$(Build.BinariesDirectory)'
 
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
