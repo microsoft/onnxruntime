@@ -980,7 +980,8 @@ INSTANTIATE_TEST_SUITE_P(
     QDQFusionTestsParameterized,
     ::testing::Values(
         std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx"),
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx")));
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx"),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_zp_not_provided.onnx")));
 
 // We only tested on CUDA run.
 #if defined(USE_CUDA)

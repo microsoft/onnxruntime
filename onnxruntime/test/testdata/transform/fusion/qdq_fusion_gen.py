@@ -26,6 +26,12 @@ quantize_linear = helper.make_node(
 dequantize_linear = helper.make_node(
     "DequantizeLinear", ["quantized_value", "quant_scale", "quant_zero_point"], ["B"], "dequanztize0"
 )
+quantize_linear_zp_not_provided = helper.make_node(
+    "QuantizeLinear", ["A", "quant_scale"], ["quantized_value"], "quanztize0"
+)
+dequantize_linear_zp_not_provided = helper.make_node(
+    "DequantizeLinear", ["quantized_value", "quant_scale"], ["B"], "dequanztize0"
+)
 
 # graph with int8 quantization
 graph = helper.make_graph(
@@ -52,3 +58,16 @@ graph = helper.make_graph(
 # model with uint8 quantization
 model = helper.make_model(graph, producer_name="onnx-example", **kwargs)
 onnx.save(model, "qdq_fusion_uint8.onnx")
+
+# graph with no zero point initializer
+graph = helper.make_graph(
+    [quantize_linear_zp_not_provided, dequantize_linear_zp_not_provided],
+    "QDQFusion",
+    [A],
+    [B],
+    [quant_scale],
+)
+
+# model with no zero point initializer
+model = helper.make_model(graph, producer_name="onnx-example", **kwargs)
+onnx.save(model, "qdq_fusion_zp_not_provided.onnx")
