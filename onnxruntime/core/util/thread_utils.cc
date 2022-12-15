@@ -16,6 +16,7 @@
 namespace onnxruntime {
 namespace concurrency {
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 // Extract affinity from affinity string.
 // Processor id from affinity string starts from 1,
 // but internally, processor id starts from 0, so here we minus the id by 1
@@ -68,6 +69,7 @@ static std::vector<LogicalProcessors> ReadThreadAffinityConfig(const std::string
   }
   ORT_THROW("Failed to read affinities from affinity string");
 }
+#endif
 
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
