@@ -98,11 +98,6 @@ FetchContent_Declare(
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
     FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
 )
-if(NOT flatbuffers_FOUND)
-  if(NOT TARGET flatbuffers::flatbuffers)
-    add_executable(flatbuffers::flatbuffers ALIAS flatbuffers)
-  endif()
-endif()
 
 #Here we support two build mode:
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
@@ -268,6 +263,12 @@ FetchContent_Declare(
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
 onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+if(NOT flatbuffers_FOUND)
+  if(NOT TARGET flatbuffers::flatbuffers)
+    add_executable(flatbuffers::flatbuffers ALIAS flatbuffers)
+  endif()
+endif()
+
 if (onnxruntime_BUILD_UNIT_TESTS)
   onnxruntime_fetchcontent_makeavailable(googletest)
 endif()
