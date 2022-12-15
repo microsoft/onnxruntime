@@ -35,7 +35,7 @@ jobs:
       clean: true
       submodules: none
 
-    - template: set-nightly-build-option-variable-step.yml
+    - template: set-nightly-build-option-variable-step.yml877777777777777777777777t5r
 
     - template: get-docker-image-steps.yml
       parameters:
@@ -51,7 +51,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x "-d CLOUD"
+        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
