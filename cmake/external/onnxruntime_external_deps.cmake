@@ -270,6 +270,23 @@ if(NOT flatbuffers_FOUND)
   if(TARGET flatc and NOT TARGET flatbuffers::flatc)
     add_executable(flatbuffers::flatc ALIAS flatc)
   endif()
+  if (GDK_PLATFORM)
+    # cstdlib only defines std::getenv when _CRT_USE_WINAPI_FAMILY_DESKTOP_APP is defined, which
+    # is probably an oversight for GDK/Xbox builds (::getenv exists and works).
+    file(WRITE ${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h [[
+#pragma once
+#ifdef __cplusplus
+#include <cstdlib>
+namespace std { using ::getenv; }
+#endif
+]])
+    if(TARGET flatbuffers)
+      target_compile_options(flatbuffers PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
+    endif()
+    if(TARGET flatc)
+      target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
+    endif()
+  endif()
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
