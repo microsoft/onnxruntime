@@ -1811,9 +1811,9 @@ TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
   std::vector<float> X(16);
   std::iota(X.begin(), X.end(), 1);
 
-  std::vector<float> Y = {2.3636363, 3.590909, 4.818182,
-                          7.2727275, 8.5, 9.727273,
-                          12.181818, 13.409091, 14.636364};
+  std::vector<float> Y = {2.3636363f, 3.590909f, 4.818182f,
+                          7.2727275f, 8.5f, 9.727273f,
+                          12.181818f, 13.409091f, 14.636364f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
 
@@ -1821,9 +1821,9 @@ TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
 TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
   std::vector<float> X(16);
   std::iota(X.begin(), X.end(), 1);
-  std::vector<float> Y = {2.5, 3.7, 4.9,
-                          7.3, 8.5, 9.7,
-                          12.1, 13.3, 14.5};
+  std::vector<float> Y = {2.5f, 3.7f, 4.9f,
+                          7.3f, 8.5f, 9.7f,
+                          12.1f, 13.3f, 14.5f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
 
@@ -1884,37 +1884,37 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
 TEST(ResizeOpTest, Antialias_Trilinear_No_ExcludeOutside) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0);
-  std::vector<float> Y = {5.7272725, 6.9545455, 8.181818, 10.636364, 11.863636,
-                          13.090909, 15.545455, 16.772728, 18., 25.363636,
-                          26.59091, 27.818182, 30.272728, 31.5, 32.727272,
-                          35.18182, 36.409092, 37.636364, 45., 46.227272,
-                          47.454544, 49.909092, 51.136364, 52.363636, 54.81818,
-                          56.045456, 57.272728};
+  std::vector<float> Y = {5.7272725f, 6.9545455f, 8.181818f, 10.636364f, 11.863636f,
+                          13.090909f, 15.545455f, 16.772728f, 18.f, 25.363636f,
+                          26.59091f, 27.818182f, 30.272728f, 31.5f, 32.727272f,
+                          35.18182f, 36.409092f, 37.636364f, 45.f, 46.227272f,
+                          47.454544f, 49.909092f, 51.136364f, 52.363636f, 54.81818f,
+                          56.045456f, 57.272728f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0);
-  std::vector<float> Y = {6.3, 7.5, 8.7, 11.1, 12.3, 13.5, 15.9, 17.1, 18.3, 25.5, 26.7,
-                          27.9, 30.3, 31.5, 32.7, 35.1, 36.3, 37.5, 44.7, 45.9, 47.1, 49.5,
-                          50.7, 51.9, 54.3, 55.5, 56.7};
+  std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
+                          27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
+                          50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Bicubic_No_ExcludeOutside) {
   std::vector<float> X(16);
   std::iota(X.begin(), X.end(), 1);
-  std::vector<float> Y = {1.7750092, 3.1200073, 4.4650054, 7.1550016, 8.5,
-                          9.844998, 12.534994, 13.8799925, 15.224991};
+  std::vector<float> Y = {1.7750092f, 3.1200073f, 4.4650054f, 7.1550016f, 8.5f,
+                          9.844998f, 12.534994f, 13.8799925f, 15.224991f};
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
   std::vector<float> X(16);
   std::iota(X.begin(), X.end(), 1);
-  std::vector<float> Y = {1.8044884, 3.1435907, 4.482693, 7.1608977, 8.5,
-                          9.839103, 12.517307, 13.856409, 15.195512};
+  std::vector<float> Y = {1.8044884f, 3.1435907f, 4.482693f, 7.1608977f, 8.5f,
+                          9.839103f, 12.517307f, 13.856409f, 15.195512f};
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
 
