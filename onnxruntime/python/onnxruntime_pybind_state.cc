@@ -220,7 +220,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
       py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
     } else {
       auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.DenseShape(), GetAllocator());
-      auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
+      auto status = src_sparse_tensor.Copy(*data_transfer_manager, *dst_sparse_tensor);
       OrtPybindThrowIfError(status);
       py_sparse_tensor = std::make_unique<PySparseTensor>(std::move(dst_sparse_tensor));
     }
@@ -774,7 +774,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if defined(USE_XNNPACK)
     auto cit = provider_options_map.find(type);
     return onnxruntime::XnnpackProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
   } else if (type == kCannExecutionProvider) {
@@ -1325,7 +1325,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-
+      
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,

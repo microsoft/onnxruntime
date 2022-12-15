@@ -1,0 +1,5 @@
+DeviceBasedPartitioner
+Devices:1
+CpuExecutionProvider:2
+conv_0,relu_0,maxpool_0,conv_4,add_0
+conv_1,relu_1,conv_2,relu_2,conv_3

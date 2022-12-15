@@ -6,6 +6,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
@@ -19,6 +20,8 @@
 #include <limits>
 #include <map>
 #include <memory>
+// TODO: find a better way to share this
+#include "core/providers/cuda/cuda_stream_handle.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -174,15 +177,41 @@ void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
+template <>
+Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+}
+
+template <>
+void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+}
+
+template <>
+Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+}
+
+template <>
+void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+}
+
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    return retval;
+    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+    if (!gpu_data_transfer)
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in TRT EP.");
+    if (!ctx->GetComputeStream())
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "Compute Stream is missing in TRT MemCpy kernel's context.");
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
 
@@ -196,7 +225,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kTensorrtExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -207,7 +235,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kTensorrtExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -256,15 +283,16 @@ auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfe
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
-
   InitProviderOrtApi();
-  
+
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
-  } else {
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
   }
 
   // Get environment variables
@@ -459,6 +487,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
+  if (external_stream_) {
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+  }
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
@@ -542,24 +574,12 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::CreateGPUDataTransfer(static_cast<void*>(GetComputeStream()));
+  return onnxruntime::CreateGPUDataTransfer();
 }
 
 Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
-  if (sync_stream) {
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
-  }
-  return Status::OK();
-}
-
-Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<cudaStream_t>(stream);
+  if (sync_stream && external_stream_) {
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
 }
@@ -574,7 +594,6 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& gra
   }
   return false;
 }
-
 
 // Check whether all the nodes of the graph are assigned to specific ep
 bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const {
@@ -595,11 +614,11 @@ bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& 
 // Check whether all the nodes of subgraph are supported
 bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
   int number_of_trt_nodes = 0;
-    for (const auto& group : supported_nodes_vector) {
+  for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       number_of_trt_nodes += static_cast<int>(group.first.size());
-      }
     }
+  }
 
   return number_of_trt_nodes == number_of_ort_nodes;
 }
@@ -1081,7 +1100,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           }
         }
         if (!all_subgraphs_are_supported) {
-        // if not all its subgraphs are supported, we need to exclude this control flow op
+          // if not all its subgraphs are supported, we need to exclude this control flow op
           continue;
         }
       }
@@ -1488,13 +1507,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Release function state
     compute_info.release_state_func = [](FunctionState state) {
-        delete static_cast<TensorrtFuncState*>(state);
+      delete static_cast<TensorrtFuncState*>(state);
     };
 
     // Create compute function
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* /*api*/, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      
+
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
@@ -1514,7 +1533,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
-      cudaStream_t stream = static_cast<cudaStream_t>(this->GetComputeStream());
+      void* cuda_stream;
+      Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
+      cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
@@ -1842,7 +1863,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             const bool status = trt_context->setBindingDimensions(binding_index, dimensions);
             if (!status) {
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                                  "TensorRT EP cannot set the dynamic dimensions of a binding"));
+                                                 "TensorRT EP cannot set the dynamic dimensions of a binding"));
             }
           }
         }
@@ -2150,4 +2171,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
   }
   return Status::OK();
 }
+
+void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
+}
+
 }  // namespace onnxruntime

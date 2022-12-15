@@ -53,7 +53,7 @@ void Send::SendData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, ctx->GetComputeStream());
 #else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       aggregated_aligned_tensor_bytes);
@@ -67,10 +67,10 @@ void Send::SendData(
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream()));
+                                    tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream(ctx)));
 #else
     CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream()));
+                                    tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream(ctx)));
 #endif
   }
 

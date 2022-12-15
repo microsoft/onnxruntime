@@ -80,11 +80,11 @@ using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
 using onnxruntime::MLFloat16;
+using onnxruntime::narrow;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
 using onnxruntime::ToOrtStatus;
 using onnxruntime::common::Status;
-using onnxruntime::narrow;
 
 using namespace onnxruntime;
 
@@ -286,7 +286,7 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
 #ifdef USE_CUDA
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
-      return provider_info->CreateGPUDataTransfer(nullptr);
+      return provider_info->CreateGPUDataTransfer();
     }
   }
 #endif
@@ -775,7 +775,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<std::string> feed_names(input_len);
   std::vector<OrtValue> feeds(input_len);
@@ -792,9 +791,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     }
 
     feed_names[i] = input_names[i];
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
-
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
   }
 
   // Create output feed
@@ -810,8 +807,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] != nullptr) {
       ::OrtValue& value = *(output[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -827,8 +822,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     return ToOrtStatus(status);
   for (size_t i = 0; i != output_names_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (output[i] == nullptr) {
       GSL_SUPPRESS(r .11)
       output[i] = new OrtValue(value);
@@ -2021,9 +2014,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = narrow<int>(available_providers.size());
+  GSL_SUPPRESS(r .11)
   char** const out = new char*[available_count];
   if (out) {
     for (int i = 0; i < available_count; i++) {
+      GSL_SUPPRESS(r .11)
       out[i] = new char[MAX_LEN + 1];
 #ifdef _MSC_VER
       strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
@@ -2614,29 +2609,26 @@ static constexpr OrtApi ort_api_1_to_12 = {
     // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
+    &OrtApis::SetGlobalIntraOpThreadAffinity,
 };
-
-
-
-
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
-static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void *) == 101, "Size of version 1 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void *) == 118, "Size of version 2 API cannot change");
-static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void *) == 124,
+static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void*) == 118, "Size of version 2 API cannot change");
+static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void*) == 124,
               "Size of version 3 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void *) == 126,
+static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void*) == 126,
               "Size of version 4 API cannot change");
-static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void *) == 149, "Size of version 5 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void *) == 157, "Size of version 6 API cannot change");
+static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Size of version 5 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
 static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void *) == 218, "Size of version 12 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void *) == 224, "Size of version 13 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.14.0",

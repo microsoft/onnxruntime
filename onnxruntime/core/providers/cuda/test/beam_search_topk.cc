@@ -1,6 +1,7 @@
 #ifndef NDEBUG
 
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 #include <algorithm>
 #include <numeric>
@@ -87,7 +88,7 @@ bool TestBeamSearchTopK() {
                        + batch_size * beam_size * k * (max_vocab_parts + 1) * 2 * 4  // tmp
                        + batch_size * k * 3 * 4;                                     // output size
   void* cuda_buffer = nullptr;
-  cudaMalloc(&cuda_buffer, buffer_size);
+  CUDA_CALL_THROW(cudaMalloc(&cuda_buffer, buffer_size));
   float* values_device = (float*)cuda_buffer;
   float* top_k_1st_values_tmp = (float*)(values_device + batch_x_beam_x_vocab);
   int32_t* top_k_1st_tokens_tmp = (int32_t*)(top_k_1st_values_tmp + batch_size * beam_size * k * max_vocab_parts);
@@ -96,7 +97,7 @@ bool TestBeamSearchTopK() {
   float* top_k_value = (float*)(top_k_2nd_tokens_tmp + batch_size * beam_size * k);
   int32_t* top_k_token = (int32_t*)(top_k_value + batch_size * k);
   int32_t* top_k_indices = (int32_t*)(top_k_token + batch_size * k);
-  cudaMemcpy(values_device, values.data(), batch_x_beam_x_vocab * 4, cudaMemcpyHostToDevice);
+  CUDA_CALL_THROW(cudaMemcpy(values_device, values.data(), batch_x_beam_x_vocab * 4, cudaMemcpyHostToDevice));
 
   contrib::cuda::BeamSearchTopK(values_device,
                                 batch_size,
@@ -115,9 +116,9 @@ bool TestBeamSearchTopK() {
   std::vector<float> top_k_values_host(batch_size * k);
   std::vector<int32_t> top_k_token_host(batch_size * k);
   std::vector<int32_t> top_k_indices_host(batch_size * k);
-  cudaMemcpy(top_k_values_host.data(), top_k_value, batch_size * k * 4, cudaMemcpyDeviceToHost);
-  cudaMemcpy(top_k_token_host.data(), top_k_token, batch_size * k * 4, cudaMemcpyDeviceToHost);
-  cudaMemcpy(top_k_indices_host.data(), top_k_indices, batch_size * k * 4, cudaMemcpyDeviceToHost);
+  CUDA_CALL_THROW(cudaMemcpy(top_k_values_host.data(), top_k_value, batch_size * k * 4, cudaMemcpyDeviceToHost));
+  CUDA_CALL_THROW(cudaMemcpy(top_k_token_host.data(), top_k_token, batch_size * k * 4, cudaMemcpyDeviceToHost));
+  CUDA_CALL_THROW(cudaMemcpy(top_k_indices_host.data(), top_k_indices, batch_size * k * 4, cudaMemcpyDeviceToHost));
   for (int32_t i = 0; i < batch_size * k; i++) {
     if (top_k_values_ref[i] != top_k_values_host[i] ||
         top_k_tokens_ref[i] != top_k_token_host[i] ||
