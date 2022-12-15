@@ -90,8 +90,8 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       ROCBLAS_RETURN_IF_ERROR(rocblasCopyHelper(
-          Stream(),
-          RocblasHandle(),
+          Stream(ctx),
+          GetRocblasHandle(ctx),
           M * N,
           b_data,
           0,
@@ -100,36 +100,36 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
-          RocblasHandle(),
+          GetRocblasHandle(ctx),
           rocblas_operation_none,
           rocblas_operation_none,
           N, M, 1,
           /*alpha*/ &one,
           b_data, N,
-          GetConstOnes<HipT>(M), 1,
+          GetConstOnes<HipT>(M, Stream(ctx)), 1,
           /*beta*/ &zero,
           out_data, N));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
-          RocblasHandle(),
+          GetRocblasHandle(ctx),
           rocblas_operation_none,
           rocblas_operation_none,
           N, M, 1,
           /*alpha*/ &one,
-          GetConstOnes<HipT>(N), N,
+          GetConstOnes<HipT>(N, Stream(ctx)), N,
           b_data, 1,
           /*beta*/ &zero,
           out_data, N));
     } else {
       // B is (M, N), no broadcast needed.
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(T), hipMemcpyDeviceToDevice, Stream()));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(T), hipMemcpyDeviceToDevice, Stream(ctx)));
     }
   }
 
   return tunable::blas::column_major::Gemm(
-      IsTunableOpEnabled(), Stream(),
-      RocblasHandle(),
+      IsTunableOpEnabled(), Stream(ctx),
+      GetRocblasHandle(ctx),
       trans_B_ ? BlasOp::Trans : BlasOp::NonTrans,
       trans_A_ ? BlasOp::Trans : BlasOp::NonTrans,
       N, M, K,

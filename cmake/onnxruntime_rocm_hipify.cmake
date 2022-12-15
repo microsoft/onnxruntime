@@ -151,6 +151,8 @@ set(provider_excluded_files
   "cuda_profiler.h"
   "cuda_provider_factory.cc"
   "cuda_provider_factory.h"
+  "cuda_stream_handle.cc",
+  "cuda_stream_handle.h",
   "cuda_utils.cu"
   "cudnn_common.cc"
   "cudnn_common.h"

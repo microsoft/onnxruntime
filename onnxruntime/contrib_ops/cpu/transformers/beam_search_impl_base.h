@@ -129,7 +129,7 @@ class BeamSearchBase : public GenerateBase  {
   BeamSearchBase(OpKernelContextInternal& context,
                  const SessionState& decoder_session_state,
                  concurrency::ThreadPool* thread_pool,
-                 void* cuda_stream,
+                 Stream* ort_stream,
                  IConsoleDumper* cuda_dumper,
                  BeamSearchParameters& params,
                  const GenerationDeviceHelper::TopkFunc& topk_func,
@@ -139,7 +139,7 @@ class BeamSearchBase : public GenerateBase  {
       :  GenerateBase(context,
                       decoder_session_state,
                       thread_pool,
-                      cuda_stream,
+                      ort_stream,
                       cuda_dumper,
                       topk_func,
                       device_copy_func),
@@ -233,7 +233,7 @@ Status BeamSearchBase<T>::ProcessLogits(
     int counter) {
   return process_logits_func_(logits, &beam_state, &cpu_state, &(cpu_state.sequences), allocator,
                               thread_pool_, &logits_processors_, beam_scorer_.get(),
-                              parameters_, counter, cuda_stream_, GetConsoleDumper());
+                              parameters_, counter, ort_stream_, GetConsoleDumper());
 }
 
 template <typename T>
@@ -253,7 +253,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
   // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
   ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores,
                                         beam_scores,
-                                        cuda_stream_,
+                                        ort_stream_,
                                         DeviceCopyDirection::hostToDevice));
 
   beam_next_tokens = beam_scorer_->GetNextTokens();

@@ -43,6 +43,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("CudaErrString", "RocmErrString")
     s = s.replace("CudaAsyncBuffer", "RocmAsyncBuffer")
     s = s.replace("CudaKernel", "RocmKernel")
+    s = s.replace("CudaStream", "RocmStream")
     s = s.replace("ToCudaType", "ToHipType")
     s = s.replace("CudaT", "HipT")
     s = s.replace("CUDA_LONG", "HIP_LONG")

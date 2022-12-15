@@ -132,7 +132,7 @@ class GreedySearchBase : public GenerateBase {
   GreedySearchBase(OpKernelContextInternal& context,
                    const SessionState& decoder_session_state,
                    concurrency::ThreadPool* thread_pool,
-                   void* cuda_stream,
+                   Stream* ort_stream,
                    IConsoleDumper* cuda_dumper,
                    ParametersT& params,
                    const GenerationDeviceHelper::TopkFunc& topk_func,
@@ -141,7 +141,7 @@ class GreedySearchBase : public GenerateBase {
     : GenerateBase(context,
                    decoder_session_state,
                    thread_pool,
-                   cuda_stream,
+                   ort_stream,
                    cuda_dumper,
                    topk_func,
                    device_copy_func),
@@ -226,7 +226,7 @@ Status GreedySearchBase<T, ParametersT>::ProcessLogits(
   bool use_sampling = std::is_same<ParametersT, SamplingParameters>::value;
   return process_logits_func_(logits, &greedy_state, &sampling_state, &(greedy_state.sequences), allocator,
                               this->thread_pool_, &this->logits_processors_, parameters_,
-                              use_sampling, counter, this->cuda_stream_, this->GetConsoleDumper());
+                              use_sampling, counter, this->ort_stream_, this->GetConsoleDumper());
 }
 
 template <typename T, typename ParametersT>

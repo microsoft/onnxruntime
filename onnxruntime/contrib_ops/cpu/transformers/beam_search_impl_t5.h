@@ -24,7 +24,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                T5EncoderSubgraph& encoder_subgraph,
                T5DecoderSubgraph& decoder_subgraph,
                concurrency::ThreadPool* thread_pool,
-               void* cuda_stream,
+               Stream* ort_stream,
                IConsoleDumper* cuda_dumper,
                BeamSearchParameters& params,
                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
@@ -39,7 +39,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
                const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
-                          cuda_stream, cuda_dumper, params,
+                          ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
         encoder_session_state_(encoder_session_state),
         encoder_subgraph_(encoder_subgraph),
@@ -131,7 +131,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
       buffer,
-      decoder_input_ids));
+      decoder_input_ids,
+      this->ort_stream_));
 
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,
@@ -140,7 +141,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                              {},
                                              ExecutionMode::ORT_SEQUENTIAL,
                                              this->context_.GetTerminateFlag(),
-                                             this->context_.Logger()));
+                                             this->context_.Logger(),
+                                             this->ort_stream_));
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -195,7 +197,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                         cpu_state.sequence_lengths,
                         parameters->batch_size,
                         parameters->num_beams,
-                        this->cuda_stream_);
+                        this->ort_stream_);
 
   // ------------------------------------------------------------------------------
   // Generate next token from logits output from encoder, and initialize decoder inputs.
@@ -225,7 +227,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              this->expand_buffer_float_func_,
                                                              this->expand_buffer_float16_func_,
                                                              parameters->num_beams,
-                                                             this->cuda_stream_,
+                                                             this->ort_stream_,
                                                              decoder_subgraph_.UseSequenceAsInputIds(),
                                                              current_length,
                                                              cpu_state.sequences));
@@ -252,7 +254,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                     {},
                                     ExecutionMode::ORT_SEQUENTIAL,
                                     this->context_.GetTerminateFlag(),
-                                    this->context_.Logger());
+                                    this->context_.Logger(),
+                                    this->ort_stream_);
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -284,7 +287,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       const int num_present_outputs = 2 * parameters->num_layers;  // number of outputs with name like present_*
       ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
           this->temp_space_allocator_,
-          this->cuda_stream_,
+          this->ort_stream_,
           decoder_fetches,
           decoder_feeds,
           num_present_outputs,

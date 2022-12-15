@@ -156,7 +156,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
     BinaryElementwisePreparation prepare;                                                                        \
     ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
-        Stream(),                                                                                                \
+        Stream(context),                                                                                         \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),     \
@@ -444,19 +444,19 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
 
   switch (prepare.lhs_tensor->GetElementType()) {
     case on::TensorProto_DataType_INT32:
-      s = DispatchOnFirstArg<int32_t>(Stream(), prepare);
+      s = DispatchOnFirstArg<int32_t>(Stream(context), prepare);
       break;
     case on::TensorProto_DataType_INT64:
-      s = DispatchOnFirstArg<int64_t>(Stream(), prepare);
+      s = DispatchOnFirstArg<int64_t>(Stream(context), prepare);
       break;
     case on::TensorProto_DataType_FLOAT:
-      s = DispatchOnFirstArg<float>(Stream(), prepare);
+      s = DispatchOnFirstArg<float>(Stream(context), prepare);
       break;
     case on::TensorProto_DataType_DOUBLE:
-      s = DispatchOnFirstArg<double>(Stream(), prepare);
+      s = DispatchOnFirstArg<double>(Stream(context), prepare);
       break;
     case on::TensorProto_DataType_FLOAT16:
-      s = DispatchOnFirstArg<MLFloat16>(Stream(), prepare);
+      s = DispatchOnFirstArg<MLFloat16>(Stream(context), prepare);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
@@ -490,7 +490,7 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
-        Stream(), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,                             \
+        Stream(context), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,                      \
         reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.lhs_tensor->Data<data_type>()), \
         &prepare.rhs_padded_strides,                                                                                \
         reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.rhs_tensor->Data<data_type>()), \
@@ -536,7 +536,7 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
 
   Impl_Compare(
-      Stream(),
+      Stream(context),
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()),

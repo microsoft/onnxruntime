@@ -64,7 +64,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
 
   return LaunchEmbedLayerNormKernel(
-          Stream(),
+      Stream(context),
           output->MutableData<T>(),
           mask_index->MutableData<int32_t>(),
           input_ids->Data<int32_t>(),
