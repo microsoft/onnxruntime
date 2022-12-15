@@ -230,21 +230,24 @@ stages:
             **/*.pdb
             **/*.dll
       
-      - task: BatchScript@1
-        displayName: 'Add zlib to system path'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
-          modifyEnvironment: true
-          arguments: '$(Build.BinariesDirectory)\$(BuildConfig)'
-          workingFolder: '$(Build.BinariesDirectory)'
-
-      - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-        displayName: 'Run Python Tests'
+      - ${{ if (contains(parameters.build_py_parameters, '--use_cloud')) }}:
+        - task: BatchScript@1
+          displayName: 'Add zlib to system path'
+          inputs:
+            filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_zlib.bat'
+            modifyEnvironment: true
+            arguments: '$(Build.BinariesDirectory)\$(BuildConfig)'
+            workingFolder: '$(Build.BinariesDirectory)'
+        #- task: Test cloud endpoint
+    
+      - ${{ else }}:
+        - powershell: |
+           python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+           Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+           Remove-Item -Recurse -Force onnxruntime
+           python onnx_backend_test_series.py
+          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+          displayName: 'Run Python Tests'
 
       #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
       #in 32 bits Win32 build. I tried all the settings but they all don't work.
