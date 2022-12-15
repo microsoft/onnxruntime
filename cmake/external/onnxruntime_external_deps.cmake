@@ -95,7 +95,7 @@ FetchContent_Declare(
     flatbuffers
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
-    FIND_PACKAGE_ARGS NAMES Flatbuffers
+    FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
 )
 
 #Here we support two build mode:
