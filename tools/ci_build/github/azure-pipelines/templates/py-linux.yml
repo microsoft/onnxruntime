@@ -19,7 +19,7 @@ parameters:
   
 - name: device
   type: string
-  default: 'CPU'
+  default: "-d CPU"
 
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}
