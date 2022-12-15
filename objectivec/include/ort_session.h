@@ -106,6 +106,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
 
 /**
+ * Available since 1.14.
  * Appends an execution provider to the session configuration options.
  * The execution provider list is ordered by decreasing priority
  * @param providerName Provider name. For example, "xnnpack".
