@@ -34,7 +34,7 @@ class T5DecoderSubgraph : public Subgraph {
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
       const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
       int num_beam,
-      void* stream,
+      Stream* stream,
       bool use_sequence_as_input_ids,
       int cur_len,
       transformers::Sequences& sequences);

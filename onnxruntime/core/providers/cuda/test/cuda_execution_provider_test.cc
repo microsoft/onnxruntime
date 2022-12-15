@@ -10,6 +10,7 @@
 #include "core/providers/cuda/test/all_tests.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -22,9 +23,11 @@ bool TestDeferredRelease() {
   // Initialize allocators in EP.
   onnxruntime::AllocatorManager allocator_manager;
   ep.RegisterAllocator(allocator_manager);
+  AllocatorPtr gpu_alloctor = ep.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
   AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, false, nullptr, nullptr);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
@@ -33,13 +36,14 @@ bool TestDeferredRelease() {
     // Allocate 10MB CUDA pinned memory.
     auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
     // Release it using CUDA callback.
-    ep.AddDeferredReleaseCPUPtr(pinned_buffer.release());
+    stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
   }
 
   // Memory stats
   AllocatorStats stats;
   cpu_pinned_alloc->GetStats(&stats);
   ORT_ENFORCE(stats.num_allocs == n_allocs);
+  ORT_THROW_IF_ERROR(stream.CleanUpOnRunEnd());
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
   return true;
 }
@@ -61,13 +65,14 @@ bool TestDeferredReleaseWithoutArena() {
       false /* no arena */);
   auto cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
   allocator_manager.InsertAllocator(cuda_pinned_alloc);
-
   // Use existing allocator in allocator_manager.
   // Also register new allocator created by this EP in allocator_manager.
   ep.RegisterAllocator(allocator_manager);
+  AllocatorPtr gpu_alloctor = ep.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
   AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, false, nullptr, nullptr);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
@@ -76,9 +81,10 @@ bool TestDeferredReleaseWithoutArena() {
     // Allocate 10MB CUDA pinned memory.
     auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
     // Release it using CUDA callback.
-    ep.AddDeferredReleaseCPUPtr(pinned_buffer.release());
+    stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
   }
 
+  ORT_THROW_IF_ERROR(stream.CleanUpOnRunEnd());
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
   return true;
 }
