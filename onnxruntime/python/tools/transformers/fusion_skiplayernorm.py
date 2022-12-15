@@ -76,7 +76,7 @@ class FusionSkipLayerNormalization(Fusion):
         if residual_add_has_multiple_consumers:
             outputs_to_keep.extend([add.output[0]])
 
-        outputs = ([node.output[0]],)
+        outputs = [node.output[0]]
 
         # Skip the other optional outputs of SkipLayerNormalization before adding the Add's output
         if residual_add_has_multiple_consumers:
