@@ -128,7 +128,7 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.run_beam_search(
             f"-m gpt2 --output_sequences_score -e --output {self.beam_search_onnx_path}",
             sentences=None,
-            append_arguments=False
+            append_arguments=False,
         )
 
 

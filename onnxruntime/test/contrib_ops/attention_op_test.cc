@@ -186,7 +186,7 @@ static void RunAttentionTest(
         if (use_float16) {
           auto past_cache = ReorderToKvCache(ToFloat16(*past_data).data(), batch_size, past_sequence_length,
                                              max_sequence_length, number_of_heads, head_size);
-          auto present_cache = ReorderToKvCache(ToFloat16(*present_data).data(), batch_size, total_sequence_length,
+          auto present_cache = ReorderToKvCache(ToFloat16(*present_data).data(), batch_size, static_cast<int>(total_sequence_length),
                                                 max_sequence_length, number_of_heads, head_size);
 
           tester.AddInput<MLFloat16>("past", cache_dims, past_cache);
@@ -194,7 +194,7 @@ static void RunAttentionTest(
         } else {
           auto past_cache = ReorderToKvCache(past_data->data(), batch_size, past_sequence_length,
                                              max_sequence_length, number_of_heads, head_size);
-          auto present_cache = ReorderToKvCache(present_data->data(), batch_size, total_sequence_length,
+          auto present_cache = ReorderToKvCache(present_data->data(), batch_size, static_cast<int>(total_sequence_length),
                                                 max_sequence_length, number_of_heads, head_size);
           tester.AddInput<float>("past", cache_dims, past_cache);
           tester.AddOutput<float>("present", cache_dims, present_cache);

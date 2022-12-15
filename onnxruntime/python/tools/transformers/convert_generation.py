@@ -883,6 +883,7 @@ def move_initializers(
 
     return moved_initializers
 
+
 def _attribute_to_pair(attribute):
     """
     Convert attribute to kwarg format for use with onnx.helper.make_node.
@@ -919,17 +920,20 @@ def _attribute_to_pair(attribute):
 
     return (attribute.name, value)
 
+
 def kwargs_of(node):
     kwargs = {}
     for attr in node.attribute:
         (key, value) = _attribute_to_pair(attr)
         kwargs.update({key: value})
     if node.domain:
-        kwargs.update({"domain" : node.domain})
+        kwargs.update({"domain": node.domain})
     return kwargs
+
 
 def shape_of(vi):
     return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
+
 
 def update_decoder_subgraph_past_present_share_buffer(subg):
     input_past_0 = 3
@@ -941,7 +945,8 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
             vi = onnx.helper.make_tensor_value_info(
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]])
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
+            )
         new_inputs.extend([vi])
     new_inputs.extend([onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])])
     subg.ClearField("input")
@@ -954,7 +959,8 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
             vi = onnx.helper.make_tensor_value_info(
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]])
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
+            )
         new_outputs.extend([vi])
     subg.ClearField("output")
     subg.output.extend(new_outputs)
@@ -963,7 +969,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
     for node in subg.node:
         if node.op_type == "Attention":
             kwargs = kwargs_of(node)
-            kwargs.update({"past_present_share_buffer" : 1})
+            kwargs.update({"past_present_share_buffer": 1})
             nis = []
             nis.extend(node.input)
             while len(nis) < 8:
