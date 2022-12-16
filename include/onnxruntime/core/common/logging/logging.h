@@ -128,13 +128,13 @@ class LoggingManager final {
                                        Severity min_severity, bool filter_user_data, int max_vlog_level = -1);
 
   /**
-     Gets the default logger instance if set. Throws if no default logger is currently registered.
+     Gets the default logger instance if set.
      @remarks
      Creating a LoggingManager instance with is_default_instance == true registers a default logger.
      Note that the default logger is only valid until the LoggerManager that registered it is destroyed.
-     @returns The default logger if available.
+     @returns The default logger if available, or a dummy logger doing nothing.
   */
-  static const Logger& DefaultLogger();
+  static const Logger& DefaultLogger() noexcept;
 
   /**
     Return a boolean indicating if the default logger has been initialized
@@ -300,7 +300,7 @@ class Logger {
   int max_vlog_level_;
 };
 
-inline const Logger& LoggingManager::DefaultLogger() {
+inline const Logger& LoggingManager::DefaultLogger() noexcept {
   if (s_default_logger_) {
     return *s_default_logger_;
   } else {
