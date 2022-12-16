@@ -54,7 +54,7 @@ class AdamWOptimizerBase {
                          const TensorSeq* values, TensorSeq* updated_values) const;
 
  protected:
-  virtual Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const = 0;
+  virtual Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor, onnxruntime::Stream* stream) const = 0;
 
   float alpha_;
   float beta_;

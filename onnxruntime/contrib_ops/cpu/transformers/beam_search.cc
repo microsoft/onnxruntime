@@ -175,7 +175,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           has_init_decoder_ ? init_run_gpt_subgraph_.get() : nullptr,
           *decoder_session_state,
           *gpt_subgraph_,
-          thread_pool, cuda_stream_, dumper_, parameters,
+          thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
@@ -194,7 +194,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           has_init_decoder_ ? init_run_gpt_subgraph_.get() : nullptr,
           *decoder_session_state,
           *gpt_subgraph_,
-          thread_pool, cuda_stream_, dumper_, parameters,
+          thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
@@ -217,7 +217,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   if (!t5_decoder_subgraph_->IsOutputFloat16()) {
     BeamSearchT5<float> impl{
         *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-        *t5_decoder_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
+        *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
         add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
         topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
         process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
@@ -235,7 +235,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   } else {
     BeamSearchT5<MLFloat16> impl{
         *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-        *t5_decoder_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
+        *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
         add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
         topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
         process_logits_fp16_func_,

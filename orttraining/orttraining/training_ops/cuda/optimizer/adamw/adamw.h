@@ -20,7 +20,7 @@ class AdamWOptimizer final : public CudaKernel, public contrib::AdamWOptimizerBa
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
+  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor, onnxruntime::Stream* stream) const override;
 };
 
 }  // namespace cuda

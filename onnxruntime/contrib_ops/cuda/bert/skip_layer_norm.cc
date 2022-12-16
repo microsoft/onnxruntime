@@ -101,7 +101,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   return LaunchSkipLayerNormKernel<CudaT>(
-      Stream(),
+      Stream(ctx),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
       skip_input_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_add_output->MutableData<T>()) : nullptr,
       reinterpret_cast<const CudaT*>(input->Data<T>()),
