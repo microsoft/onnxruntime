@@ -729,7 +729,7 @@ See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionPro
 
 The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
 
-The pre-built ONNX Runtime Mobile package for iOS, `onnxruntime-objc` and `onnxruntime-objc` in [CocoaPods](https://cocoapods.org/), includes the CoreML EP.
+The pre-built ONNX Runtime Mobile package for iOS, `onnxruntime-c` and `onnxruntime-objc` in [CocoaPods](https://cocoapods.org/), includes the CoreML EP. (Package `onnxruntime-objc` with XNNPACK will be available since 1.14.)
 
 
 If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
@@ -762,7 +762,7 @@ Linux example:
 ```bash
 ./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
 ```
-### Build for iOS
+### Build for iOS (available since 1.14)
 A Mac machine is required to build package for iOS. Please follow this [guide](./ios.md) to set up environment firstly.
 #### Create a minimal build with XNNPACK EP support
 
