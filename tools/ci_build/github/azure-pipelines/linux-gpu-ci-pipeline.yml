@@ -12,6 +12,7 @@ jobs:
   variables:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    CACHE_RESTORED: 'false'
   workspace:
     clean: all
   pool: Linux-CPU-2019
