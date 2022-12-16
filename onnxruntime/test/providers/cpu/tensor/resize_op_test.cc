@@ -1784,6 +1784,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
     return;
   }
   OpTester test("Resize", 18);
+  test.AddAttribute<int64_t>("antialias", 1LL);
+
   std::vector<float> roi{};
   std::vector<float> scales{};
 
@@ -1796,7 +1798,6 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
       test.AddAttribute<float>("cubic_coeff_a", std::stof(v));
     }
   }
-  // test.AddAttribute<int64_t>("antialias", 1LL);
 
   test.AddInput<T>("X", input_shape, input_data);
   test.AddInput<float>("roi", {0}, roi);
@@ -1903,19 +1904,25 @@ TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
 }
 
 TEST(ResizeOpTest, Antialias_Bicubic_No_ExcludeOutside) {
-  std::vector<float> X(16);
+  std::vector<float> X(48);
   std::iota(X.begin(), X.end(), 1.0f);
-  std::vector<float> Y = {1.7750092f, 3.1200073f, 4.4650054f, 7.1550016f, 8.5f,
-                          9.844998f, 12.534994f, 13.8799925f, 15.224991f};
-  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+  std::vector<float> Y = {2.175381f, 3.655320f, 5.204702f, 6.684640f, 10.245370f,
+                          11.725308f, 13.274692f, 14.754630f, 18.315359f, 19.795298f,
+                          21.344681f, 22.824619f, 26.175381f, 27.655319f, 29.204702f,
+                          30.684641f, 34.245369f, 35.725307f, 37.274693f, 38.754631f,
+                          42.315361f, 43.795300f, 45.344681f, 46.824619f};
+  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 2, 4, 6}, X, {1, 2, 3, 4}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
-  std::vector<float> X(16);
+  std::vector<float> X(48);
   std::iota(X.begin(), X.end(), 1.0f);
-  std::vector<float> Y = {1.8044884f, 3.1435907f, 4.482693f, 7.1608977f, 8.5f,
-                          9.839103f, 12.517307f, 13.856409f, 15.195512f};
-  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+  std::vector<float> Y = {2.222252f, 3.670954f, 5.259818f, 6.708520f, 10.256866f, 11.705568f,
+                          13.294432f, 14.743134f, 18.291479f, 19.740183f, 21.329046f,
+                          22.777748f, 26.222252f, 27.670954f, 29.259817f,
+                          30.708521f, 34.256866f, 35.705566f, 37.294434f, 38.743134f, 42.291481f,
+                          43.740181f, 45.329044f, 46.777748f};
+  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "1"}}, {1, 2, 4, 6}, X, {1, 2, 3, 4}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Bicubic_Dtype) {
