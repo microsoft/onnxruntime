@@ -25,7 +25,6 @@ class CUPTIManager : public GPUTracerManager<CUPTIManager> {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CUPTIManager);
   ~CUPTIManager();
   static CUPTIManager& GetInstance();
-  uint64_t GetGPUTimestampInNanoseconds();
 
  protected:
   bool PushUniqueCorrelation(uint64_t unique_cid);
