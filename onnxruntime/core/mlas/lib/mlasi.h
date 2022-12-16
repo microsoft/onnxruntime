@@ -2067,22 +2067,14 @@ MlasReadTimeStampCounter(void)
 // Aligned buffer for GEMM packing, etc.
 //
 
-struct MlasAlignedDeleter {
-    void operator()(void* ptr)
-    {
-        if (ptr != nullptr) {
-#ifdef _MSC_VER
-            _aligned_free(ptr);
-#else
-            free(ptr);
-#endif
-        }
-    }
-};
 
 constexpr size_t ThreadedBufAlignment = 64;
 extern thread_local size_t ThreadedBufSize;
-extern thread_local std::unique_ptr<uint8_t, MlasAlignedDeleter> ThreadedBufHolder;
+#ifdef _MSC_VER
+extern thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
+#else
+extern thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder;
+#endif
 
 MLAS_FORCEINLINE
 constexpr size_t
