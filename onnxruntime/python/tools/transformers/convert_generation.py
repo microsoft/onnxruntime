@@ -1459,21 +1459,19 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info(
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
-
+            if past_present_share_buffer:
+                logger.info("*****update init decoder subgraph to make past and present share buffer******************")
+                update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
             node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
         else:
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
-        node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
-
         if past_present_share_buffer:
             logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
-            if gpt2_init_decoder_generated:
-                logger.info("*****update init decoder subgraph to make past and present share buffer******************")
-                update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
+        node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
     input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
