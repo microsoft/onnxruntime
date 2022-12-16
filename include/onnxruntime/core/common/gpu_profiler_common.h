@@ -336,8 +336,8 @@ protected:
 
   uint64_t GetCPUTimestampInNanoseconds() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()
-    ).count();
+               std::chrono::high_resolution_clock::now().time_since_epoch())
+        .count();
   }
 
   std::mutex manager_instance_mutex_;
