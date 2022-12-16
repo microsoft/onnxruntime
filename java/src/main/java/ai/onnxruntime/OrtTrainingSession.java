@@ -5,6 +5,8 @@
 package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.Result;
+import ai.onnxruntime.OrtSession.RunOptions;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -33,6 +35,7 @@ public final class OrtTrainingSession implements AutoCloseable {
 
   private final long nativeHandle;
   private final OrtAllocator allocator;
+  private final OrtCheckpointState checkpoint;
 
   private final String trainPath;
   private final String evalPath;
@@ -46,6 +49,21 @@ public final class OrtTrainingSession implements AutoCloseable {
 
   private boolean closed = false;
 
+    /**
+     * Constructs an {@code OrtTrainingSession}.
+     *
+     * <p>Note the guard on training being enabled is not present in this method, and it should only be called after
+     * {@link OnnxRuntime#trainingEnabled} has been checked to be true.
+     *
+     * @param env The environment.
+     * @param allocator The memory allocator.
+     * @param options The session options.
+     * @param checkpoint The checkpoint to load.
+     * @param trainPath The path to the training model.
+     * @param evalPath The path to the evaluation model.
+     * @param optimizerPath The path to the optimizer model.
+     * @throws OrtException If the native creation failed.
+     */
   OrtTrainingSession(
       OrtEnvironment env,
       OrtAllocator allocator,
@@ -66,6 +84,7 @@ public final class OrtTrainingSession implements AutoCloseable {
             evalPath,
             optimizerPath),
         allocator,
+        checkpoint,
         trainPath,
         evalPath,
         optimizerPath);
@@ -83,12 +102,14 @@ public final class OrtTrainingSession implements AutoCloseable {
   private OrtTrainingSession(
       long nativeHandle,
       OrtAllocator allocator,
+      OrtCheckpointState checkpoint,
       String trainPath,
       String evalPath,
       String optimizerPath)
       throws OrtException {
     this.nativeHandle = nativeHandle;
     this.allocator = allocator;
+    this.checkpoint = checkpoint;
     this.trainPath = trainPath;
     this.evalPath = evalPath;
     this.optimizerPath = optimizerPath;
@@ -171,6 +192,7 @@ public final class OrtTrainingSession implements AutoCloseable {
   @Override
   public void close() {
     if (!closed) {
+      checkpoint.close();
       closeSession(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
       closed = true;
     } else {
@@ -658,6 +680,15 @@ public final class OrtTrainingSession implements AutoCloseable {
   /**
    * Applies the gradient updates to the trainable parameters using the optimizer model.
    *
+   * @throws OrtException If the native call failed.
+   */
+  public void optimizerStep() throws OrtException {
+    optimizerStep(null);
+  }
+
+  /**
+   * Applies the gradient updates to the trainable parameters using the optimizer model.
+   *
    * <p>The run options can be used to control logging and to terminate the call early.
    *
    * @param runOptions Options for controlling the model execution.
@@ -892,9 +923,24 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the checkpoint failed to load.
      */
     static OrtCheckpointState loadCheckpoint(Path checkpointPath) throws OrtException {
-      String pathStr = checkpointPath.toString();
-      return new OrtCheckpointState(
-          loadCheckpoint(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, pathStr));
+        String pathStr = checkpointPath.toString();
+        return loadCheckpoint(pathStr);
+    }
+
+    /**
+     * Loads a checkpoint from disk.
+     *
+     * @param checkpoint The path to load
+     * @return The checkpoint.
+     * @throws OrtException If the checkpoint failed to load.
+     */
+    static OrtCheckpointState loadCheckpoint(String checkpoint) throws OrtException {
+      if (OnnxRuntime.trainingEnabled) {
+        return new OrtCheckpointState(
+            loadCheckpoint(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, checkpoint));
+      } else {
+        throw new IllegalStateException("Training is not enabled in this build of ONNX Runtime.");
+      }
     }
 
     @Override

@@ -10,9 +10,6 @@
 #include "onnxruntime_training_c_api.h"
 #include "ai_onnxruntime_OrtTrainingSession.h"
 
-const char * const ORTJNI_StringClassName = "java/lang/String";
-const char * const ORTJNI_OnnxValueClassName = "ai/onnxruntime/OnnxValue";
-
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    createTrainingSession
@@ -149,7 +146,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainIn
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, ORTJNI_StringClassName);
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
 
   // Get the number of inputs
   size_t numInputs = 0;
@@ -199,7 +196,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOu
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, ORTJNI_StringClassName);
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
 
   // Get the number of outputs
   size_t numOutputs = 0;
@@ -249,7 +246,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalInp
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, ORTJNI_StringClassName);
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
 
   // Get the number of inputs
   size_t numInputs = 0;
@@ -299,7 +296,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOut
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, ORTJNI_StringClassName);
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
 
   // Get the number of outputs
   size_t numOutputs = 0;
@@ -429,7 +426,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
   }
 
   // Construct the output array of ONNXValues
-  jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, ORTJNI_OnnxValueClassName);
+  jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, "ai/onnxruntime/OnnxValue");
   outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_int64_to_jsize(numOutputs), onnxValueClass, NULL);
 
   // Convert the output tensors into ONNXValues
@@ -553,7 +550,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
   }
 
   // Construct the output array of ONNXValues
-  jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, ORTJNI_OnnxValueClassName);
+  jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, "ai/onnxruntime/OnnxValue");
   outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_int64_to_jsize(numOutputs), onnxValueClass, NULL);
 
   // Convert the output tensors into ONNXValues
@@ -729,6 +726,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInfe
   const char* outputStr = (*jniEnv)->GetStringUTFChars(jniEnv, outputPath, NULL);
   checkOrtStatus(jniEnv, api, trainApi->ExportModelForInferencing(trainSession, outputStr, numOutputs, outputNames));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, outputPath, outputStr);
+  goto cleanup_array; // Only used in the WIN32 branch, but gcc complains we don't use this label otherwise
 #endif
 
 cleanup_array:

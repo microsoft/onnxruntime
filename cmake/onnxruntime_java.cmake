@@ -1,4 +1,4 @@
-# Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the MIT License.
 
 #set(CMAKE_VERBOSE_MAKEFILE on)
@@ -199,7 +199,12 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
   # it is better to not keep a daemon running
   set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
+
+# Append relevant native build flags to gradle command
 set(GRADLE_ARGS ${GRADLE_ARGS} ${ORT_PROVIDER_FLAGS})
+if (onnxruntime_ENABLE_TRAINING_APIS)
+    set(GRADLE_ARGS ${GRADLE_ARGS} "-DENABLE_TRAINING=1")
+endif()
 
 message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
