@@ -2071,7 +2071,7 @@ struct MlasAlignedDeleter {
     void operator()(void* ptr)
     {
         if (ptr != nullptr) {
-#ifdef _WIN32
+#ifdef _MSC_VER
             _aligned_free(ptr);
 #else
             free(ptr);
@@ -2098,13 +2098,21 @@ void
 MlasThreadedBufAlloc(size_t size)
 {
     if (size > ThreadedBufSize) {
+#ifdef _MSC_VER
         ThreadedBufHolder.reset(
-#ifdef _WIN32
-            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment))
+            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment)));
+#elif defined(__APPLE__)
+	// aligned_alloc unavailable macos 10.14 or earlier
+        void* ptr;
+        int err = posix_memalign(&ptr, ThreadedBufAlignment, size);
+        if (err != 0) {
+            ptr = nullptr;
+        }
+        ThreadedBufHolder.reset(reinterpret_cast<uint8_t*>(ptr));
 #else
-            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size))
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
 #endif
-        );
 
         ThreadedBufSize = size;
     }
