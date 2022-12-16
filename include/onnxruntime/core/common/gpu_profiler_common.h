@@ -224,6 +224,10 @@ class GPUTracerManager {
 #if 0
   // Functional API to be implemented by subclasses
   // Included here only for documentation purposes
+public:
+  uint64_t GetGPUTimestampInNanoseconds();
+
+protected:
   bool OnStartLogging();
   void OnStopLogging();
   void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
@@ -341,8 +345,34 @@ class GPUTracerManager {
 // Base class for a GPU profiler
 template <typename TManager>
 class GPUProfilerBase : public EpProfiler {
+ private:
+  inline uint64_t GetCPUTimestampInNanoseconds() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()
+    ).count();
+  }
+
+  inline uint64_t GetGPUTimestampInNanoseconds() {
+    auto& manager = TManager::GetInstance();
+    return manager.GetGPUTimestampInNanoseconds();
+  }
+
  protected:
-  GPUProfilerBase() = default;
+  GPUProfilerBase() {
+    uint64_t cpu_ts, gpu_ts1, gpu_ts2;
+    // warmup by getting a CPU and GPU timestamp
+    cpu_ts = this->GetCPUTimestampInNanoseconds();
+    gpu_ts1 = this->GetGPUTimestampInNanoseconds();
+
+    // measurement of actual skew
+    gpu_ts1 = this->GetGPUTimestampInNanoseconds();
+    cpu_ts = this->GetCPUTimestampInNanoseconds();
+    gpu_ts2 = this->GetGPUTimestampInNanoseconds();
+
+    auto gpu_ts = (gpu_ts1 + gpu_ts2) / 2;
+    offset_to_add_to_gpu_timestamps_ = cpu_ts - gpu_ts;
+  }
+
   virtual ~GPUProfilerBase() {}
 
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
@@ -368,35 +398,19 @@ class GPUProfilerBase : public EpProfiler {
         ++event_iter;
       }
 
-      int64_t origin_ts;
       bool copy_op_names = false;
       std::string op_name;
       std::string parent_name;
 
-      // Tracers may not use Jan 1 1970 as an epoch for timestamps.
-      // So, we need to adjust the timestamp to something sensible.
       if (event_iter != event_end && event_iter->ts == ts) {
-        // In this particular case we have located a parent event -- in the main event stream --
-        // for the GPU events. We use the timestamps from that event to adjust timestamps
-        origin_ts = event_iter->ts + 1;
+        // We've located a parent event, copy the op_name and set
+        // this event's parent_name property to the name of the parent.
         copy_op_names = true;
         op_name = event_iter->args["op_name"];
         parent_name = event_iter->name;
         merged_events.emplace_back(*event_iter);
         ++event_iter;
-      } else {
-        // No parent event, let's just set the timestamp based on the
-        // timestamp of the call to EpProfiler->Start()
-        origin_ts = ts;
       }
-
-      // calculate the offset from the origin to the
-      // first kernel event. Subsequent kernel event
-      // timestamps will have this offset subtracted from
-      // them to maintain relative timing between
-      // kernel events, while still roughly reconciling
-      // with the Jan 1 1970 epoch.
-      auto offset_from_origin = origin_ts - map_iter.second[0].ts;
 
       for (auto& evt : map_iter.second) {
         if (copy_op_names) {
@@ -406,7 +420,7 @@ class GPUProfilerBase : public EpProfiler {
           evt.args["parent_name"] = parent_name;
         }
 
-        evt.ts += offset_from_origin;
+        evt.ts += offset_to_add_to_gpu_timestamps_;
       }
 
       merged_events.insert(merged_events.end(),
@@ -421,6 +435,7 @@ class GPUProfilerBase : public EpProfiler {
 
   uint64_t client_handle_;
   TimePoint profiling_start_time_;
+  int64_t offset_to_add_to_gpu_timestamps_;
 
  public:
   virtual bool StartProfiling(TimePoint profiling_start_time) override {

@@ -28,6 +28,14 @@ RoctracerManager& RoctracerManager::GetInstance() {
   return instance;
 }
 
+uint64_t RoctracerManager::GetGPUTimestampInNanoseconds() {
+  uint64_t result;
+  if (roctracer_get_timestamp(&result) != ROCTRACER_STATUS_SUCCESS) {
+    ORT_THROW("Could not retrieve timestamp from GPU!");
+  }
+  return result;
+}
+
 RoctracerManager::~RoctracerManager() {}
 
 #define ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(expr_) \

@@ -38,6 +38,14 @@ CUPTIManager& CUPTIManager::GetInstance() {
   return instance;
 }
 
+uint64_t CUPTIManager::GetGPUTimestampInNanoseconds() {
+  uint64_t result;
+  if (cuptiGetTimestamp(&result) != CUPTI_SUCCESS) {
+    ORT_THROW("Could not retrieve timestamp from GPU!");
+  }
+  return result;
+}
+
 CUPTIManager::~CUPTIManager() {}
 
 bool CUPTIManager::OnStartLogging() {
