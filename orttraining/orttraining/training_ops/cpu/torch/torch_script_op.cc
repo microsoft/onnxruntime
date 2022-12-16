@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/torch/torch_script_op.h"
 
+#include <dlpack/dlpack.h>
 #include "core/dlpack/dlpack_converter.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "orttraining/training_ops/cpu/torch/torch_script_executor.h"

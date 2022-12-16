@@ -73,6 +73,7 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #ifdef USE_CUDA
 #include "orttraining/core/optimizer/torch_script_fusion.h"
+#include "orttraining/training_ops/cpu/torch/torch_script_executor.h"
 #endif  // USE_CUDA
 #endif
 
@@ -311,8 +312,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifdef ENABLE_TRAINING
       // Enable TorchScript fusion for CUDA EP only for now.
 #ifdef USE_CUDA
-      transformers.emplace_back(
-          std::make_unique<TorchScriptFusion>(InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
+      if (contrib::torch::TorchScriptExecutor::Instance().IsInitialized()) {
+        transformers.emplace_back(
+            std::make_unique<TorchScriptFusion>(InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
+      }
 #endif  // USE_CUDA
 
       // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.

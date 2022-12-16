@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <dlpack/dlpack.h>
 #include "core/common/common.h"
+
+struct DLManagedTensor;
 
 namespace onnxruntime {
 namespace contrib {
