@@ -258,22 +258,27 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             output_name_to_node,
         )
         if fc_nodes is None:
+            fc_nodes = self.model.match_parent_path(
+                split_fc,
+                ["Reshape", "Gemm", "Reshape", "SkipLayerNormalization"],
+                [0, 0, 0, 0],
+                output_name_to_node,
+            )
             if fc_nodes is None:
                 fc_nodes = self.model.match_parent_path(
                     split_fc,
-                    ["Reshape", "Gemm", "Reshape", "SkipLayerNormalization"],
-                    [0, 0, 0, 0],
+                    ["Add", "MatMul", "LayerNormalization"],
+                    [0, None, 0],
                     output_name_to_node,
                 )
                 if fc_nodes is None:
-                    # Vaery first Attention node.
-                    # TODO(hasesh): Should we also check for SkipLayerNormalization
                     fc_nodes = self.model.match_parent_path(
                         split_fc,
-                        ["Add", "MatMul", "LayerNormalization"],
+                        ["Add", "MatMul", "SkipLayerNormalization"],
                         [0, None, 0],
                         output_name_to_node,
                     )
+
             if fc_nodes is None:
                 logger.debug("fuse_attention: failed to match fc path")
                 return
