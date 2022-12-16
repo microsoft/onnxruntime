@@ -52,7 +52,7 @@ export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   rm -rf /build/$BUILD_CONFIG
-  ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
+  sudo ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
 
   cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
 done
