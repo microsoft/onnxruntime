@@ -33,7 +33,7 @@ class GreedySearchGpt : public GreedySearchBase<T> {
                   const SessionState& decoder_session_state,
                   GptSubgraph& gpt_subgraph,
                   concurrency::ThreadPool* thread_pool,
-                  void* cuda_stream,
+                  Stream* ort_stream,
                   IConsoleDumper* cuda_dumper,
                   GreedySearchParameters& params,
                   const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
@@ -46,7 +46,7 @@ class GreedySearchGpt : public GreedySearchBase<T> {
       : GreedySearchBase<T>(context,
                             decoder_session_state,
                             thread_pool,
-                            cuda_stream,
+                            ort_stream,
                             cuda_dumper,
                             params,
                             topk_func,
@@ -113,7 +113,8 @@ Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengt
                                                       feeds,
                                                       this->create_inputs_func_,
                                                       this->add_to_feeds_func_,
-                                                      buffer);
+                                                      buffer,
+                                                      this->ort_stream_);
   }
 
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
@@ -126,7 +127,8 @@ Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengt
                                           feeds,
                                           this->create_inputs_func_,
                                           this->add_to_feeds_func_,
-                                          buffer);
+                                          buffer,
+                                          this->ort_stream_);
 }
 
 template <typename T>
@@ -139,7 +141,7 @@ Status GreedySearchGpt<T>::UpdateFeeds(
     gsl::span<const int32_t> next_tokens) {
   gsl::span<const int32_t> place_holder;
   return update_feeds_func_(this->temp_space_allocator_,
-                            this->cuda_stream_,
+                            this->ort_stream_,
                             last_outputs,
                             next_inputs,
                             current_length,
@@ -181,7 +183,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fet
 
   init_greedy_state_func_(&greedy_state,
                           greedy_state.sequence_lengths,
-                          this->cuda_stream_);
+                          this->ort_stream_);
 
   gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
   greedy_state.SetSequence(input_ids,
@@ -217,6 +219,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fet
     // For the first iteration use the init_run_decoder subgraph (if present)
     if (iteration_counter++ == 0 &&
         init_run_decoder_session_state_ != nullptr) {
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+      const_cast<SessionState&>(this->init_run_decoder_session_state_).IncrementGraphExecutionCounter();
+#endif
       status = utils::ExecuteSubgraph(*init_run_decoder_session_state_,
                                       *init_run_feeds_fetches_manager,
                                       feeds,
@@ -224,8 +229,12 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fet
                                       {},
                                       ExecutionMode::ORT_SEQUENTIAL,
                                       this->context_.GetTerminateFlag(),
-                                      this->context_.Logger());
+                                      this->context_.Logger(),
+                                      this->ort_stream_);
     } else {
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+      const_cast<SessionState&>(this->decoder_session_state_).IncrementGraphExecutionCounter();
+#endif
       status = utils::ExecuteSubgraph(this->decoder_session_state_,
                                       feeds_fetches_manager,
                                       feeds,
@@ -233,7 +242,8 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fet
                                       {},
                                       ExecutionMode::ORT_SEQUENTIAL,
                                       this->context_.GetTerminateFlag(),
-                                      this->context_.Logger());
+                                      this->context_.Logger(),
+                                      this->ort_stream_);
     }
 
     ORT_RETURN_IF_ERROR(status);

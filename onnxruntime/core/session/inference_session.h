@@ -31,9 +31,6 @@
 #include <TraceLoggingActivity.h>
 #endif
 
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
 class Environment;
@@ -53,6 +50,11 @@ class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
 struct Notification;
+#ifdef ENABLE_TRAINING
+struct PartialGraphExecutionState;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+#endif
 
 namespace logging {
 class LoggingManager;
