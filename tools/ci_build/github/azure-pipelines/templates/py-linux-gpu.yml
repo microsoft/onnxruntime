@@ -34,7 +34,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        arguments: -i onnxruntimecuda116xtrt84build${{ parameters.arch }} -x "-d GPU"
+        arguments: -i onnxruntimecuda116xtrt85build${{ parameters.arch }} -x "-d GPU"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
