@@ -35,6 +35,7 @@ class CUPTIManager : public GPUTracerManager<CUPTIManager> {
   void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                               const TimePoint& start_time);
   void FlushActivities();
+  uint64_t GetGPUTimestampInNanoseconds();
 
  private:
   static constexpr size_t kActivityBufferSize = 32 * 1024;

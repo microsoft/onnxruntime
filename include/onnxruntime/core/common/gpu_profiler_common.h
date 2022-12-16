@@ -219,14 +219,26 @@ class GPUTracerManager {
   }
 
  protected:
-  GPUTracerManager() = default;
+  GPUTracerManager() {
+    auto this_as_derived = static_cast<TDerived*>(this);
+    uint64_t gpu_ts1, gpu_ts2, cpu_ts;
+
+    // Get the CPU and GPU timestamps to warm up
+    gpu_ts1 = this_as_derived->GetGPUTimestampInNanoseconds();
+    cpu_ts = this->GetCPUTimestampInNanoseconds();
+
+    // actual measurement of skew
+    gpu_ts1 = this_as_derived->GetGPUTimestampInNanoseconds();
+    cpu_ts = this->GetCPUTimestampInNanoseconds();
+    gpu_ts2 = this_as_derived->GetGPUTimestampInNanoseconds();
+
+    auto gpu_ts = (gpu_ts1 + gpu_ts2) / 2;
+    offset_to_add_to_gpu_timestamps_ = cpu_ts - gpu_ts;
+  }
 
 #if 0
   // Functional API to be implemented by subclasses
   // Included here only for documentation purposes
-public:
-  uint64_t GetGPUTimestampInNanoseconds();
-
 protected:
   bool OnStartLogging();
   void OnStopLogging();
@@ -235,6 +247,7 @@ protected:
   bool PushUniqueCorrelation(uint64_t unique_cid);
   void PopUniqueCorrelation(uint64_t& popped_unique_cid);
   void FlushActivities();
+  uint64_t GetGPUTimestampInNanoseconds();
 #endif
 
   void EnqueueActivityBuffer(ProfilerActivityBuffer&& buffer) {
@@ -267,6 +280,10 @@ protected:
     // Map the pending events to the right client
     MapEventsToClient(unique_correlation_id, std::move(pending_it->second));
     events_pending_client_mapping_.erase(pending_it);
+  }
+
+  uint64_t NormalizeGPUTimestampNanoseconds(uint64_t gpu_timestamp_in_nanoseconds) {
+    return gpu_timestamp_in_nanoseconds + this->offset_to_add_to_gpu_timestamps_;
   }
 
  private:
@@ -317,6 +334,12 @@ protected:
     events_pending_client_mapping_[tracer_correlation_id].emplace_back(std::move(event));
   }
 
+  uint64_t GetCPUTimestampInNanoseconds() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()
+    ).count();
+  }
+
   std::mutex manager_instance_mutex_;
   uint64_t next_client_id_ = 1;
   uint64_t num_active_clients_ = 0;
@@ -340,39 +363,17 @@ protected:
   // Keyed on tracer correlation_id, keeps track of activity records
   // for which we haven't established the external_correlation_id yet.
   InlinedHashMap<uint64_t, std::vector<EventRecord>> events_pending_client_mapping_;
+
+  // An offset to add to (the possibly skewed) GPU timestamps
+  // to normalize GPU timestamps with CPU timestamps
+  int64_t offset_to_add_to_gpu_timestamps_;
 }; /* class GPUTracerManager */
 
 // Base class for a GPU profiler
 template <typename TManager>
 class GPUProfilerBase : public EpProfiler {
- private:
-  inline uint64_t GetCPUTimestampInNanoseconds() {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()
-    ).count();
-  }
-
-  inline uint64_t GetGPUTimestampInNanoseconds() {
-    auto& manager = TManager::GetInstance();
-    return manager.GetGPUTimestampInNanoseconds();
-  }
-
  protected:
-  GPUProfilerBase() {
-    uint64_t cpu_ts, gpu_ts1, gpu_ts2;
-    // warmup by getting a CPU and GPU timestamp
-    cpu_ts = this->GetCPUTimestampInNanoseconds();
-    gpu_ts1 = this->GetGPUTimestampInNanoseconds();
-
-    // measurement of actual skew
-    gpu_ts1 = this->GetGPUTimestampInNanoseconds();
-    cpu_ts = this->GetCPUTimestampInNanoseconds();
-    gpu_ts2 = this->GetGPUTimestampInNanoseconds();
-
-    auto gpu_ts = (gpu_ts1 + gpu_ts2) / 2;
-    offset_to_add_to_gpu_timestamps_ = cpu_ts - gpu_ts;
-  }
-
+  GPUProfilerBase() = default;
   virtual ~GPUProfilerBase() {}
 
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
@@ -419,8 +420,6 @@ class GPUProfilerBase : public EpProfiler {
           evt.args["op_name"] = op_name;
           evt.args["parent_name"] = parent_name;
         }
-
-        evt.ts += offset_to_add_to_gpu_timestamps_;
       }
 
       merged_events.insert(merged_events.end(),
@@ -435,7 +434,6 @@ class GPUProfilerBase : public EpProfiler {
 
   uint64_t client_handle_;
   TimePoint profiling_start_time_;
-  int64_t offset_to_add_to_gpu_timestamps_;
 
  public:
   virtual bool StartProfiling(TimePoint profiling_start_time) override {

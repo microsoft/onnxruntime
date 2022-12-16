@@ -31,7 +31,6 @@ class RoctracerManager : public GPUTracerManager<RoctracerManager> {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoctracerManager);
   ~RoctracerManager();
   static RoctracerManager& GetInstance();
-  uint64_t GetGPUTimestampInNanoseconds();
 
  protected:
   bool PushUniqueCorrelation(uint64_t unique_cid);
@@ -41,6 +40,7 @@ class RoctracerManager : public GPUTracerManager<RoctracerManager> {
   void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                               const TimePoint& start_time);
   void FlushActivities();
+  uint64_t GetGPUTimestampInNanoseconds();
 
  private:
   RoctracerManager() = default;

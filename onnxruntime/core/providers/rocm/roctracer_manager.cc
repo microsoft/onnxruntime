@@ -28,14 +28,6 @@ RoctracerManager& RoctracerManager::GetInstance() {
   return instance;
 }
 
-uint64_t RoctracerManager::GetGPUTimestampInNanoseconds() {
-  uint64_t result;
-  if (roctracer_get_timestamp(&result) != ROCTRACER_STATUS_SUCCESS) {
-    ORT_THROW("Could not retrieve timestamp from GPU!");
-  }
-  return result;
-}
-
 RoctracerManager::~RoctracerManager() {}
 
 #define ROCTRACER_STATUS_RETURN_FALSE_ON_FAIL(expr_) \
@@ -127,6 +119,14 @@ void RoctracerManager::PopUniqueCorrelation(uint64_t& popped_unique_cid) {
 
 void RoctracerManager::FlushActivities() {
   roctracer_flush_activity();
+}
+
+uint64_t RoctracerManager::GetGPUTimestampInNanoseconds() {
+  uint64_t result;
+  if (roctracer_get_timestamp(&result) != ROCTRACER_STATUS_SUCCESS) {
+    ORT_THROW("Could not retrieve timestamp from GPU!");
+  }
+  return result;
 }
 
 static inline std::string MemcpyKindToString(hipMemcpyKind kind) {
@@ -243,7 +243,7 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
       /* pid = */ -1,
       /* tid = */ -1,
       /* name = */ std::move(name),
-      /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+      /* ts = */ (int64_t)(this->NormalizeGPUTimestampNanoseconds(record->begin_ns) - start_time_ns) / 1000,
       /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
       /* args = */ std::move(args)};
   return true;

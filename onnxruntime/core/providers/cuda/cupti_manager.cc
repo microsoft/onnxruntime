@@ -38,14 +38,6 @@ CUPTIManager& CUPTIManager::GetInstance() {
   return instance;
 }
 
-uint64_t CUPTIManager::GetGPUTimestampInNanoseconds() {
-  uint64_t result;
-  if (cuptiGetTimestamp(&result) != CUPTI_SUCCESS) {
-    ORT_THROW("Could not retrieve timestamp from GPU!");
-  }
-  return result;
-}
-
 CUPTIManager::~CUPTIManager() {}
 
 bool CUPTIManager::OnStartLogging() {
@@ -84,6 +76,14 @@ void CUPTIManager::PopUniqueCorrelation(uint64_t& popped_unique_cid) {
 
 void CUPTIManager::FlushActivities() {
   cuptiActivityFlushAll(1);
+}
+
+uint64_t CUPTIManager::GetGPUTimestampInNanoseconds() {
+  uint64_t result;
+  if (cuptiGetTimestamp(&result) != CUPTI_SUCCESS) {
+    ORT_THROW("Could not retrieve timestamp from GPU!");
+  }
+  return result;
 }
 
 void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
@@ -141,7 +141,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
               /* pid = */ -1,
               /* tid = */ -1,
               /* name = */ std::move(name),
-              /* ts = */ (int64_t)(mmcpy->start - start_time_ns) / 1000,
+              /* ts = */ (int64_t)(this->NormalizeGPUTimestampNanoseconds(mmcpy->start) - start_time_ns) / 1000,
               /* dur = */ (int64_t)(mmcpy->end - mmcpy->start) / 1000,
               /* args = */ std::move(args)};
           MapEventToClient(mmcpy->correlationId, std::move(event));
