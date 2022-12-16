@@ -479,3 +479,7 @@ MlasPlatformU8S8Overflow(
 }
 
 #endif
+
+thread_local size_t ThreadedBufSize = 0;
+thread_local std::unique_ptr<uint8_t, MlasAlignedDeleter> ThreadedBufHolder(nullptr,
+                                                                            MlasAlignedDeleter());
