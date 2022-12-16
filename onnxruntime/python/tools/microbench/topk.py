@@ -15,32 +15,35 @@ class OpParam:
     dim1: int
     dim2: int
     dim3: int
+    k: int
 
     data_type: type
 
 
-class BenchmarkSoftmax(BenchmarkOp):
+class BenchmarkTopK(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         a = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
-        c = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
-        inputs = {"input": a}
-        outputs = {"softmax": c}
+        b = np.array([op_param.k]).astype(np.int64)
+        c = np.random.rand(op_param.dim1, op_param.dim2, op_param.k).astype(op_param.data_type)
+        d = np.random.rand(op_param.dim1, op_param.dim2, op_param.k).astype(np.int64)
+        inputs = {"input": a, "k": b}
+        outputs = {"values": c, "indices": d}
         return inputs, outputs
 
     def create_cases(self):
-        # attributes of model : axis=-1
-        model = "models/softmax_fp16.onnx" if self.args.precision == "fp16" else "models/softmax_fp32.onnx"
+        # attributes of model: axis=-1, largest=1, sorted=1
+        model = "models/topk_fp16.onnx" if self.args.precision == "fp16" else "models/topk_fp32.onnx"
         data_type = np.float16 if self.args.precision == "fp16" else np.float32
 
         # change here to test your data shape
-        self.add_case(OpParam(1, 32, 32, data_type), model)
+        self.add_case(OpParam(1, 32, 32, 2, data_type), model)
 
     def case_profile(cls, op_param, time):
-        profile = f"(dim1 dim2 dim3) = ({op_param.dim1} {op_param.dim2} {op_param.dim3}), {time * 1000:7.4f} us"
+        profile = f"(dim1 dim2 dim3) = ({op_param.dim1} {op_param.dim2} {op_param.dim3}), k = {op_param.k}, {time * 1000:7.4f} us"
         return profile
 
 
@@ -48,7 +51,7 @@ def main():
     parser = argparse.ArgumentParser()
     add_arguments(parser)
     args = parser.parse_args()
-    bm = BenchmarkSoftmax(args)
+    bm = BenchmarkTopK(args)
     bm.benchmark()
 
 
