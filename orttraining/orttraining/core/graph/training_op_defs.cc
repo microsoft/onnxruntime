@@ -4030,6 +4030,29 @@ Return true if all elements are true and false otherwise.
         updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
         propagateShapeFromInputToOutput(ctx, 0, 1);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FakeQuantGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "FakeQuantGrad op that computes the partial derivative of the loss with respect to the input tensor to "
+          "the FakeQuant op.")
+      .Input(0, "dY", "Gradient of loss with respect to the output Y of the FakeQuant op (fake quantized output)", "T")
+      .Input(1, "gradient_mask",
+             "Gradient mask that indicates whether the quantized value is within the quantization range.",
+             "T_BOOL")
+      .Output(0, "dX", "Gradient of loss with respect to the input X (of the FakeQuant node).", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain the gradient mask input to bool tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
 }
 
 }  // namespace training

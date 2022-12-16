@@ -524,6 +524,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
+  if (!performance_test_config.run_config.intra_op_thread_affinities.empty()) {
+    fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
+    session_options.AddConfigEntry("session.intra_op_thread_affinities", performance_test_config.run_config.intra_op_thread_affinities.c_str());
+  }
+
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
     fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
     session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
