@@ -626,8 +626,8 @@ void UpsampleTrilinearAA(int64_t batch_size,
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
-              temp_buffer + (n * num_channels + (c)) *
-                                (output_height * output_width * output_depth);
+          const T* const Xdata = temp_buffer + (n * num_channels + (c)) *
+                                                   (output_height * output_width * output_depth);
           T* const Ydata =
               YdataBase + (n * num_channels + (c)) *
                               (output_height * output_width * output_depth);
@@ -675,6 +675,7 @@ void UpsampleTrilinearAA(int64_t batch_size,
         });
   }
 }
+
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
