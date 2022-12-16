@@ -121,6 +121,8 @@ void* AllocateBufferWithOptions(IAllocator* alloc, size_t size, bool use_reserve
     if (stream_aware_alloc) {
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
+#else
+  ORT_UNUSED_PARAMETER(wait_fn);
 #endif  // ENABLE_STREAM
   }
   return alloc->Alloc(size);

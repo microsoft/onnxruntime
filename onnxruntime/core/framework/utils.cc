@@ -93,11 +93,11 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
       if (p_data == nullptr) {
         Tensor::InitOrtValue(source_tensor.DataType(),
                              source_tensor.Shape(),
-                             p_data,
                              allocator, target_mlvalue);
       } else {
         Tensor::InitOrtValue(source_tensor.DataType(),
                              source_tensor.Shape(),
+                             p_data,
                              allocator, target_mlvalue);
       }
     } else {
