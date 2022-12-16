@@ -578,6 +578,103 @@ LoopInDimN(const T* Xdata_base, FilterParamsAA& p, int64_t start_dim, int64_t pr
       Ydata);
 }
 
+template <typename T>
+void UpsampleTrilinearAA(int64_t batch_size,
+                         int64_t num_channels,
+                         int64_t input_depth,
+                         int64_t input_height,
+                         int64_t input_width,
+                         int64_t output_depth,
+                         int64_t output_height,
+                         int64_t output_width,
+                         float depth_scale,
+                         float height_scale,
+                         float width_scale,
+                         const std::vector<float>& roi,
+                         bool use_extrapolation,
+                         float extrapolation_value,
+                         bool exclude_outside,
+                         const Tensor* X,
+                         T* YdataBase,
+                         AllocatorPtr& alloc,
+                         const GetOriginalCoordinateFunc& get_original_coordinate,
+                         concurrency::ThreadPool* tp) {
+  const auto* XdataBase = X->Data<T>();
+
+  int64_t input_paras[] = {input_height, input_width, input_depth};
+  int64_t output_paras[] = {output_height, output_width, output_depth};
+  float scale_paras[] = {height_scale, width_scale, depth_scale};
+
+  TriLinearParamsAA p;
+  SetupUpsampleFilterAA(p, input_paras, output_paras, scale_paras, roi,
+                        alloc, get_original_coordinate, X->GetElementType(), exclude_outside, true);
+  const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
+
+  auto* buffer = alloc->Alloc(sizeof(T) * static_cast<size_t>(batch_size * output_height * output_width *
+                                                              input_depth * num_channels));
+  auto temp1 = BufferUniquePtr(buffer, BufferDeleter(alloc));
+
+  UpsampleBaseAA<T>(p, batch_size, num_channels * input_depth, input_height, input_width, output_height, output_width,
+                    use_extrapolation, extrapolation_value,
+                    XdataBase, static_cast<T*>(buffer), alloc, tp);
+  using ACtype = typename AccumulateType<T>::type;
+
+  for (int64_t n = 0; n < batch_size; ++n) {
+    auto* temp_buffer = static_cast<T*>(buffer);
+
+    // channel interpolate
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, narrow<std::ptrdiff_t>(num_channels),
+        [&](std::ptrdiff_t c) {
+              temp_buffer + (n * num_channels + (c)) *
+                                (output_height * output_width * output_depth);
+          T* const Ydata =
+              YdataBase + (n * num_channels + (c)) *
+                              (output_height * output_width * output_depth);
+          if (output_depth == input_depth) {
+            memcpy(YdataBase, Xdata, sizeof(T) * narrow<size_t>(output_depth * output_height * output_width));
+            return;
+          }
+          for (size_t z = 0; z < narrow<size_t>(output_depth); ++z) {
+            const auto* weight_coeff =
+                reinterpret_cast<const ACtype*>(p.dim_z.weight_coefficients.get()) +
+                p.dim_z.window_size * z;
+            int64_t zmin = p.dim_z.bound[z * 2];
+            int64_t zmax = p.dim_z.bound[z * 2 + 1];
+            auto* Ydata_base_z = Ydata + z * output_height * output_width;
+            for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
+              for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
+                auto* Ydata_offset = Ydata_base_z + y * output_width + x;
+
+                if (use_extrapolation &&
+                    ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
+                     (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)) ||
+                     ((p.dim_z.original[y] < 0 || p.dim_z.original[y] > static_cast<float>(input_depth - 1))))) {
+                  *Ydata_offset = static_cast<T>(extrapolation_value);
+                  continue;
+                }
+
+                ACtype output = is_8bit_v<T> ? ConstValue::mag_factor : 0;
+                auto* weight_coeff_start = weight_coeff;
+
+                const auto* Xdata_offset = Xdata + (zmin * output_height + y) * output_width + x;
+                for (auto idx = zmin; idx < zmax; ++idx) {
+                  output += *Xdata_offset * (*weight_coeff_start++);
+                  Xdata_offset += output_width * output_height;
+                }
+                if constexpr (is_8bit_v<T>) {
+                  *Ydata_offset = static_cast<T>(clip8_lookups[output >> 22]);
+                } else if constexpr (std::is_same<T, int32_t>::value) {
+                  *Ydata_offset = FilterParamsAA::round_up(output);
+                } else {  // float double
+                  *Ydata_offset = (output);
+                }
+              }
+            }
+          }
+        });
+  }
+}
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
