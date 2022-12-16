@@ -1090,7 +1090,7 @@ TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTe
 }
 
 TEST_F(GraphTransformationTests, TorchScriptFusion) {
-  auto model_uri = "testdata/bert_toy_opset14.onnx";
+  auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
