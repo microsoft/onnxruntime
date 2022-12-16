@@ -21,8 +21,9 @@ docker run --rm \
     -e BUILD_BUILDNUMBER \
     $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh $BUILD_EXTR_PAR
 
-rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \
+sudo rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \
     $BUILD_BINARIESDIRECTORY/Release/models $BUILD_BINARIESDIRECTORY/Release/_deps \
     $BUILD_BINARIESDIRECTORY/Release/CMakeFiles
+
 cd $BUILD_BINARIESDIRECTORY/Release
 find -executable -type f > $BUILD_BINARIESDIRECTORY/Release/perms.txt
