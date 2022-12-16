@@ -189,6 +189,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
+
+                opt.AddRunConfigEntry("key", "value");
+
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddRunConfigEntry("", "missing key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
             }
         }
 
