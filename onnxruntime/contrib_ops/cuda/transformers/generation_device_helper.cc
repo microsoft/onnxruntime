@@ -33,8 +33,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             void* stream,
             onnxruntime::concurrency::ThreadPool* /*threadpool*/,
             Tensor& output_values,
-            Tensor& output_indices,
-            int64_t dimension_along_axis) {
+            Tensor& output_indices) {
   ORT_ENFORCE(nullptr != input);
   int32_t rank = static_cast<int32_t>(input->Shape().NumDimensions());
 
@@ -50,8 +49,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
     elem_nums_cuda[i] *= elem_nums_cuda[i + 1];
   }
 
-  int64_t padded_dimension = input_shape[axis];
-  int64_t N = elem_nums_cuda[0] / padded_dimension;
+  int64_t dimension = input_shape[axis];
+  int64_t N = elem_nums_cuda[0] / dimension;
 
   output_values = std::move(*Tensor::Create(input->DataType(), output_shape, allocator));
   output_indices = std::move(*Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, std::move(allocator)));
@@ -69,8 +68,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                            static_cast<int64_t>(largest),
                            static_cast<int64_t>(sorted),
                            N,
-                           dimension_along_axis,
-                           &padded_dimension);
+                           dimension);
   } else if (input->IsDataType<MLFloat16>()) {
     return TopKImpl<MLFloat16>(nullptr,
                                reinterpret_cast<cudaStream_t>(stream),
@@ -84,8 +82,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                                static_cast<int64_t>(largest),
                                static_cast<int64_t>(sorted),
                                N,
-                               dimension_along_axis,
-                               &padded_dimension);
+        dimension);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -404,7 +401,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
     std::unique_ptr<Tensor> topk_tokens = Tensor::CreateDefault();
     ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                             *topk_scores, *topk_tokens, next_token_scores_shape[axis]));
+                             *topk_scores, *topk_tokens));
 
 #ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", *(topk_scores.get()));
@@ -600,7 +597,7 @@ Status GreedySearchProcessLogits(
   auto topk_scores = Tensor::CreateDefault();
   auto topk_indices = Tensor::CreateDefault();
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           *topk_scores, *topk_indices, static_cast<int64_t>(parameters->vocab_size)));
+                           *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));
