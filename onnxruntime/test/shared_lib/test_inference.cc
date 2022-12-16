@@ -199,6 +199,8 @@ static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 static constexpr PATH_TYPE RESIZE_AND_CROP_MODEL_URI = TSTR("testdata/crop_and_resize.onnx");
 #endif
 
+static constexpr PATH_TYPE SIMPLIFIED_SSD_MODEL_URI = TSTR("testdata/multi_stream_models/simplified_ssd.onnx");
+
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
@@ -387,9 +389,9 @@ TEST(CApiTest, custom_op_handler) {
 #ifdef USE_CUDA
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");
@@ -451,9 +453,9 @@ TEST(CApiTest, standalone_op_handler) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
 #ifdef USE_CUDA
-  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider, nullptr};
+  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider};
 #else
-  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");
@@ -588,9 +590,9 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 #ifdef USE_CUDA
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");
@@ -1176,9 +1178,9 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider};
   // We are going to test session creation only - hence it is not a problem to use the default stream as the compute stream for the custom op
-  MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider, nullptr};
+  MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider};
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);
@@ -2580,3 +2582,30 @@ TEST(CApiTest, GH_11717) {
   EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
 }
 #endif
+
+TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
+  Ort::SessionOptions session_options{};
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  session_options.AddConfigEntry("session.node_partition_config_file",
+                                 "./testdata/multi_stream_models/simplified_ssd_cpu.csv");
+  Ort::Session session{*ort_env, SIMPLIFIED_SSD_MODEL_URI, session_options};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  const char* input_names[] = {"graph_in"};
+  std::unique_ptr<float[]> input_data = std::make_unique<float[]>(3 * 3 * 300 * 300);
+  for (int i = 0; i < 3 * 3 * 300 * 300; ++i) {
+    input_data[i] = 1.f;
+  }
+  int64_t input_dims[] = {3, 3, 300, 300};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, input_data.get(), 3 * 3 * 300 * 300, input_dims, 4U));
+  const char* output_names[] = {"graph_out"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names,
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+  ASSERT_TRUE(ort_outputs.size() == 1);
+  ASSERT_TRUE(ort_outputs[0].IsTensor());
+  const auto& type_shape_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_dims = type_shape_info.GetShape();
+  std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
+  ASSERT_TRUE(output_dims == expected_output_dims);
+}
