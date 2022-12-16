@@ -1329,7 +1329,6 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   // Roi data is needed only when coordinate transformation mode is set to tf_crop_and_resize
   // for all other cases we need a 0 initialized roi array
   std::vector<float> roi_array(roi_);
-  const std::vector<float>* roi_ptr = &roi_array;
 
   if (!roi_cached_) {
     bool use_default_roi = true;
@@ -1363,7 +1362,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     scales_array = scales_;
 
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
-    return BaseCompute(context, *roi_ptr, scales_array, output_dims);
+    return BaseCompute(context, roi_array, scales_array, output_dims);
   }
 
   const auto* scales = context->Input<Tensor>(scales_input_idx_);
@@ -1375,7 +1374,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     scales_array = scales_;
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
-    return BaseCompute(context, *roi_ptr, scales_array, output_dims);
+    return BaseCompute(context, roi_array, scales_array, output_dims);
   }
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
@@ -1396,6 +1395,6 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
   }
 
-  return BaseCompute(context, *roi_ptr, scales_array, output_dims);
+  return BaseCompute(context, roi_array, scales_array, output_dims);
 }
 }  // namespace onnxruntime

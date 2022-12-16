@@ -176,7 +176,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
                               (input_height * input_width);
           T* const Ydata = temp_buffer + (c) * (input_height * output_width);
           if (output_width == input_width) {
-            memcpy(temp_buffer, Xdata, sizeof(T) * input_height * output_width);
+            memcpy(temp_buffer, Xdata, sizeof(T) * narrow<size_t>(input_height * output_width));
             return;
           }
           for (size_t y = 0; y < narrow<size_t>(input_height); ++y) {
@@ -221,7 +221,7 @@ void UpsampleBaseAA(FilterParamsAA& p,
           T* const Ydata = YdataBase + (n * num_channels + (c)) * (output_height * output_width);
           if (output_height == input_height) {
             memcpy(Ydata + (n * num_channels) * (output_height * output_width), Xdata,
-                   sizeof(T) * output_height * output_width);
+                   sizeof(T) * narrow<size_t>(output_height * output_width));
             return;
           }
           for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
@@ -635,7 +635,7 @@ void UpsampleTrilinearAA(int64_t batch_size,
               YdataBase + (n * num_channels + (c)) *
                               (output_height * output_width * output_depth);
           if (output_depth == input_depth) {
-            memcpy(YdataBase, Xdata, sizeof(T) * output_depth * output_height * output_width);
+            memcpy(YdataBase, Xdata, sizeof(T) * narrow<size_t>(output_depth * output_height * output_width));
             return;
           }
           for (size_t z = 0; z < narrow<size_t>(output_depth); ++z) {

@@ -373,10 +373,10 @@ class UpsampleBase {
     }
   }
 
-  void ParseScalesDataFromOutputSize(gsl::span<const int64_t> output_dims,
+  void ParseScalesDataFromOutputSize(TensorShapeVector& output_dims,
                                      gsl::span<const int64_t> input_dims,
                                      std::vector<float>& scales) const {
-    auto* mutable_out_dim = const_cast<int64_t*>(output_dims.data());
+    auto* mutable_out_dim = output_dims.data();
 
     if (axes_.size()) {
       std::vector<int64_t> output_dim_tmp(output_dims.begin(), output_dims.end());
@@ -435,10 +435,10 @@ class UpsampleBase {
     ScalesValidation(scales, mode_);
   }
 
-  void ComputeOutputShape(const std::vector<float>& scales,
+  void ComputeOutputShape(std::vector<float>& scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
-    auto* mutable_scale = const_cast<float*>(scales.data());
+    auto* mutable_scale = scales.data();
     if (axes_.size()) {
       std::vector<float> scales_tmp(scales);
       for (size_t i = 0; i < axes_.size(); i++) {

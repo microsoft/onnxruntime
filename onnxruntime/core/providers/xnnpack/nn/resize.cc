@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor_shape.h"
 #include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
@@ -202,9 +203,11 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     output_dims_.resize(input_dims);
     if (sizes && sizes->Shape().Size() == 4) {
       scales_.resize(input_shape.NumDimensions());
-      auto size_span = sizes->DataAsSpan<int64_t>();
-      ParseScalesDataFromOutputSize(size_span, input_shape.GetDims(), scales_);
-      std::copy(size_span.begin(), size_span.end(), output_dims_.begin());
+      TensorShapeVector size_array;
+      memcpy(size_array.data(), sizes->Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size()) * sizeof(int64_t));
+
+      ParseScalesDataFromOutputSize(size_array, input_shape.GetDims(), scales_);
+      std::copy(size_array.begin(), size_array.end(), output_dims_.begin());
       scales_cached_ = true;
     } else {
       ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);
