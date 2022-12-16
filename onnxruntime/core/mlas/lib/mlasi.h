@@ -2101,7 +2101,10 @@ MlasThreadedBufAlloc(size_t size)
 #ifdef _MSC_VER
         ThreadedBufHolder.reset(
             reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment)));
-#elif defined(__APPLE__)
+#elif (__STDC_VERSION__ >= 201112L) && !defined(__APPLE__)
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
+#else
 	// aligned_alloc unavailable macos 10.14 or earlier
         void* ptr;
         int err = posix_memalign(&ptr, ThreadedBufAlignment, size);
@@ -2109,9 +2112,6 @@ MlasThreadedBufAlloc(size_t size)
             ptr = nullptr;
         }
         ThreadedBufHolder.reset(reinterpret_cast<uint8_t*>(ptr));
-#else
-        ThreadedBufHolder.reset(
-            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
 #endif
 
         ThreadedBufSize = size;
