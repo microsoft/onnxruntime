@@ -8,6 +8,8 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 esac
 done
 
+sudo mkdir this-is-a-test
+
 mkdir -p $HOME/.onnx
 docker run --rm \
     --volume /data/onnx:/data/onnx:ro \
