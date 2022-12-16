@@ -289,7 +289,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
-  if (past_present_share_buffer_) {
+  if (past != nullptr && past_present_share_buffer_) {
     if (max_sequence_length <= 0) {
       max_sequence_length = past->Shape().GetDims()[3];
     }
