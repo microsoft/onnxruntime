@@ -900,18 +900,12 @@ TEST(CApiTest, invalid_variadic_input_not_last_custom_op) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
-  bool caught_exception = false;
-
   try {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
   } catch (const Ort::Exception& excpt) {
-    caught_exception = true;
-    std::string_view exception_msg = excpt.what();
-    std::string_view expected_err = "Only the last input to a custom op may be marked variadic.";
-    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Only the last input to a custom op may be marked variadic."));
   }
-
-  ASSERT_TRUE(caught_exception);
 }
 
 TEST(CApiTest, invalid_variadic_output_not_last_custom_op) {
@@ -940,18 +934,12 @@ TEST(CApiTest, invalid_variadic_output_not_last_custom_op) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
-  bool caught_exception = false;
-
   try {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
   } catch (const Ort::Exception& excpt) {
-    caught_exception = true;
-    std::string_view exception_msg = excpt.what();
-    std::string_view expected_err = "Only the last output to a custom op may be marked variadic.";
-    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Only the last output to a custom op may be marked variadic."));
   }
-
-  ASSERT_TRUE(caught_exception);
 }
 
 TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
@@ -976,20 +964,13 @@ TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
-  bool caught_exception = false;
-
   try {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
   } catch (const Ort::Exception& excpt) {
-    caught_exception = true;
-    std::string_view exception_msg = excpt.what();
-    std::string_view expected_err = "Error Node (VariadicNode0) has input size 3 not in range [min=4, max=2147483647].";
-    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has input size 3 not in range [min=4"));
   }
-
-  ASSERT_TRUE(caught_exception);
 }
-
 
 TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
   // Create a custom op with a variadic output with a minimum arity of 4.
@@ -1013,18 +994,12 @@ TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
-  bool caught_exception = false;
-
   try {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
   } catch (const Ort::Exception& excpt) {
-    caught_exception = true;
-    std::string_view exception_msg = excpt.what();
-    std::string_view expected_err = "Error Node (VariadicNode0) has output size 3 not in range [min=4, max=2147483647].";
-    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has output size 3 not in range [min=4"));
   }
-
-  ASSERT_TRUE(caught_exception);
 }
 
 TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
@@ -1049,55 +1024,14 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
-  bool caught_exception = false;
-
   try {
     Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
   } catch (const Ort::Exception& excpt) {
-    caught_exception = true;
-    std::string_view exception_msg = excpt.what();
-    std::string_view expected_err = "Type Error: Type parameter (T0) of Optype (VariadicNode) bound to different types";
-    ASSERT_TRUE(exception_msg.find(expected_err) != std::string_view::npos);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Type Error: Type parameter (T0) of Optype (VariadicNode) bound "
+                                                 "to different types"));
   }
-
-  ASSERT_TRUE(caught_exception);
 }
-
-// TODO: Remove this #if guard before merging this branch
-#if 0
-TEST(CApiTest, invalid_variadic_output_homogeneity_custom_op) {
-  // Create a custom op with a homogeneous variadic output. The model has heterogeneous outputs,
-  // so we expect an error.
-  TemplatedCustomOp<MyCustomEchoReversedArgsKernel> custom_op(
-      "VariadicNode",
-      // Input config
-      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
-      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
-      1,
-      false,
-      // Output config
-      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
-      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
-      1,
-      true);  // Output homogeneity requirement will cause error!
-
-  Ort::CustomOpDomain custom_op_domain("test");
-  custom_op_domain.Add(&custom_op);
-
-  Ort::SessionOptions session_options;
-  session_options.Add(custom_op_domain);
-
-  bool caught_exception = false;
-
-  try {
-    Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
-  } catch (const Ort::Exception&) {
-    caught_exception = true;
-  }
-
-  ASSERT_TRUE(caught_exception);
-}
-#endif
 
 TEST(CApiTest, optional_input_output_custom_op_handler) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};

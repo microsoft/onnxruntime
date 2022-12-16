@@ -3696,7 +3696,7 @@ struct OrtCustomOp {
   // to place the inputs on specific devices. By default, it returns
   // OrtMemTypeDefault, which means the input is placed on the default device for
   // the execution provider. If the inputs need to be with different memory tyeps,
-  // this function can be overriden to return the specific memory types.
+  // this function can be overridden to return the specific memory types.
   OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 
   // Returns the minimum number of input arguments expected for the variadic input.

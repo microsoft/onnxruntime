@@ -163,8 +163,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
-    constexpr uint32_t min_ort_ver_io_opt = 8;   // Minimum ORT version supporting optional input/output.
-    constexpr uint32_t min_ort_ver_io_var = 14;  // Minimum ORT version supporting variadic input/output.
+    constexpr uint32_t min_ort_version_with_optional_io_support = 8;
+    constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
     for (const auto* op : domain->custom_ops_) {
@@ -179,15 +179,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         // The OrtCustomOp interface did not support the methods to query input/output characteristics before
         // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= min_ort_ver_io_opt) {
+        if (op->version >= min_ort_version_with_optional_io_support) {
           const auto characteristic = op->GetInputCharacteristic(op, i);
 
           // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
-          } else if ((op->version >= min_ort_ver_io_var) &&
+          } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                      (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-            // Only the last input can be variadic.
             ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
             min_arity = op->GetVariadicInputMinArity(op);
@@ -216,15 +215,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         // The OrtCustomOp interface did not support the methods to query input/output characteristics before
         // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= min_ort_ver_io_opt) {
+        if (op->version >= min_ort_version_with_optional_io_support) {
           const auto characteristic = op->GetOutputCharacteristic(op, i);
 
           // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
-          } else if ((op->version >= min_ort_ver_io_var) &&
+          } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                      (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-            // Only the last output can be variadic.
             ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
             min_arity = op->GetVariadicOutputMinArity(op);

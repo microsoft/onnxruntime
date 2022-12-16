@@ -1700,7 +1700,7 @@ struct CustomOpBase : OrtCustomOp {
   }
 
   // Default implementation of GetVariadicInputHomegeneity() returns true to specify that all arguments
-  // to a a variadic input should be of the same type.
+  // to a variadic input should be of the same type.
   bool GetVariadicInputHomogeneity() const {
     return true;
   }
