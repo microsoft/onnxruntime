@@ -1014,6 +1014,23 @@ struct ProviderHostImpl : ProviderHost {
 
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
+
+  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
+    MurmurHash3::x86_128(key, len, seed, out);
+  }
+
+  std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+    std::unordered_map<std::string, int> domain_to_version_map;
+    domain_to_version_map[kOnnxDomain] = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
+
+    return std::make_unique<Model>(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+#if !defined(ORT_MINIMAL_BUILD)
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}), domain_to_version_map,
+#else
+                                   IOnnxRuntimeOpSchemaRegistryList(), domain_to_version_map,
+#endif  // ORT_MINIMAL_BUILD
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
+  }
 #endif
 
 #if defined(USE_TENSORRT)
@@ -1781,8 +1798,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   (*out)->npu_mem_limit = SIZE_MAX;
   (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   (*out)->do_copy_in_default_stream = 1;
+  (*out)->enable_cann_graph = 1;
   (*out)->default_memory_arena_cfg = nullptr;
-  (*out)->max_opqueue_num = 10000;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

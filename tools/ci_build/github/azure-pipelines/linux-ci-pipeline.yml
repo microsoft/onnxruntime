@@ -40,19 +40,14 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
-  - script: |
-      sudo apt-get install ccache -y
-      echo "##vso[task.prependpath]/usr/lib/ccache"
-    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-
   - task: Cache@2
     inputs:
       key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
       restoreKeys: |
         "ccache" | "$(Build.SourceBranch)"
         "ccache"
-      cacheHitVar: CACHE_RESTORED
     displayName: Cach Task
 
   - script: |
