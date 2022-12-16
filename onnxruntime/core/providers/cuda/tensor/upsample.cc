@@ -148,10 +148,11 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   const std::vector<float>& roi = roi_cached_ ? roi_ : roi_array;
+  std::vector<float> scales_array = scales_;
 
   if (OpKernel::Node().InputDefs().size() == 1) {
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
     return BaseCompute(context, roi, scales_, output_dims);
   }
 
@@ -160,11 +161,11 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
     return BaseCompute(context, roi, scales_, output_dims);
   }
 
-  std::vector<float> scales_array(X->Shape().GetDims().size());
+  scales_array.resize((X->Shape().GetDims().size()));
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
