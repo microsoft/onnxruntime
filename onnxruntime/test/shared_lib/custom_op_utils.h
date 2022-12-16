@@ -160,7 +160,7 @@ struct MyCustomStringLengthsKernel {
 
 // Utility function to be used when testing with MyCustomStringLengthsKernel.
 // Creates an input tensor from the provided input string and adds it to `ort_inputs`.
-// Also initializes the correspoinding expected output and I/O names.
+// Also initializes the corresponding expected output and I/O names.
 void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator,
                                           std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names,
                                           std::vector<std::string>& output_names,
