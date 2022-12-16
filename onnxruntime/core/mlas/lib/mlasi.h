@@ -2074,7 +2074,7 @@ struct MlasAlignedDeleter {
 #ifdef _WIN32
             _aligned_free(ptr);
 #else
-            std::free(ptr);
+            free(ptr);
 #endif
         }
     }
@@ -2102,7 +2102,7 @@ MlasThreadedBufAlloc(size_t size)
 #ifdef _WIN32
             reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment))
 #else
-            reinterpret_cast<uint8_t*>(std::aligned_alloc(ThreadedBufAlignment, size))
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size))
 #endif
         );
 
