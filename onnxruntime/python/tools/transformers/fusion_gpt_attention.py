@@ -17,7 +17,7 @@ class FusionGptAttentionPastBase(Fusion):
     """Base class for GPT Attention Fusion with past state"""
 
     def __init__(self, model: OnnxModel, num_heads: int):
-        super().__init__(model, "Attention", "LayerNormalization", "with past")
+        super().__init__(model, "Attention", ["LayerNormalization", "SkipLayerNormalization"], "with past")
         self.num_heads = num_heads
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
@@ -258,12 +258,22 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             output_name_to_node,
         )
         if fc_nodes is None:
-            fc_nodes = self.model.match_parent_path(
-                split_fc,
-                ["Add", "MatMul", "LayerNormalization"],
-                [0, None, 0],
-                output_name_to_node,
-            )
+            if fc_nodes is None:
+                fc_nodes = self.model.match_parent_path(
+                    split_fc,
+                    ["Reshape", "Gemm", "Reshape", "SkipLayerNormalization"],
+                    [0, 0, 0, 0],
+                    output_name_to_node,
+                )
+                if fc_nodes is None:
+                    # Vaery first Attention node.
+                    # TODO(hasesh): Should we also check for SkipLayerNormalization
+                    fc_nodes = self.model.match_parent_path(
+                        split_fc,
+                        ["Add", "MatMul", "LayerNormalization"],
+                        [0, None, 0],
+                        output_name_to_node,
+                    )
             if fc_nodes is None:
                 logger.debug("fuse_attention: failed to match fc path")
                 return
@@ -277,7 +287,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
         layernorm_before_attention = fc_nodes[-1]
 
         if not another_input in layernorm_before_attention.input:
-            logger.debug("Add and LayerNormalization shall have one same input")
+            logger.debug("Add and (Skip)LayerNormalization shall have one same input")
             return
 
         is_unidirectional = True

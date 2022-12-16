@@ -144,6 +144,14 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             ["Unsqueeze", "Sub", "Gather", "Shape", "LayerNormalization"],
             [1, 0, 1, 0, 0],
         )
+
+        if first_slice_sub_1 is None:
+            first_slice_sub_1 = self.model.match_parent_path(
+                slice_mask,
+                ["Unsqueeze", "Sub", "Gather", "Shape", "SkipLayerNormalization"],
+                [1, 0, 1, 0, 0],
+            )
+
         if first_slice_sub_1 is None or first_slice_sub_1[-1] != layernorm_before_attention:
             logger.debug("fuse_attention: failed to match last slice sub path 1")
             return None
@@ -186,6 +194,22 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             ],
             [1, 1, 0, 0, 0, None, 0],
         )  # yapf: disable
+
+        if v_nodes is None:
+            v_nodes = self.model.match_parent_path(
+                matmul_qkv,
+                [
+                    "Concat",
+                    "Transpose",
+                    "Reshape",
+                    "Split",
+                    "Add",
+                    "MatMul",
+                    "SkipLayerNormalization",
+                ],
+                [1, 1, 0, 0, 0, None, 0],
+            )  # yapf: disable
+
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return

@@ -20,7 +20,7 @@ class FusionGptAttentionNoPast(Fusion):
     """
 
     def __init__(self, model: OnnxModel, num_heads: int):
-        super().__init__(model, "Attention", "LayerNormalization", "without past")
+        super().__init__(model, "Attention", ["LayerNormalization", "SkipLayerNormalization"], "without past")
         # TODO: detect num_heads from graph like FusionAttention
         self.num_heads = num_heads
 
@@ -100,15 +100,18 @@ class FusionGptAttentionNoPast(Fusion):
         ) = v_nodes
 
         layernorm_before_attention = self.model.get_parent(reshape_before_gemm, 0, output_name_to_node)
-        if layernorm_before_attention is None or layernorm_before_attention.op_type != "LayerNormalization":
+        if layernorm_before_attention is None or (
+            layernorm_before_attention.op_type != "LayerNormalization"
+            and layernorm_before_attention.op_type != "SkipLayerNormalization"
+        ):
             if layernorm_before_attention.op_type != "Add":
-                logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
+                logger.debug(f"failed to get (skip)layernorm before gemm. Got {layernorm_before_attention.op_type}")
                 return
 
         if not another_input in layernorm_before_attention.input:
             # match openai-gpt
             if not another_input in layernorm_before_attention.output:
-                logger.debug("Add and LayerNormalization shall have one same input")
+                logger.debug("Add and (Skip)LayerNormalization shall have one same input")
                 return
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Sub", "Mul", "Div", "MatMul"], [0, 0, 0, 0, 0])
