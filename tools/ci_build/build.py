@@ -965,6 +965,8 @@ def generate_build_tree(
     if args.use_cache:
         cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
         cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+        if args.use_cuda:
+            cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
