@@ -26,8 +26,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             void* stream,
             onnxruntime::concurrency::ThreadPool* threadpool,
             Tensor& output_values,
-            Tensor& output_indices,
-            int64_t dimension_along_axis_override);
+            Tensor& output_indices);
 
 Status AddToFeeds(const IExecutionProvider* execution_provider,
                   std::initializer_list<OrtValue> inputs,

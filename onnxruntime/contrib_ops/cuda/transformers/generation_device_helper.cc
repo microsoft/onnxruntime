@@ -82,7 +82,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                                static_cast<int64_t>(largest),
                                static_cast<int64_t>(sorted),
                                N,
-        dimension);
+                               dimension);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
