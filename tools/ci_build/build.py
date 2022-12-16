@@ -1979,9 +1979,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
-                # Disable python onnx tests for TensorRT because many tests are
+                # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
-                if args.use_tensorrt:
+                if args.use_tensorrt or args.use_cann:
                     return
 
                 run_subprocess(
