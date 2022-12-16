@@ -52,7 +52,7 @@ class OpKernel {
 
   virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
-  [[nodiscard]] virtual bool IsAsync() const {
+  virtual bool IsAsync() const ORT_MUST_USE_RESULT {
     // by default all kernels are sync version.
     return false;
   }

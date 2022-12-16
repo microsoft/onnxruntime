@@ -79,11 +79,18 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
     if (allocator->Info().alloc_type == OrtArenaAllocator) {
+      void* p_data = nullptr;
+#ifdef ENABLE_STREAM
       BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
       auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
       if (stream_aware_alloc && target_stream) {
         size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-        void* p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+        p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+      }
+#else
+      ORT_UNUSED_PARAMETER(target_stream);
+#endif  // ENABLE_STREAM
+      if (p_data == nullptr) {
         Tensor::InitOrtValue(source_tensor.DataType(),
                              source_tensor.Shape(),
                              p_data,

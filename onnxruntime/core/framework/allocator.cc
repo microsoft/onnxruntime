@@ -112,14 +112,16 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
 
-void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+void* AllocateBufferWithOptions(IAllocator* alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   if (use_reserve)
     return alloc->Reserve(size);
   if (stream && alloc->Info().alloc_type == OrtArenaAllocator) {
-    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*static_cast<BFCArena*>(alloc.get()));
+#ifdef ENABLE_STREAM
+    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*static_cast<BFCArena*>(alloc));
     if (stream_aware_alloc) {
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
+#endif  // ENABLE_STREAM
   }
   return alloc->Alloc(size);
 }

@@ -107,10 +107,11 @@ class BFCArena : public IAllocator {
                             Stream* stream,
                             bool enable_cross_stream_reusing,
                             WaitNotificationFn wait_fn);
+  #ifdef ENABLE_STREAM
   // for any chunk that associated with target stream, reset it to default (nullptr in stream, timestamp 0)
   // perform coalesce if coalesce_flag is true
   void ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag);
-
+  #endif
   // Secure the allocated chunk on the target stream
   virtual void SecureTheChunk(Stream* /*chunk_stream*/,
                               Stream* /*target_stream*/,
@@ -513,7 +514,7 @@ class BFCArena : public IAllocator {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };
-
+#ifdef ENABLE_STREAM
 class StreamAwareArena : public BFCArena {
  public:
   StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
@@ -541,6 +542,7 @@ class StreamAwareArena : public BFCArena {
  private:
   bool enable_cross_stream_reusing_;
 };
+#endif
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif

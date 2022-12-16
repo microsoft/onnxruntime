@@ -52,7 +52,7 @@ namespace synchronize {
 class Notification;
 }
 using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
-void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+void* AllocateBufferWithOptions(IAllocator* allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -162,7 +162,7 @@ class IAllocator {
     }
 
     // allocate
-    T* p = static_cast<T*>(AllocateBufferWithOptions(allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    T* p = static_cast<T*>(AllocateBufferWithOptions(allocator.get(), alloc_size, use_reserve, stream, std::move(wait_fn)));
     return IAllocatorUniquePtr<T>{
         p,
         [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};

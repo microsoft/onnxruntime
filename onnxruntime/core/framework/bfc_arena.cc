@@ -797,7 +797,7 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
   LOGS_DEFAULT(INFO) << "Stats: \n"
                      << stats_.DebugString();
 }
-
+#ifdef ENABLE_STREAM
 void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag) {
   std::lock_guard<OrtMutex> lock(lock_);
 
@@ -876,5 +876,5 @@ void StreamAwareArena::SecureTheChunk(Stream* chunk_stream, Stream* target_strea
     // it should be ok to release the notification now, as the wait is already launch to stream.
   }
 }
-
+#endif
 }  // namespace onnxruntime
