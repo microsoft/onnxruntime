@@ -210,6 +210,14 @@ class LoggingManager final {
 class Logger {
  public:
   /**
+     Allow a dummy logger to exist, which will log nothing.
+  */
+  explicit Logger() : logging_manager_(nullptr),
+                      min_severity_(Severity::kINFO),
+                      filter_user_data_(false),
+                      max_vlog_level_(0) {}
+
+  /**
      Initializes a new instance of the Logger class.
      @param loggingManager The logging manager.
      @param id The identifier for messages coming from this Logger.
@@ -254,7 +262,7 @@ class Logger {
      @returns True if a message with these values will be logged.
   */
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-    return (severity >= min_severity_ && (data_type != DataType::USER || !filter_user_data_));
+    return logging_manager_ && (severity >= min_severity_ && (data_type != DataType::USER || !filter_user_data_));
   }
 
   /**
@@ -269,7 +277,9 @@ class Logger {
      @param message The log message.
   */
   void Log(const Capture& message) const {
-    logging_manager_->Log(id_, message);
+    if (logging_manager_) {
+      logging_manager_->Log(id_, message);
+    }
   }
 
   /**
@@ -277,7 +287,9 @@ class Logger {
     @param Profiling Event Record
   */
   void SendProfileEvent(profiling::EventRecord& eventRecord) const {
-    logging_manager_->SendProfileEvent(eventRecord);
+    if (logging_manager_) {
+      logging_manager_->SendProfileEvent(eventRecord);
+    }
   }
 
  private:
@@ -289,12 +301,12 @@ class Logger {
 };
 
 inline const Logger& LoggingManager::DefaultLogger() {
-  if (s_default_logger_ == nullptr) {
-    // fail early for attempted misuse. don't use logging macros as we have no logger.
-    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
+  if (s_default_logger_) {
+    return *s_default_logger_;
+  } else {
+    static Logger dummy_logger;
+    return dummy_logger;
   }
-
-  return *s_default_logger_;
 }
 
 inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
