@@ -79,8 +79,10 @@ __global__ void LogitsProcessKernel(
     int batch_beam_index = index / padded_vocab_size;
     int word_id = index % padded_vocab_size;
 
-    // Only process within the padding region
-    if (word_id < vocab_size) {
+    if (word_id >= vocab_size) {
+      // Set any value within the padding region to the lowest value so that it isn't picked
+      next_token_scores[index] = cub::FpLimits<T>::Lowest();
+    } else {
       // RepetitionPenaltyLogitsProcessor
       if (repetition_penalty != 1.0f) {
         int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
