@@ -14,7 +14,6 @@ jobs:
   variables:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
-    CACHE_RESTORED: 'false'
   pool: Linux-CPU-2019
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -45,10 +44,10 @@ jobs:
     inputs:
       key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
       restoreKeys: |
         "ccache" | "$(Build.SourceBranch)"
         "ccache"
-      cacheHitVar: CACHE_RESTORED
     displayName: Cach Task
 
   - script: |
