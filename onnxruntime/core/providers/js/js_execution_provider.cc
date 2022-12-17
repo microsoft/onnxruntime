@@ -33,8 +33,7 @@ class Memcpy final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    auto* data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-    return data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream());
+    return Info().GetDataTransferManager().CopyTensor(*X, *Y);
   }
 };
 
