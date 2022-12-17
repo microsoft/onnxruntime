@@ -13,8 +13,9 @@ using namespace std;
 using onnxruntime::narrow;
 namespace onnxruntime {
 
-// The following method supports a 4-D input in 'Linear mode'
-// that amounts to 'Bilinear' Upsampling/Resizing in the sense that it assumes
+// The following method supports a 3/4/5-D input in 'Linear mode, cubic mode'
+// that amounts to 'Bilinear,TriLinear, Bicubic/Tricubic' Upsampling/Resizing in the sense that it assumes
+// A 4-D tensor has
 // 1. the scale values for the outermost 2 dimensions are 1 or
 // 2. the scale values for the outermost and innermost dimensions are 1
 // This is the common use-case where the 4-D input (batched multi-channel images)
@@ -37,11 +38,6 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                                                                                                       const float rscale,
                                                                                                       BufferUniquePtr& weight_coefficients) -> int64_t {
     param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
-    // For each index in the output height and output width, cache its corresponding "weights/scales" for its
-    // corresponding indices in the input which proportionately indicates how much they will influence the final
-    // pixel value in the output
-    // (cache because we don't have to re-compute each time we come across the output width/output height
-    // value while iterating the output image tensor
     float scale = 1.0f / rscale;
     float support =
         (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
