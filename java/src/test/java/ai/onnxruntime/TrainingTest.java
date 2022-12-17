@@ -7,10 +7,14 @@ package ai.onnxruntime;
 import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -48,57 +52,46 @@ public class TrainingTest {
     }
   }
 
-  /* this test is not completed yet as ORT Java doesn't support supplying an output buffer
+  // this test is not enabled as ORT Java doesn't support supplying an output buffer
+  @Disabled
   @Test
-  public void TestTrainingSessionTrainStep() {
-    string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
-    using(var cleanUp = new DisposableListTest<IDisposable>())
-    {
-      var state = new CheckpointState(checkpointPath);
-      cleanUp.Add(state);
-      Assertions.NotNull(state);
-      string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+  public void TestTrainingSessionTrainStep() throws OrtException {
+    String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
+    String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
+    float[] expectedOutput = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
+    float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
+    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+      int[] labels = {1, 1};
 
-      var trainingSession = new TrainingSession(state, trainingPath);
-      cleanUp.Add(trainingSession);
-
-      float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
-      var expectedOutputDimensions = new int[]{1};
-      float[] input = TestDataLoader.LoadTensorFromFile("input-0.in");
-      Int32[] labels = {1, 1};
-
-      // Run inference with pinned inputs and pinned outputs
-      using(DisposableListTest < FixedBufferOnnxValue > pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>(),
-          pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
-      {
-        var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
-
+      // Run train step with pinned inputs and pinned outputs
+      Map<String, OnnxTensor> pinnedInputs = new HashMap<>();
+      Map<String, OnnxTensor> outputMap = new HashMap<>();
+      try {
         // Create inputs
         long[] inputShape = {2, 784};
-        pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory < float>(memInfo, input,
-          TensorElementType.Float, inputShape, input.Length * sizeof( float)));
+        pinnedInputs.put("features-tbd", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
         long[] labelsShape = {2};
-        pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory < Int32 > (memInfo, labels,
-            TensorElementType.Int32, labelsShape, labels.Length * sizeof(Int32)));
-
+        pinnedInputs.put("labels-tbd", OnnxTensor.createTensor(env, labels));
 
         // Prepare output buffer
-        long[] outputShape = {};
-        float[] outputBuffer = new float[expectedOutput.Length];
-        pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory < float>(memInfo, outputBuffer,
-          TensorElementType.Float, outputShape, outputBuffer.Length * sizeof( float)));
-
-        trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
-        Assertions.Equal(expectedOutput, outputBuffer, new FloatComparer());
+        FloatBuffer output = ByteBuffer.allocateDirect(4 * expectedOutput.length).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        OnnxTensor outputTensor = OnnxTensor.createTensor(env, output, new long[expectedOutput.length]);
+        outputMap.put("outputs-tbd", outputTensor);
+        /* Disabled as we haven't implemented this yet
+        try (trainingSession.trainStep(pinnedInputs, outputMap)) {
+          Assertions.assertArrayEquals(expectedOutput, (float[]) outputTensor.getValue(), 1e-3f);
+        }
+        */
+      } finally {
+        OnnxValue.close(outputMap);
+        OnnxValue.close(pinnedInputs);
       }
     }
   }
-  */
 
   void runTrainStep(OrtTrainingSession trainingSession) throws OrtException {
     float[] expectedOutput = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("./loss_1.out"));
-    int[] expectedOutputDimensions = new int[]{1};
     float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("./input-0.in"));
     int[] labels = {1, 1};
 
@@ -164,65 +157,47 @@ public class TrainingTest {
     }
   }
 
-  /*
   @Test
-  public void TestTrainingSessionOptimizerStep() {
-    string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
-    using(var cleanUp = new DisposableListTest<IDisposable>())
-    {
-      var state = new CheckpointState(checkpointPath);
-      cleanUp.Add(state);
-      Assertions.NotNull(state);
-      string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-      string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
-
-      var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
-      cleanUp.Add(trainingSession);
-
-      float[] expectedOutput_1 = TestDataLoader.LoadTensorFromFile("loss_1.out");
-      float[] expectedOutput_2 = TestDataLoader.LoadTensorFromFile("loss_2.out");
-      var expectedOutputDimensions = new int[]{1};
-      float[] input = TestDataLoader.LoadTensorFromFile("input-0.in");
-      Int32[] labels = {1, 1};
+  public void TestTrainingSessionOptimizerStep() throws OrtException {
+    String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
+    String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
+    String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
+    float[] expectedOutput_1 = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
+    float[] expectedOutput_2 = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_2.out"));
+    float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
+    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+      int[] labels = {1, 1};
 
       // Run train step with pinned inputs and pinned outputs
-      using(DisposableListTest < FixedBufferOnnxValue > pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>(),
-          pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
-      {
-        var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
-
+      Map<String, OnnxTensor> pinnedInputs = new HashMap<>();
+      try {
         // Create inputs
         long[] inputShape = {2, 784};
-        pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory < float>(memInfo, input,
-          TensorElementType.Float, inputShape, input.Length * sizeof( float)));
+        pinnedInputs.put("features-tbd", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
         long[] labelsShape = {2};
-        pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory < Int32 > (memInfo, labels,
-            TensorElementType.Int32, labelsShape, labels.Length * sizeof(Int32)));
+        pinnedInputs.put("labels-tbd", OnnxTensor.createTensor(env, labels));
 
+        try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
+          Assertions.assertArrayEquals(expectedOutput_1, (float[]) outputs.get(0).getValue(), 1e-3f);
+        }
 
-        // Prepare output buffer
-        long[] outputShape = {};
-        float[] outputBuffer = new float[expectedOutput_1.Length];
-        pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory < float>(memInfo, outputBuffer,
-          TensorElementType.Float, outputShape, outputBuffer.Length * sizeof( float)));
+        trainingSession.lazyResetGrad();
 
-        trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
-        Assertions.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
+        try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
+          Assertions.assertArrayEquals(expectedOutput_1, (float[]) outputs.get(0).getValue(), 1e-3f);
+        }
 
-        trainingSession.LazyResetGrad();
+        trainingSession.optimizerStep();
 
-        trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
-        Assertions.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
-
-        trainingSession.OptimizerStep();
-
-        trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
-        Assertions.Equal(expectedOutput_2, outputBuffer, new FloatComparer());
+        try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
+          Assertions.assertArrayEquals(expectedOutput_2, (float[]) outputs.get(0).getValue(), 1e-3f);
+        }
+      } finally {
+        OnnxValue.close(pinnedInputs);
       }
     }
   }
-   */
 
   @Test
   public void TestTrainingSessionSetLearningRate() throws OrtException {
@@ -262,24 +237,4 @@ public class TrainingTest {
       Assertions.assertEquals(0.0f, trainingSession.getLearningRate());
     }
   }
-
-/*
-  internal
-
-  class FloatComparer :IEqualityComparer<float>
-
-  {
-    private float atol = 1e-3f;
-    private float rtol = 1.7e-2f;
-
-    public bool Equals ( float x, float y)
-    {
-      return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
-    }
-    public int GetHashCode ( float x)
-    {
-      return x.GetHashCode();
-    }
-  }
-   */
 }

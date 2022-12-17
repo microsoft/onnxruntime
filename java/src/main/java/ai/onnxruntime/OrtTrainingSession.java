@@ -192,8 +192,8 @@ public final class OrtTrainingSession implements AutoCloseable {
   @Override
   public void close() {
     if (!closed) {
-      checkpoint.close();
       closeSession(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+      checkpoint.close();
       closed = true;
     } else {
       throw new IllegalStateException("Trying to close an already closed OrtSession.");
