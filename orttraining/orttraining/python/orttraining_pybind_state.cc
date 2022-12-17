@@ -28,12 +28,15 @@
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
+#include "core/framework/stream_execution_context.h"
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
+#include "core/providers/provider_factory_creators.h"
 
 #endif
 
@@ -74,7 +77,33 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
     j += 1;
   }
 }
+#ifdef ENABLE_TRAINING_ON_DEVICE
+namespace {
+// This function is used to create an execution provider to be passed to Module and Optimizer.
+std::vector<std::shared_ptr<IExecutionProvider>>
+GetExecutionProvidersForTrainingApis(OrtDevice device) {
+  std::vector<std::shared_ptr<IExecutionProvider>> provider;
 
+#ifdef USE_CUDA
+  if (device.Type() == OrtDevice::GPU) {
+    OrtCUDAProviderOptions provider_options{};
+    provider_options.device_id = device.Id();
+
+    if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+      provider.push_back(factory->CreateProvider());
+
+    return provider;
+  }
+#endif
+  if (device.Type() == OrtDevice::CPU) {
+    provider = std::vector<std::shared_ptr<IExecutionProvider>>();
+  } else {
+    ORT_THROW("Unsupported device type: ", device.Type());
+  }
+  return provider;
+}
+}  // namespace
+#endif
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
@@ -823,18 +852,19 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
 #ifdef ENABLE_TRAINING_ON_DEVICE
-  // Python apis only supports CPU device for now.
-  // TODO(adamlouly) : Add support for CUDA device.
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
       .def(py::init([](const std::string& model_uri,
                        onnxruntime::training::api::CheckpointState& state,
-                       std::optional<std::string> eval_model_uri) {
+                       std::optional<std::string> eval_model_uri,
+                       OrtDevice device) {
         onnxruntime::SessionOptions session_option;
+        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+
         return std::make_unique<onnxruntime::training::api::Module>(
             model_uri,
             state.module_checkpoint_state.named_parameters, session_option,
-            GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
+            GetTrainingORTEnv(), provider, eval_model_uri);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -846,9 +876,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
              ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
            })
-      .def("reset_grad",
+      .def("lazy_reset_grad",
            [](onnxruntime::training::api::Module* model) -> void {
-             ORT_THROW_IF_ERROR(model->ResetGrad());
+             ORT_THROW_IF_ERROR(model->LazyResetGrad());
            })
       .def("copy_parameters_to_buffer",
            [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
@@ -890,13 +920,21 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
   training_optimizer.def(py::init([](
                                       const std::string optimizer_model_uri,
-                                      onnxruntime::training::api::Module* model) {
+                                      onnxruntime::training::api::Module* model,
+                                      OrtDevice device) {
                       onnxruntime::SessionOptions session_option;
+                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
                       return std::make_unique<onnxruntime::training::api::Optimizer>(
                           optimizer_model_uri,
                           model->NamedParameters(), session_option,
-                          GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                          GetTrainingORTEnv(), provider);
                     }))
+      .def("set_learning_rate", [](onnxruntime::training::api::Optimizer* optimizer, float lr) -> void {
+        ORT_THROW_IF_ERROR(optimizer->SetLearningRate(lr));
+      })
+      .def("get_learning_rate", [](onnxruntime::training::api::Optimizer* optimizer) -> float {
+        return optimizer->GetLearningRate();
+      })
       .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
       });

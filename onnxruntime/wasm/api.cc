@@ -84,9 +84,9 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   }
 
   if (enable_mem_pattern) {
-    RETURN_NULLPTR_IF_ERROR(EnableCpuMemArena, session_options);
+    RETURN_NULLPTR_IF_ERROR(EnableMemPattern, session_options);
   } else {
-    RETURN_NULLPTR_IF_ERROR(DisableCpuMemArena, session_options);
+    RETURN_NULLPTR_IF_ERROR(DisableMemPattern, session_options);
   }
 
   // assume that an execution mode is checked and properly set at JavaScript

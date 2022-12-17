@@ -9,16 +9,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      RemovePadding,                                                            \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      (*KernelDefBuilder::Create())                                             \
-        .OutputMemoryType(OrtMemTypeCPUOutput, 3)  /*max_token_count on CPU*/   \
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                 \
+#define REGISTER_KERNEL_TYPED(T)                                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      RemovePadding,                                                           \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 3) /*max_token_count on CPU*/ \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),              \
       RemovePadding<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -53,7 +53,7 @@ Status RemovePadding<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t sequence_length = dims[1];
   int64_t hidden_size = dims[2];
 
-  auto token_count_buffer = GetScratchBuffer<int>(2);
+  auto token_count_buffer = GetScratchBuffer<int>(2, context->GetComputeStream());
 
   TensorShapeVector token_offset_shape(2);
   token_offset_shape[0] = batch_size;
@@ -70,7 +70,7 @@ Status RemovePadding<T>::ComputeInternal(OpKernelContext* context) const {
                        sequence_token_count->Data<int>(),
                        static_cast<int>(batch_size),
                        static_cast<int>(sequence_length),
-                       Stream());
+                       Stream(context));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   // Copy token_count to CPU
@@ -80,9 +80,9 @@ Status RemovePadding<T>::ComputeInternal(OpKernelContext* context) const {
                                        token_count_buffer.get(),
                                        sizeof(int) * 2,
                                        cudaMemcpyDeviceToHost,
-                                       Stream()));
+                                       Stream(context)));
   // Wait until token_count is copied to host.
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream()));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
   int total_token_count = token_count_pinned[0];
   int max_token_count = token_count_pinned[1];
 
@@ -103,7 +103,7 @@ Status RemovePadding<T>::ComputeInternal(OpKernelContext* context) const {
       token_offset->Data<int>(),
       total_token_count,
       static_cast<int>(hidden_size),
-      Stream());
+      Stream(context));
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();

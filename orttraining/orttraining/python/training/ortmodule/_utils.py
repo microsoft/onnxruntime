@@ -194,7 +194,12 @@ def get_device_from_inputs(args, kwargs):
 def _create_iobinding(io_binding, inputs, model, device):
     """Creates IO binding for a `model` inputs and output"""
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_ortvalue_input(value_info.name, OrtValue(_ortvalue_from_torch_tensor(inputs[idx])))
+        io_binding.bind_ortvalue_input(
+            value_info.name,
+            OrtValue(
+                _ortvalue_from_torch_tensor(inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous())
+            ),
+        )
 
     device_id = get_device_index(device)
     for value_info in model.graph.output:

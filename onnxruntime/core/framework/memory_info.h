@@ -10,6 +10,7 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_name_idx_map.h"
+#include "core/common/inlined_containers_fwd.h"
 
 #include <iomanip>
 #include <string>

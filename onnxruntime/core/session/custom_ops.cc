@@ -88,12 +88,25 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   API_IMPL_END
 }
 
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 28196 6387)
+#endif
+
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out) {
   API_IMPL_BEGIN
-  *out = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+  auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+  if (stream)
+    *out = stream->GetHandle();
+  else
+    *out = nullptr;
   return nullptr;
   API_IMPL_END
 };
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
 static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {

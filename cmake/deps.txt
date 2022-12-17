@@ -24,11 +24,12 @@ microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becd
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.0.3.zip;e4f37b93b2da78a5816c2495603a4188d316214b
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
 onnx;https://github.com/onnx/onnx/archive/5a5f8a5935762397aa68429b5493084ff970f774.zip;edc8e1338c02f3ab222f3d803a24e17608c13895
-onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/87c7a70688fd98fb355b8976f41425b40e4fe52f.zip;b97d112d9d6efa180c9b94e05268f2ff3294a534
+#use the commit where it's several commits after 8.5-GA branch (https://github.com/onnx/onnx-tensorrt/commit/369d6676423c2a6dbf4a5665c4b5010240d99d3c)
+onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/369d6676423c2a6dbf4a5665c4b5010240d99d3c.zip;62119892edfb78689061790140c439b111491275
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip;b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
 psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
 pthreadpool;https://github.com/Maratyszcza/pthreadpool/archive/1787867f6183f056420e532eec640cba25efafea.zip;e43e80781560c5ab404a4da20f34d846f5f5d101
-pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.6.2.zip;950b3b319384a1a36b252cc821953e5f9be14840
+pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.10.1.zip;769b6aa67a77f17a770960f604b727645b6f6a13
 pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/5916273f79a21551890fd3d56fc5375a78d1598d.zip;2be4d2ae321fada97cb39eaf4eeba5f8c85597cf
 re2;https://github.com/google/re2/archive/refs/tags/2022-06-01.zip;aa77313b76e91b531ee7f3e45f004c6a502a5374
 safeint;https://github.com/dcleblanc/SafeInt/archive/ff15c6ada150a5018c5ef2172401cb4529eac9c0.zip;913a4046e5274d329af2806cb53194f617d8c0ab

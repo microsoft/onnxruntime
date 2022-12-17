@@ -339,8 +339,10 @@ struct TensorCheck<MLFloat16> {
     const bool has_rel_err = params.relative_error_.has_value();
 
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
+#elif defined(USE_DML)
+    threshold = 0.008f;
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -910,10 +912,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches[idx];
-        if (ort_value.Fence())
-          ort_value.Fence()->BeforeUsingAsInput(
-              onnxruntime::kCpuExecutionProvider, 0);
-
+        
         if (expected_data.def_.Exists()) {           // optional edges won't exist (so skip them)
           if (!expected_data.data_.IsAllocated()) {  // optional type output (None)
             EXPECT_TRUE(!ort_value.IsAllocated())
