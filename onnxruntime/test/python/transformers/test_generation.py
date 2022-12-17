@@ -30,11 +30,13 @@ class TestBeamSearchGpt(unittest.TestCase):
 
     def setUp(self):
         self.model_name = "gpt2"
-        self.gpt2_onnx_path = os.path.join(".", "onnx_models", "gpt2_past_fp32_shape.onnx")
+        self.init_onnx_path = os.path.join(".", "onnx_models", "gpt2_stage1_fp32_shape.onnx")
+        self.decoder_onnx_path = os.path.join(".", "onnx_models", "gpt2_stage2_fp32_shape.onnx")
         self.beam_search_onnx_path = os.path.join(".", "onnx_models", "gpt2_beam_search.onnx")
         self.default_arguments = [
             f"-m {self.model_name}",
-            f"--decoder_onnx {self.gpt2_onnx_path}",
+            f"--init_onnx {self.init_onnx_path}",
+            f"--decoder_onnx {self.decoder_onnx_path}",
             f"--output {self.beam_search_onnx_path}",
             "--repetition_penalty 2.0",
         ]
@@ -53,8 +55,8 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.remove_onnx_files()
 
     def remove_onnx_files(self):
-        if os.path.exists(self.gpt2_onnx_path):
-            os.remove(self.gpt2_onnx_path)
+        if os.path.exists(self.decoder_onnx_path):
+            os.remove(self.decoder_onnx_path)
 
         if os.path.exists(self.beam_search_onnx_path):
             os.remove(self.beam_search_onnx_path)
@@ -126,13 +128,13 @@ class TestBeamSearchT5(unittest.TestCase):
     def setUp(self):
         self.model_name = "t5-small"
         self.decoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_decoder.onnx")
-        self.encoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_encoder_decoder_init.onnx")
+        self.init_onnx_path = os.path.join(".", "onnx_models", "t5-small_encoder_decoder_init.onnx")
         self.beam_search_onnx_path = os.path.join(".", "onnx_models", "t5_small_beam_search.onnx")
         self.default_arguments = [
             f"-m {self.model_name}",
             "--model_type t5",
             f"--decoder_onnx {self.decoder_onnx_path}",
-            f"--encoder_decoder_init_onnx {self.encoder_onnx_path}",
+            f"--init_onnx {self.init_onnx_path}",
             f"--output {self.beam_search_onnx_path}",
             "--output_sequences_score",
             "--repetition_penalty 2.0",
@@ -175,8 +177,8 @@ class TestBeamSearchT5(unittest.TestCase):
         if os.path.exists(self.decoder_onnx_path):
             os.remove(self.decoder_onnx_path)
 
-        if os.path.exists(self.encoder_onnx_path):
-            os.remove(self.encoder_onnx_path)
+        if os.path.exists(self.init_onnx_path):
+            os.remove(self.init_onnx_path)
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
         if append_arguments:

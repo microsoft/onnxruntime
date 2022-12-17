@@ -89,6 +89,19 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(optimize_onnx=False)
 
+    parser.add_argument(
+        "--stage",
+        type=int,
+        default=0,
+        required=False,
+        choices=[0, 1, 2],
+        help="Stage in generation: 1 (initial decoder), 2 (decoder), 0 (both). "
+        "1 - decode the first token when past_sequence_length is zero; "
+        "2 - decode the remaining tokens when past_sequence_length is not zero; "
+        "0 - one onnx model for both stages 1 and 2. "
+        "Note that we will optimize 1 and 2 differently for best performance.",
+    )
+
     parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
@@ -213,6 +226,9 @@ def main(args):
     if args.precision == Precision.INT8:
         assert not args.use_gpu, "quantization only supports CPU"
 
+    if args.stage == 1:
+        assert args.past_sequence_lengths == [0], "past_sequence_lengths shall be 0 for stage==1 (init decoder)"
+
     torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
     print(torch.__config__.parallel_info())
 
@@ -294,6 +310,7 @@ def main(args):
             model.config.hidden_size,
             use_external_data_format,
             auto_mixed_precision=True,
+            stage=args.stage,
         )
 
         if args.precision == Precision.INT8:

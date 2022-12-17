@@ -147,6 +147,20 @@ def parse_arguments(argv=None):
     parser.set_defaults(use_int32_inputs=False)
 
     parser.add_argument(
+        "-s",
+        "--stage",
+        type=int,
+        default=0,
+        required=False,
+        choices=[0, 1, 2],
+        help="Stage in generation: 1 (initial decoder), 2 (decoder), 0 (both). "
+        "1 - decode the first token when past_sequence_length is zero; "
+        "2 - decode the remaining tokens when past_sequence_length is not zero; "
+        "0 - one onnx model for both stages 1 and 2. "
+        "Note that we will optimize 1 and 2 differently for best performance.",
+    )
+
+    parser.add_argument(
         "--beam_size",
         type=int,
         default=4,
@@ -399,6 +413,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model.config.hidden_size,
             args.use_external_data_format,
             auto_mixed_precision=args.auto_mixed_precision,
+            stage=args.stage,
             **fp16_params,
         )
     else:
@@ -437,6 +452,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
             test_cases_per_run=args.test_cases,
             total_runs=args.test_runs,
+            stage=args.stage,
             verbose=args.verbose,
         )
 
@@ -454,8 +470,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
             attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
             batch_size=8,
-            sequence_length=1,
-            past_sequence_length=32,
+            sequence_length=32 if args.stage == 1 else 1,
+            past_sequence_length=0 if args.stage == 1 else 32,
         )
 
         if args.precision == Precision.FLOAT16:
