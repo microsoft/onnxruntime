@@ -169,7 +169,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array);
+    ParseScalesData(scales, scales_array, X->Shape().GetDims().size());
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
   } else {
     // When sizes input is available directly populate it into the output_dims array.

@@ -1353,7 +1353,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  ComputeROIWithAxes(roi_array);
+  ComputeROIWithAxes(roi_array, X->Shape().GetDims().size());
   // Get scales data
   std::vector<float> scales_array(X->Shape().GetDims().size());
 
@@ -1379,7 +1379,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array);
+    ParseScalesData(scales, scales_array, X->Shape().GetDims().size());
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
@@ -1388,8 +1388,8 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
     // When sizes input is available directly populate it into the output_dims array.
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size()) * sizeof(int64_t));
-
-    ORT_ENFORCE(X->Shape().GetDims().size() == output_dims.size(),
+    output_dims.resize(sizes->Shape().Size());
+    ORT_ENFORCE(X->Shape().GetDims().size() >= output_dims.size(),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
 
     ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);

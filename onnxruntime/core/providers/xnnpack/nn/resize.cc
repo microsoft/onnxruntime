@@ -302,7 +302,7 @@ Status Resize::Compute(OpKernelContext* ctx) const {
     std::vector<float> scales_array(X->Shape().GetDims().size());
 
     if (scales != nullptr && scales->Shape().Size() != 0) {
-      ParseScalesData(scales, scales_array);
+      ParseScalesData(scales, scales_array, output_shape.size());
       // Compute output shape from scales and input dims
       ComputeOutputShape(scales_array, X->Shape().GetDims(), output_shape);
     } else {

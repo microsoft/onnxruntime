@@ -134,9 +134,10 @@ class UpsampleBase {
     if (scales_input_idx_ > 0) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
-
-      if (get_scale && scale->Shape().Size() > 0) {
-        ParseScalesData(scale, scales_);
+      auto x_shape = node.InputDefs()[0]->Shape();
+      int64_t rank = x_shape ? x_shape->dim_size() : -1;
+      if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
+        ParseScalesData(scale, scales_, rank);
         scales_cached_ = true;
       }
     }
@@ -354,14 +355,25 @@ class UpsampleBase {
   }
 
   void
-  ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
+  ParseScalesData(const Tensor* scale, std::vector<float>& scales, int64_t rank) const {
     const auto* scale_data = scale->Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
     if (scales.empty()) {
       scales.resize(onnxruntime::narrow<size_t>(scales_size));
     }
+
     memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
+
+    if (rank > 0 && (scales_size != rank || axes_.size())) {
+      std::vector<float> new_scales(rank, 1.0f);
+      ORT_ENFORCE(*std::max_element(axes_.begin(), axes_.end()) < rank,
+                  "axes should be less than rank");
+      for (size_t i = 0; i < axes_.size(); i++) {
+        new_scales[static_cast<size_t>(axes_[i])] = scales[i];
+      }
+      scales = new_scales;
+    }
     ScalesValidation(scales, mode_);
   }
 
@@ -376,15 +388,16 @@ class UpsampleBase {
   void ParseScalesDataFromOutputSize(TensorShapeVector& output_dims,
                                      gsl::span<const int64_t> input_dims,
                                      std::vector<float>& scales) const {
-    auto* mutable_out_dim = output_dims.data();
-
-    if (axes_.size()) {
-      std::vector<int64_t> output_dim_tmp(output_dims.begin(), output_dims.end());
+    if (output_dims.size() != input_dims.size() || axes_.size()) {
+      TensorShapeVector new_output_dims(input_dims.begin(), input_dims.end());
+      ORT_ENFORCE(*std::max_element(axes_.begin(), axes_.end()) < int64_t(new_output_dims.size()),
+                  "axes should be less than output_dims.size()");
       for (size_t i = 0; i < axes_.size(); i++) {
-        output_dim_tmp[i] = output_dims[static_cast<size_t>(axes_[i])];
+        new_output_dims[static_cast<size_t>(axes_[i])] = output_dims[i];
       }
-      memcpy(mutable_out_dim, output_dim_tmp.data(), output_dim_tmp.size() * sizeof(int64_t));
+      output_dims = new_output_dims;
     }
+    auto* mutable_out_dim = output_dims.data();
 
     for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
       // Handle corner case to avoid dividing by zero in the next step
@@ -435,33 +448,24 @@ class UpsampleBase {
     ScalesValidation(scales, mode_);
   }
 
-  void ComputeOutputShape(std::vector<float>& scales,
+  void ComputeOutputShape(gsl::span<const float> scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
-    auto* mutable_scale = scales.data();
-    if (axes_.size()) {
-      std::vector<float> scales_tmp(scales);
-      for (size_t i = 0; i < axes_.size(); i++) {
-        scales_tmp[i] = scales[static_cast<size_t>(axes_[i])];
-      }
-      memcpy(mutable_scale, scales_tmp.data(), scales.size() * sizeof(float));
-    }
-
     for (std::size_t i = 0; i < input_dims.size(); i++) {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
     }
   }
 
-  void ComputeROIWithAxes(std::vector<float>& roi_array) const {
+  void ComputeROIWithAxes(std::vector<float>& roi_array, size_t rank) const {
     if (axes_.size()) {
-      std::vector<float> roi_tmp(roi_array.size(), 0);
-      for (size_t i = roi_array.size() / 2; i < roi_array.size(); ++i) {
+      std::vector<float> roi_tmp(rank * 2, 0);
+      for (size_t i = rank; i < rank * 2; ++i) {
         roi_tmp[i] = 1;
       }
       for (size_t i = 0; i < axes_.size(); i++) {
         auto v_in_axes = static_cast<size_t>(axes_[i]);
         roi_tmp[v_in_axes] = (roi_array[i]);
-        roi_tmp[i + v_in_axes] = (roi_array[axes_.size() + i]);
+        roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
       }
       roi_array = roi_tmp;
     }
