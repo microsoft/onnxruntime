@@ -28,6 +28,9 @@ def _get_kernel_times(cpu_df, index, args, ops_and_kernel_events):
     relevant_kernels = []
     for kernels in [x[1] for x in relevant_ops_and_kernels]:
         relevant_kernels.extend(kernels)
+    if len(relevant_kernels) == 0:
+        return None, shape, op_name
+
     frame = pd.DataFrame(relevant_kernels)
     frame["count"] = 1
     frame2 = frame[["duration", "count"]].sum()
@@ -70,15 +73,28 @@ def interactive_loop(cpu_df, gpu_df, data, ops_and_kernel_events, args):
                 drill_down_df, shape, op_name = _get_kernel_times(df, index, args, ops_and_kernel_events)
 
         elif mode == _DRILL_DOWN_MODE:
-            print_frame(
-                drill_down_df,
-                f"GPU Kernel Time breakdown for op: {op_name}, shape: {shape if shape is not None else 'Any'}",
-            )
-            action_str = input("Press b to go back to the top-level or q to quit: ")
+            if drill_down_df is None:
+                print(f"No kernels found for op: {op_name}, shape: {shape if shape is not None else 'Any'}")
+            else:
+                print_frame(
+                    drill_down_df,
+                    f"GPU Kernel Time breakdown for op: {op_name}, shape: {shape if shape is not None else 'Any'}",
+                )
+
+            action_str = input("Press 's' to save to CSV, 'b' to go back to the top-level or 'q' to quit: ")
             if action_str.lower().startswith("b"):
                 mode = _TOP_LEVEL_MODE
             elif action_str.lower().startswith("q"):
                 break
+            elif action_str.lower().startswith("s"):
+                df_to_save = df if mode == _TOP_LEVEL_MODE else drill_down_df
+                if df_to_save is None:
+                    print("Empty data frame! Nothing to save! Going back to the top level.")
+                    mode = _TOP_LEVEL_MODE
+                else:
+                    file_name = input("Enter the path/file name to save to: ")
+                    df_to_save.to_csv(file_name)
+
             else:
                 print("Invalid input!")
                 time.sleep(3)
