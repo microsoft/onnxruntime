@@ -182,14 +182,18 @@ const createBinaryOpProgramInfoLoader =
       };
     };
 
-export const add = (context: ComputeContext): number =>
-    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Add', (a, b) => `${a}+${b}`));
+export const add = (context: ComputeContext): number => {
+  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Add', (a, b) => `${a}+${b}`));
+  return 0;
+};
 
 // export const and = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslAnd(), 'bool'), inputs)];
 
-export const div = (context: ComputeContext): number =>
-    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Div', (a, b) => `${a}/${b}`));
+export const div = (context: ComputeContext): number => {
+  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Div', (a, b) => `${a}/${b}`));
+  return 0;
+};
 
 // export const equal = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslEqual(), 'bool'), inputs)];
@@ -200,20 +204,26 @@ export const div = (context: ComputeContext): number =>
 // export const less = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslLess(), 'bool'), inputs)];
 
-export const mul = (context: ComputeContext): number =>
-    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Mul', (a, b) => `${a}*${b}`));
+export const mul = (context: ComputeContext): number => {
+  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Mul', (a, b) => `${a}*${b}`));
+  return 0;
+};
 
 // export const or = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslOr(), 'bool'), inputs)];
 
-export const pow = (context: ComputeContext): number =>
-    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Pow', 'pow'));
+export const pow = (context: ComputeContext): number => {
+  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Pow', 'pow'));
+  return 0;
+};
 
 // export const pRelu = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslPRelu()), inputs)];
 
-export const sub = (context: ComputeContext): number =>
-    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Sub', (a, b) => `${a}-${b}`));
+export const sub = (context: ComputeContext): number => {
+  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Sub', (a, b) => `${a}-${b}`));
+  return 0;
+};
 
 // export const xor = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslXor(), 'bool'), inputs)];

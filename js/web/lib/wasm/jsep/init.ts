@@ -4,11 +4,12 @@
 import {env} from 'onnxruntime-common';
 
 import {OrtWasmModule} from '../binding/ort-wasm';
+import {getTensorElementSize} from '../wasm-core-impl';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {TensorView} from './tensor';
 import {ShapeUtil} from './util';
-import {ComputeContext, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -47,9 +48,24 @@ class OpKernelContext implements ComputeContext {
     this.inputs = inputs;
   }
 
-  compute(program: ProgramInfoLoader|ProgramInfo, inputIndices?: readonly number[]): number {
-    const mappedInputs = inputIndices?.map(i => this.inputs[i]) ?? this.inputs;
-    return this.backend.run(program, mappedInputs, this.output.bind(this));
+  compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
+      TensorView[] {
+    // prepare inputs. inputs should always be valid data.
+    const mappedInputs =
+        inputsOutputsMapping?.inputs?.map(i => typeof i === 'number' ? this.inputs[i] : i) ?? this.inputs;
+    // prepare outputs.
+    const outputIndices = inputsOutputsMapping?.outputs ?? [];
+    const createKernelOutput = (index: number, dataType: number, dims: readonly number[]): TensorView =>
+        new TensorViewImpl(this.module, dataType, this.output(index, dims), dims);
+    const createTemporaryOutput = (dataType: number, dims: readonly number[]): TensorView => {
+      const elementSize = getTensorElementSize(dataType);
+      if (!elementSize) {
+        throw new Error(`Unsupported data type: ${dataType}`);
+      }
+      const bufferSize = elementSize * ShapeUtil.size(dims);
+      return new TensorViewImpl(this.module, dataType, this.backend.gpuDataManager.create(bufferSize).id, dims);
+    };
+    return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
   }
 
   output(index: number, dims: readonly number[]): number {

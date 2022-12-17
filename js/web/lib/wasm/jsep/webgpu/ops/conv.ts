@@ -136,12 +136,13 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
   const adjustedAttributes = getAdjustedConvAttributes(attributes, context.inputs);
   //  const isPointwise = adjustedAttributes.kernelShape[0] === 1 && adjustedAttributes.kernelShape[1] === 1;
   //  if (adjustedAttributes.group > 1) {
-  return context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
+  context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
   //  } else if (isPointwise) {
   //    return conv2DPointwise(inferenceHandler, inputs, adjustedAttributes);
   //  } else {
   //    return conv2D(inferenceHandler, inputs, adjustedAttributes);
   //  }
+  return 0;
 };
 
 export const conv = (context: ComputeContext, attributes: ConvAttributes): number => {

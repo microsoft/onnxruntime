@@ -38,6 +38,13 @@ export interface GpuDataManager {
    */
   download(id: GpuDataId): Promise<ArrayBufferLike>;
 
+  /**
+   * refresh the buffers that marked for release.
+   *
+   * when release() is called, the buffer is not released immediately. this is because we need to wait for the commands
+   * to be submitted to the GPU. this function is called after the commands are submitted so that the buffers can be
+   * actually released.
+   */
   refreshPendingBuffers(): void;
 }
 

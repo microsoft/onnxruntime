@@ -95,9 +95,30 @@ export interface Artifact {
   // attribLocations: {position: number; textureCoord: number};
 }
 
+export interface ComputeContextInputsOutputsMapping {
+  /**
+   * specify the mapping to the program's inputs. the value can be a number or a tensor view.
+   * - if it's a number, it's the index of the kernel's input
+   * - if it's a tensor view, it's an existing tensor view that will be used as the input
+   *
+   * if inputs is not specified, the mapping will be the kernel's inputs in order.
+   */
+  readonly inputs?: ReadonlyArray<TensorView|number>;
+  /**
+   * specify the mapping to the program's outputs. the value can be a number or undefined.
+   * - if it's a non-negative number, it's the index of the kernel's output
+   * - if it's -1, it's an output that will be created as a temporary value. this value will be released after
+   * the kernel is executed.
+   *
+   * if outputs is not specified, the mapping will be the kernel's outputs in order.
+   */
+  readonly outputs?: readonly number[];
+}
+
 export interface ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  compute(program: ProgramInfoLoader|ProgramInfo, inputIndices?: readonly number[]): number;
+  compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
+      TensorView[];
   output(index: number, dims: readonly number[]): number;
 }
