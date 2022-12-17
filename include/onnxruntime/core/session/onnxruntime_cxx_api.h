@@ -1784,6 +1784,11 @@ struct CustomOpBase : OrtCustomOp {
 #endif
     OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputCharacteristic(index); };
     OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
+
+    OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicInputMinArity(); };
+    OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
+    OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
+    OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -1802,6 +1807,30 @@ struct CustomOpBase : OrtCustomOp {
   // Default implemention of GetInputMemoryType() that returns OrtMemTypeDefault
   OrtMemType GetInputMemoryType(size_t /*index*/) const {
     return OrtMemTypeDefault;
+  }
+
+  // Default implementation of GetVariadicInputMinArity() returns 1 to specify that a variadic input
+  // should expect at least 1 argument.
+  int GetVariadicInputMinArity() const {
+    return 1;
+  }
+
+  // Default implementation of GetVariadicInputHomegeneity() returns true to specify that all arguments
+  // to a variadic input should be of the same type.
+  bool GetVariadicInputHomogeneity() const {
+    return true;
+  }
+
+  // Default implementation of GetVariadicOutputMinArity() returns 1 to specify that a variadic output
+  // should produce at least 1 output value.
+  int GetVariadicOutputMinArity() const {
+    return 1;
+  }
+
+  // Default implementation of GetVariadicOutputHomegeneity() returns true to specify that all output values
+  // produced by a variadic output should be of the same type.
+  bool GetVariadicOutputHomogeneity() const {
+    return true;
   }
 
   // Declare list of session config entries used by this Custom Op.

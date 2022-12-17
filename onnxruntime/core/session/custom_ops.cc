@@ -331,60 +331,74 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
-    constexpr uint32_t min_ort_ver_io_opt = 8;   // Minimum ORT version supporting optional input/output.
-    constexpr uint32_t min_ort_ver_io_var = 13;  // Minimum ORT version supporting variadic input/output.
+    constexpr uint32_t min_ort_version_with_optional_io_support = 8;
+    constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
     for (const auto* op : domain->custom_ops_) {
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
       size_t type_id_counter = 0;
-      auto input_count = op->GetInputTypeCount(op);
+      const size_t input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+        bool is_homogeneous = true;
+        int min_arity = 1;
 
-        // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
-        // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= min_ort_ver_io_opt) {
-          auto characteristic = op->GetInputCharacteristic(op, i);
+        // The OrtCustomOp interface did not support the methods to query input/output characteristics before
+        // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
+        if (op->version >= min_ort_version_with_optional_io_support) {
+          const auto characteristic = op->GetInputCharacteristic(op, i);
 
+          // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
-          } else if ((op->version >= min_ort_ver_io_var) &&
+          } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                      (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
+            ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
+            min_arity = op->GetVariadicInputMinArity(op);
+            is_homogeneous = static_cast<bool>(op->GetVariadicInputHomogeneity(op));
           }
         }
 
-        auto type = op->GetInputType(op, i);
+        const auto type = op->GetInputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
-          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option);
+          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option,
+                       is_homogeneous, min_arity);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
         } else {
           schema.Input(i, "Input" + std::to_string(i), "",
-                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
+                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option,
+                       is_homogeneous, min_arity);
         }
       }
 
-      auto output_count = op->GetOutputTypeCount(op);
+      const size_t output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+        bool is_homogeneous = true;
+        int min_arity = 1;
 
-        // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
-        // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= min_ort_ver_io_opt) {
-          auto characteristic = op->GetOutputCharacteristic(op, i);
+        // The OrtCustomOp interface did not support the methods to query input/output characteristics before
+        // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
+        if (op->version >= min_ort_version_with_optional_io_support) {
+          const auto characteristic = op->GetOutputCharacteristic(op, i);
 
+          // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
-          } else if ((op->version >= min_ort_ver_io_var) &&
+          } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                      (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
+            ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
             option = onnx::OpSchema::FormalParameterOption::Variadic;
+            min_arity = op->GetVariadicOutputMinArity(op);
+            is_homogeneous = static_cast<bool>(op->GetVariadicOutputHomogeneity(op));
           }
         }
 
-        auto type = op->GetOutputType(op, i);
+        const auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
           ORT_ENFORCE(type_id_counter == 1,
                       "There must be one (and only one) dynamic typed input to the custom op. "
@@ -393,10 +407,11 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
                       "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
                       "cannot be inferred without which model loading cannot proceed.");
 
-          schema.Output(i, "Output" + std::to_string(i), "", "T0", option);
+          schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
         } else {
           schema.Output(i, "Output" + std::to_string(i), "",
-                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
+                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option,
+                        is_homogeneous, min_arity);
         }
       }
 
