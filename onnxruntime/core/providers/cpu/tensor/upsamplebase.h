@@ -366,7 +366,7 @@ class UpsampleBase {
     memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
 
     if (rank > 0 && (scales_size != rank || axes_.size())) {
-      std::vector<float> new_scales(rank, 1.0f);
+      std::vector<float> new_scales(size_t(rank), 1.0f);
       ORT_ENFORCE(*std::max_element(axes_.begin(), axes_.end()) < rank,
                   "axes should be less than rank");
       for (size_t i = 0; i < axes_.size(); i++) {

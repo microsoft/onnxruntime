@@ -1388,7 +1388,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
     // When sizes input is available directly populate it into the output_dims array.
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size()) * sizeof(int64_t));
-    output_dims.resize(sizes->Shape().Size());
+    output_dims.resize(size_t(sizes->Shape().Size()));
     ORT_ENFORCE(X->Shape().GetDims().size() >= output_dims.size(),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
 
