@@ -165,5 +165,6 @@ const createConcatProgramInfoLoader =
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): number => {
   validateInputs(context.inputs);
-  return context.compute(createConcatProgramInfoLoader(context.inputs, attributes));
+  context.compute(createConcatProgramInfoLoader(context.inputs, attributes));
+  return 0;
 };

@@ -7,18 +7,18 @@ import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 const getProgramInfoUniqueKey =
-    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly TensorView[],
-     inputGpuDatas: readonly GpuData[]): string => {
-      const inputGpuDataTypes = inputGpuDatas.map(data => `${data.type}`).join('_');
-      const inputTensorShapes = inputTensors.map(t => `${t.dims.join(',')}`).join('_');
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensorShapes: ReadonlyArray<TensorView['dims']>,
+     inputGpuDataTypes: readonly GpuDataType[]): string => {
+      const inputTensorShapesToString = inputTensorShapes.map(d => `${d.join(',')}`).join('_');
+      const inputGpuDataTypesToString = inputGpuDataTypes.join('_');
       let key = programInfo.name;
       if (programInfo.cacheHint) {
         key += '[' + programInfo.cacheHint + ']';
       }
-      key += ':' + inputTensorShapes + ';' + inputGpuDataTypes;
+      key += ':' + inputTensorShapesToString + ';' + inputGpuDataTypesToString;
       return key;
     };
 
@@ -26,6 +26,8 @@ export class WebGpuBackend {
   device: GPUDevice;
   gpuDataManager: GpuDataManager;
   programManager: ProgramManager;
+
+  temporaryData: GpuData[];
 
   // TODO: remove value[0]. the string is only for debug
   kernels: Map<number, [string, RunFunction, unknown]>;
@@ -92,18 +94,14 @@ export class WebGpuBackend {
     this.pendingDispatchNumber = 0;
   }
 
-  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly TensorView[],
-      createOutput: (index: number, dims: readonly number[]) => number): number {
+  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly TensorView[], outputIndices: readonly number[],
+      createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
+      createTemporaryOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
     if (inputs.length !== program.inputTypes.length) {
       throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
     }
 
-    // // create info for inputs
-    // const inputDatas: GpuData[] = [];
-    // for (let i = 0; i < program.inputTypes.length; ++i) {
-    //   inputDatas[i] = this.uploadGpuData(inputs[i], program.inputTypes[i]);
-    // }
-
+    // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputs.length; ++i) {
       const gpuData = this.gpuDataManager.get(inputs[i].data);
@@ -113,21 +111,31 @@ export class WebGpuBackend {
       inputDatas[i] = gpuData;
     }
 
-    const key = getProgramInfoUniqueKey(program, inputs, inputDatas);
+    const key = getProgramInfoUniqueKey(program, inputs.map(i => i.dims), inputDatas.map(i => i.type));
     let artifact = this.programManager.getArtifact(key);
     const programInfo = artifact ?
         artifact.programInfo :
         (typeof (program as ProgramInfoLoader).get === 'function' ? (program as ProgramInfoLoader).get() :
                                                                     (program as ProgramInfo));
 
+    // check ouput indices
+    const validatedOutputIndices = outputIndices.length === 0 ? programInfo.outputs.map((_, i) => i) : outputIndices;
+    if (validatedOutputIndices.length !== programInfo.outputs.length) {
+      throw new Error(`Output size must be equal to ${programInfo.outputs.length}.`);
+    }
+
     // create info for outputs
+    const outputTensorViews: TensorView[] = [];
     const outputDatas: GpuData[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      const dataId = createOutput(i, programInfo.outputs[i].dims);
-      const gpuData = this.gpuDataManager.get(dataId);
+      const tensorView = validatedOutputIndices[i] === -1 ?
+          createTemporaryOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
+          createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
+      const gpuData = this.gpuDataManager.get(tensorView.data);
       if (!gpuData) {
-        throw new Error(`no GPU data for output: ${dataId}`);
+        throw new Error(`no GPU data for output: ${tensorView.data}`);
       }
+      outputTensorViews.push(tensorView);
       outputDatas.push(gpuData);
     }
 
@@ -138,7 +146,7 @@ export class WebGpuBackend {
 
     this.programManager.run(artifact, inputDatas, outputDatas, artifact.programInfo.dispatchGroup(inputs));
 
-    return 0;
+    return outputTensorViews;
   }
 
   upload(gpuDataId: number, data: Uint8Array): void {
@@ -190,6 +198,15 @@ export class WebGpuBackend {
       // eslint-disable-next-line no-console
       console.log(`[js] Start to run kernel "${name}"...`);
     }
-    return kernelEntry(context, attributes);
+
+    this.temporaryData = [];
+    try {
+      return kernelEntry(context, attributes);
+    } finally {
+      for (const data of this.temporaryData) {
+        this.gpuDataManager.release(data.id);
+      }
+      this.temporaryData = [];
+    }
   }
 }

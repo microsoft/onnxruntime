@@ -138,6 +138,9 @@ export const enum DataType {
   bfloat16 = 16
 }
 
+export const getTensorElementSize = (dateType: number): number|
+    undefined => [undefined, 4, 1, 1, 2, 2, 4, 8, undefined, 1, 2, 8, 4, 8, undefined, undefined, undefined][dateType];
+
 
 const tensorDataTypeStringToEnum = (type: string): DataType => {
   switch (type) {

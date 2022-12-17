@@ -282,8 +282,8 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
 export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): number => {
   validateInputs(context.inputs);
   const metadata = {name: 'AveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  return context.compute(
-      {...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, false, attributes)});
+  context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, false, attributes)});
+  return 0;
 };
 
 const globalPoolAttributes = {
@@ -301,8 +301,9 @@ const globalPoolAttributes = {
 export const globalAveragePool = (context: ComputeContext): number => {
   validateInputs(context.inputs);
   const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default]};
-  return context.compute(
+  context.compute(
       {...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, true, globalPoolAttributes)});
+  return 0;
 };
 
 export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCacheKey {
@@ -330,8 +331,8 @@ const createMaxPoolProgramInfo =
 export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): number => {
   validateInputs(context.inputs);
   const metadata = {name: 'MaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  return context.compute(
-      {...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, false, attributes)});
+  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, false, attributes)});
+  return 0;
 };
 
 export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
@@ -357,8 +358,9 @@ const globalMaxPoolMetadata = {
 
 export const globalMaxPool = (context: ComputeContext): number => {
   validateInputs(context.inputs);
-  return context.compute({
+  context.compute({
     ...globalMaxPoolMetadata,
     get: () => createMaxPoolProgramInfo(context.inputs, globalMaxPoolMetadata, true, globalPoolAttributes)
   });
+  return 0;
 };
