@@ -18,7 +18,7 @@ bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_dev
          (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
 }
 
-common::Status DataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& /*stream*/) const {
+common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
