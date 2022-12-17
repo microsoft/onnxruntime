@@ -47,6 +47,7 @@ Arguments:
 --*/
 {
     const size_t W = Parameters->InputShape[1];
+    bool beta_not_zero = Parameters->Beta == 1.0f;
 
     if (W > 1) {
 
@@ -79,9 +80,8 @@ Arguments:
             auto out_col = Parameters->OutputShape[1];
 
             if (pad_left == 1) {
-                float dotsum = w01 * row0[1] + w02 * row0[2] +
-                            w11 * row1[1] + w12 * row1[2] +
-                            w21 * row2[1] + w22 * row2[2];
+                float dotsum = w01 * row0[1] + w02 * row0[2] + w11 * row1[1] + w12 * row1[2] +
+                               w21 * row2[1] + w22 * row2[2] + (beta_not_zero ? *Output : 0.f);
                 *Output++ = dotsum;
                 out_col--;
                 row0 += stride_w;
@@ -90,10 +90,9 @@ Arguments:
             }
 
             for (; out_col > pad_right; out_col--) {
-                float dotsum =
-                    w00 * row0[0] + w01 * row0[1] + w02 * row0[2] +
-                    w10 * row1[0] + w11 * row1[1] + w12 * row1[2] +
-                    w20 * row2[0] + w21 * row2[1] + w22 * row2[2];
+                float dotsum = w00 * row0[0] + w01 * row0[1] + w02 * row0[2] + w10 * row1[0] +
+                               w11 * row1[1] + w12 * row1[2] + w20 * row2[0] + w21 * row2[1] +
+                               w22 * row2[2] + (beta_not_zero ? *Output : 0.f);
                 *Output++ = dotsum;
                 row0 += stride_w;
                 row1 += stride_w;
@@ -101,10 +100,8 @@ Arguments:
             }
 
             if (out_col == 1) { // pad_right == 1
-                float dotsum =
-                    w00 * row0[0] + w01 * row0[1] +
-                    w10 * row1[0] + w11 * row1[1] +
-                    w20 * row2[0] + w21 * row2[1];
+                float dotsum = w00 * row0[0] + w01 * row0[1] + w10 * row1[0] + w11 * row1[1] +
+                               w20 * row2[0] + w21 * row2[1] + (beta_not_zero ? *Output : 0.f);
                 *Output++ = dotsum;
             }
 
@@ -131,24 +128,27 @@ Arguments:
         const float w2 = Filter[pad_left ? 7 : 6];
 
         if (pad_top == 1) {
-            *Output++ = w1 * Input[0] + w2 * ((H + pad_top <= 2) ? 0.0f : Input[1]);
+            auto init_v = (beta_not_zero ? *Output : 0.f);
+            *Output++ = w1 * Input[0] + w2 * ((H + pad_top <= 2) ? 0.0f : Input[1]) + init_v;
             out_row--;
         }
 
         for (const float* row = Input + pad_top * stride_h - pad_top; out_row > pad_bottom; --out_row) {
             // All pixels are in the input col
-            *Output++ = w0 * row[0] + w1 * row[1] + w2 * row[2];
+            auto init_v = (beta_not_zero ? *Output : 0.f);
+            *Output++ = w0 * row[0] + w1 * row[1] + w2 * row[2] + init_v;
             row += stride_h;
         }
 
         if (out_row > 0) {
+            auto init_v = (beta_not_zero ? *Output : 0.f);
             // last 1 or 2 rows are from the padding zero row.
             // out_row == 1 when arrive here
             if (pad_bottom == 1) {
                 const float* row = Input + H - 2;
-                *Output++ = w0 * row[0] + w1 * row[1];
+                *Output++ = w0 * row[0] + w1 * row[1] + init_v;
             } else { // pad_bottom == 2 and H == 1 and padding_top == 0
-                *Output++ = w0 * Input[0];
+                *Output++ = w0 * Input[0] + init_v;
             }
         }
     }
