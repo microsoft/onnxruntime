@@ -136,7 +136,9 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             beam_indices,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
-                            gpt_subgraph_.GetFirstPresentOutputIndex());
+                            gpt_subgraph_.GetFirstPresentOutputIndex(),
+                            false,
+                            -1);
 }
 
 template <typename T>
