@@ -498,6 +498,8 @@ stages:
           arch: 'aarch64'
           machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
           base_image: 'arm64v8/ubuntu:18.04'
+          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+            device: '-d CLOUD' 
 
   - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
       - template: py-linux-ubuntu.yml

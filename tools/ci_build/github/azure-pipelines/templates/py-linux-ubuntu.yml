@@ -8,6 +8,10 @@ parameters:
 - name: base_image
   type: string
 
+- name: device
+  type: string
+  default: '-d CPU'
+
 jobs:
 - job: Linux_Ubuntu_CPU_py_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
@@ -38,7 +42,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        arguments: -i onnxruntimecpubuildubuntu20python${{ parameters.arch }}
+        arguments: -i onnxruntimecpubuildubuntu20python${{ parameters.arch }} -x "${{ parameters.device }}"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
