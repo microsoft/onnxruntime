@@ -174,15 +174,18 @@ try:
                     
         def _rewrite_ld_preload_cloud(self):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
-                f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
-                f.write("try:\n")
-                f.write('    zlib_path = util.find_library("zlib1")\n')
-                f.write('    zlib = CDLL(zlib_path,mode=RTLD_GLOBAL)\n')
-                f.write('    print("found zlib in path")\n')
-                f.write("except OSError:\n")
-                f.write('    print("Failed to find zlib in path")\n')
-                f.write("    import os\n")
-                f.write('    os.environ["ORT_ZLIB_UNAVAILABLE"] = "1"\n')
+                f.write('import os\n')
+                f.write('from ctypes import CDLL, RTLD_GLOBAL, util\n')
+                f.write('def LoadLib(lib_name):\n')
+                f.write('    lib_path = util.find_library(lib_name)\n')
+                f.write('    if lib_path: _ = CDLL(lib_path, mode=RTLD_GLOBAL)\n')
+                f.write('    else: _ = CDLL(lib_name, mode=RTLD_GLOBAL)\n')
+                f.write('for lib_name in ["RE2", "ZLIB1"]:\n')
+                f.write('    try:\n')
+                f.write('        LoadLib(lib_name)\n')
+                f.write('    except OSError:\n')
+                f.write('        print("Could not load ort cloud-ep dependency: " + lib_name)\n')
+                f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
