@@ -47,7 +47,7 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
 elif [ "$BUILD_DEVICE" == "CLOUD" ]; then
     BUILD_ARGS+=("--use_cloud" "--skip_tests")
     if [ -f /etc/lsb-release ]; then
-        apt-get install -y perl-IPC-Cmd python3 openssl-devel
+        apt-get install -y libipc-system-simple-perl python3 libssl-dev
     else
         yum install -y perl-IPC-Cmd python3 openssl-devel
     fi
