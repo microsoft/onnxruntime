@@ -46,8 +46,13 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80")
 elif [ "$BUILD_DEVICE" == "CLOUD" ]; then
     BUILD_ARGS+=("--use_cloud" "--skip_tests")
-	yum install -y perl-IPC-Cmd python3 openssl-devel
+    if [ -f /etc/lsb-release ]; then
+        apt-get install -y perl-IPC-Cmd python3 openssl-devel
+    else
+        yum install -y perl-IPC-Cmd python3 openssl-devel
+    fi
 fi
+
 export CFLAGS
 export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
