@@ -179,6 +179,7 @@ stages:
        - ${{ if (contains(parameters.build_py_parameters, '--use_cloud')) }}:
         - script: |
            set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
+         workingDirectory: '$(Build.BinariesDirectory)'
          displayName: "Add vcpkg packages to system path"
 
       # Esrp signing
