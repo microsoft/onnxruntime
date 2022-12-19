@@ -47,8 +47,8 @@ public:
             m_inputTensorDescs[0].GetSizes());
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
-        uint32_t inputDimCount = m_inputTensorDescs[0].GetDimensionCount();
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
+        uint32_t inputDimCount = m_inputTensorDescs[0].GetDimensionCount();
         onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
         std::vector<uint32_t> onnxAxes(static_cast<size_t>(inputDimCount) - static_cast<size_t>(onnxAxis));
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
