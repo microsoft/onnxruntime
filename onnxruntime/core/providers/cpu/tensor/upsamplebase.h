@@ -72,7 +72,7 @@ class UpsampleBase {
     antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
     if (antialias_) {
       ORT_ENFORCE((UpsampleMode::LINEAR == mode_ || UpsampleMode::CUBIC == mode_),
-                  "when anti-aliasing is setted, Resize only supports mode `LINEAR` and `CUBIC`.");
+                  "when anti-aliasing is set, Resize only supports mode `LINEAR` and `CUBIC`.");
     }
 
     auto input_count = info.GetInputCount();

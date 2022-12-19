@@ -9,7 +9,6 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/tensor_shape.h"
 #include "core/optimizer/initializer.h"
 
 namespace onnxruntime {

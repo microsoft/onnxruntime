@@ -3,12 +3,10 @@
 
 #pragma once
 
-#include <algorithm>
 #include <cmath>  // for round
 #include <vector>
-#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/tensor.h"
-#include "gsl/span_ext"
+#include "gsl/span"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
@@ -19,6 +17,7 @@ namespace onnxruntime {
 namespace ConstValue {
 constexpr int32_t mag_factor = 1 << (22 - 1);
 }
+
 struct FilterParamsBaseAntiAlias {
   std::vector<int64_t> bound;
   std::vector<float> original;
@@ -44,6 +43,11 @@ struct FilterParamsAntiAlias {
     if (clip8_lookups_table[1279] == 255) {
       return;
     }
+
+    // taken from https://github.com/python-pillow/Pillow/blob/66add095a50d76c35c7f58643461f2edf78a3f05/src/libImaging/Resample.c#L94
+    //  we need to handle negative values
+    //  it's equivalent to :x = np.clip(x, 0, 255) where x \in [-640, 639]
+    // we will accept a negative x for (&clip8_lookups_table[640])[x] means clip8_lookups_table +640 -x
     for (int i = 0; i < 1280; ++i) {
       clip8_lookups_table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
     }
@@ -168,6 +172,7 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
 
           const T* Xdata = Xdata_base + x_start;
           T* Ydata = temp_buffer + y_start;
+          // no need to do scale
           if (output_width == input_width) {
             auto output_size = narrow<size_t>(input_height * output_width);
 
@@ -179,6 +184,7 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
                       ydata_span.begin() + y_start);
             return;
           }
+
           for (size_t y = 0; y < narrow<size_t>(input_height); ++y) {
             auto* Ydata_offset = Ydata + output_width * y;
             auto* bound = p.dim_x.bound.data();
@@ -244,15 +250,12 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
                 p.dim_y.window_size * y;
             int64_t ymin = *y_bound++;
             int64_t ymax = *y_bound++;
-
+            auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
-              const int64_t output_offset = output_width * y + x;
-              auto* Ydata_offset = Ydata + output_offset;
-
               if (use_extrapolation &&
                   ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
                    (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
-                *Ydata_offset = static_cast<T>(extrapolation_value);
+                *Ydata_offset++ = static_cast<T>(extrapolation_value);
                 continue;
               }
 
@@ -265,11 +268,11 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
                 Xdata_offset += output_width;
               }
               if constexpr (is_8bit_v<T>) {
-                *Ydata_offset = static_cast<T>(clip8_lookups[output >> 22]);
+                *Ydata_offset++ = static_cast<T>(clip8_lookups[output >> 22]);
               } else if constexpr (std::is_same<T, int32_t>::value) {
-                *Ydata_offset = narrow<int32_t>(std::round(output));
+                *Ydata_offset++ = narrow<int32_t>(std::round(output));
               } else {  // float double
-                *Ydata_offset = output;
+                *Ydata_offset++ = output;
               }
             }
           }
@@ -400,7 +403,7 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias& p,
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const auto x = static_cast<size_t>(i % output_width);
             const auto y = static_cast<size_t>(i / output_width);
-            T* Ydata_with_offset = Ydata + (output_width * y + x) * num_channels;
+            T* Ydata_with_offset = Ydata + i * num_channels;
             if (use_extrapolation && ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
                                       (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
               for (size_t c = 0; c < narrow<size_t>(num_channels); ++c) {

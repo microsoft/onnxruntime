@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cstdint>
 #include <vector>
-#include "core/common/safeint.h"
-#include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample_antialias.h"
 #include "gsl/span"
 
@@ -15,7 +12,7 @@ namespace onnxruntime {
 
 // The following method supports a 3/4/5-D input in 'Linear mode, cubic mode'
 // that amounts to 'Bilinear,TriLinear, Bicubic/Tricubic' Upsampling/Resizing in the sense that it assumes
-// A 4-D tensor has
+// A N-D tensor has
 // 1. the scale values for the outermost 2 dimensions are 1 or
 // 2. the scale values for the outermost and innermost dimensions are 1
 // This is the common use-case where the 4-D input (batched multi-channel images)
