@@ -150,6 +150,7 @@ class SymbolicShapeInference:
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,
+            "FusedMatMul": self._infer_FusedMatMul,
             "MatMulInteger16": self._infer_MatMulInteger,
             "MaxPool": self._infer_Pool,
             "Max": self._infer_symbolic_compute_ops,
@@ -682,6 +683,55 @@ class SymbolicShapeInference:
         if not all([d == dims[0] for d in dims]):
             self._add_suggested_merge(dims, apply=True)
 
+    def _compute_fused_matmul_shape(self, node, output_dtype=None):
+        lhs_shape = self._get_shape(node, 0)
+        rhs_shape = self._get_shape(node, 1)
+
+        transA = bool(get_attribute("transA"))
+        transB = bool(get_attribute("transB"))
+        transBatchA = bool(get_attribute("transBatchA"))
+        transBatchB = bool(get_attribute("transBatchB"))
+        if transA:
+            lhs_shape[-2], lhs_shape[-1] = lhs_shape[-1], lhs_shape[-2]
+        elif transBatchA:
+            leading_dim = lhs_shape[0]
+            lhs_shape[:-2] = lhs_shape[1:-1]
+            lhs_shape[-2] = leading_dim
+        if transB:
+            rhs_shape[-2], rhs_shape[-1] = rhs_shape[-1], rhs_shape[-2]
+        elif transBatchB:
+            leading_dim = rhs_shape[0]
+            rhs_shape[:-2] = rhs_shape[1:-1]
+            rhs_shape[-2] = leading_dim
+
+        lhs_rank = len(lhs_shape)
+        rhs_rank = len(rhs_shape)
+        lhs_reduce_dim = 0
+        rhs_reduce_dim = 0
+        assert lhs_rank > 0 and rhs_rank > 0
+        if lhs_rank == 1 and rhs_rank == 1:
+            new_shape = []
+        elif lhs_rank == 1:
+            rhs_reduce_dim = -2
+            new_shape = rhs_shape[:rhs_reduce_dim] + [rhs_shape[-1]]
+        elif rhs_rank == 1:
+            lhs_reduce_dim = -1
+            new_shape = lhs_shape[:lhs_reduce_dim]
+        else:
+            lhs_reduce_dim = -1
+            rhs_reduce_dim = -2
+            new_shape = self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]) + [lhs_shape[-2]] + [rhs_shape[-1]]
+        # merge reduce dim
+        self._check_merged_dims(
+            [lhs_shape[lhs_reduce_dim], rhs_shape[rhs_reduce_dim]],
+            allow_broadcast=False,
+        )
+        if output_dtype is None:
+            # infer output_dtype from input type when not specified
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
+
     def _compute_matmul_shape(self, node, output_dtype=None):
         lhs_shape = self._get_shape(node, 0)
         rhs_shape = self._get_shape(node, 1)
@@ -1130,6 +1180,9 @@ class SymbolicShapeInference:
 
     def _infer_MatMul(self, node):
         self._compute_matmul_shape(node)
+
+    def _infer_FusedMatMul(self, node):
+        self._compute_fused_matmul_shape(node)
 
     def _infer_MatMulInteger(self, node):
         self._compute_matmul_shape(node, onnx.TensorProto.INT32)
