@@ -148,7 +148,8 @@ struct ProviderHostCPU {
                                             const Tensor* key,
                                             const Tensor* value,
                                             void* parameters,
-                                            const int max_threads_per_block) = 0;
+                                            const int max_threads_per_block,
+                                            const Tensor* past_seq_len) = 0;
 
   virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,
                                             OpKernelContext* context,

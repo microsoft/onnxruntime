@@ -575,7 +575,9 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx) {
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
@@ -621,8 +623,13 @@ Status UpdateGptFeeds(
   }
   next_inputs[2] = attention_mask;
 
-  // Update past state
-  if (num_beams == 1) {
+  if (past_present_share_buffer) {
+    int32_t* past_seq_len_data = const_cast<int32_t*>(next_inputs.back().Get<Tensor>().Data<int32_t>());
+    *past_seq_len_data = past_sequence_len;
+    return Status::OK();
+  }
+
+  if (num_beams == 1) {   // Update past state
     // feed present_* output to past_* inputs one by one
     const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
     for (size_t i = gpt_subgraph_first_present_output_idx; i < last_outputs.size(); ++i) {
@@ -884,7 +891,9 @@ template Status UpdateGptFeeds<float>(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx);
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,

@@ -242,6 +242,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(vocab_mask=False)
 
     model_group.add_argument(
+        "--past_present_share_buffer",
+        required=False,
+        action="store_true",
+        help="Use shared buffer for past and present, currently work for gpt2 greedy search.",
+    )
+    model_group.set_defaults(past_present_share_buffer=False)
+
+    model_group.add_argument(
         "--prefix_vocab_mask",
         required=False,
         action="store_true",
@@ -936,6 +944,105 @@ def move_initializers(
     return moved_initializers
 
 
+def _attribute_to_pair(attribute):
+    """
+    Convert attribute to kwarg format for use with onnx.helper.make_node.
+        :parameter attribute: attribute in AttributeProto format.
+        :return: attribute in {key: value} format.
+    """
+    if attribute.type == 0:
+        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
+
+    # Based on attribute type definitions from AttributeProto
+    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    if attribute.type == 1:
+        value = attribute.f
+    elif attribute.type == 2:
+        value = attribute.i
+    elif attribute.type == 3:
+        value = attribute.s
+    elif attribute.type == 4:
+        value = attribute.t
+    elif attribute.type == 5:
+        value = attribute.g
+    elif attribute.type == 6:
+        value = attribute.floats
+    elif attribute.type == 7:
+        value = attribute.ints
+    elif attribute.type == 8:
+        value = attribute.strings
+    elif attribute.type == 9:
+        value = attribute.tensors
+    elif attribute.type == 10:
+        value = attribute.graphs
+    else:
+        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
+
+    return (attribute.name, value)
+
+
+def kwargs_of(node):
+    kwargs = {}
+    for attr in node.attribute:
+        (key, value) = _attribute_to_pair(attr)
+        kwargs.update({key: value})
+    if node.domain:
+        kwargs.update({"domain": node.domain})
+    return kwargs
+
+
+def shape_of(vi):
+    return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
+
+
+def update_decoder_subgraph_past_present_share_buffer(subg):
+    input_past_0 = 3
+    output_past_0 = 1
+    new_inputs = []
+    for i, vi in enumerate(subg.input):
+        if i >= input_past_0:
+            shape = shape_of(vi)
+            vi = onnx.helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
+            )
+        new_inputs.extend([vi])
+    new_inputs.extend([onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])])
+    subg.ClearField("input")
+    subg.input.extend(new_inputs)
+
+    new_outputs = []
+    for i, vi in enumerate(subg.output):
+        if i >= output_past_0:
+            shape = shape_of(vi)
+            vi = onnx.helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
+            )
+        new_outputs.extend([vi])
+    subg.ClearField("output")
+    subg.output.extend(new_outputs)
+
+    new_nodes = []
+    for node in subg.node:
+        if node.op_type == "Attention":
+            kwargs = kwargs_of(node)
+            kwargs.update({"past_present_share_buffer": 1})
+            nis = []
+            nis.extend(node.input)
+            while len(nis) < 8:
+                nis.extend([""])
+            if len(nis) < 9:
+                nis.extend(["past_sequence_length"])
+            node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
+        new_nodes.extend([node])
+    subg.ClearField("node")
+    subg.node.extend(new_nodes)
+    return subg
+
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
@@ -1158,6 +1265,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     is_beamsearch: bool = generation_type == GenerationType.BEAMSEARCH
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
     is_sampling: bool = generation_type == GenerationType.SAMPLING
+    past_present_share_buffer: bool = args.past_present_share_buffer and is_greedysearch
+
+    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}, is_greedysearch={is_greedysearch}")
 
     if is_greedysearch or is_sampling:
         if not is_gpt2:
@@ -1434,13 +1544,18 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info(
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
-
+            if past_present_share_buffer:
+                logger.info("*****update init decoder subgraph to make past and present share buffer******************")
+                update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
             node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
         else:
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
+        if past_present_share_buffer:
+            logger.info("*****update decoder subgraph to make past and present share buffer******************")
+            update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs

@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
@@ -320,6 +321,10 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
   return g_host->CreateGPUDataTransfer();
 }
+
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
 #endif
 
 #ifdef USE_MIGRAPHX
@@ -565,11 +570,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* key,
                                   const Tensor* value,
                                   void* parameters,
-                                  const int max_threads_per_block) const {
+                                  const int max_threads_per_block,
+                                  const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
                                                mask_index, past, extra_add_qk,
                                                key, value, parameters,
-                                               max_threads_per_block);
+                                               max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
                                   int sequence_length, int& past_sequence_length) const {
@@ -690,5 +696,14 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
+
+namespace cann {
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  return g_host->cann__CreateModel(graph_viewer, logger);
+}
+}  // namespace cann
 #endif
 }  // namespace onnxruntime
