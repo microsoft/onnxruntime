@@ -66,6 +66,7 @@ __global__ void LogitsProcessKernel(
     const int* prefix_vocab_mask,
     int num_beams,
     int vocab_size,
+    int padded_vocab_size,
     int total_elements,
     int demote_token_id,
     int32_t* sequences,
@@ -75,66 +76,71 @@ __global__ void LogitsProcessKernel(
     int no_repeat_ngram_size) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < total_elements) {
-    int batch_beam_index = index / vocab_size;
-    int word_id = index % vocab_size;
+    int batch_beam_index = index / padded_vocab_size;
+    int word_id = index % padded_vocab_size;
 
-    // RepetitionPenaltyLogitsProcessor
-    if (repetition_penalty != 1.0f) {
-      int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
-      bool found = false;
-      for (int i = 0; i < current_sequence_length; i++) {
-        if (current_sequence[i] == word_id) {
-          found = true;
-          break;
-        }
-      }
-      if (found) {
-        float score = (float)next_token_scores[index];
-        next_token_scores[index] = (T)(score < 0 ? score * repetition_penalty : score / repetition_penalty);
-      }
-    }
-
-    // NoRepeatNGramLogitsProcessor
-    if (no_repeat_ngram_size > 0 && current_sequence_length >= no_repeat_ngram_size) {
-      int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
-      bool found = false;
-      for (int i = no_repeat_ngram_size - 1; i < current_sequence_length; i++) {
-        if (current_sequence[i] == word_id) {  // last token of n-gram matched
-          found = true;
-          for (int j = 0; j < no_repeat_ngram_size - 1; j++) {  // match the remaining N-1 tokens
-            if (current_sequence[i - j - 1] != current_sequence[current_sequence_length - 1 - j]) {
-              found = false;
-              break;
-            }
-          }
-          if (found) {
+    if (word_id >= vocab_size) {
+      // Set any value within the padding region to the lowest value so that it isn't picked
+      next_token_scores[index] = cub::FpLimits<T>::Lowest();
+    } else {
+      // RepetitionPenaltyLogitsProcessor
+      if (repetition_penalty != 1.0f) {
+        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+        bool found = false;
+        for (int i = 0; i < current_sequence_length; i++) {
+          if (current_sequence[i] == word_id) {
+            found = true;
             break;
           }
         }
+        if (found) {
+          float score = (float)next_token_scores[index];
+          next_token_scores[index] = (T)(score < 0 ? score * repetition_penalty : score / repetition_penalty);
+        }
       }
 
-      if (found) {
+      // NoRepeatNGramLogitsProcessor
+      if (no_repeat_ngram_size > 0 && current_sequence_length >= no_repeat_ngram_size) {
+        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+        bool found = false;
+        for (int i = no_repeat_ngram_size - 1; i < current_sequence_length; i++) {
+          if (current_sequence[i] == word_id) {  // last token of n-gram matched
+            found = true;
+            for (int j = 0; j < no_repeat_ngram_size - 1; j++) {  // match the remaining N-1 tokens
+              if (current_sequence[i - j - 1] != current_sequence[current_sequence_length - 1 - j]) {
+                found = false;
+                break;
+              }
+            }
+            if (found) {
+              break;
+            }
+          }
+        }
+
+        if (found) {
+          next_token_scores[index] = cub::FpLimits<T>::Lowest();
+          return;
+        }
+      }
+
+      // VocabMaskLogitsProcessor
+      if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
         return;
       }
-    }
 
-    // VocabMaskLogitsProcessor
-    if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
-      next_token_scores[index] = cub::FpLimits<T>::Lowest();
-      return;
-    }
+      // PrefixVocabMaskLogitsProcessor
+      int batch_id = batch_beam_index / num_beams;
+      if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
+        next_token_scores[index] = cub::FpLimits<T>::Lowest();
+        return;
+      }
 
-    // PrefixVocabMaskLogitsProcessor
-    int batch_id = batch_beam_index / num_beams;
-    if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
-      next_token_scores[index] = cub::FpLimits<T>::Lowest();
-      return;
-    }
-
-    // MinLengthLogitsProcessor
-    if (word_id == demote_token_id) {
-      next_token_scores[index] = cub::FpLimits<T>::Lowest();
+      // MinLengthLogitsProcessor
+      if (word_id == demote_token_id) {
+        next_token_scores[index] = cub::FpLimits<T>::Lowest();
+      }
     }
   }
 }
@@ -147,6 +153,7 @@ void LaunchLogitsProcessKernel(
     int batch_size,
     int num_beams,
     int vocab_size,
+    int padded_vocab_size,
     int demote_token_id,
     int32_t* sequences,
     int max_sequence_length,
@@ -154,7 +161,7 @@ void LaunchLogitsProcessKernel(
     float repetition_penalty,
     int no_repeat_ngram_size,
     cudaStream_t stream) {
-  int total_elements = batch_size * num_beams * vocab_size;
+  int total_elements = batch_size * num_beams * padded_vocab_size;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
   LogitsProcessKernel<T><<<gridSize, blockSize, 0, stream>>>(
@@ -163,6 +170,7 @@ void LaunchLogitsProcessKernel(
       prefix_vocab_mask,
       num_beams,
       vocab_size,
+      padded_vocab_size,
       total_elements,
       demote_token_id,
       sequences,
@@ -180,6 +188,7 @@ template void LaunchLogitsProcessKernel(
     int batch_size,
     int num_beams,
     int vocab_size,
+    int padded_vocab_size,
     int demote_token_id,
     int32_t* sequences,
     int max_sequence_length,
@@ -195,6 +204,7 @@ template void LaunchLogitsProcessKernel(
     int batch_size,
     int num_beams,
     int vocab_size,
+    int padded_vocab_size,
     int demote_token_id,
     int32_t* sequences,
     int max_sequence_length,
