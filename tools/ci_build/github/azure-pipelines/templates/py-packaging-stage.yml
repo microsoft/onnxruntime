@@ -234,7 +234,12 @@ stages:
       #      **/*.obj
       #      **/*.pdb
       #      **/*.dll
-
+      - script: |
+         where re2.dll
+         where zlib1.dll
+        workingDirectory: '$(Build.BinariesDirectory)'
+        displayName: "Search for re2 and zlib"
+ 
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
