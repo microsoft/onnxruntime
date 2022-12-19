@@ -176,11 +176,10 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
           createLogFile: true
 
-       - ${{ if (contains(parameters.build_py_parameters, '--use_cloud')) }}:
-        - script: |
-           set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
-         workingDirectory: '$(Build.BinariesDirectory)'
-         displayName: "Add vcpkg packages to system path"
+      - script: |
+         set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
+        workingDirectory: '$(Build.BinariesDirectory)'
+        displayName: "Add vcpkg packages to system path"
 
       # Esrp signing
       - template: win-esrp-dll.yml
@@ -226,15 +225,15 @@ stages:
           AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
         continueOnError: true
 
-      - task: DeleteFiles@1
-        displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-          Contents: |
-            **/*.obj
-            **/*.pdb
-            **/*.dll
+      #- task: DeleteFiles@1
+      #  displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
+      #  condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+      #  inputs:
+      #    SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      #    Contents: |
+      #      **/*.obj
+      #      **/*.pdb
+      #      **/*.dll
 
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
