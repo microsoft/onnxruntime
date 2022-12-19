@@ -1617,13 +1617,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             ["batch_size", "num_return_sequences", "max_length"],
         )
     elif is_greedysearch or is_sampling:
-        sequences = (
-             onnx.helper.make_tensor_value_info(
+        sequences = onnx.helper.make_tensor_value_info(
             "sequences",
             TensorProto.INT32,
             ["batch_size", "max_length"],
         )
-    )
 
     graph_outputs = [sequences]
 
