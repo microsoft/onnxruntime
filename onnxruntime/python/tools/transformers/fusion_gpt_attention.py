@@ -224,26 +224,52 @@ class FusionGptAttention(FusionGptAttentionPastBase):
         past = None
         present = None
         return_indice = []
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node,
-            ["Add", "Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
-            [0, None, 0, 0, 0, 0, 0],
-            output_name_to_node=output_name_to_node,
-            return_indice=return_indice,
-        )  # yapf: disable
+
+        is_normalize_node_skiplayernorm = normalize_node.op_type == "SkipLayerNormalization"
+        qkv_nodes = None
+
+        if not is_normalize_node_skiplayernorm:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Add", "Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
+                [0, None, 0, 0, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )  # yapf: disable
+        else:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
+                [None, 0, 0, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )  # yapf: disable
+
         if qkv_nodes is None:
             return
-        (
-            add_qkv,
-            reshape_qkv,
-            gemm_qkv,
-            reshape_1,
-            reshape_2,
-            transpose_qkv,
-            matmul_qkv,
-        ) = qkv_nodes
 
-        another_input = add_qkv.input[1 - return_indice[0]]
+        another_input = None
+        if not is_normalize_node_skiplayernorm:
+            (
+                add_qkv,
+                reshape_qkv,
+                gemm_qkv,
+                reshape_1,
+                reshape_2,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
+
+            another_input = add_qkv.input[1 - return_indice[0]]
+        else:
+            (
+                reshape_qkv,
+                gemm_qkv,
+                reshape_1,
+                reshape_2,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
 
         v_nodes = self.model.match_parent_path(matmul_qkv, ["Concat", "Transpose", "Reshape", "Split"], [1, 1, 0, 0])
         if v_nodes is None:
@@ -291,8 +317,13 @@ class FusionGptAttention(FusionGptAttentionPastBase):
 
         layernorm_before_attention = fc_nodes[-1]
 
-        if not another_input in layernorm_before_attention.input:
-            logger.debug("Add and (Skip)LayerNormalization shall have one same input")
+        # `another_input` will be non-None only if
+        # (1) SkipLayerNorm fusion wasn't turned ON
+        # (2) SkipLayerNorm fusion was turned ON but upstream layer's LayerNorm + Add was not
+        # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
+        # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
+        if another_input is not None and not another_input in layernorm_before_attention.input:
+            logger.debug("Upstream Add and (Skip)LayerNormalization shall have one same input")
             return
 
         is_unidirectional = True
