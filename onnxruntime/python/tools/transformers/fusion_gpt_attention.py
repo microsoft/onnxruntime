@@ -296,7 +296,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
 
         # Try match pattern using MatMul
         if fc_nodes is None:
-            # MatMul
+            # LayerNormalization
             fc_nodes = self.model.match_parent_path(
                 split_fc,
                 ["Add", "MatMul", "LayerNormalization"],
@@ -304,7 +304,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 output_name_to_node,
             )
 
-            # Gemm
+            # SkipLayerNormalization
             if fc_nodes is None:
                 fc_nodes = self.model.match_parent_path(
                     split_fc,

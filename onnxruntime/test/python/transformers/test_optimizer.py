@@ -145,12 +145,6 @@ class TestModelOptimization(unittest.TestCase):
                 hidden_size=4,
                 optimization_options=options,
             )
-            import os
-            import onnx
-
-            dir = "."
-            model_path = os.path.join(dir, "opt.onnx")
-            onnx.save(model.model, model_path)
 
             expected_node_count = {
                 "EmbedLayerNormalization": 0,
