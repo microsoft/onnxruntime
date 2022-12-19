@@ -823,8 +823,8 @@ TEST(CApiTest, variadic_undef_input_output_custom_op) {
   ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(mem_info, float_inps.data(), float_inps.size(),
                                                           input_dims.data(), input_dims.size()));
 
-  std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
-  std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
+  constexpr std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
+  constexpr std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
 
   Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
