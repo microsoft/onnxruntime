@@ -232,7 +232,8 @@ stages:
     
     - ${{ if not(contains(parameters.build_py_parameters, '--use_cloud')) }}:
       - script: |
-        set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
+         set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
+        displayName: "Add vcpkg packages to system path"
 
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
