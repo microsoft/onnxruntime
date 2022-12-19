@@ -5,7 +5,7 @@
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/tensor/upsample_aa.h"
+#include "core/providers/cpu/tensor/upsample_antialias.h"
 #include "gsl/span"
 
 using namespace onnxruntime::common;
@@ -22,22 +22,25 @@ namespace onnxruntime {
 // is usually of shapes:
 // - [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
 // - [N, H, W, C] and the scales are [1.0, height_scale, width_scale, 1.0]
-void SetupUpsampleFilterAA(FilterParamsAA& p,
-                           const gsl::span<int64_t> input_h_w_c,
-                           const gsl::span<int64_t> output_h_w_c,
-                           const gsl::span<float> scale_h_w_c,
-                           const std::vector<float>& roi,
-                           AllocatorPtr& alloc,
-                           const GetOriginalCoordinateFunc& get_original_coordinate,
-                           const int32_t dtype, bool exclude_outside, const bool is_nchw) {
-  auto compute_weight_coefficients = [&alloc, &roi, &get_original_coordinate, dtype, exclude_outside](const FilterParamsAA& p,
+void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias& p,
+                                  const gsl::span<int64_t> input_h_w_c,
+                                  const gsl::span<int64_t> output_h_w_c,
+                                  const gsl::span<float> scale_h_w_c,
+                                  const std::vector<float>& roi,
+                                  AllocatorPtr& alloc,
+                                  const GetOriginalCoordinateFunc& get_original_coordinate,
+                                  const int32_t dtype, bool exclude_outside, const bool is_nchw) {
+  auto compute_weight_coefficients = [&alloc, &roi, &get_original_coordinate, dtype, exclude_outside](const FilterParamsAntiAlias& p,
                                                                                                       const int64_t input_size,
                                                                                                       const int64_t output_size,
                                                                                                       size_t rindex,
-                                                                                                      FilterParamsBaseAA& param_base,
+                                                                                                      FilterParamsBaseAntiAlias& param_base,
                                                                                                       const float rscale,
                                                                                                       BufferUniquePtr& weight_coefficients) -> int64_t {
     param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
+    param_base.original.reserve(static_cast<size_t>(output_size));
+    param_base.out_of_bound_idx.reserve(static_cast<size_t>(output_size));
+
     float scale = 1.0f / rscale;
     float support =
         (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
@@ -65,7 +68,7 @@ void SetupUpsampleFilterAA(FilterParamsAA& p,
                                                                      roi[roi_start], roi[roi_end]));
       param_base.original.emplace_back(center - 0.5f);
       if (center - 0.5f < 0) {
-        param_base.output_idx_bellow_zero.emplace_back(i);
+        param_base.out_of_bound_idx.emplace_back(i);
       }
       float total_weight = 0.0;
 

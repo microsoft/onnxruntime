@@ -53,7 +53,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   if (rank != static_cast<int32_t>(scales.size()))
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
-  if (roi.size() != 2 * X->Shape().GetDims().size())
+  if (roi.size() != 2 * X_dims.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
@@ -121,9 +121,10 @@ template <typename T>
 Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
+  auto input_dims = X->Shape().GetDims();
 
-  TensorShapeVector output_dims(X->Shape().GetDims().size());
-  std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
+  TensorShapeVector output_dims(input_dims.size());
+  std::vector<float> roi_array(input_dims.size() * 2, 0.0f);
   if (!roi_cached_) {
     bool use_default_roi = true;
     if (need_roi_input_) {
@@ -137,7 +138,6 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_default_roi) {
       // default roi includes ensures all the values in that axis are included in the roi
       // normalized roi is thus : [start, end] = [0, 1]
-      const auto input_dims = X->Shape().GetDims();
       size_t input_rank = input_dims.size();
       roi_array.resize(input_rank * 2);
       for (size_t i = 0; i < input_rank; ++i) {
@@ -152,7 +152,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (OpKernel::Node().InputDefs().size() == 1) {
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
     return BaseCompute(context, roi, scales_, output_dims);
   }
 
@@ -161,24 +161,22 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
     return BaseCompute(context, roi, scales_, output_dims);
   }
 
-  scales_array.resize((X->Shape().GetDims().size()));
+  scales_array.resize((input_dims.size()));
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array, X->Shape().GetDims().size());
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ParseScalesData(scales, scales_array, input_dims.size());
+    ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
     // When sizes input is available directly populate it into the output_dims array.
     ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
                 "Either scales or sizes MUST be provided as input.");
-    ORT_ENFORCE(sizes->Shape().Size() == static_cast<int64_t>(output_dims.size()),
-                "Resize: input tensor's rank does not match the output tensor's rank.");
-    memcpy(output_dims.data(), sizes->Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
-    ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
+    ParseSizesData(sizes, output_dims, input_dims);
+    ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array);
   }
 
   return BaseCompute(context, roi, scales_array, output_dims);

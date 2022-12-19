@@ -1764,25 +1764,18 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(13);
 }
 
-/*
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
   ResizeOpTypeCheck_Ver_11_13_18<float>(18);
   ResizeOpTypeCheck_Ver_11_13_18<int32_t>(18);
   ResizeOpTypeCheck_Ver_11_13_18<int8_t>(18);
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
 }
-*/
 
 template <typename T>
 void TestAntialiasing(std::map<std::string, std::string> attributes,
                       std::vector<int64_t> input_shape,
                       std::vector<T> input_data,
                       std::vector<int64_t> output_shape, std::vector<T> output_data) {
-  // remove it when we update the opset version to 18
-  int current_ver = 13;
-  if (current_ver < 18) {
-    return;
-  }
   OpTester test("Resize", 18);
   test.AddAttribute<int64_t>("antialias", 1LL);
 
@@ -1801,11 +1794,11 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
 
   test.AddInput<T>("X", input_shape, input_data);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {int64_t(output_shape.size())}, output_shape, true);
 
   test.AddOutput<T>("Y", output_shape, output_data);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kXnnpackExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
@@ -1826,6 +1819,13 @@ TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
                           7.3f, 8.5f, 9.7f,
                           12.1f, 13.3f, 14.5f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Bilinear_Scale_Is_All_1) {
+  std::vector<float> X(3 * 4 * 5 * 6);
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = X;
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {3, 4, 5, 6}, X, {3, 4, 5, 6}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Bilinear_dtype) {
@@ -1903,6 +1903,13 @@ TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
+TEST(ResizeOpTest, Antialias_Trilinear_Scale_Is_All_1) {
+  std::vector<float> X(16 * 4 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = X;
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {2, 2, 4, 4, 4}, X, {2, 2, 4, 4, 4}, Y);
+}
+
 TEST(ResizeOpTest, Antialias_Bicubic_No_ExcludeOutside) {
   std::vector<float> X(48);
   std::iota(X.begin(), X.end(), 1.0f);
@@ -1944,14 +1951,6 @@ TEST(ResizeOpTest, Antialias_Bicubic_Dtype) {
     std::vector<int32_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
     TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
   }
-}
-
-TEST(ResizeOpTest, KeepAspectRatioPolicy) {
-  // enumerate stretch not-larger not smaller
-}
-
-TEST(ResizeOpTest, ResizeOp_Axes) {
-  // enumerate exclude, datatype
 }
 
 }  // namespace test

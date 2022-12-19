@@ -203,8 +203,8 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     output_dims_.resize(input_dims);
     if (sizes && sizes->Shape().Size() == 4) {
       scales_.resize(input_shape.NumDimensions());
-      memcpy(output_dims_.data(), sizes->Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size()) * sizeof(int64_t));
-      ParseScalesDataFromOutputSize(output_dims_, input_shape.GetDims(), scales_);
+      ParseSizesData(sizes, output_dims_, input_shape.GetDims());
+      ParseScalesDataAndAdjustOutputSize(output_dims_, input_shape.GetDims(), scales_);
       scales_cached_ = true;
     } else {
       ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);
@@ -308,8 +308,8 @@ Status Resize::Compute(OpKernelContext* ctx) const {
     } else {
       const Tensor* sizes = ctx->Input<Tensor>(sizes_input_idx_);
       // When sizes input is available directly populate it into the output_dims array.
-      memcpy(output_shape.data(), sizes->Data<int64_t>(), sizes->SizeInBytes());
-      ParseScalesDataFromOutputSize(output_shape, X->Shape().GetDims(), scales_array);
+      ParseSizesData(sizes, output_shape, X->Shape().GetDims());
+      ParseScalesDataAndAdjustOutputSize(output_shape, X->Shape().GetDims(), scales_array);
     }
   }
   output_shape[0] = X->Shape()[0];

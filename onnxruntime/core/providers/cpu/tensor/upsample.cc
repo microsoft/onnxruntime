@@ -4,7 +4,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
-#include "core/providers/cpu/tensor/upsample_aa.h"
+#include "core/providers/cpu/tensor/upsample_antialias.h"
 using namespace onnxruntime::common;
 using namespace std;
 using onnxruntime::narrow;
@@ -1087,7 +1087,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales."
                              : "Upsample: input tensor's dimension does not match the scales.");
 
-  if (roi.size() != 2 * X->Shape().GetDims().size())
+  if (roi.size() != 2 * dims.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
@@ -1169,10 +1169,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
         if (is_nchw) {
           if (antialias_) {
-            UpsampleBilinearAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                               height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
-                               X, Y->MutableData<T>(), alloc, get_original_coordinate_,
-                               output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+            UpsampleBilinearAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                      height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                      X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                      output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
           } else {
             UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                              height_scale, width_scale, roi,
@@ -1183,10 +1183,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         } else {
           if (use_extrapolation_) {
             if (antialias_) {
-              NhwcUpsampleBilinearAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                                     height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
-                                     X, Y->MutableData<T>(), alloc, get_original_coordinate_,
-                                     output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+              NhwcUpsampleBilinearAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                            height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                            X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
               if (!is_2D &&
                   (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
@@ -1206,10 +1206,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
             }
           } else {
             if (antialias_) {
-              NhwcUpsampleBilinearAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                                     height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
-                                     X, Y->MutableData<T>(), alloc, get_original_coordinate_,
-                                     output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+              NhwcUpsampleBilinearAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                            height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                            X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
               if (!is_2D &&
                   (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
@@ -1245,12 +1245,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         const int64_t output_width = is_3D ? output_dims[2] : output_dims[4];
 
         if (antialias_) {
-          UpsampleTrilinearAA(batch_size, num_channels, input_depth, input_height, input_width,
-                              output_depth, output_height, output_width,
-                              is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
-                              is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                              exclude_outside_, X, Y->MutableData<T>(), alloc, get_original_coordinate_,
-                              output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          UpsampleTrilinearAntiAlias(batch_size, num_channels, input_depth, input_height, input_width,
+                                     output_depth, output_height, output_width,
+                                     is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                                     is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                                     exclude_outside_, X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                     output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
                             output_depth, output_height, output_width,
@@ -1292,17 +1292,17 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
       if (antialias_) {
         if (!is_nchw) {
-          NhwcResizeBiCubicAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                              height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
-                              extrapolation_value_, exclude_outside_, roi, X,
-                              Y->MutableData<T>(), alloc, get_original_coordinate_,
-                              output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                     height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                                     extrapolation_value_, exclude_outside_, roi, X,
+                                     Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                     output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
-          ResizeBiCubicAA(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                          height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
-                          extrapolation_value_, exclude_outside_, roi, X,
-                          Y->MutableData<T>(), alloc, get_original_coordinate_,
-                          output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          ResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                 height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                                 extrapolation_value_, exclude_outside_, roi, X,
+                                 Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                 output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         }
       } else {
         ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
@@ -1322,7 +1322,8 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
-  TensorShapeVector output_dims(X->Shape().GetDims().size());
+  auto input_dims = X->Shape().GetDims();
+  TensorShapeVector output_dims(input_dims.size());
 
   // Get roi data
   // Initialize the roi array to all zeros as this will be the most common case
@@ -1343,7 +1344,6 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     if (use_default_roi) {
       // default roi includes ensures all the values in that axis are included in the roi
       // normalized roi is thus : [start, end] = [0, 1]
-      const auto& input_dims = X->Shape().GetDims();
       size_t input_rank = input_dims.size();
       roi_array.resize(input_rank * 2);
       for (size_t i = 0; i < input_rank; ++i) {
@@ -1353,15 +1353,15 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  ComputeROIWithAxes(roi_array, X->Shape().GetDims().size());
+  ComputeROIWithAxes(roi_array, input_dims.size());
   // Get scales data
-  std::vector<float> scales_array(X->Shape().GetDims().size());
+  std::vector<float> scales_array(input_dims.size());
 
   if (OpKernel::Node().InputDefs().size() == 1) {
     // Compute output shape from scales and input dims
     scales_array = scales_;
 
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
     return BaseCompute(context, roi_array, scales_array, output_dims);
   }
 
@@ -1373,26 +1373,22 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     scales_array = scales_;
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
     return BaseCompute(context, roi_array, scales_array, output_dims);
   }
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array, X->Shape().GetDims().size());
+    ParseScalesData(scales, scales_array, input_dims.size());
 
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
     ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
-    // When sizes input is available directly populate it into the output_dims array.
-    memcpy(output_dims.data(), sizes->template Data<int64_t>(), SafeInt<size_t>(sizes->Shape().Size()) * sizeof(int64_t));
-    output_dims.resize(size_t(sizes->Shape().Size()));
-    ORT_ENFORCE(X->Shape().GetDims().size() >= output_dims.size(),
-                "Resize: input tensor's rank does not match the output tensor's rank.");
+    ParseSizesData(sizes, output_dims, input_dims);
 
-    ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
+    ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array);
   }
 
   return BaseCompute(context, roi_array, scales_array, output_dims);
