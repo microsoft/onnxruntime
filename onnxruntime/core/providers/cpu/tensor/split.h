@@ -37,7 +37,8 @@ class SplitBase {
 
     if (opset_ >= 18) {
       num_outputs_ = info.GetAttrOrDefault<int64_t>("num_outputs", -1);
-      ORT_ENFORCE(num_outputs_ != 0, "Invalid value in 'num_outputs' attribute of 0.");
+      // the ONNX type/shape inferencing handles the check that num_outputs is > 0
+      // ORT_ENFORCE(num_outputs_ != 0, "Invalid value in 'num_outputs' attribute of 0.");
 
       if (num_outputs_ != -1 && info.GetInputCount() == 2) {
         ORT_THROW("If 'num_outputs' is specified, the 'split' input should not be provided.");
