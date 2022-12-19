@@ -350,7 +350,7 @@ def _parse_arguments():
     FusionOptions.add_arguments(parser)
 
     parser.add_argument("--verbose", required=False, action="store_true", help="show debug information.")
-    parser.set_defaults(verbose=True)
+    parser.set_defaults(verbose=False)
 
     parser.add_argument(
         "--use_gpu",

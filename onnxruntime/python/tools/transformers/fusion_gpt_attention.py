@@ -277,12 +277,15 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             return
         (concat_v, transpose_v, reshape_v, split_fc) = v_nodes
 
+        # Try match pattern using Gemm + LayerNormalization
         fc_nodes = self.model.match_parent_path(
             split_fc,
             ["Reshape", "Gemm", "Reshape", "LayerNormalization"],
             [0, 0, 0, 0],
             output_name_to_node,
         )
+
+        # Try match pattern using Gemm + SkipLayerNormalization
         if fc_nodes is None:
             fc_nodes = self.model.match_parent_path(
                 split_fc,
@@ -290,24 +293,30 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 [0, 0, 0, 0],
                 output_name_to_node,
             )
+
+        # Try match pattern using MatMul
+        if fc_nodes is None:
+            # MatMul
+            fc_nodes = self.model.match_parent_path(
+                split_fc,
+                ["Add", "MatMul", "LayerNormalization"],
+                [0, None, 0],
+                output_name_to_node,
+            )
+
+            # Gemm
             if fc_nodes is None:
                 fc_nodes = self.model.match_parent_path(
                     split_fc,
-                    ["Add", "MatMul", "LayerNormalization"],
+                    ["Add", "MatMul", "SkipLayerNormalization"],
                     [0, None, 0],
                     output_name_to_node,
                 )
-                if fc_nodes is None:
-                    fc_nodes = self.model.match_parent_path(
-                        split_fc,
-                        ["Add", "MatMul", "SkipLayerNormalization"],
-                        [0, None, 0],
-                        output_name_to_node,
-                    )
 
             if fc_nodes is None:
                 logger.debug("fuse_attention: failed to match fc path")
                 return
+
             fc_weight = fc_nodes[1].input[1]
             i, _ = self.model.get_constant_input(fc_nodes[0])
             fc_bias = fc_nodes[0].input[i]
