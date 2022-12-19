@@ -138,7 +138,7 @@ class StridedBatchedGemmTunableOp : public tunable::TunableOp<StridedBatchedGemm
       // See GemmTunableOp<T>::PreTuning for more details
       StridedBatchedGemmParams<T>* proxy = new StridedBatchedGemmParams<T>();
       *proxy = *params;
-      HIP_CALL_THROW(hipMalloc(&(proxy->c), proxy->m * proxy->stride_c * sizeof(T)));
+      HIP_CALL_THROW(hipMalloc(&(proxy->c), proxy->batch * proxy->stride_c * sizeof(T)));
       return proxy;
     }
 
