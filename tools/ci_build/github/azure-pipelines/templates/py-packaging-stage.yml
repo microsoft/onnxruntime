@@ -176,11 +176,6 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
           createLogFile: true
 
-      - script: |
-         set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: "Add vcpkg packages to system path"
-
       # Esrp signing
       - template: win-esrp-dll.yml
         parameters:
@@ -234,16 +229,14 @@ stages:
       #      **/*.obj
       #      **/*.pdb
       #      **/*.dll
-      - script: |
-         where re2.dll
-         where zlib1.dll
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: "Search for re2 and zlib"
- 
+
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
+         set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;%PATH%
+         where re2.dll
+         where zlib1.dll
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
         displayName: 'Run Python Tests'
