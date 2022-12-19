@@ -34,7 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
-    Split);
+    Split_1_13);
 
 // Opset 11 starts to support Neg Axis.
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -43,15 +43,24 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
-    Split);
+    Split_1_13);
 
 // Opset 13 starts to supports 'split' as optional input.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     13,
+    17,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
-    Split);
+    Split_1_13);
+
+// TODO: support unequal split and num_outputs
+ONNX_CPU_OPERATOR_KERNEL(
+    Split,
+    18,
+    KernelDefBuilder().TypeConstraint("T",
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
+    Split_18);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,
@@ -66,6 +75,22 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
                                    : narrow<int>(input_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1));
+
+  if (num_outputs_ != -1) {
+    if (num_outputs_ > split_dim_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
+                             ". Size of dimension being split is ", split_dim_size);
+    }
+
+    // populate split sizes based on num_outputs so existing code can be utilized
+    int32_t size = narrow<int32_t>(std::ceil(float(split_dim_size) / num_outputs));
+    int32_t remainder = split_dim_size % num_outputs;
+
+    split_sizes = std::vector<int64_t>(num_outputs, size);
+    if (remainder) {
+      split_sizes[num_outputs - 1] = remainder;
+    }
+  }
 
   if (split_sizes.empty()) {
     // equal split based on number of outputs
@@ -92,7 +117,7 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
   return Status::OK();
 }
 
-Status Split::Compute(OpKernelContext* context) const {
+Status SplitImpl::Compute(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
   auto& input_shape = input.Shape();
   auto num_outputs = context->OutputCount();
