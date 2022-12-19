@@ -9,6 +9,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
+#include "core/optimizer/qdq_double_pairs_remover.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
@@ -119,6 +120,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+
       break;
 
     case TransformerLevel::Level2:
@@ -186,6 +188,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
+      }
+
+      // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
+      if (!disable_quant_qdq){
+        transformers.emplace_back(std::make_unique<QDQDoublePairsRemover>());
       }
 
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
