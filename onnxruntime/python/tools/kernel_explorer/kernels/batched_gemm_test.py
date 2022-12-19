@@ -31,11 +31,11 @@ def _test_batched_gemm(
     np.random.seed(0)
     as_ = [(np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
     bs = [(np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
-    intermidiate_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
+    intermediate_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
     if alpha == 1.0 and beta == 0.0:  # fast path
-        ref_cs = intermidiate_cs
+        ref_cs = intermediate_cs
     else:
-        ref_cs = [alpha * cs + beta * np.ones_like(cs) for cs in intermidiate_cs]
+        ref_cs = [alpha * cs + beta * np.ones_like(cs) for cs in intermediate_cs]
 
     bounds = [get_gemm_bound(dtype, as_[i], bs[i], ref_cs[i], transa, transb) for i in range(batch)]
 

@@ -22,11 +22,11 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     np.random.seed(0)
     a = (np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64")
-    intermidiate_c = (a.T if transa else a) @ (b.T if transb else b)
+    intermediate_c = (a.T if transa else a) @ (b.T if transb else b)
     if alpha == 1.0 and beta == 0.0:  # fast path
-        ref_c = intermidiate_c
+        ref_c = intermediate_c
     else:
-        ref_c = alpha * intermidiate_c + beta * np.ones_like(intermidiate_c)
+        ref_c = alpha * intermediate_c + beta * np.ones_like(intermediate_c)
 
     bound = get_gemm_bound(dtype, a, b, ref_c, transa, transb)
 

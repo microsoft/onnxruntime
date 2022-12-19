@@ -31,11 +31,11 @@ def _test_strided_batched_gemm(
     np.random.seed(0)
     a = (np.random.rand(batch, *a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(batch, *b_shape) + 0.5).astype(dtype).astype("float64")
-    intermidiate_c = (a.swapaxes(1, 2) if transa else a) @ (b.swapaxes(1, 2) if transb else b)
+    intermediate_c = (a.swapaxes(1, 2) if transa else a) @ (b.swapaxes(1, 2) if transb else b)
     if alpha == 1.0 and beta == 0.0:  # fast path
-        ref_c = intermidiate_c
+        ref_c = intermediate_c
     else:
-        ref_c = alpha * intermidiate_c + beta * np.ones_like(intermidiate_c)
+        ref_c = alpha * intermediate_c + beta * np.ones_like(intermediate_c)
 
     bounds = [get_gemm_bound(dtype, a[i], b[i], ref_c[i], transa, transb) for i in range(batch)]
 
