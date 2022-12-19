@@ -537,7 +537,14 @@ class FusionEmbedLayerNoMask(Fusion):
         if two_gather is None:
             return False
 
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
+        # output of this node.
+
+        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # is the (optional) fourth index output of this node.
         add_output = add_before_layernorm.output[0]
+        if add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4:
+            add_output = add_before_layernorm.output[3]
 
         word_embedding_gather, position_embedding_gather = two_gather
         input_ids = word_embedding_gather.input[1]

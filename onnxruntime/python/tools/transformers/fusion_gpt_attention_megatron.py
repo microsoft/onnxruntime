@@ -162,24 +162,49 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
         past = None
         present = None
 
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node,
-            ["Add", "Add", "MatMul", "Reshape", "Transpose", "MatMul"],
-            [0, 1, None, 0, 0, 0],
-            output_name_to_node=output_name_to_node,
-        )  # yapf: disable
+        is_normalize_node_skiplayernorm = normalize_node.op_type == "SkipLayerNormalization"
+        qkv_nodes = None
+
+        if not is_normalize_node_skiplayernorm:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Add", "Add", "MatMul", "Reshape", "Transpose", "MatMul"],
+                [0, 1, None, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+            )  # yapf: disable
+        else:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
+                [1, None, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+            )  # yapf: disable
+
         if qkv_nodes is None:
             return
-        (
-            add_skip,
-            add_after_attention,
-            matmul_after_attention,
-            reshape_qkv,
-            transpose_qkv,
-            matmul_qkv,
-        ) = qkv_nodes
 
-        skip_input = add_skip.input[0]
+        skip_input = None
+        if not is_normalize_node_skiplayernorm:
+            (
+                add_skip,
+                add_after_attention,
+                matmul_after_attention,
+                reshape_qkv,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
+
+            skip_input = add_skip.input[0]
+        else:
+            (
+                add_after_attention,
+                matmul_after_attention,
+                reshape_qkv,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
+
+            skip_input = normalize_node.input[0]
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -222,7 +247,18 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             matmul_before_split,
             layernorm_before_attention,
         ) = v_nodes
-        if skip_input != layernorm_before_attention.input[0]:
+
+        if (
+            layernorm_before_attention.op_type == "LayerNormalization"
+            and skip_input != layernorm_before_attention.input[0]
+        ):
+            logger.debug("fuse_attention: skip_input != layernorm_before_attention.input[0]")
+            return
+
+        if (
+            layernorm_before_attention.op_type == "SkipLayerNormalization"
+            and skip_input != layernorm_before_attention.output[3]
+        ):
             logger.debug("fuse_attention: skip_input != layernorm_before_attention.input[0]")
             return
 

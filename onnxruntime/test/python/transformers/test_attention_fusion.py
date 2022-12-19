@@ -31,10 +31,6 @@ class TestFusion(unittest.TestCase):
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort()
 
-        dir = "."
-        model_path = os.path.join(dir, "gpt2_attention_skiplayernorm_enabled.onnx")
-        onnx.save(optimized_model.model, model_path)
-
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
     def test_attention_fusion(self):
@@ -164,11 +160,31 @@ class TestFusion(unittest.TestCase):
                 self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
-        path = get_test_data_path("models", "gpt2_megatron.onnx")
-        model = onnx.load(path)
-        optimized_model = optimize_by_fusion(model, model_type="gpt2")
+        for enable_skip_layer_norm_fusion in [False, True]:
+            path = get_test_data_path("models", "gpt2_megatron.onnx")
+            model = onnx.load(path)
 
-        self.verify_fusion(optimized_model, "gpt2_megatron_opt.onnx")
+            options = FusionOptions("gpt2")
+            options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+            # optimized_model = optimize_by_fusion(model, model_type="gpt2", num_heads=0, hidden_size=0, optimization_options=options)
+
+            optimized_model = optimize_by_fusion(
+                model,
+                model_type="gpt2",
+                num_heads=0,
+                hidden_size=0,
+                optimization_options=options,
+            )
+
+            model_suffix = ""
+            if enable_skip_layer_norm_fusion:
+                model_suffix = "opt_skiplayernorm"
+            else:
+                model_suffix = "opt_no_skiplayernorm"
+
+            model_name = "gpt2_megatron_{}.onnx".format(model_suffix)
+            self.verify_fusion(optimized_model, model_name, True)
 
 
 if __name__ == "__main__":
