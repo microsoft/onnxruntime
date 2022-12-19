@@ -190,6 +190,7 @@ export class Tensor implements TensorInterface {
     }
 
     const {height, width} = imageFormat;
+    console.log('bufferToTensor - image.height: ' + height + ', image.width: ' + width);
     let {normBias, normMean} = imageFormat;
     const inputformat = imageFormat.format !== undefined ? imageFormat.format : 'RGBA';
     const outputformat =
@@ -274,14 +275,22 @@ export class Tensor implements TensorInterface {
 
     // filling and checking image configuration options
     if (isHTMLImageEle) {
-      // HTMLImageElement - image object - format is RGBA by default
-      let canvas = document.createElement('canvas');
-      const pixels2DContext = canvas.getContext('2d');
+      // HTMLImageElement - image object - format is RGBA by default 
+      const pixels2DContext = document.createElement('canvas').getContext('2d');
 
       if (pixels2DContext != null) {
         const format = 'RGBA';
-        const height = (image as HTMLImageElement).naturalHeight;
-        const width = (image as HTMLImageElement).naturalWidth;
+
+        let height: number;
+        let width: number;
+
+        if (outputOptions !== undefined && outputOptions.width !== undefined && outputOptions.height !== undefined) {
+          height = outputOptions.height;
+          width = outputOptions.width;
+        } else {
+          height = (image as HTMLImageElement).height;
+          width = (image as HTMLImageElement).width;
+        }
 
         if (inputOptions !== undefined) {
           imageConfig = inputOptions;
@@ -290,23 +299,12 @@ export class Tensor implements TensorInterface {
           } else {
             imageConfig.format = 'RGBA';
           }
-          if (inputOptions.height !== undefined && inputOptions.height !== height) {
-            throw new Error('Image input config height doesn\'t match HTMLImageElement height');
-          } else {
-            imageConfig.height = height;
-          }
-          if (inputOptions.width !== undefined && inputOptions.width !== width) {
-            throw new Error('Image input config width doesn\'t match HTMLImageElement width');
-          } else {
-            imageConfig.width = width;
-          }
         } else {
           imageConfig.format = 'RGBA';
-          imageConfig.height = height;
-          imageConfig.width = width;
         }
-        canvas.width = width;
-        canvas.height = height;
+        imageConfig.height = height;
+        imageConfig.width = width;
+
         pixels2DContext.drawImage(image as HTMLImageElement, 0, 0, width, height);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
@@ -316,8 +314,16 @@ export class Tensor implements TensorInterface {
     } else if (isImageDataEle) {
       // ImageData - image object - format is RGBA by default
       const format = 'RGBA';
-      const height = (image as ImageData).height;
-      const width = (image as ImageData).width;
+      let height: number;
+      let width: number;
+
+      if (outputOptions !== undefined && outputOptions.width !== undefined && outputOptions.height !== undefined) {
+        height = outputOptions.height;
+        width = outputOptions.width;
+      } else {
+        height = (image as ImageData).height;
+        width = (image as ImageData).width;
+      }
 
       if (inputOptions !== undefined) {
         imageConfig = inputOptions;
@@ -326,22 +332,30 @@ export class Tensor implements TensorInterface {
         } else {
           imageConfig.format = 'RGBA';
         }
-        if (inputOptions.height !== undefined && inputOptions.height !== height) {
-          throw new Error('Image input config height doesn\'t match ImageData height');
-        } else {
-          imageConfig.height = height;
-        }
-        if (inputOptions.width !== undefined && inputOptions.width !== width) {
-          throw new Error('Image input config width doesn\'t match ImageData width');
-        } else {
-          imageConfig.width = width;
-        }
       } else {
         imageConfig.format = 'RGBA';
-        imageConfig.height = height;
-        imageConfig.width = width;
       }
-      data = (image as ImageData).data;
+
+      imageConfig.height = height;
+      imageConfig.width = width;
+      
+      if (outputOptions !== undefined){
+        const tempCanvas = document.createElement('canvas');
+
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+
+        const pixels2DContext = tempCanvas.getContext('2d');
+
+        if (pixels2DContext != null) {
+          pixels2DContext.putImageData(image as ImageData, 0, 0);
+          data = pixels2DContext.getImageData(0, 0, width, height).data;
+        } else {
+          throw new Error('Can not access image data');
+        }
+      } else {
+        data = (image as ImageData).data;
+      }
 
     } else if (isImageBitmap) {
       // ImageBitmap - image object - format must be provided by user
