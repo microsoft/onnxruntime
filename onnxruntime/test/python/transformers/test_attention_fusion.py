@@ -167,8 +167,6 @@ class TestFusion(unittest.TestCase):
             options = FusionOptions("gpt2")
             options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
 
-            # optimized_model = optimize_by_fusion(model, model_type="gpt2", num_heads=0, hidden_size=0, optimization_options=options)
-
             optimized_model = optimize_by_fusion(
                 model,
                 model_type="gpt2",
@@ -184,7 +182,7 @@ class TestFusion(unittest.TestCase):
                 model_suffix = "opt_no_skiplayernorm"
 
             model_name = "gpt2_megatron_{}.onnx".format(model_suffix)
-            self.verify_fusion(optimized_model, model_name, True)
+            self.verify_fusion(optimized_model, model_name)
 
 
 if __name__ == "__main__":
