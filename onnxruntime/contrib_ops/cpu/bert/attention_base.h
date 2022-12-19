@@ -23,7 +23,8 @@ class AttentionBase {
                      const Tensor* key,
                      const Tensor* value,
                      void* parameters,
-                     const int max_threads_per_block) const;
+                     const int max_threads_per_block,
+                     const Tensor* past_seq_len = nullptr) const;
 
   Tensor* GetPresent(OpKernelContext* context,
                      const Tensor* past,
@@ -44,6 +45,8 @@ class AttentionBase {
       qkv_hidden_sizes_.clear();
     }
 
+    past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
+
     require_same_hidden_size_ = require_same_hidden_size;
     require_weights_ = require_weights;
   }
@@ -63,13 +66,15 @@ class AttentionBase {
                      const Tensor* extra_add_qk,
                      const Tensor* key,
                      const Tensor* value,
-                     void* parameters) const;
+                     void* parameters,
+                     const Tensor* past_seq_len = nullptr) const;
 
   int num_heads_;                          // number of attention heads
   bool is_unidirectional_;                 // whether every token can only attend to previous tokens.
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool require_weights_;                   // whether the implementation requires weights for Q/K/V.
+  bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
 };
 
 }  // namespace contrib
