@@ -18,6 +18,18 @@ namespace blas {
 
 namespace row_major {
 
+namespace {
+// a simple utilify function that normalize alpha or beta to the desired datatype by an optional casting
+template<typename DesiredT, typename ScalarT>
+inline DesiredT NormalizeScalar(ScalarT v) {
+  if constexpr (!std::is_same_v<DesiredT, ScalarT> && std::is_same_v<ScalarT, float>) {
+    return ToHipType<DesiredT>::FromFloat(std::forward<DesiredT>(v));
+  } else {
+    return v;
+  }
+}
+}
+
 template <typename T, typename ScalarT>
 inline GEMM(T, ScalarT) {
   GemmParams<T> params;
@@ -29,20 +41,12 @@ inline GEMM(T, ScalarT) {
   params.m = m;
   params.n = n;
   params.k = k;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.alpha = ToHipType<T>::FromFloat(std::forward<T>(alpha));
-  } else {
-    params.alpha = alpha;
-  }
+  params.alpha = NormalizeScalar<T>(alpha);
   params.a = a;
   params.lda = lda;
   params.b = b;
   params.ldb = ldb;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.beta = ToHipType<T>::FromFloat(std::forward<T>(beta));
-  } else {
-    params.beta = beta;
-  }
+  params.beta = NormalizeScalar<T>(beta);
   params.c = c;
   params.ldc = ldc;
 
@@ -80,20 +84,12 @@ inline BATCHED_GEMM(T, ScalarT) {
   params.m = m;
   params.n = n;
   params.k = k;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.alpha = ToHipType<T>::FromFloat(std::forward<T>(alpha));
-  } else {
-    params.alpha = alpha;
-  }
+  params.alpha = NormalizeScalar<T>(alpha);
   params.as = as;
   params.lda = lda;
   params.bs = bs;
   params.ldb = ldb;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.beta = ToHipType<T>::FromFloat(std::forward<T>(beta));
-  } else {
-    params.beta = beta;
-  }
+  params.beta = NormalizeScalar<T>(beta);
   params.cs = cs;
   params.ldc = ldc;
   params.batch = batch;
@@ -133,23 +129,14 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
   params.m = m;
   params.n = n;
   params.k = k;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.alpha = ToHipType<T>::FromFloat(std::forward<T>(alpha));
-  } else {
-    params.alpha = alpha;
-  }
+  params.alpha = NormalizeScalar<T>(alpha);
   params.a = a;
   params.lda = lda;
   params.stride_a = stride_a;
   params.b = b;
   params.ldb = ldb;
   params.stride_b = stride_b;
-
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.beta = ToHipType<T>::FromFloat(std::forward<T>(beta));
-  } else {
-    params.beta = beta;
-  }
+  params.beta = NormalizeScalar<T>(beta);
   params.c = c;
   params.ldc = ldc;
   params.stride_c = stride_c;
