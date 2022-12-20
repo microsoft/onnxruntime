@@ -87,7 +87,7 @@ __global__ void SkipLayerNormKernelSmall(
 
   using VecT = aligned_vector<T, ILP>;
 
-  T input_v[ILP], skip_v[ILP], bias_v[ILP];
+  T input_v[ILP], skip_v[ILP], bias_v[ILP], skip_input_add_output_v[ILP];
 
   VecT* input_val = reinterpret_cast<VecT*>(&input_v);
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
@@ -108,7 +108,7 @@ __global__ void SkipLayerNormKernelSmall(
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
       if (hasSkipInputAdditionOutput) {
-        skip_input_add_output[i] = input_v[i] + skip_v[i];
+        skip_input_add_output_v[i] = input_v[i] + skip_v[i];
       }
 
       input_v[i] += hasBias ? skip_v[i] + bias_v[i] : skip_v[i];
@@ -116,6 +116,11 @@ __global__ void SkipLayerNormKernelSmall(
       rldval_sum += rldval;
       rldvalsq_sum += rldval * input_v[i];
     }
+
+    if (hasSkipInputAdditionOutput) {
+      *(reinterpret_cast<VecT*>(&skip_input_add_output[idx])) = *reinterpret_cast<VecT*>(&skip_input_add_output_v);
+    }
+
     thread_data = cub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
   }
   LayerNormSmall<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
