@@ -73,12 +73,12 @@ class TestGpt2(unittest.TestCase):
             "-m gpt2 --model_class=GPT2LMHeadModel_ConfigurableOneStepSearch --precision fp32 -v -b 1 --sequence_lengths 5 --past_sequence_lengths 3 --use_gpu"
         )
 
-    @pytest.mark.slow
-    def test_gpt2_configurable_one_step_search_fp16(self):
-        if self.test_cuda:
-            self.run_benchmark_gpt2(
-                "-m gpt2 --model_class=GPT2LMHeadModel_ConfigurableOneStepSearch --precision fp16 -o -b 1 --sequence_lengths 5 -s 3 --use_gpu"
-            )
+    # @pytest.mark.slow
+    # def test_gpt2_configurable_one_step_search_fp16(self):
+    #     if self.test_cuda:
+    #         self.run_benchmark_gpt2(
+    #             "-m gpt2 --model_class=GPT2LMHeadModel_ConfigurableOneStepSearch --precision fp16 -o -b 1 --sequence_lengths 5 -s 3 --use_gpu"
+    #         )
 
     @pytest.mark.slow
     def test_gpt2_configurable_one_step_search_int8(self):

@@ -39,17 +39,17 @@ class TestGpt2ConvertToOnnx(unittest.TestCase):
     @pytest.mark.slow
     def test_stage1(self):
         if self.test_cuda:
-            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 1 --use_int32_inputs -t 100", 1)
+            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 1 --use_int32_inputs -t 100 --overwrite", 1)
 
     @pytest.mark.slow
     def test_stage2(self):
         if self.test_cuda:
-            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 2 --use_int32_inputs -t 100", 2)
+            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 2 --use_int32_inputs -t 100 --overwrite", 2)
 
     @pytest.mark.slow
     def test_auto_mixed_precision(self):
         if self.test_cuda:
-            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu --use_int32_inputs -p fp16 -o -a -t 100", 0)
+            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu --use_int32_inputs -p fp16 -o -a -t 100 --overwrite", 0)
 
 
 if __name__ == "__main__":
