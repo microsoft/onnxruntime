@@ -1306,7 +1306,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         args.pad_vocab_size
         and args.precision == Precision.FLOAT16
         and is_gpt2
-        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
+        and (is_beamsearch or is_greedysearch or is_sampling)
     ):
         logger.info(
             f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
@@ -1320,11 +1320,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     gpt2_init_decoder_generated = False
     gpt2_init_decoder_onnx_path = None
-    if (
-        args.separate_gpt2_decoder_for_init_run
-        and is_gpt2
-        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
-    ):
+    if args.separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
@@ -2177,7 +2173,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     if args.model_type == "gpt2" and is_greedy:
         if args.top_p > 0.0 and args.top_p < 1.0:
             convert_generation_model(args, GenerationType.SAMPLING)
-            logger.info("test sampling model is not implemented yet")
+            logger.info("The test for gpt2_sampling onnx model is not implemented yet")
             return
         convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
