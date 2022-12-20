@@ -1268,7 +1268,7 @@ def generate_build_tree(
 
     if args.use_cloud:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
-        
+
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
