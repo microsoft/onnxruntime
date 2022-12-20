@@ -24,7 +24,8 @@ public class SparseTensorTest {
 
   @Test
   public void testCSRC() throws OrtException {
-    String modelPath = TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
@@ -204,7 +205,8 @@ public class SparseTensorTest {
 
   @Test
   public void testCOO() throws OrtException {
-    String modelPath = TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {

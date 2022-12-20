@@ -26,6 +26,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSes
   const OrtSessionOptions* options = (const OrtSessionOptions*) optionsHandle;
   OrtCheckpointState* checkpoint = (OrtCheckpointState*) checkpointHandle;
 
+  jsize evalLength = (*jniEnv)->GetStringLength(jniEnv, evalPath);
+  jsize optimizerLength = (*jniEnv)->GetStringLength(jniEnv, optimizerPath);
   OrtTrainingSession* session = NULL;
 
 #ifdef _WIN32
@@ -73,12 +75,16 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSes
 #else
   // GetStringUTFChars is null terminated, so can be used directly
   const char* trainStr = (*jniEnv)->GetStringUTFChars(jniEnv, trainPath, NULL);
-  const char* evalStr = (*jniEnv)->GetStringUTFChars(jniEnv, evalPath, NULL);
-  const char* optimizerStr = (*jniEnv)->GetStringUTFChars(jniEnv, optimizerPath, NULL);
+  const char* evalStr = evalLength == 0 ? NULL : (*jniEnv)->GetStringUTFChars(jniEnv, evalPath, NULL);
+  const char* optimizerStr = optimizerLength == 0 ? NULL : (*jniEnv)->GetStringUTFChars(jniEnv, optimizerPath, NULL);
   checkOrtStatus(jniEnv, api, trainApi->CreateTrainingSession(env, options, checkpoint, trainStr, evalStr, optimizerStr, &session));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, trainPath, trainStr);
-  (*jniEnv)->ReleaseStringUTFChars(jniEnv, evalPath, evalStr);
-  (*jniEnv)->ReleaseStringUTFChars(jniEnv, optimizerPath, optimizerStr);
+  if (evalLength != 0) {
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, evalPath, evalStr);
+  }
+  if (optimizerLength != 0) {
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, optimizerPath, optimizerStr);
+  }
 #endif
 
   return (jlong) session;

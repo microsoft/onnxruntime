@@ -1,16 +1,11 @@
 /*
- * Copyright © 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -20,10 +15,12 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
-/**
- * Tests for the ORT training apis.
- */
+/** Tests for the ORT training apis. */
 @EnabledIfSystemProperty(named = "ENABLE_TRAINING", matches = "1")
 public class TrainingTest {
 
@@ -43,7 +40,8 @@ public class TrainingTest {
   public void testCreateTrainingSession() throws OrtException {
     String ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
-    try (OrtTrainingSession trainingSession = env.createTrainingSession(ckptPath, trainPath, null, null)) {
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(ckptPath, trainPath, "", "")) {
       Assertions.assertNotNull(trainingSession);
       Set<String> inputNames = trainingSession.getTrainInputNames();
       Assertions.assertFalse(inputNames.isEmpty());
@@ -58,9 +56,11 @@ public class TrainingTest {
   public void TestTrainingSessionTrainStep() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
-    float[] expectedOutput = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
+    float[] expectedOutput =
+        TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
     float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
-    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(checkpointPath, trainingPath, "", "")) {
       int[] labels = {1, 1};
 
       // Run train step with pinned inputs and pinned outputs
@@ -69,15 +69,20 @@ public class TrainingTest {
       try {
         // Create inputs
         long[] inputShape = {2, 784};
-        pinnedInputs.put("features-tbd", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
+        pinnedInputs.put(
+            "input-0", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
         long[] labelsShape = {2};
-        pinnedInputs.put("labels-tbd", OnnxTensor.createTensor(env, labels));
+        pinnedInputs.put("labels", OnnxTensor.createTensor(env, labels));
 
         // Prepare output buffer
-        FloatBuffer output = ByteBuffer.allocateDirect(4 * expectedOutput.length).order(ByteOrder.nativeOrder()).asFloatBuffer();
-        OnnxTensor outputTensor = OnnxTensor.createTensor(env, output, new long[expectedOutput.length]);
-        outputMap.put("outputs-tbd", outputTensor);
+        FloatBuffer output =
+            ByteBuffer.allocateDirect(4 * expectedOutput.length)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer();
+        OnnxTensor outputTensor =
+            OnnxTensor.createTensor(env, output, new long[expectedOutput.length]);
+        outputMap.put("onnx::loss::21273", outputTensor);
         /* Disabled as we haven't implemented this yet
         try (trainingSession.trainStep(pinnedInputs, outputMap)) {
           Assertions.assertArrayEquals(expectedOutput, (float[]) outputTensor.getValue(), 1e-3f);
@@ -91,8 +96,9 @@ public class TrainingTest {
   }
 
   void runTrainStep(OrtTrainingSession trainingSession) throws OrtException {
-    float[] expectedOutput = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("./loss_1.out"));
-    float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("./input-0.in"));
+    float[] expectedOutput =
+        TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
+    float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
     int[] labels = {1, 1};
 
     // Run inference with pinned inputs and pinned outputs
@@ -101,13 +107,13 @@ public class TrainingTest {
     Map<String, OnnxTensor> pinnedInputs = new HashMap<>();
     try {
       long[] inputShape = {2, 784};
-      pinnedInputs.put("features-tbd", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
+      pinnedInputs.put("input-0", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
       long[] labelsShape = {2};
-      pinnedInputs.put("labels-tbd", OnnxTensor.createTensor(env, labels));
+      pinnedInputs.put("labels", OnnxTensor.createTensor(env, labels));
 
       try (OrtSession.Result firstOutput = trainingSession.trainStep(pinnedInputs)) {
-          Assertions.assertTrue(firstOutput.size() > 0);
+        Assertions.assertTrue(firstOutput.size() > 0);
       }
       trainingSession.lazyResetGrad();
       try (OrtSession.Result secondOutputs = trainingSession.trainStep(pinnedInputs)) {
@@ -117,9 +123,10 @@ public class TrainingTest {
         Assertions.assertTrue(outputBuffer instanceof OnnxTensor);
 
         OnnxTensor outLabelTensor = (OnnxTensor) outputBuffer;
-        Assertions.assertEquals(OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, outLabelTensor.getInfo().onnxType);
+        Assertions.assertEquals(
+            OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, outLabelTensor.getInfo().onnxType);
         Assertions.assertNotNull(outLabelTensor);
-        Assertions.assertArrayEquals(expectedOutput, (float[]) outLabelTensor.getValue(), 1e-3f);
+        Assertions.assertEquals(expectedOutput[0], (float) outLabelTensor.getValue(), 1e-3f);
       }
     } finally {
       OnnxValue.close(pinnedInputs);
@@ -130,7 +137,8 @@ public class TrainingTest {
   public void TestTrainingSessionTrainStepOrtOutput() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
-    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(checkpointPath, trainingPath, "", "")) {
       runTrainStep(trainingSession);
     }
   }
@@ -142,13 +150,15 @@ public class TrainingTest {
 
     Path tmpPath = Files.createTempDirectory("ort-java-training-test");
     try {
-      try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+      try (OrtTrainingSession trainingSession =
+          env.createTrainingSession(checkpointPath, trainingPath, "", "")) {
 
         // Save checkpoint
         trainingSession.saveCheckpoint(tmpPath, false);
       }
 
-      try (OrtTrainingSession trainingSession = env.createTrainingSession(tmpPath.toString(), trainingPath, null, null)) {
+      try (OrtTrainingSession trainingSession =
+          env.createTrainingSession(tmpPath.toString(), trainingPath, "", "")) {
         // Load saved checkpoint into new session and run train step
         runTrainStep(trainingSession);
       }
@@ -162,10 +172,13 @@ public class TrainingTest {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
-    float[] expectedOutput_1 = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
-    float[] expectedOutput_2 = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_2.out"));
+    float[] expectedOutput_1 =
+        TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
+    float[] expectedOutput_2 =
+        TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_2.out"));
     float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
-    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(checkpointPath, trainingPath, "", optimizerPath)) {
       int[] labels = {1, 1};
 
       // Run train step with pinned inputs and pinned outputs
@@ -173,25 +186,26 @@ public class TrainingTest {
       try {
         // Create inputs
         long[] inputShape = {2, 784};
-        pinnedInputs.put("features-tbd", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
+        pinnedInputs.put(
+            "input-0", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
         long[] labelsShape = {2};
-        pinnedInputs.put("labels-tbd", OnnxTensor.createTensor(env, labels));
+        pinnedInputs.put("labels", OnnxTensor.createTensor(env, labels));
 
         try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
-          Assertions.assertArrayEquals(expectedOutput_1, (float[]) outputs.get(0).getValue(), 1e-3f);
+          Assertions.assertEquals(expectedOutput_1[0], (float) outputs.get(0).getValue(), 1e-3f);
         }
 
         trainingSession.lazyResetGrad();
 
         try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
-          Assertions.assertArrayEquals(expectedOutput_1, (float[]) outputs.get(0).getValue(), 1e-3f);
+          Assertions.assertEquals(expectedOutput_1[0], (float) outputs.get(0).getValue(), 1e-3f);
         }
 
         trainingSession.optimizerStep();
 
         try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
-          Assertions.assertArrayEquals(expectedOutput_2, (float[]) outputs.get(0).getValue(), 1e-3f);
+          Assertions.assertEquals(expectedOutput_2[0], (float) outputs.get(0).getValue(), 1e-3f);
         }
       } finally {
         OnnxValue.close(pinnedInputs);
@@ -205,7 +219,8 @@ public class TrainingTest {
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
 
-    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(checkpointPath, trainingPath, "", optimizerPath)) {
       float learningRate = 0.245f;
       trainingSession.setLearningRate(learningRate);
       float actualLearningRate = trainingSession.getLearningRate();
@@ -219,7 +234,8 @@ public class TrainingTest {
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
 
-    try (OrtTrainingSession trainingSession = env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(checkpointPath, trainingPath, "", optimizerPath)) {
       float learningRate = 0.1f;
       trainingSession.registerLinearLRScheduler(2, 4, learningRate);
       runTrainStep(trainingSession);

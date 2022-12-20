@@ -1,5 +1,9 @@
 /*
+<<<<<<< HEAD
  * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+=======
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+>>>>>>> 98b8e2e31 (More fixes, tests now pass.)
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -38,8 +42,13 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_8 = 8;
   // Post 1.10 builds of the ORT API
   private static final int ORT_API_VERSION_11 = 11;
+  // Post 1.12 builds of the ORT API
+  private static final int ORT_API_VERSION_13 = 13;
   // Post 1.13 builds of the ORT API
   private static final int ORT_API_VERSION_14 = 14;
+
+  // The initial release of the ORT training API.
+  private static final int ORT_TRAINING_API_VERSION_1 = 1;
 
   /**
    * The name of the system property which when set gives the path on disk where the ONNX Runtime
@@ -150,11 +159,12 @@ final class OnnxRuntime {
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_13);
       if (ortApiHandle == 0L) {
-        throw new IllegalStateException("Failed to load native library");
+        throw new IllegalStateException(
+            "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
       }
-      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_14);
+      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_TRAINING_API_VERSION_1);
       trainingEnabled = ortTrainingApiHandle != 0L;
       providers = initialiseProviders(ortApiHandle);
       version = initialiseVersion();

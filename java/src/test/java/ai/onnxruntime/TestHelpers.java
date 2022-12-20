@@ -29,10 +29,7 @@ public class TestHelpers {
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
 
   static void deleteDirectoryTree(Path input) throws IOException {
-    Files.walk(input)
-        .sorted(Comparator.reverseOrder())
-        .map(Path::toFile)
-        .forEach(File::delete);
+    Files.walk(input).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
   }
 
   static boolean[] toPrimitiveBoolean(List<Boolean> input) {

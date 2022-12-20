@@ -28,7 +28,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseTrainingAPIBas
   (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jint trainingApiVersion) {
   (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
   const OrtApi* api = (const OrtApi*)apiHandle;
-  const OrtTrainingApi* trainingApi = api->GetTrainingApi(trainingApiVersion);
+  const OrtTrainingApi* trainingApi = api->GetTrainingApi((uint32_t)trainingApiVersion);
   return (jlong) trainingApi;
 }
 

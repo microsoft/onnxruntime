@@ -4,14 +4,13 @@
  */
 package ai.onnxruntime;
 
-import ai.onnxruntime.OrtSession.Result;
-import ai.onnxruntime.OrtSession.RunOptions;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -49,21 +48,21 @@ public final class OrtTrainingSession implements AutoCloseable {
 
   private boolean closed = false;
 
-    /**
-     * Constructs an {@code OrtTrainingSession}.
-     *
-     * <p>Note the guard on training being enabled is not present in this method, and it should only be called after
-     * {@link OnnxRuntime#trainingEnabled} has been checked to be true.
-     *
-     * @param env The environment.
-     * @param allocator The memory allocator.
-     * @param options The session options.
-     * @param checkpoint The checkpoint to load.
-     * @param trainPath The path to the training model.
-     * @param evalPath The path to the evaluation model.
-     * @param optimizerPath The path to the optimizer model.
-     * @throws OrtException If the native creation failed.
-     */
+  /**
+   * Constructs an {@code OrtTrainingSession}.
+   *
+   * <p>Note the guard on training being enabled is not present in this method, and it should only
+   * be called after {@link OnnxRuntime#trainingEnabled} has been checked to be true.
+   *
+   * @param env The environment.
+   * @param allocator The memory allocator.
+   * @param options The session options.
+   * @param checkpoint The checkpoint to load.
+   * @param trainPath The path to the training model.
+   * @param evalPath The path to the evaluation model.
+   * @param optimizerPath The path to the optimizer model.
+   * @throws OrtException If the native creation failed.
+   */
   OrtTrainingSession(
       OrtEnvironment env,
       OrtAllocator allocator,
@@ -115,37 +114,41 @@ public final class OrtTrainingSession implements AutoCloseable {
     this.optimizerPath = optimizerPath;
 
     this.trainInputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getTrainInputNames(
-                    OnnxRuntime.ortApiHandle,
-                    OnnxRuntime.ortTrainingApiHandle,
-                    nativeHandle,
-                    allocator.handle)));
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(
+                Arrays.asList(
+                    getTrainInputNames(
+                        OnnxRuntime.ortApiHandle,
+                        OnnxRuntime.ortTrainingApiHandle,
+                        nativeHandle,
+                        allocator.handle))));
     this.trainOutputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getTrainOutputNames(
-                    OnnxRuntime.ortApiHandle,
-                    OnnxRuntime.ortTrainingApiHandle,
-                    nativeHandle,
-                    allocator.handle)));
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(
+                Arrays.asList(
+                    getTrainOutputNames(
+                        OnnxRuntime.ortApiHandle,
+                        OnnxRuntime.ortTrainingApiHandle,
+                        nativeHandle,
+                        allocator.handle))));
     this.evalInputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getEvalInputNames(
-                    OnnxRuntime.ortApiHandle,
-                    OnnxRuntime.ortTrainingApiHandle,
-                    nativeHandle,
-                    allocator.handle)));
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(
+                Arrays.asList(
+                    getEvalInputNames(
+                        OnnxRuntime.ortApiHandle,
+                        OnnxRuntime.ortTrainingApiHandle,
+                        nativeHandle,
+                        allocator.handle))));
     this.evalOutputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getEvalOutputNames(
-                    OnnxRuntime.ortApiHandle,
-                    OnnxRuntime.ortTrainingApiHandle,
-                    nativeHandle,
-                    allocator.handle)));
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(
+                Arrays.asList(
+                    getEvalOutputNames(
+                        OnnxRuntime.ortApiHandle,
+                        OnnxRuntime.ortTrainingApiHandle,
+                        nativeHandle,
+                        allocator.handle))));
   }
 
   /**
@@ -368,53 +371,68 @@ public final class OrtTrainingSession implements AutoCloseable {
       throws OrtException;
 
   /**
-   * \brief Computes the outputs and the gradients for the training model for the given inputs
+   * Performs a single step of training, accumulating the gradients.
    *
-   * <p>This function performs a training step that computes the outputs and the gradients of the
-   * training model for the given inputs. The train step is performed based on the training model
-   * that was provided to the training session. The gradients computed are stored inside the
-   * training session so they can be later consumed by the OptimizerStep function.
-   *
-   * <p>\param[in] sess The training session which has working knowledge of the eval model.
-   * \param[in] run_options Run options for this training step. \param[in] inputs_len Number of user
-   * inputs to the training model. \param[in] inputs The user inputs to the training model.
-   * \param[in] outputs_len Number of user outputs expected from this training step. \param[out]
-   * outputs User outputs computed by train step.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions*
-   * run_options, size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, size_t
-   * outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+   * @param inputs The inputs (must include both the features and the target).
+   * @return All outputs produced by the training step.
+   * @throws OrtException If the native call failed.
    */
   public OrtSession.Result trainStep(Map<String, ? extends OnnxTensorLike> inputs)
       throws OrtException {
     return trainStep(inputs, trainOutputNames, null);
   }
 
+  /**
+   * Performs a single step of training, accumulating the gradients.
+   *
+   * @param inputs The inputs (must include both the features and the target).
+   * @param runOptions Run options for controlling this specific call.
+   * @return All outputs produced by the training step.
+   * @throws OrtException If the native call failed.
+   */
   public OrtSession.Result trainStep(
       Map<String, ? extends OnnxTensorLike> inputs, OrtSession.RunOptions runOptions)
       throws OrtException {
     return trainStep(inputs, trainOutputNames, runOptions);
   }
 
+  /**
+   * Performs a single step of training, accumulating the gradients.
+   *
+   * @param inputs The inputs (must include both the features and the target).
+   * @param requestedOutputs The requested outputs.
+   * @return Requested outputs produced by the training step.
+   * @throws OrtException If the native call failed.
+   */
   public OrtSession.Result trainStep(
-      Map<String, ? extends OnnxTensorLike> inputs, Set<String> outputs) throws OrtException {
-    return trainStep(inputs, outputs, null);
+      Map<String, ? extends OnnxTensorLike> inputs, Set<String> requestedOutputs)
+      throws OrtException {
+    return trainStep(inputs, requestedOutputs, null);
   }
 
+  /**
+   * Performs a single step of training, accumulating the gradients.
+   *
+   * @param inputs The inputs (must include both the features and the target).
+   * @param requestedOutputs The requested outputs.
+   * @param runOptions Run options for controlling this specific call.
+   * @return Requested outputs produced by the training step.
+   * @throws OrtException If the native call failed.
+   */
   public OrtSession.Result trainStep(
       Map<String, ? extends OnnxTensorLike> inputs,
       Set<String> requestedOutputs,
       OrtSession.RunOptions runOptions)
       throws OrtException {
     checkClosed();
-    /*
-    if ((inputs.isEmpty() && (numInputs != 0)) || (inputs.size() > numInputs)) {
-        throw new OrtException(
-                "Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
+    if ((inputs.isEmpty() && (trainInputNames.size() != 0))
+        || (inputs.size() > trainInputNames.size())) {
+      throw new OrtException(
+          "Unexpected number of inputs, expected [1,"
+              + trainInputNames.size()
+              + ") found "
+              + inputs.size());
     }
-     */
     if (requestedOutputs.isEmpty() || (requestedOutputs.size() > trainOutputNames.size())) {
       throw new OrtException(
           "Unexpected number of requestedOutputs, expected [1,"
@@ -426,18 +444,14 @@ public final class OrtTrainingSession implements AutoCloseable {
     long[] inputHandles = new long[inputs.size()];
     int i = 0;
     for (Map.Entry<String, ? extends OnnxTensorLike> t : inputs.entrySet()) {
-      /*
-      if (inputNames.contains(t.getKey())) {
-       */
-      inputNamesArray[i] = t.getKey();
-      inputHandles[i] = t.getValue().getNativeHandle();
-      i++;
-      /*
+      if (trainInputNames.contains(t.getKey())) {
+        inputNamesArray[i] = t.getKey();
+        inputHandles[i] = t.getValue().getNativeHandle();
+        i++;
       } else {
-          throw new OrtException(
-                  "Unknown input name " + t.getKey() + ", expected one of " + inputNames.toString());
+        throw new OrtException(
+            "Unknown input name " + t.getKey() + ", expected one of " + trainInputNames);
       }
-           */
     }
     String[] outputNamesArray = new String[requestedOutputs.size()];
     i = 0;
@@ -464,9 +478,29 @@ public final class OrtTrainingSession implements AutoCloseable {
             outputNamesArray,
             outputNamesArray.length,
             runOptionsHandle);
-    return new Result(outputNamesArray, outputValues);
+    return new OrtSession.Result(outputNamesArray, outputValues);
   }
 
+  /*
+   * \brief Computes the outputs and the gradients for the training model for the given inputs
+   *
+   * <p>This function performs a training step that computes the outputs and the gradients of the
+   * training model for the given inputs. The train step is performed based on the training model
+   * that was provided to the training session. The gradients computed are stored inside the
+   * training session so they can be later consumed by the OptimizerStep function.
+   *
+   * <p>\param[in] sess The training session which has working knowledge of the eval model.
+   * \param[in] run_options Run options for this training step. \param[in] inputs_len Number of user
+   * inputs to the training model. \param[in] inputs The user inputs to the training model.
+   * \param[in] outputs_len Number of user outputs expected from this training step. \param[out]
+   * outputs User outputs computed by train step.
+   *
+   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * <p>ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions*
+   * run_options, size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, size_t
+   * outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+   */
   private native OnnxValue[] trainStep(
       long apiHandle,
       long trainingApiHandle,
@@ -480,52 +514,68 @@ public final class OrtTrainingSession implements AutoCloseable {
       long runOptionsHandle);
 
   /**
-   * \brief Computes the outputs for the eval model for the given inputs
+   * Performs a single evaluation step using the supplied inputs.
    *
-   * <p>This function performs an eval step that computes the outputs of the eval model for the
-   * given inputs. The eval step is performed based on the eval model that was provided to the
-   * training session.
-   *
-   * <p>\param[in] sess The training session which has working knowledge of the eval model.
-   * \param[in] run_options Run options for this eval step. \param[in] inputs_len Number of user
-   * inputs to the eval model. \param[in] inputs The user inputs to the eval model. \param[in]
-   * outputs_len Number of user outputs expected from this eval step. \param[out] outputs User
-   * outputs computed by eval step.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions*
-   * run_options, size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, size_t
-   * outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+   * @param inputs The model inputs.
+   * @return All model outputs.
+   * @throws OrtException If the native call failed.
    */
   public OrtSession.Result evalStep(Map<String, ? extends OnnxTensorLike> inputs)
       throws OrtException {
     return evalStep(inputs, evalOutputNames, null);
   }
 
+  /**
+   * Performs a single evaluation step using the supplied inputs.
+   *
+   * @param inputs The model inputs.
+   * @param runOptions Run options for controlling this specific call.
+   * @return All model outputs.
+   * @throws OrtException If the native call failed.
+   */
   public OrtSession.Result evalStep(
       Map<String, ? extends OnnxTensorLike> inputs, OrtSession.RunOptions runOptions)
       throws OrtException {
     return evalStep(inputs, evalOutputNames, runOptions);
   }
 
+  /**
+   * Performs a single evaluation step using the supplied inputs.
+   *
+   * @param inputs The model inputs.
+   * @param requestedOutputs The requested output names.
+   * @return The requested outputs.
+   * @throws OrtException If the native call failed.
+   */
   public OrtSession.Result evalStep(
-      Map<String, ? extends OnnxTensorLike> inputs, Set<String> outputs) throws OrtException {
-    return evalStep(inputs, outputs, null);
+      Map<String, ? extends OnnxTensorLike> inputs, Set<String> requestedOutputs)
+      throws OrtException {
+    return evalStep(inputs, requestedOutputs, null);
   }
 
+  /**
+   * Performs a single evaluation step using the supplied inputs.
+   *
+   * @param inputs The model inputs.
+   * @param requestedOutputs The requested output names.
+   * @param runOptions Run options for controlling this specific call.
+   * @return The requested outputs.
+   * @throws OrtException If the native call failed.
+   */
   public OrtSession.Result evalStep(
       Map<String, ? extends OnnxTensorLike> inputs,
       Set<String> requestedOutputs,
       OrtSession.RunOptions runOptions)
       throws OrtException {
     checkClosed();
-    /*
-    if ((inputs.isEmpty() && (numInputs != 0)) || (inputs.size() > numInputs)) {
-        throw new OrtException(
-                "Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
+    if ((inputs.isEmpty() && (evalInputNames.size() != 0))
+        || (inputs.size() > evalInputNames.size())) {
+      throw new OrtException(
+          "Unexpected number of inputs, expected [1,"
+              + evalInputNames.size()
+              + ") found "
+              + inputs.size());
     }
-     */
     if (requestedOutputs.isEmpty() || (requestedOutputs.size() > evalOutputNames.size())) {
       throw new OrtException(
           "Unexpected number of requestedOutputs, expected [1,"
@@ -537,18 +587,14 @@ public final class OrtTrainingSession implements AutoCloseable {
     long[] inputHandles = new long[inputs.size()];
     int i = 0;
     for (Map.Entry<String, ? extends OnnxTensorLike> t : inputs.entrySet()) {
-      /*
-      if (inputNames.contains(t.getKey())) {
-       */
-      inputNamesArray[i] = t.getKey();
-      inputHandles[i] = t.getValue().getNativeHandle();
-      i++;
-      /*
+      if (evalInputNames.contains(t.getKey())) {
+        inputNamesArray[i] = t.getKey();
+        inputHandles[i] = t.getValue().getNativeHandle();
+        i++;
       } else {
-          throw new OrtException(
-                  "Unknown input name " + t.getKey() + ", expected one of " + inputNames.toString());
+        throw new OrtException(
+            "Unknown input name " + t.getKey() + ", expected one of " + evalInputNames.toString());
       }
-           */
     }
     String[] outputNamesArray = new String[requestedOutputs.size()];
     i = 0;
@@ -575,9 +621,28 @@ public final class OrtTrainingSession implements AutoCloseable {
             outputNamesArray,
             outputNamesArray.length,
             runOptionsHandle);
-    return new Result(outputNamesArray, outputValues);
+    return new OrtSession.Result(outputNamesArray, outputValues);
   }
 
+  /*
+   * \brief Computes the outputs for the eval model for the given inputs
+   *
+   * <p>This function performs an eval step that computes the outputs of the eval model for the
+   * given inputs. The eval step is performed based on the eval model that was provided to the
+   * training session.
+   *
+   * <p>\param[in] sess The training session which has working knowledge of the eval model.
+   * \param[in] run_options Run options for this eval step. \param[in] inputs_len Number of user
+   * inputs to the eval model. \param[in] inputs The user inputs to the eval model. \param[in]
+   * outputs_len Number of user outputs expected from this eval step. \param[out] outputs User
+   * outputs computed by eval step.
+   *
+   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * <p>ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions*
+   * run_options, size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, size_t
+   * outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+   */
   private native OnnxValue[] evalStep(
       long apiHandle,
       long trainingApiHandle,
@@ -923,8 +988,8 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the checkpoint failed to load.
      */
     static OrtCheckpointState loadCheckpoint(Path checkpointPath) throws OrtException {
-        String pathStr = checkpointPath.toString();
-        return loadCheckpoint(pathStr);
+      String pathStr = checkpointPath.toString();
+      return loadCheckpoint(pathStr);
     }
 
     /**
@@ -936,6 +1001,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     static OrtCheckpointState loadCheckpoint(String checkpoint) throws OrtException {
       if (OnnxRuntime.trainingEnabled) {
+        Objects.requireNonNull(checkpoint, "checkpoint path must not be null");
         return new OrtCheckpointState(
             loadCheckpoint(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, checkpoint));
       } else {

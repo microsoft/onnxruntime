@@ -6,9 +6,9 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
-
 import java.io.IOException;
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
@@ -221,6 +221,7 @@ public final class OrtEnvironment implements AutoCloseable {
    */
   OrtSession createSession(String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
+    Objects.requireNonNull(modelPath, "model path must not be null");
     return new OrtSession(this, modelPath, allocator, options);
   }
 
@@ -260,60 +261,90 @@ public final class OrtEnvironment implements AutoCloseable {
    */
   OrtSession createSession(byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
+    Objects.requireNonNull(modelArray, "model array must not be null");
     return new OrtSession(this, modelArray, allocator, options);
   }
 
   /**
-   * Create a training session using the default {@link SessionOptions}, model and the default memory
-   * allocator.
+   * Create a training session using the default {@link SessionOptions}, model and the default
+   * memory allocator.
    *
    * @param checkpointPath Path to the checkpoint folder.
-   * @param trainPath      Path to the training model.
-   * @param evalPath       Path to the evaluation model.
-   * @param optimizerPath  Path to the optimizer model.
+   * @param trainPath Path to the training model.
+   * @param evalPath Path to the evaluation model.
+   * @param optimizerPath Path to the optimizer model.
    * @return An {@link OrtTrainingSession} with the specified model loaded.
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
-  public OrtTrainingSession createTrainingSession(String checkpointPath, String trainPath, String evalPath, String optimizerPath) throws OrtException {
-    return createTrainingSession(checkpointPath, trainPath, evalPath, optimizerPath, new OrtSession.SessionOptions());
+  public OrtTrainingSession createTrainingSession(
+      String checkpointPath, String trainPath, String evalPath, String optimizerPath)
+      throws OrtException {
+    return createTrainingSession(
+        checkpointPath, trainPath, evalPath, optimizerPath, new OrtSession.SessionOptions());
   }
 
   /**
-   * Create a training session using the specified {@link SessionOptions}, model and the default memory
-   * allocator.
+   * Create a training session using the specified {@link SessionOptions}, model and the default
+   * memory allocator.
    *
    * @param checkpointPath Path to the checkpoint folder.
-   * @param trainPath      Path to the training model.
-   * @param evalPath       Path to the evaluation model.
-   * @param optimizerPath  Path to the optimizer model.
-   * @param options        The session options.
+   * @param trainPath Path to the training model.
+   * @param evalPath Path to the evaluation model.
+   * @param optimizerPath Path to the optimizer model.
+   * @param options The session options.
    * @return An {@link OrtTrainingSession} with the specified model.
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
-  public OrtTrainingSession createTrainingSession(String checkpointPath, String trainPath, String evalPath, String optimizerPath, SessionOptions options) throws OrtException {
-    return createTrainingSession(checkpointPath, trainPath, evalPath, optimizerPath, defaultAllocator, options);
+  public OrtTrainingSession createTrainingSession(
+      String checkpointPath,
+      String trainPath,
+      String evalPath,
+      String optimizerPath,
+      SessionOptions options)
+      throws OrtException {
+    return createTrainingSession(
+        checkpointPath, trainPath, evalPath, optimizerPath, defaultAllocator, options);
   }
 
   /**
    * Create a training session using the specified {@link SessionOptions} and model.
    *
    * @param checkpointPath Path to the checkpoint folder.
-   * @param trainPath      Path to the training model.
-   * @param evalPath       Path to the evaluation model.
-   * @param optimizerPath  Path to the optimizer model.
-   * @param allocator      The memory allocator to use.
-   * @param options        The session options.
+   * @param trainPath Path to the training model.
+   * @param evalPath Path to the evaluation model.
+   * @param optimizerPath Path to the optimizer model.
+   * @param allocator The memory allocator to use.
+   * @param options The session options.
    * @return An {@link OrtTrainingSession} with the specified model.
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
-  OrtTrainingSession createTrainingSession(String checkpointPath, String trainPath, String evalPath, String optimizerPath, OrtAllocator allocator, SessionOptions options)
+  OrtTrainingSession createTrainingSession(
+      String checkpointPath,
+      String trainPath,
+      String evalPath,
+      String optimizerPath,
+      OrtAllocator allocator,
+      SessionOptions options)
       throws OrtException {
     if (OnnxRuntime.trainingEnabled) {
+      Objects.requireNonNull(trainPath, "train path must not be null");
+      Objects.requireNonNull(evalPath, "eval path must not be null");
+      Objects.requireNonNull(optimizerPath, "optimizer path must not be null");
       OrtCheckpointState checkpointState = OrtCheckpointState.loadCheckpoint(checkpointPath);
-      return new OrtTrainingSession(this, allocator, options, checkpointState, trainPath, evalPath, optimizerPath);
+      return new OrtTrainingSession(
+          this, allocator, options, checkpointState, trainPath, evalPath, optimizerPath);
     } else {
       throw new IllegalStateException("Training is not enabled in this build of ONNX Runtime.");
     }
+  }
+
+  /**
+   * Is training enabled in this build of ONNX Runtime?
+   *
+   * @return True if training is enabled.
+   */
+  public boolean isTrainingEnabled() {
+    return OnnxRuntime.trainingEnabled;
   }
 
   /**
