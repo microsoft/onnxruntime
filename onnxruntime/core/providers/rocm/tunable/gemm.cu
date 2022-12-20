@@ -188,7 +188,7 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
       alpha,                                  \
       a, lda, stride_a,                       \
       b, ldb, stride_b,                       \
-      beta, c, ldc, stride_b,                 \
+      beta, c, ldc, stride_c,                 \
       batch)
 
 // clang-format off
