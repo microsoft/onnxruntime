@@ -48,9 +48,10 @@ public:
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-        uint32_t inputDimCount = m_inputTensorDescs[0].GetDimensionCount();
-        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(static_cast<size_t>(inputDimCount) - static_cast<size_t>(onnxAxis));
+        uint32_t onnxDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
+        uint32_t dmlDimCount = m_inputTensorDescs[0].GetDimensionCount();
+        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, onnxDimCount);
+        std::vector<uint32_t> onnxAxes(static_cast<size_t>(dmlDimCount) - static_cast<size_t>(onnxAxis));
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         assert(m_inputTensorDescs.size() == 3);
