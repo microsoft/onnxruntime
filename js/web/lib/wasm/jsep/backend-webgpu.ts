@@ -128,12 +128,16 @@ export class WebGpuBackend {
     const outputTensorViews: TensorView[] = [];
     const outputDatas: GpuData[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      const tensorView = validatedOutputIndices[i] === -1 ?
+      const isTemporary = validatedOutputIndices[i] === -1;
+      const tensorView = isTemporary ?
           createTemporaryOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
       const gpuData = this.gpuDataManager.get(tensorView.data);
       if (!gpuData) {
         throw new Error(`no GPU data for output: ${tensorView.data}`);
+      }
+      if (isTemporary) {
+        this.temporaryData.push(gpuData);
       }
       outputTensorViews.push(tensorView);
       outputDatas.push(gpuData);
