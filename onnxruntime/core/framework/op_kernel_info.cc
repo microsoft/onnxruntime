@@ -5,6 +5,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_info.h"
+#include "core/framework/sequential_execution_plan.h"
 
 namespace onnxruntime {
 
@@ -21,7 +22,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node) {}
+      proto_helper_context_(node){}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
@@ -76,5 +77,4 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
   *constant_input_value = &iter->second.Get<Tensor>();
   return true;
 }
-
 }  // namespace onnxruntime

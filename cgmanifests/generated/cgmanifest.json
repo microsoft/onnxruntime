@@ -82,7 +82,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
+          "commitHash": "8c0b94e793a66495e0b1f34a5eb26bd7dc672db0",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -252,7 +252,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "87c7a70688fd98fb355b8976f41425b40e4fe52f",
+          "commitHash": "369d6676423c2a6dbf4a5665c4b5010240d99d3c",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"

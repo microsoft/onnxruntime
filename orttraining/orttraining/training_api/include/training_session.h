@@ -33,7 +33,7 @@ class TrainingSession {
 
   Status RegisterScheduler(const std::function<
                                std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
-                           std::optional<float> initial_lr);
+                           float initial_lr);
 
   size_t GetTrainingModelOutputCount() const noexcept;
 
@@ -43,6 +43,14 @@ class TrainingSession {
 
   std::string GetEvalModelOutputName(size_t index) const noexcept;
 
+  size_t GetTrainingModelInputCount() const noexcept;
+
+  size_t GetEvalModelInputCount() const noexcept;
+
+  std::string GetTrainingModelInputName(size_t index) const noexcept;
+
+  std::string GetEvalModelInputName(size_t index) const noexcept;
+
   Status TrainStep(const RunOptions& run_options,
                    const std::vector<OrtValue>& inputs,
                    std::vector<OrtValue>& fetches);
@@ -51,7 +59,7 @@ class TrainingSession {
                   const std::vector<OrtValue>& inputs,
                   std::vector<OrtValue>& fetches) const;
 
-  Status ResetGrad();
+  Status LazyResetGrad();
 
   Status OptimizerStep(const RunOptions& run_options);
 
