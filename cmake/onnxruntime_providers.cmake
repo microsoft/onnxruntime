@@ -51,7 +51,7 @@ endfunction()
 # `target`.
 function(add_op_reduction_include_dirs target)
   set(op_reduction_include_dirs "${op_reduction_root}/onnxruntime")
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     list(APPEND op_reduction_include_dirs "${op_reduction_root}/orttraining")
   endif()
   # add include directories BEFORE so they are searched first, giving op reduction file paths precedence
@@ -169,8 +169,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-
-if (onnxruntime_ENABLE_TRAINING_OPS)
+if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
@@ -194,6 +193,8 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -279,7 +280,7 @@ target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${e
 onnxruntime_add_include_to_target(onnxruntime_providers re2::re2)
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
@@ -387,38 +388,50 @@ if (onnxruntime_USE_CUDA)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cc"
     )
 
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cu"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cuh"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cu"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cuh"
     )
-
-    # NCCL is not support in Windows build
-    if (WIN32)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
-      )
-    elseif (NOT onnxruntime_USE_NCCL)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
-      )
-    endif()
 
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
+
+    if(NOT onnxruntime_ENABLE_TRAINING)
+      file(GLOB_RECURSE onnxruntime_cuda_full_training_only_srcs
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/record.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/record.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cu"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.h"
+      )
+
+      list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
+    elseif(WIN32 OR NOT onnxruntime_USE_NCCL)
+      # NCCL is not support in Windows build
+      file(GLOB_RECURSE onnxruntime_cuda_nccl_op_srcs
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
+      )
+
+      list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_nccl_op_srcs})
+    endif()
   endif()
 
   if (onnxruntime_REDUCED_OPS_BUILD)
@@ -456,7 +469,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
@@ -484,7 +497,7 @@ if (onnxruntime_USE_CUDA)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
     if(onnxruntime_USE_MPI)
       target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
@@ -564,7 +577,7 @@ if (onnxruntime_USE_DNNL)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
 
   # Needed for the provider interface, as it includes training headers when training is enabled
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ORTTRAINING_ROOT})
   endif()
 
@@ -638,10 +651,12 @@ if (onnxruntime_USE_TENSORRT)
     FetchContent_Declare(
       onnx_tensorrt
       URL ${DEP_URL_onnx_tensorrt}
-	    URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
+      URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
     )
-    FetchContent_MakeAvailable(onnx_tensorrt)
-	include_directories(${onnx_tensorrt_SOURCE_DIR})
+    # The onnx_tensorrt repo contains a test program, getSupportedAPITest, which doesn't support Windows. It uses
+    # unistd.h. So we must exclude it from our build. onnxruntime_fetchcontent_makeavailable is for the purpose.
+    onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
+    include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
@@ -659,13 +674,15 @@ if (onnxruntime_USE_TENSORRT)
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
 
-  set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+  set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.cc"
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
@@ -694,7 +711,7 @@ if (onnxruntime_USE_TENSORRT)
   endif()
 
   # Needed for the provider interface, as it includes training headers when training is enabled
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ORTTRAINING_ROOT})
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt Python::Module)
@@ -809,7 +826,7 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   # Needed for the provider interface, as it includes training headers when training is enabled
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_openvino PRIVATE ${ORTTRAINING_ROOT})
   endif()
 
@@ -1156,11 +1173,9 @@ if (onnxruntime_USE_MIGRAPHX)
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
-  # TODO: Remove the next line so that we can delete the git submodule
-  include_directories(${PROJECT_SOURCE_DIR}/external/protobuf ${PROJECT_SOURCE_DIR}/external/eigen)
+  include_directories(${protobuf_SOURCE_DIR} ${eigen_SOURCE_DIR})
   set(MIGRAPHX_ROOT ${onnxruntime_MIGRAPHX_HOME})
-  # TODO: Remove the next line so that we can delete the git submodule
-  include_directories(${PROJECT_SOURCE_DIR}/external/onnx)
+  include_directories(${onnx_SOURCE_DIR})
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if ( CMAKE_COMPILER_IS_GNUCC )
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
@@ -1184,6 +1199,8 @@ if (onnxruntime_USE_MIGRAPHX)
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/rocm_stream_handle.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/rocm_stream_handle.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
@@ -1335,7 +1352,7 @@ if (onnxruntime_USE_ROCM)
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_generated_contrib_ops_cc_srcs} ${onnxruntime_rocm_generated_contrib_ops_cu_srcs})
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE onnxruntime_rocm_training_ops_cc_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cc"
@@ -1373,7 +1390,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11 safeint_interface)
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_training)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_training)
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
@@ -1405,7 +1422,7 @@ if (onnxruntime_USE_ROCM)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
 
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining ${MPI_CXX_INCLUDE_DIRS})
     if(onnxruntime_USE_MPI)
       target_link_libraries(onnxruntime_providers_rocm PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
@@ -1484,7 +1501,7 @@ if (onnxruntime_USE_TVM)
     # wd4100: identifier' : unreferenced formal parameter
     # wd4127: conditional expression is constant
     # wd4244: conversion from 'int' to 'char', possible loss of data
-	# TODO: 4244 should not be disabled
+    # TODO: 4244 should not be disabled
     target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4127" "/wd4244")
   else()
     target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
@@ -1540,6 +1557,7 @@ endif()
 
 if (onnxruntime_USE_CANN)
   add_definitions(-DUSE_CANN=1)
+
   file(GLOB_RECURSE onnxruntime_providers_cann_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cann/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cann/*.cc"
@@ -1555,12 +1573,13 @@ if (onnxruntime_USE_CANN)
   set(onnxruntime_providers_cann_src ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
 
   onnxruntime_add_shared_library_module(onnxruntime_providers_cann ${onnxruntime_providers_cann_src})
-  onnxruntime_add_include_to_target(onnxruntime_providers_cann onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cann onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_cann onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler nsync_cpp ${ABSEIL_LIBS} onnxruntime_providers_shared)
+  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler fmk_onnx_parser nsync_cpp ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED})
   target_link_directories(onnxruntime_providers_cann PRIVATE ${onnxruntime_CANN_HOME}/lib64)
   target_include_directories(onnxruntime_providers_cann PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${onnxruntime_CANN_HOME} ${onnxruntime_CANN_HOME}/include)
+
   set_target_properties(onnxruntime_providers_cann PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_cann PROPERTIES FOLDER "ONNXRuntime")
 

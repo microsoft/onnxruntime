@@ -1,9 +1,14 @@
-ARG BASEIMAGE=rocm/dev-centos-7:5.2.3
+ARG BASEIMAGE=nvidia/cuda:11.6.1-cudnn8-devel-centos7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=
 ARG PREPEND_PATH=
+
+#We need CUDA, TensorRT and manylinux. But the CUDA Toolkit End User License Agreement says NVIDIA CUDA Driver Libraries(libcuda.so, libnvidia-ptxjitcompiler.so) are only distributable in applications that meet this criteria:
+#1. The application was developed starting from a NVIDIA CUDA container obtained from Docker Hub or the NVIDIA GPU Cloud, and
+#2. The resulting application is packaged as a Docker container and distributed to users on Docker Hub or the NVIDIA GPU Cloud only.
+#So we use CUDA as the base image then add manylinux and TensorRT on top of it.
 
 #Build manylinux2014 docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -13,21 +18,6 @@ ARG DEVTOOLSET_ROOTPATH
 ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
 LABEL maintainer="The ManyLinux project"
-
-# TODO: This should not be required if the hipify-perl binary is already a part
-# of the base docker image. Remove this line moving forward.
-RUN yum install -y hipify-clang
-
-# CMake
-ENV CMAKE_VERSION=3.24.3
-RUN cd /usr/local && \
-    wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
-ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
-
-# rocm lib
-RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
-
-RUN yum remove -y devtoolset\* git\*
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
@@ -84,13 +74,6 @@ RUN export LIBXCRYPT_VERSION=4.4.28 && \
     export PERL_DOWNLOAD_URL=https://www.cpan.org/src/5.0 && \
     manylinux-entrypoint /build_scripts/install-libxcrypt.sh
 
-COPY scripts/install-protobuf.sh /build_scripts/
-RUN export PROTOBUF_VERSION=3.17.3 && \
-    export PROTOBUF_ROOT=protobuf-all-${PROTOBUF_VERSION} && \
-    export PROTOBUF_HASH=77ad26d3f65222fd96ccc18b055632b0bfedf295cb748b712a98ba1ac0b704b2 && \
-    export PROTOBUF_DOWNLOAD_URL=https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION} && \
-    manylinux-entrypoint /build_scripts/install-protobuf.sh
-
 FROM runtime_base AS build_base
 COPY build_scripts/install-build-packages.sh /build_scripts/
 RUN manylinux-entrypoint /build_scripts/install-build-packages.sh
@@ -135,6 +118,14 @@ COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.13
 
 
+FROM build_cpython AS build_cpython310
+COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.5
+
+FROM build_cpython AS build_cpython311
+COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.0b5
+
 FROM build_cpython AS all_python
 COPY build_scripts/install-pypy.sh \
      build_scripts/pypy.sha256 \
@@ -146,6 +137,8 @@ RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
 COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
+COPY --from=build_cpython310 /opt/_internal /opt/_internal/
+COPY --from=build_cpython311 /opt/_internal /opt/_internal/
 RUN manylinux-entrypoint /build_scripts/finalize-python.sh
 
 
@@ -159,6 +152,8 @@ COPY build_scripts/finalize.sh \
      build_scripts/requirements3.7.txt \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
+     build_scripts/requirements3.10.txt \
+     build_scripts/requirements3.11.txt \
      build_scripts/requirements-base-tools.txt \
      /build_scripts/
 COPY build_scripts/requirements-tools/* /build_scripts/requirements-tools/
@@ -170,25 +165,16 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-ARG PYTHON_VERSION=3.7
-ARG OPSET_VERSION=15
-ARG INSTALL_DEPS_EXTRA_ARGS
+#Install TensorRT 8.5.1.7
+#RUN yum install -y wget
+RUN v="8.5.1-1.cuda11.8" &&\
+    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
+    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
+        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && \
-    /tmp/scripts/manylinux/install_centos.sh && \
-    /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.7 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
-     rm -rf /tmp/scripts
-
-# remove protobuf to prevent ambiguity which is used for onnxruntime build
-RUN rm -fr /usr/local/bin/protoc \
-           /usr/local/libproto* \
-           /usr/local/include/google \
-           /usr/local/lib/pkgconfig/protobuf*
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
@@ -196,4 +182,3 @@ RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
 ENV PATH /usr/local/gradle/bin:/usr/local/dotnet:$PATH
-ENV ORTMODULE_ONNX_OPSET_VERSION=$OPSET_VERSION

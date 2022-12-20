@@ -94,7 +94,7 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.16.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="xunit" Version="2.4.1" />
   </ItemGroup>
 

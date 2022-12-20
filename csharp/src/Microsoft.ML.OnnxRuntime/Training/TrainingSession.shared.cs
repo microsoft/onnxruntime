@@ -205,9 +205,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// Sets the reset grad flag on the training graph. The gradient buffers will be reset while executing the
         /// next train step.
         /// </summary>
-        public void ResetGrad()
+        public void LazyResetGrad()
         {
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtResetGrad(_nativeHandle));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLazyResetGrad(_nativeHandle));
         }
 
         /// <summary>
@@ -388,15 +388,15 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle;
             string str = null;
             if (training)
-            { 
+            {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
                                            allocator.Pointer,
                                            out nameHandle));
-            } 
+            }
             else
-            { 
+            {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
@@ -498,7 +498,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        #endregion
+    #endregion
     }
 #endif
 }

@@ -15,6 +15,7 @@ namespace onnxruntime {
 class OrtValueNameIdxMap;
 class FuncManager;
 class DataTransferManager;
+struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.

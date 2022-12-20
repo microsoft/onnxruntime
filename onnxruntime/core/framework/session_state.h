@@ -18,6 +18,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -38,6 +39,10 @@
 #endif
 
 #include "core/framework/cloud_invoker.h"
+#include "core/framework/stream_handles.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/program_region.h"
+#endif
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -57,6 +62,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class DeviceStreamCollection;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -94,21 +100,7 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
-      : graph_(graph),
-        execution_providers_(execution_providers),
-        logger_(logger),
-        profiler_(profiler),
-        thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool),
-        data_transfer_mgr_(data_transfer_mgr),
-        sess_options_(sess_options),
-        prepacked_weights_container_(prepacked_weights_container) {
-    enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
-                          sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-
-    SetupAllocators();
-  }
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -192,6 +184,9 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
+
+  const std::vector<AllocPlanPerValue>& GetPerValueAllocPlan() const;
+
   /**
   Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
@@ -298,10 +293,9 @@ class SessionState {
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
-  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
+#ifdef ENABLE_TRAINING
+  void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
@@ -329,8 +323,19 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+#ifdef ENABLE_STREAM
+  std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
+
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
+
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
+#endif
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  void IncrementGraphExecutionCounter() {
+  void
+  IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
 
@@ -511,7 +516,7 @@ class SessionState {
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else
@@ -543,6 +548,14 @@ class SessionState {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
+#endif
+
+#ifdef ENABLE_STREAM
+  std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+
+  // lock for the device stream pool
+  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
 #endif
 };
 

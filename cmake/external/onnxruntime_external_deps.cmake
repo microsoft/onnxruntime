@@ -113,7 +113,7 @@ FetchContent_Declare(
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   SOURCE_SUBDIR  cmake
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  FIND_PACKAGE_ARGS NAMES Protobuf
+  FIND_PACKAGE_ARGS 3.18.0 NAMES Protobuf
 )
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -135,9 +135,7 @@ FetchContent_Declare(
       URL ${DEP_URL_date}
       URL_HASH SHA1=${DEP_SHA1_date}
     )
-FetchContent_Populate(date)
-add_library(date_interface INTERFACE)
-target_include_directories(date_interface INTERFACE ${date_SOURCE_DIR}/include)
+onnxruntime_fetchcontent_makeavailable(date)
 
 
 
@@ -376,7 +374,7 @@ endif()
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS})
+set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date_interface)
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)

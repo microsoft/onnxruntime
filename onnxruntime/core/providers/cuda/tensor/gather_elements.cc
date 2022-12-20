@@ -12,7 +12,7 @@ namespace cuda {
 // Ideally both input and indices can support strided tensor, for training case, the indices is the input for both
 // GatherElements and GatherElementsGrad, indices supporting strided tensor is more useful for saving memory.
 // So we only mark indices as MayStridedInput for now. Will do this for input once needed.
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #define CREATE_GATHER_ELEMENTS_KERNEL_DEF (*KernelDefBuilder::Create()).MayStridedInput(1)
 #else
 #define CREATE_GATHER_ELEMENTS_KERNEL_DEF (*KernelDefBuilder::Create())
@@ -175,7 +175,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
   TensorShapeVector* p_indices_strides_vec = nullptr;
   TensorShapeVector indices_strides_vec;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   if (!indices_tensor->IsContiguous()) {
     indices_strides_vec = ToShapeVector(indices_tensor->Strides());
     p_indices_strides_vec = &indices_strides_vec;
@@ -190,7 +190,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), input_tensor->DataRaw(), indices_tensor->DataRaw(),
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), indices_tensor->DataRaw(),
                                                output_tensor->MutableDataRaw(), indices_tensor->DataType()->Size(),
                                                args);
 }
