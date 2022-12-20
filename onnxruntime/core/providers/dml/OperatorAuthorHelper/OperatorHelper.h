@@ -1563,7 +1563,6 @@ using ShapeInferenceHelper_BiasGelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Identity16 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
