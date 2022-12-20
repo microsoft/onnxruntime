@@ -32,24 +32,23 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias& p,
                                                                                                       const int64_t output_size,
                                                                                                       size_t rindex,
                                                                                                       FilterParamsBaseAntiAlias& param_base,
-                                                                                                      const float rscale,
-                                                                                                      BufferUniquePtr& weight_coefficients) -> int64_t {
+                                                                                                      const float rscale) -> int64_t {
     param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
     param_base.original.reserve(static_cast<size_t>(output_size));
     param_base.out_of_bound_idx.reserve(static_cast<size_t>(output_size));
 
-    float scale = 1.0f / rscale;
-    float support =
-        (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
+    bool is_8bit_v = (dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8 || dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8);
 
-    int32_t window_size = SafeInt<int32_t>(ceilf(support)) * 2 + 1;
-    const SafeInt<size_t> scale_buffer_size = sizeof(float) * (window_size)*output_size;
+    float scale = 1.0f / rscale;
+    float support = (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
+
+    int32_t window_size = narrow<int32_t>(ceilf(support)) * 2 + 1;
+    const size_t scale_buffer_size = sizeof(float) * window_size * output_size;
 
     const auto scale_data_buffer = alloc->Alloc(scale_buffer_size);
-    weight_coefficients = BufferUniquePtr(scale_data_buffer, BufferDeleter(alloc));
-
+    param_base.weight_coefficients = BufferUniquePtr(scale_data_buffer, BufferDeleter(alloc));
     // Get pointers to appropriate memory locations in the scratch buffer
-    auto* scale_data = static_cast<float*>(weight_coefficients.get());
+    auto* scale_data = static_cast<float*>(param_base.weight_coefficients.get());
     int64_t xmin = 0, xmax = 0;
     float inv_scale = (scale >= 1.0f) ? 1.0f / scale : 1.0f;
 
@@ -80,7 +79,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias& p,
       param_base.bound.push_back(xmax_cut);
 
       auto* scale_buffer = &scale_data[i * window_size];
-      int32_t* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
       int64_t x = 0;
       xmax -= xmin;
       for (; x < xmax; x++) {
@@ -94,37 +92,32 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias& p,
         for (x = 0; x < neg_xsize; x++) {
           scale_buffer[neg_xsize] += scale_buffer[x];
         }
+
         int64_t bound_xsize =
             xmax + xmin > input_size ? xmax + xmin - input_size : 0;
         for (x = xmax - bound_xsize; x < xmax; x++) {
           scale_buffer[xmax - bound_xsize - 1] +=
               scale_buffer[x];
         }
+
         for (x = 0; (neg_xsize | bound_xsize) > 0 && x < xmax_cut - xmin_cut; x++) {
           scale_buffer[x] = scale_buffer[x + neg_xsize];
         }
       }
 
+      float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
+      auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
       for (x = 0; x < xmax; x++) {
-        if (total_weight != 0.0 && total_weight != 1) {
-          scale_buffer[x] /= total_weight;
-        }
+        scale_buffer[x] *= total_weight_inv;
 
         // normalize the scale to 1 << 22 for int8/uint8
-        if (dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8 || dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-          if (scale_buffer[x] < 0) {
-            scale_buffer_int[x] =
-                (int)(-0.5 + scale_buffer[x] * (1 << 22));
-          } else {
-            scale_buffer_int[x] =
-                (int)(0.5 + scale_buffer[x] * (1 << 22));
-          }
+        if (is_8bit_v) {
+          scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor * 2.f));
         }
       }
-
-      for (; x < window_size; x++) {
+      /*for (; x < window_size; x++) {
         scale_buffer[x] = 0;
-      }
+      }*/
     }
     return window_size;
   };
@@ -139,12 +132,12 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias& p,
 
   p.init_clip_lookup();
   p.dim_y.window_size = compute_weight_coefficients(p, input_h_w_c[0], output_h_w_c[0], height_rindex,
-                                                    p.dim_y, scale_h_w_c[0], p.dim_y.weight_coefficients);
+                                                    p.dim_y, scale_h_w_c[0]);
   p.dim_x.window_size = compute_weight_coefficients(p, input_h_w_c[1], output_h_w_c[1], width_rindex,
-                                                    p.dim_x, scale_h_w_c[1], p.dim_x.weight_coefficients);
+                                                    p.dim_x, scale_h_w_c[1]);
   if (input_h_w_c.size() == 3) {
     p.dim_z.window_size = compute_weight_coefficients(p, input_h_w_c[2], output_h_w_c[2], channel_rindex,
-                                                      p.dim_z, scale_h_w_c[2], p.dim_z.weight_coefficients);
+                                                      p.dim_z, scale_h_w_c[2]);
   }
 }
 

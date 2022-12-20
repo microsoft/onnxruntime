@@ -180,8 +180,8 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
             auto xdata_span = gsl::make_span(Xdata_base, batch_size * hc_prod * input_width);
             auto ydata_span = gsl::make_span(temp_buffer, hc_prod * output_width);
 
-            std::copy(xdata_span.begin() + x_start, xdata_span.begin() + x_start + output_size,
-                      ydata_span.begin() + y_start);
+            std::copy_n(xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_size),
+                        ydata_span.begin() + narrow<size_t>(y_start));
             return;
           }
 
@@ -199,9 +199,8 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
               }
               ACtype output = is_8bit_v<T> ? ConstValue::mag_factor : 0;
 
-              const auto* weight_coeff =
-                  reinterpret_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
-                  p.dim_x.window_size * x;
+              const auto* weight_coeff = static_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
+                                         p.dim_x.window_size * x;
               int64_t xmin = *bound++;
               int64_t xmax = *bound++;
               const auto* Xdata_offset = Xdata + y * input_width + xmin;
@@ -238,16 +237,15 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias& p,
             auto xdata_span = gsl::make_span(temp_buffer, hc_prod * input_width);
             auto ydata_span = gsl::make_span(Ydata_base, batch_size * hc_prod * output_width);
 
-            std::copy(xdata_span.begin() + x_start, xdata_span.begin() + x_start + output_size,
-                      ydata_span.begin() + y_start);
+            std::copy_n(xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_size),
+                        ydata_span.begin() + narrow<size_t>(y_start));
             return;
           }
 
           const auto* y_bound = p.dim_y.bound.data();
           for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
-            const auto* weight_coeff =
-                reinterpret_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) +
-                p.dim_y.window_size * y;
+            const auto* weight_coeff = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) +
+                                       p.dim_y.window_size * y;
             int64_t ymin = *y_bound++;
             int64_t ymax = *y_bound++;
             auto* Ydata_offset = Ydata + output_width * y;
@@ -412,9 +410,8 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias& p,
               continue;
             }
 
-            const auto* weight_coeff =
-                reinterpret_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
-                p.dim_x.window_size * x;
+            const auto* weight_coeff = static_cast<const ACtype*>(p.dim_x.weight_coefficients.get()) +
+                                       p.dim_x.window_size * x;
             int64_t xmin = p.dim_x.bound[x * 2];
             int64_t xmax = p.dim_x.bound[x * 2 + 1];
             for (size_t c = 0; c < narrow<size_t>(num_channels); ++c) {
@@ -457,8 +454,7 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias& p,
               continue;
             }
 
-            const auto* weight_coeff =
-                reinterpret_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) + p.dim_y.window_size * y;
+            const auto* weight_coeff = static_cast<const ACtype*>(p.dim_y.weight_coefficients.get()) + p.dim_y.window_size * y;
             int64_t ymin = p.dim_y.bound[y * 2];
             int64_t ymax = p.dim_y.bound[y * 2 + 1];
 
@@ -575,15 +571,15 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
             auto xdata_span = gsl::make_span(temp_buffer, bwhc_prod * input_depth);
             auto ydata_span = gsl::make_span(Ydata_base, bwhc_prod * output_depth);
 
-            std::copy(xdata_span.begin() + x_start, xdata_span.begin() + x_start + output_size, ydata_span.begin() + y_start);
+            std::copy_n(xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_size),
+                        ydata_span.begin() + narrow<size_t>(y_start));
             return;
           }
 
           const auto* z_bound = p.dim_z.bound.data();
           for (size_t z = 0; z < narrow<size_t>(output_depth); ++z) {
-            const auto* weight_coeff =
-                reinterpret_cast<const ACtype*>(p.dim_z.weight_coefficients.get()) +
-                p.dim_z.window_size * z;
+            const auto* weight_coeff = static_cast<const ACtype*>(p.dim_z.weight_coefficients.get()) +
+                                       p.dim_z.window_size * z;
             int64_t zmin = *z_bound++;
             int64_t zmax = *z_bound++;
             auto* Ydata_base_z = Ydata + z * out_wh_prod;
