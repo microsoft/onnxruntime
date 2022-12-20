@@ -32,6 +32,7 @@ void LaunchLogitsProcessKernel(
     int batch_size,
     int num_beams,
     int vocab_size,
+    int padded_vocab_size,
     int demote_token_id,
     int32_t* sequences,
     int max_sequence_length,
