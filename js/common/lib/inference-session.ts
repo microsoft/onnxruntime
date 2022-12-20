@@ -60,13 +60,6 @@ export declare namespace InferenceSession {
     intraOpNumThreads?: number;
 
     /**
-     * The inter OP threads number.
-     *
-     * This setting is available only in ONNXRuntime (Node.js binding and react-native).
-     */
-    interOpNumThreads?: number;
-
-    /**
      * The optimization level.
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
