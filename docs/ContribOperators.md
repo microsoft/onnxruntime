@@ -3823,7 +3823,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>custom</tt> : int</dt>
-<dd>absence penalty for sampling</dd>
+<dd>If 1 custom sampling logic</dd>
 <dt><tt>decoder</tt> : graph (required)</dt>
 <dd>Decoder subgraph to execute in a loop.</dd>
 <dt><tt>decoder_start_token_id</tt> : int</dt>
@@ -3833,21 +3833,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
 <dt><tt>filter_value</tt> : float</dt>
-<dd>filter value for top_p</dd>
+<dd>All filtered values will be set to this float value.</dd>
+<dt><tt>init_decoder</tt> : graph</dt>
+<dd>The subgraph for the first decoding run. It will be called once before `decoder` subgraph. This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs</dd>
 <dt><tt>min_tokens_to_keep</tt> : int</dt>
-<dd>min_tokens_to_keep</dd>
+<dd>Minimumber of tokens we keep per batch example in the output.</dd>
 <dt><tt>model_type</tt> : int</dt>
-<dd>model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart</dd>
+<dd>Model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>
 <dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
 <dt><tt>presence_penalty</tt> : float</dt>
-<dd>presence penalty for sampling</dd>
+<dd>Presence penalty for custom sampling</dd>
 <dt><tt>temperature</tt> : float</dt>
-<dd>temperature for sampling</dd>
+<dd>The value used to module the next token probabilities.</dd>
 <dt><tt>top_p</tt> : float</dt>
-<dd>top_p for sampling</dd>
+<dd>If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to `top_p` or higher are kept for generation.</dd>
+<dt><tt>vocab_size</tt> : int</dt>
+<dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
 #### Inputs (2 - 8)
@@ -3868,7 +3872,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>attention_mask</tt> (optional) : I</dt>
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>presence_mask</tt> (optional) : I</dt>
-<dd>presence penalty mask. Shape is (batch_size, vocab_size)</dd>
+<dd>Presence penalty mask. Shape is (batch_size, vocab_size)</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -3877,7 +3881,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>sequences</tt> : I</dt>
 <dd>Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)</dd>
 <dt><tt>filtered_logits</tt> (optional) : T</dt>
-<dd>filtered logits as input to the mutinomial function . Shape is (batch_size, vocab_size)</dd>
+<dd>Filtered logits as input to the mutinomial function for debug purpose. Shape is (batch_size, vocab_size)</dd>
 </dl>
 
 #### Type Constraints
