@@ -846,93 +846,6 @@ public final class OrtTrainingSession implements AutoCloseable {
       throws OrtException;
 
   /**
-   * \brief Retrieves the size of all the parameters.
-   *
-   * <p>Calculates the size of all the parameters for the training session. When 'trainable_only' is
-   * true, the size is calculated for trainable params only.
-   *
-   * <p>\param[in] sess The training session. \param[in] trainable_only Whether to skip
-   * non-trainable parameters
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(GetParametersSize, _Inout_ OrtTrainingSession* sess, _Out_ size_t* out, bool
-   * trainable_only);
-   */
-
-  /**
-   * Calculates the size of all parameters in the training session.
-   *
-   * <p>When {@code trainableOnly} is true, it only computes the trainable parameter size.
-   *
-   * @param trainableOnly If true only return the size of the trainable parameters.
-   * @return The parameter size.
-   * @throws OrtException If the call failed public long getParametersSize(boolean trainableOnly)
-   *     throws OrtException { checkClosed(); return getParametersSize(OnnxRuntime.ortApiHandle,
-   *     OnnxRuntime.ortTrainingApiHandle, nativeHandle, trainableOnly); }
-   *     <p>private native long getParametersSize(long apiHandle, long trainingApiHandle, long
-   *     nativeHandle, boolean trainableOnly) throws OrtException;
-   */
-
-  /**
-   * \brief Copy parameters onto contiguous buffer held by parameters_buffer
-   *
-   * <p>The parameters_buffer has to be of the size given by GetParametersSize api call, with
-   * matching setting for 'trainable_only'. All the target parameters must be of the same datatype.
-   * The OrtValue must be pre-allocated onto the desired device. This is a complementary function to
-   * 'CopyBufferToParameters'. Parameter ordering is preserved. User is responsible for
-   * allocating/freeing the 'parameters_buffer'.
-   *
-   * <p>\param[in] sess The training session. \param[in] trainable_only Whether to skip
-   * non-trainable parameters \param[out] parameters_buffer The pre-allocated OrtValue buffer to
-   * copy onto.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess, _Inout_ OrtValue*
-   * parameters_buffer, bool trainable_only);
-   */
-
-  /**
-   * \brief Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
-   *
-   * <p>The parameters_buffer has to be of the size given by GetParametersSize api call, with
-   * matching setting for 'trainable_only'. All the target parameters must be of the same datatype.
-   * This is a complementary function to 'CopyBufferToParameters' and can be used to load updated
-   * buffer values onto the parameters. Parameter ordering is preserved. User is responsible for
-   * allocating/freeing the 'parameters_buffer'.
-   *
-   * <p>\param[in] sess The training session. \param[in] trainable_only Whether to skip
-   * non-trainable parameters \param[out] parameters_buffer The pre-allocated OrtValue buffer to
-   * copy from.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess, _Inout_ OrtValue*
-   * parameters_buffer, bool trainable_only);
-   */
-
-  /**
-   * \brief Export a model that can be used for inferencing.
-   *
-   * <p>If the training session was provided with an eval model, the training session can generate
-   * an inference model if it knows the inference graph outputs. The input inference graph outputs
-   * are used to prune the eval model so that the output model's outputs align with the provided
-   * outputs. The exported model is saved at the path provided and can be used for inferencing with
-   * InferenceSession. Note that the function re-loads the eval model from the path provided to
-   * CreateTrainingSession and expects that this path still be valid.
-   *
-   * <p>\param[in] sess The training session. \param[in] inference_model_path Path where the
-   * inference model should be serialized to.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess, _In_ const
-   * ORTCHAR_T* inference_model_path, size_t graph_outputs_len, _In_reads_(graph_outputs_len) const
-   * char* const* graph_output_names);
-   */
-
-  /**
    * Exports the evaluation model as a model suitable for inference, setting the desired nodes as
    * output nodes.
    *
@@ -958,6 +871,25 @@ public final class OrtTrainingSession implements AutoCloseable {
         outputNames);
   }
 
+  /*
+   * \brief Export a model that can be used for inferencing.
+   *
+   * <p>If the training session was provided with an eval model, the training session can generate
+   * an inference model if it knows the inference graph outputs. The input inference graph outputs
+   * are used to prune the eval model so that the output model's outputs align with the provided
+   * outputs. The exported model is saved at the path provided and can be used for inferencing with
+   * InferenceSession. Note that the function re-loads the eval model from the path provided to
+   * CreateTrainingSession and expects that this path still be valid.
+   *
+   * <p>\param[in] sess The training session. \param[in] inference_model_path Path where the
+   * inference model should be serialized to.
+   *
+   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * <p>ORT_API2_STATUS(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess, _In_ const
+   * ORTCHAR_T* inference_model_path, size_t graph_outputs_len, _In_reads_(graph_outputs_len) const
+   * char* const* graph_output_names);
+   */
   private native void exportModelForInference(
       long apiHandle,
       long trainingApiHandle,

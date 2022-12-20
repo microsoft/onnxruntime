@@ -72,7 +72,7 @@ public class TrainingTest {
         pinnedInputs.put(
             "input-0", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
-        long[] labelsShape = {2};
+        //long[] labelsShape = {2};
         pinnedInputs.put("labels", OnnxTensor.createTensor(env, labels));
 
         // Prepare output buffer
@@ -109,7 +109,7 @@ public class TrainingTest {
       long[] inputShape = {2, 784};
       pinnedInputs.put("input-0", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
-      long[] labelsShape = {2};
+      //long[] labelsShape = {2};
       pinnedInputs.put("labels", OnnxTensor.createTensor(env, labels));
 
       try (OrtSession.Result firstOutput = trainingSession.trainStep(pinnedInputs)) {
@@ -189,7 +189,7 @@ public class TrainingTest {
         pinnedInputs.put(
             "input-0", OnnxTensor.createTensor(env, OrtUtil.reshape(input, inputShape)));
 
-        long[] labelsShape = {2};
+        //long[] labelsShape = {2};
         pinnedInputs.put("labels", OnnxTensor.createTensor(env, labels));
 
         try (OrtSession.Result outputs = trainingSession.trainStep(pinnedInputs)) {
