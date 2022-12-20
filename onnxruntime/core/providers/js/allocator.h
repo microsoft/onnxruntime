@@ -32,7 +32,7 @@ class JsCustomAllocator : public IAllocator {
   JsCustomAllocator()
       : IAllocator(
             OrtMemoryInfo("JsCustomAllocator", OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HANDLE, 0),
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0),
                           0, OrtMemTypeDefault)) {
   }
 
