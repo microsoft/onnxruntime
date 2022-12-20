@@ -158,7 +158,7 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
   // Get OpenVINO device type from provider options.
   auto device_type_it = session_configs.find("device_type");
 
-  if (device_type_it == session_configs.end()) {
+  if ((device_type_it == session_configs.end()) || device_type_it->second.empty()) {
     this->device_type_ = "CPU";
     ORT_CXX_LOG(ORT_LOGGING_LEVEL_WARNING, "Did not provide an OpenVINO device type. Using 'CPU'.");
   } else {

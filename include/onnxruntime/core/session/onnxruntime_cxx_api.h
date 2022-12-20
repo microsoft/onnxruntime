@@ -546,10 +546,35 @@ std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* c
 // in order to release the library handle.
 using ReleaseLibraryHandleFunc = void (*)(void* library_handle);
 
-// Type representing session configuration entries for one or more custom operators.
-// The first level key corresponds to the custom operator name. The second level map
-// stores string key/value pairs for a given custom operator.
-using CustomOpConfigs = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+/// <summary>
+/// Class that represents session configuration entries for one or more custom operators.
+///
+/// Example:
+///   Ort::CustomOpConfigs op_configs;
+///   op_configs.AddConfig("my_custom_op", "device_type", "CPU");
+///
+/// Passed to Ort::CustomOpLibrary::Register.
+/// </summary>
+struct CustomOpConfigs {
+  CustomOpConfigs() = default;
+  ~CustomOpConfigs() = default;
+  CustomOpConfigs(const CustomOpConfigs&) = default;
+  CustomOpConfigs& operator=(const CustomOpConfigs&) = default;
+  CustomOpConfigs(CustomOpConfigs&& o) = default;
+  CustomOpConfigs& operator=(CustomOpConfigs&& o) = default;
+
+  // Add a configuration entry for a specific custom operator. Returns a reference to *this to allow chaining calls.
+  CustomOpConfigs& AddConfig(const char* custom_op_name, const char* config_key, const char* config_value);
+
+  // Get a map of all custom operator configurations where the key has been flattened to include both
+  // the custom operator name and the config key.
+  // Example:
+  // A prior call to AddConfig("my_op", "key", "value") corresponds to the flattened key/value pair {"my_op.key", "value"}.
+  const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
+
+ private:
+  std::unordered_map<std::string, std::string> flat_configs_;
+};
 
 /// <summary>
 /// Class that enables configuration and registration of custom operator libraries.
@@ -558,7 +583,7 @@ using CustomOpConfigs = std::unordered_map<std::string, std::unordered_map<std::
 /// Example:
 ///   CustomOpLibrary my_lib("my_lib.dll", lib_cleanup);
 ///   ...
-///   my_lib.Register(session_options, {{"my_op", {{"device_type", "CPU"}}}});
+///   my_lib.Register(session_options, op_configs);
 /// </summary>
 struct CustomOpLibrary {
   explicit CustomOpLibrary(const char* library_path, ReleaseLibraryHandleFunc release_library_func) noexcept
@@ -574,8 +599,9 @@ struct CustomOpLibrary {
 
   ~CustomOpLibrary() noexcept;
 
-  ///< Registers the custom op library via OrtApi::RegisterCustomOpsLibrary.
-  ///< The specified custom op configurations are set via OrtApi::AddSessionConfigEntry.
+  ///< Registers the custom operator library via OrtApi::RegisterCustomOpsLibrary.
+  ///< The custom operator configurations are optional. If provided, custom operator configs are set via
+  ///< OrtApi::AddSessionConfigEntry.
   void Register(UnownedSessionOptions session_options, const CustomOpConfigs& custom_op_configs = {});
 
  private:
