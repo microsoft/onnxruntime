@@ -148,7 +148,7 @@ void BasicBackend::EnableCaching() {
 void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
-    device_config.insert(ov::device::properties("GPU", {{GPU_CONFIG_KEY(PLUGIN_THROTTLE), 1}}));
+    device_config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
   }
 }
 
