@@ -24,6 +24,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import Precision
 from float16 import float_to_float16_max_diff
+from fusion_options import AttentionMaskFormat
 from io_binding_helper import IOBindingHelper
 from onnx_model import OnnxModel
 from torch_onnx_export_helper import torch_onnx_export
@@ -507,6 +508,7 @@ class Gpt2Helper:
         hidden_size,
         use_external_data_format=False,
         auto_mixed_precision=False,
+        stage=0,
         **kwargs,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
@@ -514,9 +516,12 @@ class Gpt2Helper:
         from optimizer import optimize_model
 
         optimization_options = FusionOptions("gpt2")
-        # optimization_options.enable_gelu = False
-        # optimization_options.enable_layer_norm = False
-        # optimization_options.enable_attention = False
+
+        if is_float16 and stage == 1:
+            # For init_decoder, enable mask index to use fused causal cuda kernel.
+            # Potentially, we can add other optimization like unpad for effective transformer
+            optimization_options.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
+
         m = optimize_model(
             onnx_model_path,
             model_type="gpt2",
@@ -770,6 +775,7 @@ class Gpt2Helper:
         input_ids_dtype=torch.int32,
         position_ids_dtype=torch.int32,
         attention_mask_dtype=torch.int32,
+        stage=0,
         verbose=False,
         enable_pickle_output=False,
     ):
@@ -801,7 +807,7 @@ class Gpt2Helper:
         for i in range(total_test_cases):
             run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
-            past_sequence_length = random.randint(0, max_past_seq_len)
+            past_sequence_length = 0 if (stage == 1) else random.randint(0, max_past_seq_len)
             batch_size = random.randint(1, max_batch_size)
 
             logger.debug(
