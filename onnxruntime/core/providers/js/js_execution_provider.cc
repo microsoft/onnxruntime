@@ -287,7 +287,9 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
 
+#ifndef NDEBUG
   printf("JsExecutionProvider::RegisterAllocator() \n");
+#endif
 
   AllocatorCreationInfo cpuInputAllocatorCreationInfo([&](int) {
     return std::make_unique<js::JsCPUInputAllocator>();
@@ -314,6 +316,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
 
   auto lookup = JsKernelLookup{kernel_lookup};
   auto list = IExecutionProvider::GetCapability(graph, lookup);
+#ifndef NDEBUG
   printf("JsExecutionProvider::GetCapability() results:\n");
 
   for (size_t i = 0; i < list.size(); i++) {
@@ -341,6 +344,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
       // }
     }
   }
+#endif
 
   return list;
 }
