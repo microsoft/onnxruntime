@@ -1136,6 +1136,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                 .Attr("custom", "absence penalty for sampling", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")

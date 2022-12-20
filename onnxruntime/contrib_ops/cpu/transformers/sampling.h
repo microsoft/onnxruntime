@@ -24,7 +24,6 @@ class Sampling : public IControlFlowKernel {
   explicit Sampling(const OpKernelInfo& info)
       : IControlFlowKernel(info),
         decoder_feeds_fetches_manager_(nullptr),
-        cuda_stream_(nullptr),
         dumper_(nullptr) {
     Init(info);
   }
@@ -38,7 +37,6 @@ class Sampling : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(void* stream) { cuda_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   // device helpers that is same for both GPT and encoder-decoder models.
@@ -87,15 +85,17 @@ class Sampling : public IControlFlowKernel {
   //------------------------------------------------------------
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   //------------------------------------------------------------
+  std::unique_ptr<GptSubgraph> init_run_gpt_subgraph_;
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
 
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
-
-  void* cuda_stream_;
+  FeedsFetchesManager* init_run_decoder_feeds_fetches_manager_;
 
   IConsoleDumper* dumper_;
 
   SamplingParameters parameters_;
+
+  bool has_init_decoder_ = false;
 };
 
 }  // namespace transformers

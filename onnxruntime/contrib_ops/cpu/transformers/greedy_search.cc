@@ -81,8 +81,7 @@ void GreedySearch::Init(const OpKernelInfo& info) {
   parameters_.vocab_size = (parameters_.vocab_size == 0 ? -1 : parameters_.vocab_size);
 
   // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
-  ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt ||
-              parameters_.model_type == IGenerationParameters::kModelTypeT5);
+  ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt);
 
   ONNX_NAMESPACE::GraphProto proto;
   if (parameters_.model_type != IGenerationParameters::kModelTypeGpt) {
