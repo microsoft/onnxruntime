@@ -72,7 +72,6 @@ public class OnnxruntimeModuleTest {
           ReadableArray inputNames = resultMap.getArray("inputNames");
           ReadableArray outputNames = resultMap.getArray("outputNames");
 
-          Assert.assertEquals(resultMap.getString("key"), "test");
           Assert.assertEquals(inputNames.size(), 1);
           Assert.assertEquals(inputNames.getString(0), "input");
           Assert.assertEquals(outputNames.size(), 1);
