@@ -46,15 +46,15 @@ public:
             std::nullopt,
             /*minimumDimensionCount*/ 1);
 
-        constexpr static uint32_t minimumDimensionCount = 4;
+        const uint32_t dmlDimensionCount = std::max<uint32_t>(4u, m_inputTensorDescs[0].GetDimensionCount());
 
         // Shift IN_SCALE and IN_BIAS input tensor descs {1, C, 1, 1} out of 1D tensors.
-        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, minimumDimensionCount);
+        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, dmlDimensionCount);
 
         // Pad the input and the output with trailing 1's until they are at least 4D
         auto sizes = m_inputTensorDescs[0].GetSizes();
         std::vector<uint32_t> tensorShape(sizes.begin(), sizes.end());
-        tensorShape.resize(std::max<size_t>(tensorShape.size(), minimumDimensionCount), 1);
+        tensorShape.resize(static_cast<size_t>(dmlDimensionCount));
         m_inputTensorDescs[0] = TensorDesc(
             m_inputTensorDescs[0].GetDmlDataType(),
             tensorShape);
