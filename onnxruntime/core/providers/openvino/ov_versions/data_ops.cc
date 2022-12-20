@@ -768,6 +768,7 @@ void DataOps::populate_op_mode_supported() {
 
 bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_list) {
   bool auto_support = false;
+  bool multi_support = false;
   for (size_t i = 0; i < op_list.size(); i++) {
 
     if (op_list[i].optype == name) {
@@ -780,7 +781,7 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
           //The operator to be marked true, it should be supported by either of the devices specified with HETERO
           if (device_id_.find("HETERO") == 0) {
               status = true;
-              if (device_id_.find(*it) != std::string::npos) {
+              if (device_id_.find(*it) != std::string::npos || (*it == "All")) {
                 return true;
               }
           }
@@ -788,8 +789,8 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
          //The operator to be marked true, it should be supported by all the devices specified with MULTI/AUTO
           if (device_id_.find("MULTI") == 0) {
               status = true;
-              if (device_id_.find(*it) == std::string::npos) {
-                return false;
+              if ((*it == "All") || device_id_.find(*it) != std::string::npos) {
+                multi_support = true;
               }
           }
           //The operator to be marked true, it should be supported by atleast CPU device specified with AUTO
@@ -817,7 +818,10 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
       }
     }
   }
-  if (device_id_.find("AUTO") == 0 && auto_support==true){
+  if (device_id_.find("AUTO") == 0 && auto_support == true) {
+    return true;
+  }
+  if (device_id_.find("MULTI") == 0 && multi_support == true) {
     return true;
   }
   return false;
