@@ -2,8 +2,9 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unistd.h>
+
 #include "core/providers/cann/cann_utils.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace cann {
@@ -210,6 +211,16 @@ Status aclrtblasGemmEx(aclTransType transA,
                                               stream));
 
   return Status::OK();
+}
+
+bool FileExist(const std::string& file_name) {
+  return (access(file_name.c_str(), F_OK) != -1);
+}
+
+void GenerateHashValue(const std::string string, HashValue& hash_value) {
+  uint32_t hash[4] = {0, 0, 0, 0};
+  MurmurHash3::x86_128(string.data(), gsl::narrow_cast<int32_t>(string.size()), hash[0], &hash);
+  hash_value = hash[0] | (uint64_t(hash[1]) << 32);
 }
 
 }  // namespace cann

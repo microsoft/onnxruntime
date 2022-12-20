@@ -7,6 +7,10 @@
 #include <vector>
 #include <utility>
 #include <iomanip>
+#include <string>
+#include <memory>
+
+#include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"
 #include "core/providers/cann/cann_inc.h"
 
@@ -16,6 +20,7 @@ namespace cann {
 struct CannPreparation {
   CannPreparation() {
     opAttr_ = aclopCreateAttr();
+    ORT_ENFORCE(opAttr_ != nullptr, "aclopCreateAttr run failed");
   }
 
   virtual ~CannPreparation() {
@@ -28,11 +33,11 @@ struct CannPreparation {
     }
 
     for (auto buf : inputBuffers_) {
-      aclDestroyDataBuffer(buf);
+      CANN_CALL_THROW(aclDestroyDataBuffer(buf));
     }
 
     for (auto buf : outputBuffers_) {
-      aclDestroyDataBuffer(buf);
+      CANN_CALL_THROW(aclDestroyDataBuffer(buf));
     }
 
     aclopDestroyAttr(opAttr_);
@@ -116,6 +121,10 @@ Status aclrtblasGemmEx(aclTransType transA,
                        aclDataType dataTypeC,
                        aclComputeType type,
                        aclrtStream stream);
+
+bool FileExist(const std::string& file_name);
+void GenerateHashValue(const std::string string, HashValue& hash_value);
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 }  // namespace cann
 }  // namespace onnxruntime

@@ -106,6 +106,18 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
 
 /**
+ * Available since 1.14.
+ * Appends an execution provider to the session configuration options.
+ * The execution provider list is ordered by decreasing priority
+ * @param providerName Provider name. For example, "xnnpack".
+ * @param providerOptions Provider-specific options. For example, for provider "xnnpack", {"intra_op_num_threads": "2"}.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the execution provider was appended successfully
+ */
+- (BOOL)appendExecutionProvider:(NSString*)providerName
+                providerOptions:(NSDictionary<NSString*, NSString*>*)providerOptions
+                          error:(NSError**)error;
+/**
  * Sets the number of threads used to parallelize the execution within nodes.
  * A value of 0 means ORT will pick a default value.
  *

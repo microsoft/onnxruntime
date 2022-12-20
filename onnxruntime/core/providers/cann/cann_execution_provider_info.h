@@ -14,10 +14,10 @@
 namespace onnxruntime {
 struct CANNExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
-  int max_opqueue_num{10000};
   size_t npu_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
   bool do_copy_in_default_stream{true};
+  bool enable_cann_graph{true};
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
 
   static CANNExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);

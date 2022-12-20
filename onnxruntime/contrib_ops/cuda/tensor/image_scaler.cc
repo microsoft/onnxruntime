@@ -29,8 +29,10 @@ ImageScaler<T>::ImageScaler(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
   ORT_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
 
-  b_data_ = GetScratchBuffer<float>(bias_.size());
-  CUDA_CALL_THROW(cudaMemcpyAsync(b_data_.get(), bias_.data(), sizeof(float) * bias_.size(), cudaMemcpyHostToDevice, Stream()));
+  b_data_ = GetScratchBuffer<float>(bias_.size(), nullptr);
+  // the transfer in kernel construction need to be sync on default stream.
+  CUDA_CALL_THROW(cudaMemcpyAsync(b_data_.get(), bias_.data(), sizeof(float) * bias_.size(), cudaMemcpyHostToDevice, nullptr));
+  CUDA_CALL_THROW(cudaStreamSynchronize(nullptr));
 }
 
 template <typename T>
@@ -53,7 +55,7 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   ImageScalerImpl<CudaT>(
-      Stream(),
+      Stream(context),
       reinterpret_cast<const CudaT*>(X->Data<T>()),
       scale_,
       b_data_.get(),

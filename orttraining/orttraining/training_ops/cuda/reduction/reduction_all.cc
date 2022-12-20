@@ -45,7 +45,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   // Allocate output tensor.
   Tensor* output = ctx->Output(0, {});
   CudaTOut* p_output = reinterpret_cast<CudaTOut*>(output->template MutableData<TOut>());
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(p_output, 0, sizeof(CudaTOut), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(p_output, 0, sizeof(CudaTOut), Stream(ctx)));
 
   const bool deterministic = ctx->GetUseDeterministicCompute();
 
@@ -55,12 +55,12 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Check if all values are finite and write true to deviceOutput.
     // Otherwise, false will be written.
-    launch_multi_tensor_functor<1, TFunctor>(Stream(),
+    launch_multi_tensor_functor<1, TFunctor>(Stream(ctx),
                                              2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
 
     // *p_output is the squared sum of all elements.
     // Let's take a sqrt to get the actual L2-norm.
-    ScalarSqrt(Stream(), p_output, p_output);
+    ScalarSqrt(Stream(ctx), p_output, p_output);
   } else {
     // alternate path only for deterministic compute ..
     typedef AccumulationType_t<CudaTOut> CudaTAcc;
@@ -77,13 +77,13 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
         std::max(reduction_buffer_size_in_bytes, compute_reduction_buffer_size<CudaTAcc>(total_tensor_count));
 
     // create GPU scratch space and zero target for each tensor square norm
-    auto reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size_in_bytes);
+    auto reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size_in_bytes, ctx->GetComputeStream());
 
     // buffer for final output and square norms of each tensor
     SafeInt<size_t> results_buffer_size = 1 + total_tensor_count;
-    auto results_buffer = GetScratchBuffer<CudaTAcc>(results_buffer_size);
+    auto results_buffer = GetScratchBuffer<CudaTAcc>(results_buffer_size, ctx->GetComputeStream());
 
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(results_buffer.get(), 0, sizeof(CudaTAcc) * results_buffer_size, Stream()));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(results_buffer.get(), 0, sizeof(CudaTAcc) * results_buffer_size, Stream(ctx)));
 
     CudaTAcc* p_global_sqnorm = results_buffer.get();
     CudaTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
@@ -92,11 +92,11 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     for (int i = 0; i < total_tensor_count; ++i) {
       CudaTIn* p_tensor_i = reinterpret_cast<CudaTIn*>(grouped_tensor_pointers[i][0]);
       ORT_RETURN_IF_ERROR(reduce_square_sum(
-          Stream(), p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], reduction_buffer.get(), reduction_buffer_size_in_bytes));
+          Stream(ctx), p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], reduction_buffer.get(), reduction_buffer_size_in_bytes));
     }
     ORT_RETURN_IF_ERROR(reduce_sum(
-        Stream(), p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, reduction_buffer.get(), reduction_buffer_size_in_bytes));
-    ScalarSqrt(Stream(), p_global_sqnorm, p_output);
+        Stream(ctx), p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, reduction_buffer.get(), reduction_buffer_size_in_bytes));
+    ScalarSqrt(Stream(ctx), p_global_sqnorm, p_output);
   }
 
   return Status::OK();

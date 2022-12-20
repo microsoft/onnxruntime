@@ -11,6 +11,10 @@
 
 #include <map>
 #include "migraphx_inc.h"
+// TODO: find a better way to share this
+//#include "core/providers/cuda/rocm_stream_handle.h"
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
 
 namespace onnxruntime {
 
@@ -39,7 +43,7 @@ struct MIGraphXFuncState {
 class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
-  ~MIGraphXExecutionProvider() = default;
+  ~MIGraphXExecutionProvider();
 
 #ifdef MIGRAPHX_STREAM_SYNC
   Status Sync() const override;
@@ -62,9 +66,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
 private:
   bool fp16_enable_ = false;
@@ -80,6 +83,8 @@ private:
   std::unordered_map<std::string, bool> map_no_input_shape_;
 
   AllocatorPtr allocator_;
+  miopenHandle_t external_miopen_handle_ = nullptr;
+  rocblas_handle external_rocblas_handle_ = nullptr;
 };
 
 }

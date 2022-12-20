@@ -65,6 +65,10 @@
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
 #endif
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#include "core/framework/stream_execution_context.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -285,9 +289,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.set_denormal_as_zero = set_denormal_as_zero;
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
-        to.auto_set_affinity = to.thread_pool_size == 0 &&
-                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                               to.affinity_vec_len == 0;
         to.allow_spinning = allow_intra_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
@@ -296,10 +297,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
         to.custom_thread_creation_options = session_options.custom_thread_creation_options;
         to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+        if (session_options_.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, to.affinity_str)) {
+          ORT_ENFORCE(!to.affinity_str.empty(), "Affinity string must not be empty");
+        }
+        to.auto_set_affinity = to.thread_pool_size == 0 &&
+                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                               to.affinity_str.empty();
 
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
+
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
@@ -309,10 +317,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         bool allow_inter_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.inter_op_param;
-        // If the thread pool can use all the processors, then
-        // we set thread affinity.
-        to.auto_set_affinity =
-            to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
+        to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
         std::basic_stringstream<ORTCHAR_T> ss;
         if (to.name) {
           ss << to.name << ORT_TSTR("-");
@@ -501,30 +506,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           << "Parallel execution mode does not support the DML Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
 
-      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    }
-  }
-
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
-    // Parallel execution mode does not support the CUDA EP
-    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
-          << "Parallel execution mode does not support the CUDA Execution Provider. "
-          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
-      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    }
-
-    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
-    if (trt_ep) {
-      ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
-    }
-  }
-
-  if (provider_type == onnxruntime::kCannExecutionProvider) {
-    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
-          << "Parallel execution mode does not support the CANN Execution Provider. "
-          << "So making the execution mode sequential for this session since it uses the CANN Execution Provider.";
       session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
   }
@@ -1403,19 +1384,26 @@ common::Status InferenceSession::Initialize() {
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
-        std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                    execution_providers_.Get(kDmlExecutionProvider));
-        if (dmlGraphFusionTransformer == nullptr) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+        bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
+                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+        if (dml_graph_fusion_enabled) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
+                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+          if (dmlGraphFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
         }
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
-        std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
-        if (dmlOperatorFusionTransformer == nullptr) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+        bool dml_operator_fusion_enabled = session_options_.graph_optimization_level >= TransformerLevel::Level2;
+        if (dml_operator_fusion_enabled) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
+          if (dmlOperatorFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
         }
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
       }
 #endif
 
@@ -1835,7 +1823,9 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     }
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache, partial_graph_index));
+                                                        run_logger, state, cache, run_options.terminate,
+                                                        partial_graph_index,
+                                                        /*parent stream*/ nullptr));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1981,9 +1971,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
-        session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+        // TODO: this method is not thread safe, if multiple Run happened in parallel we might hit race condition issue.
+        // currently it only used in training, there is no parallel run execution in training so it is ok.
+        // but it is better we can fix it with a better solution.
+        session_state_->UpdateToBeExecutedRange(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
       }
 #endif
 
@@ -1994,6 +1987,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                    session_options_.execution_mode, run_options.terminate, run_logger,
+                                                   run_options.synchronize_execution_providers,
                                                    run_options.only_execute_path_to_fetches));
     }
     ORT_CATCH(const std::exception& e) {

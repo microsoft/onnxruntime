@@ -32,7 +32,9 @@ class GptSubgraph : public Subgraph {
       std::vector<OrtValue>& feeds,
       const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-      IAllocatorUniquePtr<char>& buffer);
+      IAllocatorUniquePtr<char>& buffer,
+      Stream* ort_stream,
+      int max_seq_len_past_present_share_buffer = -1);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;

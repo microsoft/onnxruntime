@@ -33,24 +33,24 @@ namespace profiling {
 
 class ProfilerActivityBuffer {
  public:
-  ProfilerActivityBuffer()
+  ProfilerActivityBuffer() noexcept
       : data_(nullptr), size_(0) {}
 
-  ProfilerActivityBuffer(const char* data, size_t size)
+  ProfilerActivityBuffer(const char* data, size_t size) noexcept
       : data_(std::make_unique<char[]>(size)), size_(size) {
     memcpy(data_.get(), data, size_);
   }
 
-  ProfilerActivityBuffer(const ProfilerActivityBuffer& other)
+  ProfilerActivityBuffer(const ProfilerActivityBuffer& other) noexcept
       : ProfilerActivityBuffer(other.GetData(), other.GetSize()) {}
 
-  ProfilerActivityBuffer(ProfilerActivityBuffer&& other)
+  ProfilerActivityBuffer(ProfilerActivityBuffer&& other) noexcept
       : ProfilerActivityBuffer() {
     std::swap(data_, other.data_);
     std::swap(size_, other.size_);
   }
 
-  ProfilerActivityBuffer& operator=(const ProfilerActivityBuffer& other) {
+  ProfilerActivityBuffer& operator=(const ProfilerActivityBuffer& other) noexcept {
     if (&other == this) {
       return *this;
     }
@@ -59,7 +59,7 @@ class ProfilerActivityBuffer {
     return *this;
   }
 
-  ProfilerActivityBuffer& operator=(ProfilerActivityBuffer&& other) {
+  ProfilerActivityBuffer& operator=(ProfilerActivityBuffer&& other) noexcept {
     if (&other == this) {
       return *this;
     }
@@ -357,7 +357,7 @@ class GPUProfilerBase : public EpProfiler {
 
       auto ts = static_cast<long long>(map_iter.first);
 
-      // find the last occurence of a matching timestamp,
+      // find the last occurrence of a matching timestamp,
       // if one exists
       while (event_iter != event_end &&
              (event_iter->ts < ts ||
