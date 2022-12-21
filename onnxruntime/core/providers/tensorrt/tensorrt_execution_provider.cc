@@ -743,7 +743,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Generate unique kernel name for TRT subgraph
   HashValue model_hash = 0;
-  int id = TRTGenerateMetaDefId(graph, model_hash);
+  int id = TRTGenerateModelId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";

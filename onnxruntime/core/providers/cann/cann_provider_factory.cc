@@ -51,10 +51,10 @@ struct CANN_Provider : Provider {
 
     CANNExecutionProviderInfo info{};
     info.device_id = static_cast<OrtDevice::DeviceId>(params->device_id);
-    info.max_opqueue_num = params->max_opqueue_num;
     info.npu_mem_limit = params->npu_mem_limit;
     info.arena_extend_strategy = params->arena_extend_strategy;
     info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
+    info.enable_cann_graph = params->enable_cann_graph != 0;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
 
     return std::make_shared<CANNProviderFactory>(info);
@@ -65,10 +65,10 @@ struct CANN_Provider : Provider {
     auto& cann_options = *reinterpret_cast<OrtCANNProviderOptions*>(provider_options);
 
     cann_options.device_id = internal_options.device_id;
-    cann_options.max_opqueue_num = internal_options.max_opqueue_num;
     cann_options.npu_mem_limit = internal_options.npu_mem_limit;
     cann_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cann_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
+    cann_options.enable_cann_graph = internal_options.enable_cann_graph;
     cann_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
   }
 
