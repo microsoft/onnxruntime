@@ -776,9 +776,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #ifdef USE_CLOUD
   if (run_options.config_options.configurations.count("use_cloud") &&
       run_options.config_options.configurations.at("use_cloud") != "0") {
-    if (!session_state.GetExecutionProviders().Get(onnxruntime::kCloudExecutionProvider)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CloudEP not enabled to do inferencing");
-    }
     CloudExecutor cloud_executor(run_options.config_options.configurations);
     const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
     return cloud_executor.Execute(session_state,

@@ -61,63 +61,33 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
 };
 #endif
 
-/*
 SessionState::SessionState(Graph& graph,
                            const ExecutionProviders& execution_providers,
-                           bool enable_mem_pattern,
                            concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool,
                            const DataTransferManager& data_transfer_mgr,
                            const logging::Logger& logger,
                            profiling::Profiler& profiler,
-                           bool use_deterministic_compute,
-                           bool enable_mem_reuse,
+                           const SessionOptions& sess_options,
                            PrepackedWeightsContainer* prepacked_weights_container)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
       profiler_(profiler),
-      enable_mem_pattern_(enable_mem_pattern),
       thread_pool_(thread_pool),
       inter_op_thread_pool_(inter_op_thread_pool),
       data_transfer_mgr_(data_transfer_mgr),
-      use_deterministic_compute_(use_deterministic_compute),
-      enable_mem_reuse_(enable_mem_reuse),
+      sess_options_(sess_options),
+      prepacked_weights_container_(prepacked_weights_container)
 #ifdef ENABLE_STREAM
-      prepacked_weights_container_(prepacked_weights_container),
-      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
-#else
-      prepacked_weights_container_(prepacked_weights_container) {
+      ,
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>())
 #endif
+{
+  enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
+                        sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   SetupAllocators();
-}*/
-
-SessionState::SessionState(Graph& graph,
-               const ExecutionProviders& execution_providers,
-               concurrency::ThreadPool* thread_pool,
-               concurrency::ThreadPool* inter_op_thread_pool,
-               const DataTransferManager& data_transfer_mgr,
-               const logging::Logger& logger,
-               profiling::Profiler& profiler,
-               const SessionOptions& sess_options,
-               PrepackedWeightsContainer* prepacked_weights_container)
-      : graph_(graph),
-        execution_providers_(execution_providers),
-        logger_(logger),
-        profiler_(profiler),
-        thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool),
-        data_transfer_mgr_(data_transfer_mgr),
-        sess_options_(sess_options),
-        prepacked_weights_container_(prepacked_weights_container)
-#ifdef ENABLE_STREAM
-        ,stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>())
-#endif
-  {
-    enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
-                          sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-    SetupAllocators();
-  }
+}
 
 void SessionState::SetupAllocators() {
   for (const auto& provider : execution_providers_) {
