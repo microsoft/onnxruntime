@@ -20,6 +20,7 @@ struct AttentionParameters {
   int v_head_size;    // hidden size per head of V
   int num_heads;
   bool is_unidirectional;
+  bool past_present_share_buffer;
 };
 
 namespace attention {

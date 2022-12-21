@@ -16,6 +16,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+#define PastSequenceLength 8
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Attention,                                                  \
@@ -24,7 +25,10 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+          .MayInplace(4, 1)                                       \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+          .InputMemoryType(OrtMemTypeCPUInput, PastSequenceLength)\
+      ,                                                           \
       Attention<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -48,6 +52,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
   const Tensor* key = context->Input<Tensor>(6);
   const Tensor* value = context->Input<Tensor>(7);
+  const Tensor* past_seq_len = context->Input<Tensor>(8);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -60,7 +65,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   key,
                                   value,
                                   &parameters,
-                                  device_prop.maxThreadsPerBlock));
+                                  device_prop.maxThreadsPerBlock,
+                                  past_seq_len));
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
@@ -71,8 +77,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{2, parameters.batch_size, parameters.num_heads,
-                                    parameters.total_sequence_length, parameters.head_size};
+  std::vector<int64_t> present_dims{
+    2, parameters.batch_size, parameters.num_heads,
+    past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+    parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
 
@@ -128,7 +136,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  cublasHandle_t cublas = CublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -137,7 +145,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     int m = batch_size * sequence_length;
     int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
     int k = parameters.input_hidden_size;
-    gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n);
+    gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
     CudaT one = ToCudaType<T>::FromFloat(1.0f);
     CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -161,7 +169,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
@@ -178,7 +186,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(), parameters, data, reinterpret_cast<void*>(fused_runner));
+  return QkvToContext<CudaT>(
+    device_prop, cublas, Stream(context), parameters, data, reinterpret_cast<void*>(fused_runner), past_present_share_buffer_);
 }
 
 }  // namespace cuda
