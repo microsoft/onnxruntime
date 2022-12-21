@@ -16,24 +16,26 @@ using TensorPtrArray = onnxruntime::InlinedVector<TensorPtr>;
 
 class CloudEndPointInvoker {
  public:
-  CloudEndPointInvoker(const CloudEndPointConfig& config) : config_(config) {}
+  CloudEndPointInvoker(const CloudEndPointConfig& config, AllocatorPtr allocator);
   virtual ~CloudEndPointInvoker() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CloudEndPointInvoker);
 
-  static std::unique_ptr<CloudEndPointInvoker> CreateInvoker(const CloudEndPointConfig& config);
+  static Status CreateInvoker(const CloudEndPointConfig& config,
+                              AllocatorPtr allocator,
+                              std::unique_ptr<CloudEndPointInvoker>& invoker);
 
   virtual onnxruntime::Status Send(const CloudEndPointConfig& run_options,
                                    const InlinedVector<std::string>& input_names,
                                    gsl::span<const OrtValue> ort_inputs,
                                    const InlinedVector<std::string>& output_names,
-                                   std::vector<OrtValue>& ort_outputs) const noexcept = 0;
+                                   std::vector<OrtValue>& ort_outputs) const = 0;
 
  protected:
-  bool ReadConfig(const char* config_name, bool& config_val, bool required = true);
-  bool ReadConfig(const char* config_name, std::string& config_val, bool required = true);
+  void ReadConfig(const char* config_name, bool& config_val, bool required = true);
+  void ReadConfig(const char* config_name, std::string& config_val, bool required = true);
 
   CloudEndPointConfig config_;
-  mutable onnxruntime::Status status_ = onnxruntime::Status::OK();
+  AllocatorPtr allocator_;
 };
 }  // namespace onnxruntime
 #endif

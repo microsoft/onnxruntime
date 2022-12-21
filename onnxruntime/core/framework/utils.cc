@@ -775,8 +775,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const logging::Logger& logger) {
 #ifdef USE_CLOUD
   auto iter = run_options.config_options.configurations.find("use_cloud");
-  if (run_options.config_options.configurations.end() != iter &&
-      run_options.config_options.configurations.at("use_cloud") != "0") {
+  if (run_options.config_options.configurations.end() != iter && iter->second != "0") {
     CloudExecutor cloud_executor(run_options.config_options.configurations);
     const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
     return cloud_executor.Execute(session_state,

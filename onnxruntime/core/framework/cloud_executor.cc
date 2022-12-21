@@ -20,6 +20,7 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
   for (const auto& input : inputs) {
     input_names.push_back(input->Name());
   }
+
   //collect output names
   const auto& outputs = session_state.GetGraphViewer().GetOutputs();
   InlinedVector<std::string> output_names;
@@ -27,12 +28,18 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
   for (const auto& output : outputs) {
     output_names.push_back(output->Name());
   }
+
   //create invoker
-  auto invoker = CloudEndPointInvoker::CreateInvoker(session_state.GetSessionOptions().config_options.configurations);
+  static const OrtDevice cpu_device;
+  std::unique_ptr<CloudEndPointInvoker> invoker;
+  auto status = CloudEndPointInvoker::CreateInvoker(
+      session_state.GetSessionOptions().config_options.configurations,
+      session_state.GetAllocator(cpu_device), invoker);
+
   if (invoker) {
     return invoker->Send(run_options_, input_names, feeds, output_names, fetches);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create cloud endpoint invoker");
+    return status;
   }
 }
 }  // namespace onnxruntime
