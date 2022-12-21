@@ -179,11 +179,12 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // So far, we have a few cases that sub-graph has zero inputs,
   // a) A model has only initializer as inputs
   // b) A model has zero inputs
-  // So we just remove these sub-graph which captured by NNAPI.
+  // So we just remove these sub-graph which is captured by NNAPI.
   std::for_each(result.begin(), result.end(), [](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
       const auto* metadef = capability->sub_graph->GetMetaDef();
-      // metadef->inputs include constant initializer inside, so we can't just check  if it is empty.
+      // metadef->inputs include constant initializers, when inputs is same as constant_initializers
+      //, we can get there is zero external inputs for the sub-graph.
       if (metadef->inputs.size() == metadef->constant_initializers.size() ||
           metadef->outputs.empty()) {
         capability.reset();
