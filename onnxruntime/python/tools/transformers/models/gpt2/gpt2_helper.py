@@ -541,11 +541,12 @@ class Gpt2Helper:
                 m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
+        return m
 
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = ["Add", "LayerNormalization", "FastGelu"],
+        op_block_list: List[str] = ["Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"],
     ):
         """Convert GPT-2 model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.

@@ -145,12 +145,12 @@ def parse_arguments(argv=None):
     parser.set_defaults(overwrite=False)
 
     parser.add_argument(
-        "--use_int32_inputs",
+        "--use_int64_inputs",
         required=False,
         action="store_true",
         help="Use int32 instead of int64 for input_ids, position_ids and attention_mask.",
     )
-    parser.set_defaults(use_int32_inputs=False)
+    parser.set_defaults(use_int64_inputs=False)
 
     parser.add_argument(
         "-s",
@@ -253,7 +253,8 @@ def parse_arguments(argv=None):
         "--op_block_list",
         nargs="+",
         default=[],
-        help="List of operators (like Attention Gather Add LayerNormalization FastGelu MatMul) to compute in float32 instead of float16.",
+        help="List of operators (like Add LayerNormalization SkipLayerNormalization EmbedLayerNormalization FastGelu) "
+        "to compute in float32 instead of float16.",
     )
 
     fp16_option_group.add_argument(
@@ -287,7 +288,7 @@ def get_latency_name(batch_size, sequence_length, past_sequence_length):
     return f"average_latency(batch_size={batch_size},sequence_length={sequence_length},past_sequence_length={past_sequence_length})"
 
 
-def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
+def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: str = "gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
 
@@ -378,6 +379,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     raw_onnx_model = onnx_model_paths["raw"]
 
+    int_data_type = torch.int64 if args.use_int64_inputs else torch.int32
+
     if os.path.exists(raw_onnx_model) and not args.overwrite:
         logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
     else:
@@ -390,9 +393,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             args.use_external_data_format,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
         )
 
     fp16_params = {"keep_io_types": args.keep_io_types}
@@ -407,11 +410,13 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     is_io_float16 = args.precision == Precision.FLOAT16 and not args.keep_io_types
 
+    optimized_ops = ""
+    all_ops = ""
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else "fp32"]
 
         logger.info(f"Optimizing model to {output_path}")
-        gpt2helper.optimize_onnx(
+        m = gpt2helper.optimize_onnx(
             raw_onnx_model,
             output_path,
             args.precision == Precision.FLOAT16,
@@ -422,6 +427,15 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             stage=args.stage,
             **fp16_params,
         )
+
+        nodes = m.nodes()
+        op_list = set([node.op_type for node in nodes])
+        all_ops = ",".join(op_list)
+
+        # print optimized operators
+        optimized_op_counter = m.get_fused_operator_statistics()
+        if optimized_op_counter:
+            optimized_ops = ",".join([key for key in optimized_op_counter if optimized_op_counter[key] > 0])
     else:
         output_path = raw_onnx_model
 
@@ -453,9 +467,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model_class=args.model_class,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
             test_cases_per_run=args.test_cases,
             total_runs=args.test_runs,
             stage=args.stage,
@@ -477,9 +491,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model_class=args.model_class,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
             batch_size=batch_size,
             sequence_length=sequence_length,
             past_sequence_length=past_sequence_length,
@@ -513,6 +527,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list",
                 "force_fp16_initializers",
                 "auto_mixed_precision",
+                "optimized_operators",
+                "operators",
                 "environment_variables",
                 "onnxruntime",
                 latency_name,
@@ -546,6 +562,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list": args.node_block_list,
                 "force_fp16_initializers": args.force_fp16_initializers,
                 "auto_mixed_precision": args.auto_mixed_precision,
+                "optimized_operators": optimized_ops,
+                "operators": all_ops,
                 "environment_variables": get_ort_environment_variables(),
                 "onnxruntime": ort_version,
                 latency_name: f"{latency:.2f}",
@@ -593,12 +611,12 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                         position_ids.masked_fill_(position_ids < 0, 0)
 
                     inputs = {
-                        "input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
-                        "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
-                        "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask,
+                        "input_ids": input_ids.to(int_data_type),
+                        "position_ids": position_ids.to(int_data_type),
+                        "attention_mask": attention_mask.to(int_data_type),
                     }
                 else:
-                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
+                    inputs = {"input_ids": input_ids.to(int_data_type)}
 
                 if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
                     beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()

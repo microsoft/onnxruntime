@@ -11,6 +11,8 @@ import coloredlogs
 import pytest
 from parity_utilities import find_transformers_source
 
+from onnxruntime import get_available_providers
+
 if find_transformers_source(sub_dir_paths=["models", "gpt2"]):
     from convert_to_onnx import main as gpt2_to_onnx
 else:
@@ -18,38 +20,41 @@ else:
 
 
 class TestGpt2ConvertToOnnx(unittest.TestCase):
-    def setUp(self):
-        from onnxruntime import get_available_providers
+    """Test convert_to_onnx.py of GPT-2 model."""
 
+    def setUp(self):
         self.test_cuda = "CUDAExecutionProvider" in get_available_providers()
 
     def run_gpt2_to_onnx(self, arguments: str, stage: int):
         result = gpt2_to_onnx(arguments.split())
         self.assertIsNotNone(result)
         self.assertTrue(isinstance(result, dict))
-        self.assertTrue("top1_match_rate" in result)
-        self.assertTrue(result["top1_match_rate"] > 0.98)
-        self.assertTrue("stage" in result)
+        self.assertIn("top1_match_rate", result)
+        self.assertGreater(result["top1_match_rate"], 0.98)
+        self.assertIn("stage", result)
         self.assertEqual(result["stage"], stage)
         if stage == 1:
-            self.assertTrue("average_latency(batch_size=8,sequence_length=32,past_sequence_length=0)" in result)
+            self.assertIn("average_latency(batch_size=8,sequence_length=32,past_sequence_length=0)", result)
         else:
-            self.assertTrue("average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)" in result)
+            self.assertIn("average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)", result)
 
     @pytest.mark.slow
     def test_stage1(self):
+        """Test stage 1 onnx model"""
         if self.test_cuda:
-            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 1 --use_int32_inputs -t 100 --overwrite", 1)
+            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 1 -t 100 --overwrite", 1)
 
     @pytest.mark.slow
     def test_stage2(self):
+        """Test stage 2 onnx model"""
         if self.test_cuda:
-            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 2 --use_int32_inputs -t 100 --overwrite", 2)
+            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -s 2 -t 100 --overwrite", 2)
 
     @pytest.mark.slow
     def test_auto_mixed_precision(self):
+        """Test mixed preicison onnx model"""
         if self.test_cuda:
-            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu --use_int32_inputs -p fp16 -o -a -t 100 --overwrite", 0)
+            self.run_gpt2_to_onnx("-m distilgpt2 -p fp32 --use_gpu -p fp16 -o -a -t 100 --overwrite", 0)
 
 
 if __name__ == "__main__":
