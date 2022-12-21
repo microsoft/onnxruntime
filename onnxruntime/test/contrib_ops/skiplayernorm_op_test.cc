@@ -429,8 +429,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias) {
           hidden_size);
 }
 
-// Don't enable this test for ROCM builds as ROCM EP doesn't handle the new schema (optional output) yet
-#ifndef USE_ROCM
+// Don't enable this test for DML/ROCM builds as these EP doesn't produce the new optional output yet
+#if !defined(USE_ROCM) && !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
   int batch_size = 2;
   int sequence_length = 2;
