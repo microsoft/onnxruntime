@@ -652,6 +652,10 @@ TEST_P(ModelTest, Run) {
   std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
 
+#ifndef USE_DNNL
+  auto tp = TestEnv::CreateThreadPool(Env::Default());
+#endif
+
   for (bool is_single_thread : use_single_thread) {
     for (ExecutionMode execution_mode : execution_modes) {
       OrtSessionOptions* ortso;
@@ -742,7 +746,7 @@ TEST_P(ModelTest, Run) {
       if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
         LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();    // TODO(leca): change level to INFO or even delete the log once verified parallel test working
         Ort::SessionOptions ort_session_options(ortso);
-        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(TestEnv::GetDefaultThreadPool(Env::Default()), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
+        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
         for (EXECUTE_RESULT res : results->GetExcutionResult()) {
           EXPECT_EQ(res, EXECUTE_RESULT::SUCCESS) << "is_single_thread:" << is_single_thread << ", execution_mode:" << execution_mode << ", provider_name:"
                                                   << provider_name << ", test name:" << results->GetName() << ", result: " << res;

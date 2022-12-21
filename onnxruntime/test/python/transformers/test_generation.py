@@ -87,25 +87,35 @@ class TestBeamSearchGpt(unittest.TestCase):
     @pytest.mark.slow
     def test_return_sequences(self):
         for return_sequences in [1, 2]:
-            self.run_beam_search(f"--num_return_sequences {return_sequences}")
+            self.run_beam_search(f"--num_return_sequences {return_sequences} --output_sequences_score")
 
     @pytest.mark.slow
     def test_early_stopping(self):
-        self.run_beam_search("--early_stopping")
+        self.run_beam_search("--early_stopping --output_sequences_score")
 
     @pytest.mark.slow
     def test_length_penalty(self):
         for length_penalty in [0.5, 2.0]:
-            self.run_beam_search(f"--length_penalty {length_penalty}")
+            self.run_beam_search(f"--length_penalty {length_penalty} --output_sequences_score")
 
     @pytest.mark.slow
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
-            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size} --output_sequences_score")
 
     @pytest.mark.slow
     def test_greedy_search(self):
         self.run_beam_search("", is_greedy=True)
+
+    @pytest.mark.slow
+    def test_greedy_search_past_present_share_buffer(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_gpu", is_greedy=True)
+
+    @pytest.mark.slow
+    def test_greedy_search_past_present_share_buffer_fp16(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
     def test_greedy_search_float16(self):
@@ -116,7 +126,9 @@ class TestBeamSearchGpt(unittest.TestCase):
     @pytest.mark.slow
     def test_external_data(self):
         self.run_beam_search(
-            f"-m gpt2 -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
+            f"-m gpt2 --output_sequences_score -e --output {self.beam_search_onnx_path}",
+            sentences=None,
+            append_arguments=False,
         )
 
 

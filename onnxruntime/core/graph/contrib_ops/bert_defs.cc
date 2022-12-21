@@ -167,6 +167,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
               AttributeProto::INTS,
               OPTIONAL_VALUE)
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its size is "
+              "(2, batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, "
@@ -191,7 +196,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "past",
-               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)",
+               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
+               "When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -211,13 +217,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Required when weights is not available.",
                "T",
                OpSchema::Optional)
+        .Input(8,
+               "past_sequence_length",
+               "When past_present_share_buffer, specify past_sequence_length for effective past sequence lenght (could be 0)."
+               "Needed when past_present_share_buffer is not zero.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
         .Output(1,
                 "present",
-                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)",
+                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)"
+                "If past_present_share_buffer, it should be exactly same as past tensor, of shape "
+                "(2, batch_size, num_heads, max_sequence_length, head_size),"
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",

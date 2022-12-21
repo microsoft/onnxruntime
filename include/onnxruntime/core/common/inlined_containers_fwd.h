@@ -14,12 +14,22 @@
 // C4324: structure was padded due to alignment specifier
 // Usage of alignas causes some internal padding in places.
 #pragma warning(disable : 4324)
+#else
+// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=102329#c2
+#if !defined(__clang__) && defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #endif  // _MSC_VER
 
 #include <absl/container/inlined_vector.h>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
+#else
+#if !defined(__clang__) && defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #endif  // _MSC_VER
 
 #else

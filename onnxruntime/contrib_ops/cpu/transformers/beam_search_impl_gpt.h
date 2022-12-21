@@ -136,7 +136,9 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             beam_indices,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
-                            gpt_subgraph_.GetFirstPresentOutputIndex());
+                            gpt_subgraph_.GetFirstPresentOutputIndex(),
+                            false,
+                            -1);
 }
 
 template <typename T>
@@ -249,7 +251,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     if (iteration_counter++ == 0 &&
         init_run_decoder_session_state_ != nullptr) {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-      const_cast<SessionState&>(this->init_run_decoder_session_state_).IncrementGraphExecutionCounter();
+      const_cast<SessionState*>(this->init_run_decoder_session_state_)->IncrementGraphExecutionCounter();
 #endif
       status = utils::ExecuteSubgraph(*init_run_decoder_session_state_,
                                       *init_run_feeds_fetches_manager,
