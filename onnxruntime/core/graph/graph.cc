@@ -3818,6 +3818,11 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
     input_indexes[arg_name] = cur_idx++;
   }
 
+  for (const auto& arg_name : func_meta_def->constant_initializers) {
+    input_args.push_back(GetNodeArg(arg_name));
+    input_indexes[arg_name] = cur_idx++;
+  }
+
   cur_idx = 0;
   for (const auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
