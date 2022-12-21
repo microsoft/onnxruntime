@@ -444,6 +444,43 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   RunOptions& UnsetTerminate();
 };
 
+
+namespace detail {
+// Utility function that returns a SessionOption config entry key for a specific custom operator.
+// Ex: custom_op.[custom_op_name].[config]
+std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config);
+}  // namespace detail
+
+/// <summary>
+/// Class that represents session configuration entries for one or more custom operators.
+///
+/// Example:
+///   Ort::CustomOpConfigs op_configs;
+///   op_configs.AddConfig("my_custom_op", "device_type", "CPU");
+///
+/// Passed to Ort::SessionOptions::RegisterCustomOpLibrary.
+/// </summary>
+struct CustomOpConfigs {
+  CustomOpConfigs() = default;
+  ~CustomOpConfigs() = default;
+  CustomOpConfigs(const CustomOpConfigs&) = default;
+  CustomOpConfigs& operator=(const CustomOpConfigs&) = default;
+  CustomOpConfigs(CustomOpConfigs&& o) = default;
+  CustomOpConfigs& operator=(CustomOpConfigs&& o) = default;
+
+  // Add a configuration entry for a specific custom operator. Returns a reference to *this to allow chaining calls.
+  CustomOpConfigs& AddConfig(const char* custom_op_name, const char* config_key, const char* config_value);
+
+  // Get a map of all custom operator configurations where the key has been flattened to include both
+  // the custom operator name and the config key.
+  // Example:
+  // A prior call to AddConfig("my_op", "key", "value") corresponds to the flattened key/value pair {"my_op.key", "value"}.
+  const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
+
+ private:
+  std::unordered_map<std::string, std::string> flat_configs_;
+};
+
 /** \brief Options object used when creating a new Session object
  *
  * Wraps ::OrtSessionOptions object and methods
@@ -518,6 +555,11 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptionsImpl& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
+
+  ///< Registers the custom operator library via OrtApi::RegisterCustomOpsLibrary.
+  ///< The custom operator configurations are optional. If provided, custom operator configs are set via
+  ///< OrtApi::AddSessionConfigEntry.
+  void RegisterCustomOpsLibrary(const char* library_path, const CustomOpConfigs& custom_op_configs = {});
 };
 }  // namespace detail
 
@@ -533,81 +575,6 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   explicit SessionOptions(OrtSessionOptions* p) : SessionOptionsImpl<OrtSessionOptions>{p} {}  ///< Used for interop with the C API
   UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
-};
-
-namespace detail {
-// Utility function that returns a SessionOption config entry key for a specific custom operator.
-// Ex: custom_op.[custom_op_name].[config]
-std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config);
-}  // namespace detail
-
-// Type for a function that can release a custom operator library handle.
-// This function calls platform-specific fuctions such as dlclose or FreeLibrary
-// in order to release the library handle.
-using ReleaseLibraryHandleFunc = void (*)(void* library_handle);
-
-/// <summary>
-/// Class that represents session configuration entries for one or more custom operators.
-///
-/// Example:
-///   Ort::CustomOpConfigs op_configs;
-///   op_configs.AddConfig("my_custom_op", "device_type", "CPU");
-///
-/// Passed to Ort::CustomOpLibrary::Register.
-/// </summary>
-struct CustomOpConfigs {
-  CustomOpConfigs() = default;
-  ~CustomOpConfigs() = default;
-  CustomOpConfigs(const CustomOpConfigs&) = default;
-  CustomOpConfigs& operator=(const CustomOpConfigs&) = default;
-  CustomOpConfigs(CustomOpConfigs&& o) = default;
-  CustomOpConfigs& operator=(CustomOpConfigs&& o) = default;
-
-  // Add a configuration entry for a specific custom operator. Returns a reference to *this to allow chaining calls.
-  CustomOpConfigs& AddConfig(const char* custom_op_name, const char* config_key, const char* config_value);
-
-  // Get a map of all custom operator configurations where the key has been flattened to include both
-  // the custom operator name and the config key.
-  // Example:
-  // A prior call to AddConfig("my_op", "key", "value") corresponds to the flattened key/value pair {"my_op.key", "value"}.
-  const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
-
- private:
-  std::unordered_map<std::string, std::string> flat_configs_;
-};
-
-/// <summary>
-/// Class that enables configuration and registration of custom operator libraries.
-/// Wraps calls to OrtApi::AddSessionConfigEntry and OrtApi::RegisterCustomOpsLibrary.
-///
-/// Example:
-///   CustomOpLibrary my_lib("my_lib.dll", lib_cleanup);
-///   ...
-///   my_lib.Register(session_options, op_configs);
-/// </summary>
-struct CustomOpLibrary {
-  explicit CustomOpLibrary(const char* library_path, ReleaseLibraryHandleFunc release_library_func) noexcept
-      : library_path_{library_path}, release_library_func_(release_library_func), library_handle_{nullptr} {}
-
-  // Disable copying.
-  CustomOpLibrary(const CustomOpLibrary&) = delete;
-  CustomOpLibrary& operator=(const CustomOpLibrary&) = delete;
-
-  // Make moveable.
-  CustomOpLibrary(CustomOpLibrary&& o) noexcept;
-  CustomOpLibrary& operator=(CustomOpLibrary&& o) noexcept;
-
-  ~CustomOpLibrary() noexcept;
-
-  ///< Registers the custom operator library via OrtApi::RegisterCustomOpsLibrary.
-  ///< The custom operator configurations are optional. If provided, custom operator configs are set via
-  ///< OrtApi::AddSessionConfigEntry.
-  void Register(UnownedSessionOptions session_options, const CustomOpConfigs& custom_op_configs = {});
-
- private:
-  const char* library_path_;
-  ReleaseLibraryHandleFunc release_library_func_;
-  void* library_handle_;
 };
 
 /** \brief Wrapper around ::OrtModelMetadata

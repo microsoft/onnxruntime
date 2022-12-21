@@ -553,6 +553,12 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 #endif
   return Status::OK();
 }
+
+void InferenceSession::AddCustomOpLibraries(const std::vector<std::shared_ptr<void>>& library_handles) {
+  for (auto& lib_ptr : library_handles) {
+    custom_op_lib_handles_.push_back(lib_ptr);
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD)

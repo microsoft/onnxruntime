@@ -3814,6 +3814,23 @@ struct OrtApi {
   ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                   _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
 
+  /** \brief Register custom ops from a shared library.
+  *
+  * Loads a shared library (dll on windows, so on linux, etc) named 'library_path' and looks for this entry point:
+  *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+  * It then passes in the provided session options to this function along with the api base.
+  *
+  * The handle to the loaded library is automatically released by ORT when the last OrtSession that references the
+  * library handle is released. If no OrtSession is created, then the library handle is released when the provided
+  * OrtSessionOptions is released.
+  *
+  * \param[in] options
+  * \param[in] library_path
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const char* library_path);
+
   /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
   *
   * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level

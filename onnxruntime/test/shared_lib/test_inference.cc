@@ -1251,35 +1251,21 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   lib_name = "./libcustom_op_openvino_wrapper_library.so";
 #endif
 
-  auto release_lib_func = [](void* lib_handle) {
-#ifdef _WIN32
-    bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(lib_handle));
-    ORT_ENFORCE(success, "Error while closing custom op OpenVINO wrapper shared library");
-#else
-    int retval = dlclose(lib_handle);
-    ORT_ENFORCE(retval == 0, "Error while closing custom op OpenVINO wrapper shared library");
-#endif
-  };
+  Ort::SessionOptions session_opts;
+  Ort::CustomOpConfigs custom_op_configs;
 
-  Ort::CustomOpLibrary custom_op_lib(lib_name, release_lib_func);
+  custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
+  session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
 
-  {
-    Ort::SessionOptions session_opts;
-    Ort::CustomOpConfigs custom_op_configs;
+  Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-    custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
-    custom_op_lib.Register(session_opts.GetUnowned(), custom_op_configs);
-
-    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
-    auto default_allocator = std::make_unique<MockedOrtAllocator>();
-
-    RunSession(default_allocator.get(), session,
-               inputs,
-               "Plus214_Output_0",
-               expected_output_dims,
-               expected_vals,
-               nullptr);
-  }
+  RunSession(default_allocator.get(), session,
+             inputs,
+             "Plus214_Output_0",
+             expected_output_dims,
+             expected_vals,
+             nullptr);
 }
 #endif
 

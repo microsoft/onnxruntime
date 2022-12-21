@@ -745,6 +745,17 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
   return *this;
 }
 
+template <typename T>
+inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const char* library_path, const CustomOpConfigs& custom_op_configs) {
+  // Add custom op config entries before registering the custom op library. Otherwise, the config entries _may_ be ignored by
+  // the custom op library.
+  for (const auto& config_iter : custom_op_configs.GetFlattenedConfigs()) {
+    AddConfigEntry(config_iter.first.c_str(), config_iter.second.c_str());
+  }
+
+  ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_path));
+}
+
 /// Session
 template <typename T>
 inline size_t ConstSessionImpl<T>::GetInputCount() const {
@@ -861,17 +872,7 @@ inline SessionOptions::SessionOptions() {
   ThrowOnError(GetApi().CreateSessionOptions(&this->p_));
 }
 
-/// CustomOpLibrary
-inline CustomOpConfigs& CustomOpConfigs::AddConfig(const char* custom_op_name, const char* config_key, const char* config_value) {
-  const std::string full_flat_key = detail::MakeCustomOpConfigEntryKey(custom_op_name, config_key);
-  flat_configs_[full_flat_key] = config_value;
-  return *this;
-}
-
-inline const std::unordered_map<std::string, std::string>& CustomOpConfigs::GetFlattenedConfigs() const {
-  return flat_configs_;
-}
-
+/// CustomOpConfigs
 inline std::string detail::MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config) {
   std::string config_key = "custom_op.";
 
@@ -882,38 +883,14 @@ inline std::string detail::MakeCustomOpConfigEntryKey(const char* custom_op_name
   return config_key;
 }
 
-inline CustomOpLibrary::CustomOpLibrary(CustomOpLibrary&& o) noexcept : library_path_(std::exchange(o.library_path_, nullptr)),
-                                                                        release_library_func_(std::exchange(o.release_library_func_, nullptr)),
-                                                                        library_handle_(std::exchange(o.library_handle_, nullptr)) {
-}
-
-inline CustomOpLibrary& CustomOpLibrary::operator=(CustomOpLibrary && o) noexcept {
-  if (this != &o) {
-    if (library_handle_ != nullptr && release_library_func_ != nullptr) {
-      release_library_func_(library_handle_);
-    }
-
-    library_path_ = std::exchange(o.library_path_, nullptr);
-    release_library_func_ = std::exchange(o.release_library_func_, nullptr);
-    library_handle_ = std::exchange(o.library_handle_, nullptr);
-  }
+inline CustomOpConfigs& CustomOpConfigs::AddConfig(const char* custom_op_name, const char* config_key, const char* config_value) {
+  const std::string full_flat_key = detail::MakeCustomOpConfigEntryKey(custom_op_name, config_key);
+  flat_configs_[full_flat_key] = config_value;
   return *this;
 }
 
-inline CustomOpLibrary::~CustomOpLibrary() noexcept {
-  if (library_handle_ != nullptr && release_library_func_ != nullptr) {
-    release_library_func_(library_handle_);
-  }
-}
-
-inline void CustomOpLibrary::Register(UnownedSessionOptions session_options, const CustomOpConfigs& custom_op_configs) {
-  // Add custom op config entries before registering the custom op library. Otherwise, the config entries _may_ be ignored by
-  // the custom op library.
-  for (const auto& config_iter : custom_op_configs.GetFlattenedConfigs()) {
-    session_options.AddConfigEntry(config_iter.first.c_str(), config_iter.second.c_str());
-  }
-
-  ThrowOnError(GetApi().RegisterCustomOpsLibrary(session_options, library_path_, &library_handle_));
+inline const std::unordered_map<std::string, std::string>& CustomOpConfigs::GetFlattenedConfigs() const {
+  return flat_configs_;
 }
 
 inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {

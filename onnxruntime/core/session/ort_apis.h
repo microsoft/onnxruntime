@@ -424,6 +424,7 @@ ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options
                     _In_z_ const char* config_key, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const char* library_path);
 
 ORT_API_STATUS_IMPL(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
                     int line_number, _In_z_ const char* func_name);
