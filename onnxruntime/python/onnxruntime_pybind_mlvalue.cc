@@ -430,6 +430,9 @@ inline void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_pt
 }
 
 void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device) {
+  //if (PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_array.ptr()))) {
+  //  ORT_THROW("Unsupported");
+  //}
   CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
 }
 
