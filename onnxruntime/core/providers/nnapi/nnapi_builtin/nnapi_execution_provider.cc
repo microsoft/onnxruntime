@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
+#include <algorithm>
 
 #include "core/common/string_utils.h"
 #include "core/framework/allocatormgr.h"
@@ -175,6 +176,16 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
+  const auto& graph = graph_viewer.GetGraph();
+  result.erase(std::remove_if(result.begin(), result.end(), [&graph](const auto& partition) {
+                 if (partition == nullptr || partition->sub_graph == nullptr) {
+                   return true;
+                 }
+                 GraphViewer graph_v(graph, *partition->sub_graph);
+                 return graph_v.GetInputs().empty();
+               }),
+               result.end());
+
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::accumulate(
       result.begin(), result.end(), size_t{0},
@@ -243,6 +254,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+    if (graph_viewer.GetOutputs().empty()) {
+      continue;
+    }
 
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
@@ -298,7 +312,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
     compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      
+
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ctx.GetInputCount();
       const size_t num_outputs = ctx.GetOutputCount();
