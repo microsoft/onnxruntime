@@ -190,6 +190,7 @@ try:
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
+                to_preload_cann = []
                 cuda_dependencies = []
                 args = ["patchelf", "--debug"]
                 for line in result.stdout.split("\n"):
@@ -258,6 +259,26 @@ try:
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
+                dest = "onnxruntime/capi/libonnxruntime_providers_cann.so"
+                if path.isfile(dest):
+                    result = subprocess.run(
+                        ["patchelf", "--print-needed", dest],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        universal_newlines=True,
+                    )
+                    cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
+                    args = ["patchelf", "--debug"]
+                    for line in result.stdout.split("\n"):
+                        for dependency in cann_dependencies:
+                            if dependency in line:
+                                if dependency not in to_preload:
+                                    to_preload_cann.append(line)
+                                args.extend(["--remove-needed", line])
+                    args.append(dest)
+                    if len(args) > 3:
+                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -270,6 +291,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
+                self._rewrite_ld_preload(to_preload_cann)
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
                 assert self.dist_dir is not None
@@ -299,6 +321,7 @@ class InstallCommand(InstallCommandBase):
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
 providers_openvino = "libonnxruntime_providers_openvino.so"
+providers_cann = "libonnxruntime_providers_cann.so"
 
 # Additional binaries
 dl_libs = []
@@ -316,12 +339,14 @@ if platform.system() == "Linux":
     dl_libs = ["libonnxruntime_providers_shared.so"]
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
+    dl_libs.append(providers_cann)
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
+    libs.append(providers_cann)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":

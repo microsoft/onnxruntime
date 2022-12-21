@@ -101,6 +101,11 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
+# enable stream for all the non-minimal build
+if (NOT onnxruntime_MINIMAL_BUILD)
+  add_compile_definitions(ENABLE_STREAM)
+endif()
+
 if (onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)

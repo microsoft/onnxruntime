@@ -23,12 +23,13 @@ namespace GenerationCudaDeviceHelper {
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
-            void* stream,
+            Stream* stream,
             onnxruntime::concurrency::ThreadPool* threadpool,
             Tensor& output_values,
             Tensor& output_indices);
 
 Status AddToFeeds(const IExecutionProvider* execution_provider,
+                  Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& buffer);
@@ -38,12 +39,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   void* stream);
+                   Stream* ort_stream);
 
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
-                     void* stream);
+                     Stream* stream);
 
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
@@ -56,7 +57,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
                      const transformers::IBeamSearchParameters* parameters,  // parameters
                      int step,                                               // iteration counter
-                     void* stream,                                           // cuda stream (for CUDA only)
+                     Stream* stream,                                         // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper);            // tensor dumper
 
 template <typename T>
@@ -68,19 +69,19 @@ Status GreedySearchProcessLogits(const OrtValue& logits,                        
                                  transformers::ILogitsProcessorList* logits_processors,  // logits processors
                                  const transformers::IBeamSearchParameters* parameters,  // parameters
                                  int step,                                               // iteration counter
-                                 void* stream,                                           // cuda stream (for CUDA only)
+                                 Stream* stream,                                         // cuda stream (for CUDA only)
                                  const transformers::IConsoleDumper* dumper);            // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
                   gsl::span<const T> source,
-                  void* stream,
+                  Stream* stream,
                   int copyDirection);
 
 template <typename T>
 Status UpdateGptFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -90,7 +91,9 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx);
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
@@ -100,7 +103,7 @@ Status UpdateGptFeeds(
 template <typename T>
 Status UpdateDecoderFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int num_present_tensors,
@@ -116,7 +119,7 @@ Status UpdateDecoderFeeds(
 
 template <typename T>
 Status ExpandBuffer(
-    void* stream,
+    Stream* stream,
     const OrtValue& input,
     int num_beams,
     AllocatorPtr allocator,
