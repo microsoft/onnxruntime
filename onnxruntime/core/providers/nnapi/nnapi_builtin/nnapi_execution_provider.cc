@@ -175,11 +175,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
-  const auto& graph = graph_viewer.GetGraph();
-  std::for_each(result.begin(), result.end(), [&graph](auto& capability) {
-    if (capability && capability->sub_graph) {
-      GraphViewer graph_v(graph, *capability->sub_graph);
-      if (graph_v.GetInputs().empty()) {
+  std::for_each(result.begin(), result.end(), [](auto& capability) {
+    if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
+      if (capability->sub_graph->GetMetaDef()->inputs.empty()) {
         capability.reset();
       }
     }

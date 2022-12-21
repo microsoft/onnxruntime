@@ -96,9 +96,9 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   ORT_ENFORCE(is_node_supported_fn, "Node support test is required.");
 
   /*
-  * NOTE: when making change here PLEASE update the logic that replicates the C++ partitioning in 
-  * /tools/python/util/mobile_helpers/usability_checker.py:check_partitioning
-  */
+   * NOTE: when making change here PLEASE update the logic that replicates the C++ partitioning in
+   * /tools/python/util/mobile_helpers/usability_checker.py:check_partitioning
+   */
   std::vector<std::vector<const Node*>> supported_groups{};
 
   // number of inputs from unprocessed nodes (in-degree) per node
@@ -299,7 +299,11 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
 
   for (const auto& input : ordered_subgraph_inputs) {
-    meta_def->inputs.push_back(input->Name());
+    if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+      meta_def->constant_initializers.push_back(input->Name());
+    } else {
+      meta_def->inputs.push_back(input->Name());
+    }
   }
 
   for (const auto& output : ordered_subgraph_outputs) {
