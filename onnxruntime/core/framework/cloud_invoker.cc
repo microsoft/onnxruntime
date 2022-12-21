@@ -49,7 +49,7 @@ class TritonInvoker : public CloudEndPointInvoker {
   std::string uri_;
   std::string model_name_;
   std::string model_ver_ = "1";
-  bool verbose_ = false;
+  std::string verbose_ = "0";
   std::unique_ptr<triton::client::InferenceServerHttpClient> triton_client_;
 };
 
@@ -144,7 +144,7 @@ TritonInvoker::TritonInvoker(const CloudEndPointConfig& config,
   ReadConfig(kCloudModelVer, model_ver_, false);
   ReadConfig(kCloudVerbose, verbose_, false);
 
-  auto err = tc::InferenceServerHttpClient::Create(&triton_client_, uri_, verbose_);
+  auto err = tc::InferenceServerHttpClient::Create(&triton_client_, uri_, verbose_ != "0");
   if (!err.IsOk()) {
     ORT_THROW("Failed to initialize triton client, triton err: " + err.Message());
   }
@@ -267,15 +267,6 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Caught exception in TritonInvokder::Send", ex.what());
   }
   return Status::OK();
-}
-
-void CloudEndPointInvoker::ReadConfig(const char* config_name, bool& config_val, bool required) {
-  const auto iter = config_.find(config_name);
-  if (config_.end() != iter) {
-    config_val = iter->second != "0";
-  } else if (required) {
-    ORT_THROW("Triton invoker failed to initialize due to missed config: ", config_name);
-  }
 }
 
 void CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {

@@ -31,9 +31,7 @@ class CloudEndPointInvoker {
                                    std::vector<OrtValue>& ort_outputs) const = 0;
 
  protected:
-  void ReadConfig(const char* config_name, bool& config_val, bool required = true);
   void ReadConfig(const char* config_name, std::string& config_val, bool required = true);
-
   CloudEndPointConfig config_;
   AllocatorPtr allocator_;
 };
