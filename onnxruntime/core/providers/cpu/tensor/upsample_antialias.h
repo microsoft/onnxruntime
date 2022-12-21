@@ -165,7 +165,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     float support = (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
 
     int32_t window_size = narrow<int32_t>(ceilf(support)) * 2 + 1;
-    const size_t scale_buffer_size = window_size * output_size;
+    const size_t scale_buffer_size = narrow<size_t>(window_size * output_size);
 
     param_base.weight_coefficients = IAllocator::MakeUniquePtr<T>(alloc, scale_buffer_size);
     // Get pointers to appropriate memory locations in the scratch buffer
@@ -303,8 +303,8 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
             auto output_size = narrow<size_t>(input_height * output_width);
 
             auto hc_prod = input_height * num_channels;
-            auto xdata_span = gsl::make_span(Xdata_base, batch_size * hc_prod * input_width);
-            auto ydata_span = gsl::make_span(temp_buffer, hc_prod * output_width);
+            auto xdata_span = gsl::make_span(Xdata_base, narrow<size_t>(batch_size * hc_prod * input_width));
+            auto ydata_span = gsl::make_span(temp_buffer, narrow<size_t>(hc_prod * output_width));
 
             std::copy_n(xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_size),
                         ydata_span.begin() + narrow<size_t>(y_start));
@@ -359,8 +359,8 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
             auto output_size = output_height * output_width;
 
             auto hc_prod = input_height * num_channels;
-            auto xdata_span = gsl::make_span(temp_buffer, hc_prod * input_width);
-            auto ydata_span = gsl::make_span(Ydata_base, batch_size * hc_prod * output_width);
+            auto xdata_span = gsl::make_span(temp_buffer, narrow<size_t>(hc_prod * input_width));
+            auto ydata_span = gsl::make_span(Ydata_base, narrow<size_t>(batch_size * hc_prod * output_width));
 
             std::copy_n(xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_size),
                         ydata_span.begin() + narrow<size_t>(y_start));
@@ -691,8 +691,8 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
           if (output_depth == input_depth) {
             auto output_size = out_wh_prod * output_depth;
             auto bwhc_prod = batch_size * out_wh_prod * num_channels;
-            auto xdata_span = gsl::make_span(temp_buffer, bwhc_prod * input_depth);
-            auto ydata_span = gsl::make_span(Ydata_base, bwhc_prod * output_depth);
+            auto xdata_span = gsl::make_span(temp_buffer, narrow<size_t>(bwhc_prod * input_depth));
+            auto ydata_span = gsl::make_span(Ydata_base, narrow<size_t>(bwhc_prod * output_depth));
 
             std::copy_n(xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_size),
                         ydata_span.begin() + narrow<size_t>(y_start));
