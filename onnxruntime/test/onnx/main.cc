@@ -691,7 +691,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_identity_opt", "Optional type not supported in this build flavor."},
 #endif
 
-#if defined(USE_DML)
     {"test_identity_cpu", "Optional type not yet supported for identity-16."},
     {"test_sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."},
     {"test_sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."},
@@ -705,7 +704,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."},
     {"test_sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."},
     {"test_sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."},
-#endif
 
   };
 
