@@ -3654,7 +3654,8 @@ TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
       false);
 }
 
-TEST(AttentionTest, Attention_Mask1D_Fp16_B2_FusedNoPadding) {
+// This test is disabled since it is flaky.
+TEST(AttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
   constexpr int batch_size = 2;
 
   // Sequence lengths used in TRT fused attention fp16 v2 kernels.
