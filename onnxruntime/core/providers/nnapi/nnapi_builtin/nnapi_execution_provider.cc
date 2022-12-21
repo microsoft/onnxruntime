@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
-#include <algorithm>
 
 #include "core/common/string_utils.h"
 #include "core/framework/allocatormgr.h"
@@ -177,14 +176,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
   const auto& graph = graph_viewer.GetGraph();
-  result.erase(std::remove_if(result.begin(), result.end(), [&graph](const auto& partition) {
-                 if (partition == nullptr || partition->sub_graph == nullptr) {
-                   return true;
-                 }
-                 GraphViewer graph_v(graph, *partition->sub_graph);
-                 return graph_v.GetInputs().empty();
-               }),
-               result.end());
+  std::for_each(result.begin(), result.end(), [&graph](auto& capability) {
+    if (capability && capability->sub_graph) {
+      GraphViewer graph_v(graph, *capability->sub_graph);
+      if (graph_v.GetInputs().empty()) {
+        capability.reset();
+      }
+    }
+  });
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::accumulate(
