@@ -60,6 +60,9 @@ class FusionGptAttentionNoPast(Fusion):
         self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        # (TODO) hasesh/tlwu: Investigate what fixes the following logic needs in order
+        # to fuse the Attention sub-graph. With some changes to other fusions, this stopped
+        # working.
         return_indice = []
 
         is_normalize_node_skiplayernorm = normalize_node.op_type == "SkipLayerNormalization"

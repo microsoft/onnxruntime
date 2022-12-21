@@ -133,13 +133,13 @@ class TestModelOptimization(unittest.TestCase):
 
     def test_gpt2_past(self):
         for enable_skip_layer_norm_fusion in [False, True]:
-            input = _get_test_model_path("gpt2_past")
+            input_path = _get_test_model_path("gpt2_past")
 
             options = FusionOptions("gpt2")
             options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
 
             model = optimize_model(
-                input,
+                input_path,
                 "gpt2",
                 num_heads=2,
                 hidden_size=4,
@@ -169,13 +169,13 @@ class TestModelOptimization(unittest.TestCase):
 
     def test_gpt2_past_mask(self):
         for enable_skip_layer_norm_fusion in [False, True]:
-            input = _get_test_model_path("gpt2_past_mask")
+            input_path = _get_test_model_path("gpt2_past_mask")
 
             options = FusionOptions("gpt2")
             options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
 
             model = optimize_model(
-                input,
+                input_path,
                 "gpt2",
                 num_heads=2,
                 hidden_size=4,
