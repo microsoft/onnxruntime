@@ -175,9 +175,15 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
+  // Generally, NNAPI support graph with inputs and outputs except constant initializer.
+  // So far, we have a few cases that sub-graph has zero inputs,
+  // a) A model has only initializer as inputs
+  // b) A model has zero inputs
+  // So we just remove these sub-graph which captured by NNAPI.
   std::for_each(result.begin(), result.end(), [](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
-      if (capability->sub_graph->GetMetaDef()->inputs.empty()) {
+      if (capability->sub_graph->GetMetaDef()->inputs.empty() ||
+          capability->sub_graph->GetMetaDef()->outputs.empty()) {
         capability.reset();
       }
     }
@@ -251,9 +257,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
-    if (graph_viewer.GetOutputs().empty()) {
-      continue;
-    }
 
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
