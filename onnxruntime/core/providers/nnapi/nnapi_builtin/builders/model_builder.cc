@@ -533,7 +533,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
           nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),
-          input_index_vec_.empty() ? nullptr : &input_index_vec_[0],
+          &input_index_vec_[0],
           static_cast<uint32_t>(output_index_vec_.size()),
           &output_index_vec_[0]),
       "on identifyInputsAndOutputs");
