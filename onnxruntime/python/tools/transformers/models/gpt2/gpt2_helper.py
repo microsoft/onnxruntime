@@ -546,7 +546,13 @@ class Gpt2Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = ["Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu", "EmbedLayerNormalization"],
+        op_block_list: List[str] = [
+            "Add",
+            "LayerNormalization",
+            "SkipLayerNormalization",
+            "FastGelu",
+            "EmbedLayerNormalization",
+        ],
     ):
         """Convert GPT-2 model to mixed precision.
            It detects whether original model has fp16 weights, and set parameters for float16 conversion automatically.
