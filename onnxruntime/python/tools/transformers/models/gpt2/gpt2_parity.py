@@ -85,6 +85,14 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(skip_test=False)
 
+    parser.add_argument(
+        "--overwrite",
+        required=False,
+        action="store_true",
+        help="Overwrite existing csv file",
+    )
+    parser.set_defaults(overwrite=False)
+
     args = parser.parse_args(argv)
 
     return args
@@ -442,7 +450,7 @@ def run_parity(task: ParityTask, args):
     # Mixed precision baseline
     run_candidate(task, args, last_matmul_node_name, op_block_list=[])
 
-    get_fp32_ops = lambda x: [a for a in x if a in all_ops]
+    get_fp32_ops = lambda x: [op for op in x if op in all_ops]
 
     if args.all:
         run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops)
@@ -481,11 +489,14 @@ if __name__ == "__main__":
 
     if args.test_cases < 100 or args.runs < 20 or args.test_cases * args.runs < 10000:
         logger.warning(
-            "Not enough test cases or runs to get stable results or test significance. Recommend test_cases >= 100, runs >= 20, test_cases * runs >= 10000."
+            "Not enough test cases or runs to get stable results or test significance. "
+            "Recommend test_cases >= 100, runs >= 20, test_cases * runs >= 10000."
         )
 
-    if os.path.exists(args.csv) and not args.skip_test:
-        logger.warning("csv file exists:%s. Please remove it, otherwise significance tests will include older tests")
+    if os.path.exists(args.csv) and not (args.overwrite or args.skip_test):
+        raise RuntimeError(
+            f"Output file {args.csv} existed. Please remove the file, or use --skip_test or --overwrite to continue.",
+        )
 
     task = ParityTask(args.test_cases, args.runs, args.csv)
 
