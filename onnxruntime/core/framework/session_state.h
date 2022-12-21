@@ -38,7 +38,6 @@
 #include "core/framework/memory_info.h"
 #endif
 
-#include "core/framework/cloud_invoker.h"
 #include "core/framework/stream_handles.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/program_region.h"
@@ -344,7 +343,7 @@ class SessionState {
   }
 #endif
 
-  const SessionOptions& GetSessionOption() const { return sess_options_; }
+  const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);

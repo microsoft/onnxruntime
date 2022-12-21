@@ -160,7 +160,7 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
-            --update
+            --parallel --update
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 

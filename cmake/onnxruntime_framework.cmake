@@ -52,7 +52,6 @@ if (onnxruntime_USE_CLOUD)
 
     find_package(ZLIB REQUIRED)
     find_package(OpenSSL REQUIRED)
-    message(WARNING "SSL LIBS: " ${OPENSSL_LIBRARIES})
     target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB ${OPENSSL_LIBRARIES})
 
   endif() #if (WIN32)

@@ -16,13 +16,13 @@ namespace onnxruntime {
 
 namespace tc = triton::client;
 
-constexpr char* kCloudUri = "cloud.uri";
-constexpr char* kCloudModelName = "cloud.model_name";
-constexpr char* kCloudModelVer = "cloud.model_version";
-constexpr char* kCloudVerbose = "cloud.verbose";
-constexpr char* kCloudEndpointType = "cloud.endpoint_type";
-constexpr char* kCloudAuthKey = "cloud.auth_key";
-constexpr char* kCloudTriton = "triton";
+const char* kCloudUri = "cloud.uri";
+const char* kCloudModelName = "cloud.model_name";
+const char* kCloudModelVer = "cloud.model_version";
+const char* kCloudVerbose = "cloud.verbose";
+const char* kCloudEndpointType = "cloud.endpoint_type";
+const char* kCloudAuthKey = "cloud.auth_key";
+const char* kCloudTriton = "triton";
 
 class TritonInvoker : public CloudEndPointInvoker {
  public:
@@ -69,7 +69,7 @@ std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       triton_data_type = "INT64";
       break;
-    //todo - do we need to support string?
+    //do we need to support string?
     //case ONNX_NAMESPACE::TensorProto_DataType_STRING:
     //  triton_data_type = "BYTES";
     //  break;
@@ -175,24 +175,26 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     for (int i = 0; i < static_cast<int>(ort_inputs.size()); i++) {
       const OrtValue& ort_input = ort_inputs[i];
       if (!ort_input.IsTensor()) {
-        //todo - do we need to support tensor sequence and sparse tensor?
+        //do we need to support tensor sequence and sparse tensor?
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton client only accept tensor(s) as input");
       }
+
       const auto& input_tensor = ort_input.Get<Tensor>();
       const auto& ort_input_shape = input_tensor.Shape();
-      std::vector<int64_t> dims;
-      dims.reserve(ort_input_shape.NumDimensions());
-      for (auto dim : ort_input_shape.GetDims()) {
-        dims.push_back(dim);
-      }
+
       tc::InferInput* triton_input = {};
       std::string triton_data_type = MapDataType(input_tensor.GetElementType());
       if (triton_data_type.empty()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Triton client does not support data type: ",
                                ONNX_NAMESPACE::TensorProto_DataType_Name(input_tensor.GetElementType()));
       }
+
+      onnxruntime::VectorInt64 dims(ort_input_shape.NumDimensions());
+      ort_input_shape.CopyDims(dims.data(), ort_input_shape.NumDimensions());
+
       err = tc::InferInput::Create(&triton_input, *iter, dims, MapDataType(input_tensor.GetElementType()));
       CHECK_TRITON_ERR(err, (std::string{"Failed to create triton input for "} + *iter).c_str());
+
       triton_input_vec.emplace_back(triton_input);
       triton_inputs.push_back(triton_input);
       triton_input->AppendRaw(static_cast<const uint8_t*>(input_tensor.DataRaw()), input_tensor.SizeInBytes());
@@ -204,6 +206,7 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
       tc::InferRequestedOutput* triton_output;
       err = tc::InferRequestedOutput::Create(&triton_output, *iter);
       CHECK_TRITON_ERR(err, (std::string{"Failed to create triton output for "} + *iter).c_str());
+
       triton_output_vec.emplace_back(triton_output);
       triton_outputs.push_back(triton_output);
       ++iter;
@@ -216,7 +219,7 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
 
     err = triton_client_->Infer(&results, options, triton_inputs, triton_outputs,
                                 http_headers, tc::Parameters(),
-                                tc::InferenceServerHttpClient::CompressionType::NONE,  //to-do: support compression in config?
+                                tc::InferenceServerHttpClient::CompressionType::NONE,  //support compression in config?
                                 tc::InferenceServerHttpClient::CompressionType::NONE);
     CHECK_TRITON_ERR(err, "Triton client failed to do inference");
 
@@ -247,12 +250,10 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
       if (!output_tensor) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output", *iter);
       }
-      //todo - can we skip memcpy?
+      //how to skip memcpy?
       memcpy(output_tensor->MutableDataRaw(), raw_data, raw_size);
-      ort_outputs[output_index].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
-
+      ort_outputs[output_index++].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
       ++iter;
-      ++output_index;
     }
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Caught exception in TritonInvokder::Send", ex.what());

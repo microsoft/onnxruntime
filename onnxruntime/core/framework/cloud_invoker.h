@@ -13,7 +13,6 @@ namespace onnxruntime {
 using CloudEndPointConfig = std::unordered_map<std::string, std::string>;
 using TensorPtr = std::unique_ptr<onnxruntime::Tensor>;
 using TensorPtrArray = onnxruntime::InlinedVector<TensorPtr>;
-using ConstTensorPtrArray = gsl::span<onnxruntime::Tensor* const>;
 
 class CloudEndPointInvoker {
  public:
