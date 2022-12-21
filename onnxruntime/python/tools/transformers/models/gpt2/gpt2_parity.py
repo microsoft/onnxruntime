@@ -493,10 +493,14 @@ if __name__ == "__main__":
             "Recommend test_cases >= 100, runs >= 20, test_cases * runs >= 10000."
         )
 
-    if os.path.exists(args.csv) and not (args.overwrite or args.skip_test):
-        raise RuntimeError(
-            f"Output file {args.csv} existed. Please remove the file, or use --skip_test or --overwrite to continue.",
-        )
+    if os.path.exists(args.csv) and not args.skip_test:
+        if not args.overwrite:
+            raise RuntimeError(
+                f"Output file {args.csv} existed. Please remove the file, or use either --skip_test or --overwrite."
+            )
+        else:
+            logger.info("Remove existing file %s since --overwrite is specified", args.csv)
+            os.remove(args.csv)
 
     task = ParityTask(args.test_cases, args.runs, args.csv)
 
