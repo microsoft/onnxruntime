@@ -182,8 +182,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // So we just remove these sub-graph which captured by NNAPI.
   std::for_each(result.begin(), result.end(), [](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
-      if (capability->sub_graph->GetMetaDef()->inputs.empty() ||
-          capability->sub_graph->GetMetaDef()->outputs.empty()) {
+      const auto* metadef = capability->sub_graph->GetMetaDef();
+      // metadef->inputs include constant initializer inside, so we can't just check  if it is empty.
+      if (metadef->inputs.size() == metadef->constant_initializers.size() ||
+          metadef->outputs.empty()) {
         capability.reset();
       }
     }
