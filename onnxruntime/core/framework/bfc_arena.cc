@@ -797,7 +797,7 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
   LOGS_DEFAULT(INFO) << "Stats: \n"
                      << stats_.DebugString();
 }
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag) {
   std::lock_guard<OrtMutex> lock(lock_);
 

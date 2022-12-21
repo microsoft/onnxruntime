@@ -8,7 +8,7 @@
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                 int32_t num_streams,
                                                 gsl::span<const size_t> notification_owners,
@@ -109,8 +109,8 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
   }
 }
 
-synchronize::Notification* StreamExecutionContext ::GetNotification(size_t /*idx*/) { 
-    ORT_THROW("Try to get notification in a build which doesn't enable Stream!"); 
+synchronize::Notification* StreamExecutionContext ::GetNotification(size_t /*idx*/) {
+    ORT_THROW("Try to get notification in a build which doesn't enable Stream!");
 }
 
 bool StreamExecutionContext ::DecCountDownBarrier(size_t /*barrier_id*/) {

@@ -116,14 +116,14 @@ void* AllocateBufferWithOptions(IAllocator* alloc, size_t size, bool use_reserve
   if (use_reserve)
     return alloc->Reserve(size);
   if (stream && alloc->Info().alloc_type == OrtArenaAllocator) {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*static_cast<BFCArena*>(alloc));
     if (stream_aware_alloc) {
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
 #else
   ORT_UNUSED_PARAMETER(wait_fn);
-#endif  // ENABLE_STREAM
+#endif  // ORT_ENABLE_STREAM
   }
   return alloc->Alloc(size);
 }

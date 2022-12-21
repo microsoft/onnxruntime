@@ -58,7 +58,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
     }
 
     if (info.use_stream_aware_arena) {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       return AllocatorPtr(
           std::make_unique<StreamAwareArena>(std::move(device_allocator),
                                              max_mem,

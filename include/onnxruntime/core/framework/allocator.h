@@ -94,7 +94,7 @@ class IAllocator {
    * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
    */
-  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept ORT_MUST_USE_RESULT;
+  [[nodiscard]] static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept;
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html
@@ -107,7 +107,7 @@ class IAllocator {
    *          implemented in the .cc file so that the SafeInt dependency is internal.
    */
   template <size_t alignment>
-  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
+  [[nodiscard]] static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept;
 
   /**
    * allocate memory for an array which has nmemb items of data, each size bytes long

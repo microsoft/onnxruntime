@@ -21,7 +21,7 @@
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
   return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
@@ -82,7 +82,7 @@ SessionState::SessionState(Graph& graph,
       data_transfer_mgr_(data_transfer_mgr),
       use_deterministic_compute_(use_deterministic_compute),
       enable_mem_reuse_(enable_mem_reuse),
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       prepacked_weights_container_(prepacked_weights_container),
       stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
 #else
@@ -1339,12 +1339,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // TODO: we avoid instantiate it in subgraph session state
 
   // register stream handles from EP instances
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   auto& eps = GetExecutionProviders();
   for (auto& ep : eps) {
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
-#endif 
+#endif
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
@@ -1357,7 +1357,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
                                                     GetStreamHandleRegistryInstance(),
 #endif
                                                     session_options.config_options.GetConfigOrDefault(
@@ -1508,7 +1508,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   return Status::OK();
 }
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
                                DeviceStreamCollection& device_stream_map,
                                IStreamCommandHandleRegistry& stream_handle_registry) {

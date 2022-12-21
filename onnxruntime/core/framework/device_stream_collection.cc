@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 #include "core/framework/bfc_arena.h"
 #include "core/framework/device_stream_collection.h"
 #include "core/framework/session_state.h"
