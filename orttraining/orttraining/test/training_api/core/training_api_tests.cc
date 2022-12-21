@@ -122,7 +122,7 @@ void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 
   ASSERT_NEAR(expected, output, rtol * std::abs(expected));
 }
 
-void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t total_step_count,
+void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name, float initial_lr, int64_t total_step_count,
                     int64_t warmup_step_count) {
   /// Load model and optimizer graph, create Module, Optimizer and LRScheduler instances.
   auto model_uri = MODEL_FOLDER "training_model.onnx";
@@ -149,8 +149,7 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
   /// Load test data for learning rate schedulers.
-  auto data_dir = MODEL_FOLDER "test_data_generation/lr_scheduler/";
-  PathString data_uri = ConcatPathComponent<PathChar>(data_dir, ToPathString(test_file_name));
+  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
   std::ifstream in{data_uri};
   // Element of vector represent a pair of <step_count, list of learning rates>>
   typedef std::vector<std::pair<int64_t, std::vector<float>>> TestDataDictType;
@@ -402,42 +401,42 @@ TEST(TrainingApiTest, OptimStep) {
 
 TEST(TrainingApiTest, LinearLRScheduler_NoWarmUp_Test) {
   // No warm up.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-0.json", initial_lr, total_step_count, 0);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-0.json"), initial_lr, total_step_count, 0);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_NoWarmUp_ResumeFromCheckpoint_Test) {
   // No warm up.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-0_restored.json", initial_lr, total_step_count, 0);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-0_restored.json"), initial_lr, total_step_count, 0);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_WarmUp30Step_Test) {
   // Warmp up completed before saving checkpoint.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-30.json", initial_lr, total_step_count, 30);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-30.json"), initial_lr, total_step_count, 30);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_WarmUp30Step_ResumeFromCheckpoint_Test) {
   // Warmp up completed before saving checkpoint.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-30_restored.json", initial_lr, total_step_count, 30);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-30_restored.json"), initial_lr, total_step_count, 30);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_WarmUp70Step_Test) {
   // Warmp up completed after saving checkpoint.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-70.json", initial_lr, total_step_count, 70);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-70.json"), initial_lr, total_step_count, 70);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_WarmUp70Step_ResumeFromCheckpoint_Test) {
   // Warmp up completed after saving checkpoint.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-70_restored.json", initial_lr, total_step_count, 70);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-70_restored.json"), initial_lr, total_step_count, 70);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_Test) {
   // All steps are in warm-up phase.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-200.json", initial_lr, total_step_count, 200);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-200.json"), initial_lr, total_step_count, 200);
 }
 
 TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test) {
   // All steps are in warm-up phase.
-  TestLRSchduler("warmup_linear_scheduler_warmupstep-200_restored.json", initial_lr, total_step_count, 200);
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-200_restored.json"), initial_lr, total_step_count, 200);
 }
 
 #endif
