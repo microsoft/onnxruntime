@@ -10,7 +10,6 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "test_allocator.h"
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
@@ -39,11 +38,13 @@
 #endif
 
 // test infrastructure
+#include "test/onnx/testenv.h"
 #include "test/onnx/TestCase.h"
 #include "test/compare_ortvalue.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
 #include "test/onnx/callback.h"
+#include "test/onnx/testcase_request.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -255,6 +256,7 @@ TEST_P(ModelTest, Run) {
       {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
       {"ResNet50-qdq", "failed in training", {"opset12"}},
       {"ResNet50_int8", "failed in training", {"opset12"}},
+      {"ResNet50-int8", "failed in training", {"opset12"}},
       {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
       {"SSD-int8", "failed in training", {"opset12"}},
       {"VGG 16-int8", "failed in training", {"opset12"}},
@@ -623,6 +625,20 @@ TEST_P(ModelTest, Run) {
       }
     }
   }
+
+  // TODO(leca): move the parallel run test list to a config file and load it in GetParameterStrings() to make the load process run only once
+  std::set<std::string> tests_run_parallel = {"test_resnet18v2", 
+      "test_resnet34v2",
+      "test_resnet50",
+      "test_resnet50v2", 
+      "test_resnet101v2", 
+      "test_resnet152v2", 
+      "keras_lotus_resnet3D", 
+      "coreml_Resnet50_ImageNet", 
+      "mlperf_mobilenet", 
+      "mlperf_resnet", 
+      "mlperf_ssd_mobilenet_300", 
+      "mlperf_ssd_resnet34_1200"};
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
@@ -636,12 +652,14 @@ TEST_P(ModelTest, Run) {
   std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
 
+#ifndef USE_DNNL
+  auto tp = TestEnv::CreateThreadPool(Env::Default());
+#endif
+
   for (bool is_single_thread : use_single_thread) {
     for (ExecutionMode execution_mode : execution_modes) {
       OrtSessionOptions* ortso;
       ASSERT_ORT_STATUS_OK(OrtApis::CreateSessionOptions(&ortso));
-      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
-          ortso, &OrtApis::ReleaseSessionOptions);
       if (!is_single_thread) {
         ASSERT_ORT_STATUS_OK(OrtApis::DisablePerSessionThreads(ortso));
       } else {
@@ -724,6 +742,21 @@ TEST_P(ModelTest, Run) {
       std::unique_ptr<OrtSession, decltype(&OrtApis::ReleaseSession)> rel_ort_session(ort_session,
                                                                                       &OrtApis::ReleaseSession);
       const size_t data_count = l->GetDataCount();
+#ifndef USE_DNNL // potential crash for DNNL pipeline
+      if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
+        LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();    // TODO(leca): change level to INFO or even delete the log once verified parallel test working
+        Ort::SessionOptions ort_session_options(ortso);
+        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
+        for (EXECUTE_RESULT res : results->GetExcutionResult()) {
+          EXPECT_EQ(res, EXECUTE_RESULT::SUCCESS) << "is_single_thread:" << is_single_thread << ", execution_mode:" << execution_mode << ", provider_name:"
+                                                  << provider_name << ", test name:" << results->GetName() << ", result: " << res;
+        }
+        continue;
+      } 
+#endif // !USE_DNNL
+      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
+        ortso, &OrtApis::ReleaseSessionOptions);
+      // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
       for (size_t task_id = 0; task_id != data_count; ++task_id) {

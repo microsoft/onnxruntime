@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "core/common/common.h"
-
 namespace onnxruntime {
 
 // Graph transformer level
