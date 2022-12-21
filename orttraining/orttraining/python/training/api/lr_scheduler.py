@@ -18,17 +18,16 @@ class LinearLRScheduler:
         optimizer (:obj:`training_api.Optimizer`): User's onnxruntime training Optimizer
         warmup_step_count (int): The number of steps in the warm up phase.
         total_step_count (int): The total number of training steps.
+        initial_lr (float): The initial learning rate.
     """
 
-    def __init__(self, optimizer, warmup_step_count, total_step_count) -> None:
-        """
-        Initializes LRScheduler with the optimizer model and other parameters.
-        """
-        self._scheduler = C.LRScheduler(optimizer._optimizer, warmup_step_count, total_step_count)
+    def __init__(self, optimizer, warmup_step_count, total_step_count, initial_lr) -> None:
+
+        self._scheduler = C.LinearLRScheduler(optimizer._optimizer, warmup_step_count, total_step_count, initial_lr)
 
     def step(self):
         """
-        The step method of the LRScheduler class is used to update the learning rate of the optimizer according
+        The step method of the LinearLRScheduler class is used to update the learning rate of the optimizer according
         to the scheduler's strategy.
         This method should be called at each step of training to ensure that the learning rate is properly adjusted.
         """

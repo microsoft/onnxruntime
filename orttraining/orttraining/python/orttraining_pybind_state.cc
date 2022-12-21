@@ -166,18 +166,10 @@ struct TrainingConfigurationResult {
 // Thin wrapper over internal C++ Optimizer
 struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri,
-              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider) {
-    onnxruntime::SessionOptions session_option;
-    optimizer_ = std::make_unique<onnxruntime::training::api::Optimizer>(
-        optimizer_model_uri,
-        model->NamedParameters(), session_option,
-        GetTrainingORTEnv(), provider);
-  }
-
-  virtual ~PyOptimizer() {}
-
-  PyOptimizer(std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer) {
-    optimizer_ = std::move(optimizer);
+              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
+      : optimizer_(std::make_unique<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
+                                                                           model->NamedParameters(), onnxruntime::SessionOptions(),
+                                                                           GetTrainingORTEnv(), provider)) {
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -959,12 +951,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         return optimizer->optimizer_->GetLearningRate();
       });
   py::class_<onnxruntime::training::api::LinearLRScheduler>
-      lr_scheduler(m, "LRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");
+      lr_scheduler(m, "LinearLRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");
   lr_scheduler.def(py::init([](PyOptimizer* optimizer,
                                int64_t total_step_count,
-                               int64_t warmup_step_count) {
+                               int64_t warmup_step_count,
+                               float initial_lr) {
+                ORT_THROW_IF_ERROR(optimizer->optimizer_->SetInitialLearningRate(initial_lr));
+
                 auto scheduler = std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
                     optimizer->optimizer_, warmup_step_count, total_step_count);
+
                 return scheduler;
               }))
       .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
