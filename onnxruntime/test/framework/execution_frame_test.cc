@@ -367,8 +367,10 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
+  SessionOptions so;
+
   SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(),
-                     profiler, {});
+                     profiler, so);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 

@@ -32,7 +32,6 @@ class CloudEndPointInvoker {
  protected:
   bool ReadConfig(const char* config_name, bool& config_val, bool required = true);
   bool ReadConfig(const char* config_name, std::string& config_val, bool required = true);
-  bool ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required = true);
 
   CloudEndPointConfig config_;
   mutable onnxruntime::Status status_ = onnxruntime::Status::OK();
