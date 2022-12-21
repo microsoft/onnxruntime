@@ -382,7 +382,7 @@ def run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops):
 
 
 def run_tuning_step1(task, mixed_precision_baseline, optimized_ops):
-    """Step 1 is to figure out which operator in FP32 could benefit most"""
+    """Step 1 is to figure out which optimized operator in FP32 could benefit most"""
     for op in optimized_ops:
         op_block_list = ["--op_block_list", op]
         task.run(
@@ -392,16 +392,17 @@ def run_tuning_step1(task, mixed_precision_baseline, optimized_ops):
 
 
 def run_tuning_step2(task, mixed_precision_baseline, optimized_ops):
-    """Assumed that you have run step 0 and 1 to figure out that Logits FP32 and some operators in FP32 is important,
-    Step 2 is to try add one more operator.
+    """Assumed that you have run step 0 and 1 to figure out that Logits FP32 and some operators shall be in FP32,
+    This step will try add one more operator.
     """
-    op_block_list_from_previous_steps = ["FastGelu", "LayerNormalization", "SkipLayerNormalization"]
+    candidate_fp32_ops = ["FastGelu", "LayerNormalization", "SkipLayerNormalization"]
+    fp32_ops = [x for x in candidate_fp32_ops if x in optimized_ops]
     for op in optimized_ops:
-        if op not in op_block_list_from_previous_steps:
-            op_block_list = op_block_list_from_previous_steps + [op]
+        if op not in fp32_ops:
+            op_block_list = fp32_ops + [op]
             task.run(
                 mixed_precision_baseline + ["--op_block_list"] + op_block_list,
-                f"Mixed precision baseline + Add,{op} in FP32",
+                "Mixed precision baseline + {},{} in FP32".format(",".join(fp32_ops), op),
             )
 
 
