@@ -62,13 +62,13 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
       Stream(ctx), GetRocblasHandle(ctx),
       transa ? BlasOp::Trans : BlasOp::NonTrans,
       transb ? BlasOp::Trans : BlasOp::NonTrans,
-      static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.N()), static_cast<int64_t>(helper.K()),
+      helper.M(), helper.N(), helper.K(),
       alpha,
-      reinterpret_cast<const HipT*>(X->Data<T>()), static_cast<int64_t>(helper.Lda(transa)),
-      reinterpret_cast<const HipT*>(W->Data<T>()), static_cast<int64_t>(helper.Ldb(transb)),
+      reinterpret_cast<const HipT*>(X->Data<T>()), helper.Lda(transa),
+      reinterpret_cast<const HipT*>(W->Data<T>()), helper.Ldb(transb),
       (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
       beta,
-      reinterpret_cast<HipT*>(Y->MutableData<T>()), static_cast<int64_t>(helper.Ldc()));
+      reinterpret_cast<HipT*>(Y->MutableData<T>()), helper.Ldc());
 }
 
 }  // namespace rocm
