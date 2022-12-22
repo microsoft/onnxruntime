@@ -177,8 +177,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   // Generally, NNAPI support graph with inputs and outputs except constant initializer.
   // So far, we have a few cases that sub-graph has zero inputs,
-  // a) A model has only initializer as inputs
-  // b) A model has zero inputs
+  // a) A sub-graph has only initializer as inputs
+  // b) A sub-graph has zero inputs
   // So we just remove these sub-graph which is captured by NNAPI.
   std::for_each(result.begin(), result.end(), [](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
