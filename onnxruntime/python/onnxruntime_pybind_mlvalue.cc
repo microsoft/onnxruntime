@@ -446,7 +446,7 @@ void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, M
   // Clean-up the contiguous array after the end of the current scope
   UniqueDecRefPtr<PyArrayObject> contiguous_array_guard(contiguous_array, DecRefFn<PyArrayObject>());
 
-  CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
+  CopyDataToTensor(contiguous_array, npy_type, tensor, mem_cpy_to_device);
 }
 
 // Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
