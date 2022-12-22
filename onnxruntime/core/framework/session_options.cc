@@ -58,12 +58,12 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
-void SessionOptions::AddCustomOpLibraryHandle(void* library_handle, const char* library_name) {
+void SessionOptions::AddCustomOpLibraryHandle(std::string library_name, void* library_handle) {
   if (!custom_op_libs_) {
-    custom_op_libs_ = std::make_shared<std::vector<LibraryHandle>>();
+    custom_op_libs_ = std::make_shared<LibraryHandles>();
   }
 
-  custom_op_libs_->push_back(LibraryHandle(library_handle, library_name, Env::Default()));
+  custom_op_libs_->Add(std::move(library_name), library_handle);
 }
 
 }  // namespace onnxruntime

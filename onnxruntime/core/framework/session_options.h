@@ -11,7 +11,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 #include "core/framework/config_options.h"
-#include "core/framework/library_handle.h"
+#include "core/framework/library_handles.h"
 
 namespace onnxruntime {
 
@@ -140,8 +140,8 @@ struct SessionOptions {
 
   // Store handles to custom op libraries so that their lifetimes extend the lifetime of the session options object.
   // Lazily initialized by the first call to SessionOptions::AddCustomOpLibraryHandle().
-  std::shared_ptr<std::vector<LibraryHandle>> custom_op_libs_;
-  void AddCustomOpLibraryHandle(void* library_handle, const char* library_name);
+  std::shared_ptr<LibraryHandles> custom_op_libs_;
+  void AddCustomOpLibraryHandle(std::string library_name, void* library_handle);
 };
 
 }  // namespace onnxruntime

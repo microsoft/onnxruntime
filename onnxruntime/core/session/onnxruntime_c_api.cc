@@ -651,7 +651,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOpti
   }
 
   // SessionOptions will manage the lifetime of library handles.
-  options->value.AddCustomOpLibraryHandle(library_handle, library_name);
+  options->value.AddCustomOpLibraryHandle(library_name, library_handle);
 
   OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
