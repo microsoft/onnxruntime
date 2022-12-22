@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/quantization/fake_quant.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/math/element_wise_ops.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -35,6 +36,13 @@ void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const 
         }
       });
 }
+
+template <typename T>
+void FakeQuantGradImpl(const Tensor& dY, const Tensor& gradient_mask, Tensor& dX) {
+  // If gradient_mask is true (i.e. quantization was in range), return dY, else return 0
+  MakeEigenArrayMap<T>(dX) = MakeEigenArrayMap<T>(dY) * MakeEigenArrayMap<bool>(gradient_mask).template cast<T>();
+}
+
 }  // namespace
 
 #define REGISTER_FAKEQUANT_KERNEL_TYPED(T)                        \
@@ -69,10 +77,38 @@ Status FakeQuant<T>::Compute(OpKernelContext* ctx) const {
   T* fake_quantized_data = fake_quantized_tensor->MutableData<T>();
   bool* quantization_mask_data = ctx->Output(1, input_tensor->Shape())->MutableData<bool>();
 
-  // Copmute
+  // Compute
   // TODO(bmeswani): Add support for FakeQuantPerChannel
   FakeQuantPerTensor(ctx, input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_,
                      quant_max_, fake_quantized_data, quantization_mask_data);
+
+  return Status::OK();
+}
+
+#define REGISTER_FAKEQUANTGRAD_KERNEL_TYPED(T)                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      FakeQuantGrad,                                              \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      FakeQuantGrad<T>);
+
+REGISTER_FAKEQUANTGRAD_KERNEL_TYPED(float)
+
+template <typename T>
+Status FakeQuantGrad<T>::Compute(OpKernelContext* ctx) const {
+  // Prepare the gradient wrt the output and gradient mask input
+  const auto* dY = ctx->Input<Tensor>(0);
+  const auto* gradient_mask = ctx->Input<Tensor>(1);
+
+  // Prepare the output
+  auto* dX = ctx->Output(0, dY->Shape());
+
+  // Compute
+  FakeQuantGradImpl<T>(*dY, *gradient_mask, *dX);
 
   return Status::OK();
 }

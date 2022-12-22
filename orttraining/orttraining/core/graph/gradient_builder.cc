@@ -1878,5 +1878,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
+  return {NodeDef(OpDef{"FakeQuantGrad", kMSDomain, 1}, {GO(0), O(1)}, {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

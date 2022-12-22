@@ -53,7 +53,7 @@ function(AddTest)
   else()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
-  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
@@ -133,7 +133,7 @@ function(AddTest)
     else()
       target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
     endif()
-    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers)
+    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers::flatbuffers)
     target_include_directories(${_UT_TARGET}_xc PRIVATE ${TEST_INC_DIR})
     get_target_property(${_UT_TARGET}_DEFS ${_UT_TARGET} COMPILE_DEFINITIONS)
     target_compile_definitions(${_UT_TARGET}_xc PRIVATE ${_UT_TARGET}_DEFS)
@@ -624,7 +624,7 @@ endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
 
 
 
@@ -657,7 +657,7 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers Boost::mp11 safeint_interface)
+        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
@@ -716,13 +716,21 @@ endif()
 
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
-    # TRT EP CI takes much longer time when updating to TRT 8.2
-    # So, we only run trt ep and exclude other eps to reduce CI test time.
-    #
-    # The test names of model tests were using sequential number in the past.
-    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
-    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.
-    list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
+    if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
+       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock. 
+       # Therefore we only run filtered TRT EP tests.
+      list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
+      #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
+    else()
+      # TRT EP CI takes much longer time when updating to TRT 8.2
+      # So, we only run trt ep and exclude other eps to reduce CI test time.
+      #
+      # The test names of model tests were using sequential number in the past.
+      # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
+      # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu_* or *xxx_*.
+      list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*" )
+    endif()
+
 endif ()
 
 AddTest(
@@ -1003,8 +1011,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_optimizer
           onnxruntime_providers
           onnxruntime_util
-          onnxruntime_framework
-          flatbuffers
+          onnxruntime_framework          
           onnxruntime_graph
           ${ONNXRUNTIME_MLAS_LIBS}
           onnxruntime_common
@@ -1014,6 +1021,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers
+		  flatbuffers::flatbuffers
           ${CMAKE_DL_LIBS}
           )
   if(onnxruntime_ENABLE_TRAINING)

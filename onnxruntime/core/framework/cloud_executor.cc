@@ -13,20 +13,37 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, CustomAllocator>&,
                                       const logging::Logger&) {
+  //collect input names
+  const auto& inputs = session_state.GetGraphViewer().GetInputs();
   InlinedVector<std::string> input_names;
-  for (const auto& input : session_state.GetGraphViewer().GetInputs()) {
+  input_names.reserve(inputs.size());
+  for (const auto& input : inputs) {
     input_names.push_back(input->Name());
   }
+
+  //collect output names
+  const auto& outputs = session_state.GetGraphViewer().GetOutputs();
   InlinedVector<std::string> output_names;
-  for (const auto& output : session_state.GetGraphViewer().GetOutputs()) {
+  output_names.reserve(outputs.size());
+  for (const auto& output : outputs) {
     output_names.push_back(output->Name());
   }
-  auto invoker = CloudEndPointInvoker::CreateInvoker(session_state.GetSessionOption().config_options.configurations);
+
+  //create invoker
+  static const OrtDevice cpu_device;
+  auto allocator = session_state.GetAllocator(cpu_device);
+  std::unique_ptr<CloudEndPointInvoker> invoker;
+
+  auto status = CloudEndPointInvoker::CreateInvoker(
+      session_state.GetSessionOptions().config_options.configurations,
+      allocator, invoker);
+
   if (invoker) {
     return invoker->Send(run_options_, input_names, feeds, output_names, fetches);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create cloud endpoint invoker");
+    return status;
   }
 }
+
 }  // namespace onnxruntime
 #endif

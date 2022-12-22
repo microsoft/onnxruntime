@@ -7,10 +7,10 @@ include(FetchContent)
 set(ABSL_PROPAGATE_CXX_STD 1)
 set(BUILD_TESTING 0)
 
-if(Patch_FOUND)
-  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/Fix_Nvidia_Build_Break.patch)
+if(Patch_FOUND AND WIN32)
+  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)
 else()
-  set(ABSL_PATCH_COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/abseil/Fix_Nvidia_Build_Break.patch)
+  set(ABSL_PATCH_COMMAND "")
 endif()
 
 # NB! Advancing Abseil version changes its internal namespace,

@@ -15,10 +15,22 @@ class Optimizer:
         """
         Initializes Optimizer with the optimizer onnx and the parameters from the model.
         """
-        self._optimizer = C.Optimizer(train_optimizer_uri, model._model)
+        self._optimizer = C.Optimizer(train_optimizer_uri, model._model, model._device)
 
     def step(self):
         """
         Run Optimizer Step.
         """
         self._optimizer.optimizer_step()
+
+    def set_learning_rate(self, learning_rate: float) -> None:
+        """
+        Set Learning Rate.
+        """
+        self._optimizer.set_learning_rate(learning_rate)
+
+    def get_learning_rate(self) -> float:
+        """
+        Get Learning Rate.
+        """
+        return self._optimizer.get_learning_rate()

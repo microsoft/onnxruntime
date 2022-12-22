@@ -300,7 +300,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     }
   }
   // reset grad
-  ASSERT_STATUS_OK(model->ResetGrad());
+  ASSERT_STATUS_OK(model->LazyResetGrad());
 
   // run a single step
   std::vector<OrtValue>& inputs = *data_loader.begin();

@@ -453,6 +453,9 @@ void DumpNodeInputs(
 
   if (!FilterNode(dump_options, node)) return;
 
+  if (context.GetComputeStream())
+    context.GetComputeStream()->Flush();
+
   bool should_dump_node_placement = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && should_dump_node_placement) {
     PrintIf(should_dump_node_placement, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
@@ -520,6 +523,9 @@ void DumpNodeOutputs(
   }
 
   if (!FilterNode(dump_options, node)) return;
+
+  if (context.GetComputeStream())
+    context.GetComputeStream()->Flush();
 
   bool should_dump_node_placement = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && should_dump_node_placement) {

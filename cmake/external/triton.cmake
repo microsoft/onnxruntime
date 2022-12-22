@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 include(ExternalProject)
 
 if (WIN32)
@@ -64,15 +67,15 @@ if (WIN32)
 else()
 
   ExternalProject_Add(rapidjson
-	              GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
-	              GIT_TAG f54b0e47a08782a6131cc3d60f94d038fa6e0a51
-		          PREFIX rapidjson
-	              CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF)
-	 
+                      GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
+                      GIT_TAG f54b0e47a08782a6131cc3d60f94d038fa6e0a51
+                      PREFIX rapidjson
+                      CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF)
+
   ExternalProject_Get_Property(rapidjson source_dir)
   set(RAPIDJSON_INCLUDE_DIR ${source_dir}/include)
   include_directories(${RAPIDJSON_INCLUDE_DIR})
-  
+
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
                       GIT_TAG r22.12
@@ -82,7 +85,7 @@ else()
                       UPDATE_COMMAND "")
 
   add_dependencies(triton rapidjson)
- 
+
 endif() #if (WIN32)
 
 ExternalProject_Get_Property(triton SOURCE_DIR)

@@ -7,26 +7,49 @@
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
 
+#define CHECK_TRITON_ERR(ret, msg)                                                           \
+  if (!ret.IsOk()) {                                                                         \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg, ", triton err: ", ret.Message().c_str()); \
+  }
+
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 
 namespace tc = triton::client;
 
+const char* kCloudUri = "cloud.uri";
+const char* kCloudModelName = "cloud.model_name";
+const char* kCloudModelVer = "cloud.model_version";
+const char* kCloudVerbose = "cloud.verbose";
+const char* kCloudEndpointType = "cloud.endpoint_type";
+const char* kCloudAuthKey = "cloud.auth_key";
+const char* kCloudTriton = "triton";
+
+CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
+                                           const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
+  if (!allocator_) {
+    ORT_THROW("Cannot create invoker on invalid allocator");
+  }
+}
+
 class TritonInvoker : public CloudEndPointInvoker {
  public:
-  TritonInvoker(const CloudEndPointConfig& config);
+  TritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
   onnxruntime::Status Send(const CloudEndPointConfig& run_options,
                            const InlinedVector<std::string>& input_names,
                            gsl::span<const OrtValue> ort_inputs,
                            const InlinedVector<std::string>& output_names,
-                           std::vector<OrtValue>& ort_outputs) const noexcept override;
+                           std::vector<OrtValue>& ort_outputs) const override;
 
  private:
   static std::string MapDataType(int32_t ort_data_type);
+  onnxruntime::TensorPtr CreateTensor(const std::string& data_type, const onnxruntime::VectorInt64& dim) const;
+
   std::string uri_;
   std::string model_name_;
-  std::string model_ver_ = "0";
-  bool verbose_ = false;
-  std::shared_ptr<CPUAllocator> cpu_allocator_;
+  std::string model_ver_ = "1";
+  std::string verbose_ = "0";
   std::unique_ptr<triton::client::InferenceServerHttpClient> triton_client_;
 };
 
@@ -54,7 +77,7 @@ std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       triton_data_type = "INT64";
       break;
-    //todo - do we need to support string?
+    //do we need to support string?
     //case ONNX_NAMESPACE::TensorProto_DataType_STRING:
     //  triton_data_type = "BYTES";
     //  break;
@@ -82,16 +105,48 @@ std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
   return triton_data_type;
 }
 
-TritonInvoker::TritonInvoker(const CloudEndPointConfig& config) : CloudEndPointInvoker(config) {
-  if (ReadConfig("cloud.uri", uri_) &&
-      ReadConfig("cloud.model_name", model_name_) &&
-      ReadConfig("cloud.model_ver", model_ver_, false) &&
-      ReadConfig("cloud.verbose", verbose_, false)) {
-    if (tc::InferenceServerHttpClient::Create(&triton_client_, uri_, verbose_).IsOk()) {
-      cpu_allocator_ = std::make_shared<CPUAllocator>();
-    } else {
-      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize triton client");
-    }
+onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type, const onnxruntime::VectorInt64& dim) const {
+  if (data_type == "FP32") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "UINT8") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<uint8_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "INT8") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<int8_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "UINT16") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<uint16_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "INT16") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<int16_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "INT32") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<int32_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "INT64") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<int64_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "BOOL") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<bool>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "FP16") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<MLFloat16>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "FP64") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<double>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "UINT32") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<uint32_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "UINT64") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<uint64_t>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "BF16") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<BFloat16>(), TensorShape{dim}, allocator_);
+  } else {
+    return {};
+  }
+}
+
+TritonInvoker::TritonInvoker(const CloudEndPointConfig& config,
+                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
+  ReadConfig(kCloudUri, uri_);
+  ReadConfig(kCloudModelName, model_name_);
+  ReadConfig(kCloudModelVer, model_ver_, false);
+  ReadConfig(kCloudVerbose, verbose_, false);
+
+  auto err = tc::InferenceServerHttpClient::Create(&triton_client_, uri_, verbose_ != "0");
+  if (!err.IsOk()) {
+    ORT_THROW("Failed to initialize triton client, triton err: " + err.Message());
   }
 }
 
@@ -99,15 +154,12 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
                                         const InlinedVector<std::string>& input_names,
                                         gsl::span<const OrtValue> ort_inputs,
                                         const InlinedVector<std::string>& output_names,
-                                        std::vector<OrtValue>& ort_outputs) const noexcept {
-  if (!status_.IsOK()) return status_;
-  if (run_options.count("auth_token") == 0) {
+                                        std::vector<OrtValue>& ort_outputs) const {
+  const auto auth_key_iter = run_options.find(kCloudAuthKey);
+  if (run_options.end() == auth_key_iter) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "auth_token must be specified for triton client");
+                           "auth key must be specified for triton client");
   }
-
-  tc::Headers http_headers;
-  http_headers["Authorization"] = std::string{"Bearer "} + run_options.at("auth_token");
 
   if (ort_inputs.size() != input_names.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -116,10 +168,11 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
   }
 
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
-  std::vector<std::unique_ptr<tc::InferInput>> triton_inputs_uptr;
+  std::vector<std::unique_ptr<tc::InferInput>> triton_input_vec;
   std::vector<tc::InferInput*> triton_inputs;
-  std::vector<std::unique_ptr<const tc::InferRequestedOutput>> triton_outputs_uptr;
+  std::vector<std::unique_ptr<const tc::InferRequestedOutput>> triton_output_vec;
   std::vector<const tc::InferRequestedOutput*> triton_outputs;
+  tc::Error err;
 
   try {
     //assemble triton inputs
@@ -127,26 +180,27 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     for (int i = 0; i < static_cast<int>(ort_inputs.size()); i++) {
       const OrtValue& ort_input = ort_inputs[i];
       if (!ort_input.IsTensor()) {
-        //todo - do we need to support tensor sequence and sparse tensor?
+        //do we need to support tensor sequence and sparse tensor?
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton client only accept tensor(s) as input");
       }
+
       const auto& input_tensor = ort_input.Get<Tensor>();
       const auto& ort_input_shape = input_tensor.Shape();
-      std::vector<int64_t> dims;
-      dims.reserve(ort_input_shape.NumDimensions());
-      for (auto dim : ort_input_shape.GetDims()) {
-        dims.push_back(dim);
-      }
-      tc::InferInput* triton_input{};
+
+      tc::InferInput* triton_input = {};
       std::string triton_data_type = MapDataType(input_tensor.GetElementType());
       if (triton_data_type.empty()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Triton client does not support data type: ",
                                ONNX_NAMESPACE::TensorProto_DataType_Name(input_tensor.GetElementType()));
       }
-      if (!tc::InferInput::Create(&triton_input, *iter, dims, MapDataType(input_tensor.GetElementType())).IsOk()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create triton input for ", *iter);
-      }
-      triton_inputs_uptr.emplace_back(triton_input);
+
+      onnxruntime::VectorInt64 dims(ort_input_shape.NumDimensions());
+      ort_input_shape.CopyDims(dims.data(), ort_input_shape.NumDimensions());
+
+      err = tc::InferInput::Create(&triton_input, *iter, dims, MapDataType(input_tensor.GetElementType()));
+      CHECK_TRITON_ERR(err, (std::string{"Failed to create triton input for "} + *iter).c_str());
+
+      triton_input_vec.emplace_back(triton_input);
       triton_inputs.push_back(triton_input);
       triton_input->AppendRaw(static_cast<const uint8_t*>(input_tensor.DataRaw()), input_tensor.SizeInBytes());
       ++iter;
@@ -155,55 +209,59 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     iter = output_names.begin();
     while (iter != output_names.end()) {
       tc::InferRequestedOutput* triton_output;
-      if (!tc::InferRequestedOutput::Create(&triton_output, *iter).IsOk()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create triton output for ", *iter);
-      }
-      triton_outputs_uptr.emplace_back(triton_output);
+      err = tc::InferRequestedOutput::Create(&triton_output, *iter);
+      CHECK_TRITON_ERR(err, (std::string{"Failed to create triton output for "} + *iter).c_str());
+
+      triton_output_vec.emplace_back(triton_output);
       triton_outputs.push_back(triton_output);
       ++iter;
     }
 
-    tc::InferResult* results;
+    tc::InferResult* results = {};
     tc::InferOptions options(model_name_);
     options.model_version_ = model_ver_;
     options.client_timeout_ = 0;
 
-    auto request_compression_algorithm = tc::InferenceServerHttpClient::CompressionType::NONE;
-    auto response_compression_algorithm = tc::InferenceServerHttpClient::CompressionType::NONE;
+    tc::Headers http_headers;
+    http_headers["Authorization"] = std::string{"Bearer "} + auth_key_iter->second;
 
-    if (!triton_client_->Infer(&results, options, triton_inputs, triton_outputs,
-                               http_headers, tc::Parameters(), request_compression_algorithm, response_compression_algorithm)
-             .IsOk()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to infer inputs by triton client");
-    }
+    err = triton_client_->Infer(&results, options, triton_inputs, triton_outputs,
+                                http_headers, tc::Parameters(),
+                                tc::InferenceServerHttpClient::CompressionType::NONE,  //support compression in config?
+                                tc::InferenceServerHttpClient::CompressionType::NONE);
+    CHECK_TRITON_ERR(err, "Triton client failed to do inference");
 
     if (ort_outputs.empty()) {
       ort_outputs.resize(output_names.size());
     }
+
     int output_index = 0;
     std::unique_ptr<tc::InferResult> results_ptr;
     results_ptr.reset(results);
     iter = output_names.begin();
+
     while (iter != output_names.end()) {
       std::vector<int64_t> dims;
-      if (!results_ptr->Shape(*iter, &dims).IsOk()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get shape for output: ", *iter);
-      }
+      err = results_ptr->Shape(*iter, &dims);
+      CHECK_TRITON_ERR(err, (std::string{"Failed to get shape for output "} + *iter).c_str());
 
-      int32_t* output0_data;
-      size_t output0_byte_size;
-      if (!results_ptr->RawData(*iter, (const uint8_t**)&output0_data, &output0_byte_size).IsOk()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get raw data for output", *iter);
-      }
+      std::string type;
+      err = results_ptr->Datatype(*iter, &type);
+      CHECK_TRITON_ERR(err, (std::string{"Failed to get type for output "} + *iter).c_str());
 
-      TensorShape tensor_shape(dims);
-      auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), tensor_shape, cpu_allocator_);
-      //todo - can we skip memcpy?
-      memcpy(output_tensor->MutableDataRaw(), output0_data, output0_byte_size);
-      ort_outputs[output_index].Init(output_tensor.get(), tensor_type, tensor_type->GetDeleteFunc());
-      output_tensor.release();
+      const uint8_t* raw_data = {};
+      size_t raw_size;
+      err = results_ptr->RawData(*iter, &raw_data, &raw_size);
+      CHECK_TRITON_ERR(err, (std::string{"Failed to get raw data for output "} + *iter).c_str());
+
+      auto output_tensor = CreateTensor(type, dims);
+      if (!output_tensor) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output", *iter);
+      }
+      //how to skip memcpy?
+      memcpy(output_tensor->MutableDataRaw(), raw_data, raw_size);
+      ort_outputs[output_index++].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
       ++iter;
-      ++output_index;
     }
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Caught exception in TritonInvokder::Send", ex.what());
@@ -211,47 +269,37 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
   return Status::OK();
 }
 
-bool CloudEndPointInvoker::ReadConfig(const char* config_name, bool& config_val, bool required) {
-  if (config_.count(config_name)) {
-    config_val = config_[config_name] == "true" || config_[config_name] == "True" || config_[config_name] == "TRUE" || config_[config_name] == "1";
+void CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
+  const auto iter = config_.find(config_name);
+  if (config_.end() != iter) {
+    config_val = iter->second;
   } else if (required) {
-    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
+    ORT_THROW("Triton invoker failed to initialize due to missed config: ", config_name);
   }
-  return status_.IsOK();
 }
 
-bool CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
-  if (config_.count(config_name)) {
-    config_val = config_[config_name];
-  } else if (required) {
-    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
-  }
-  return status_.IsOK();
-}
-
-bool CloudEndPointInvoker::ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required) {
-  if (config_.count(config_name)) {
-    std::stringstream ss;
-    ss << config_[config_name];
-    std::string tmp;
-    while (std::getline(ss, tmp, ',')) {
-      config_vals.push_back(std::move(tmp));
+Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
+                                           const AllocatorPtr& allocator,
+                                           std::unique_ptr<CloudEndPointInvoker>& invoker) {
+  auto status = Status::OK();
+  ORT_TRY {
+    const auto iter = config.find(kCloudEndpointType);
+    if (config.end() != iter) {
+      if (iter->second == kCloudTriton) {
+        invoker = std::make_unique<TritonInvoker>(config, allocator);
+        return status;
+      } // else other endpoint types ...
     }
-  } else if (required) {
-    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Cannot create cloud invoker due to missed or mismatched endpoint type.");
   }
-  return status_.IsOK();
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+    });
+  }
+  return status;
 }
 
-std::unique_ptr<CloudEndPointInvoker> CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config) {
-  static const std::string endpoint_type = "cloud.endpoint_type";
-  static const std::string triton_type = "triton";
-  if (config.count(endpoint_type)) {
-    if (config.at(endpoint_type) == triton_type) {
-      return std::make_unique<TritonInvoker>(config);
-    }
-  }
-  return {};
-}
 }  // namespace onnxruntime
 #endif

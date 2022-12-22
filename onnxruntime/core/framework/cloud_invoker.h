@@ -13,29 +13,27 @@ namespace onnxruntime {
 using CloudEndPointConfig = std::unordered_map<std::string, std::string>;
 using TensorPtr = std::unique_ptr<onnxruntime::Tensor>;
 using TensorPtrArray = onnxruntime::InlinedVector<TensorPtr>;
-using ConstTensorPtrArray = gsl::span<onnxruntime::Tensor* const>;
 
 class CloudEndPointInvoker {
  public:
-  CloudEndPointInvoker(const CloudEndPointConfig& config) : config_(config) {}
+  CloudEndPointInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
   virtual ~CloudEndPointInvoker() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CloudEndPointInvoker);
 
-  static std::unique_ptr<CloudEndPointInvoker> CreateInvoker(const CloudEndPointConfig& config);
+  static Status CreateInvoker(const CloudEndPointConfig& config,
+                              const AllocatorPtr& allocator,
+                              std::unique_ptr<CloudEndPointInvoker>& invoker);
 
   virtual onnxruntime::Status Send(const CloudEndPointConfig& run_options,
                                    const InlinedVector<std::string>& input_names,
                                    gsl::span<const OrtValue> ort_inputs,
                                    const InlinedVector<std::string>& output_names,
-                                   std::vector<OrtValue>& ort_outputs) const noexcept = 0;
+                                   std::vector<OrtValue>& ort_outputs) const = 0;
 
  protected:
-  bool ReadConfig(const char* config_name, bool& config_val, bool required = true);
-  bool ReadConfig(const char* config_name, std::string& config_val, bool required = true);
-  bool ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals, bool required = true);
-
+  void ReadConfig(const char* config_name, std::string& config_val, bool required = true);
   CloudEndPointConfig config_;
-  mutable onnxruntime::Status status_ = onnxruntime::Status::OK();
+  const AllocatorPtr& allocator_;
 };
 }  // namespace onnxruntime
 #endif

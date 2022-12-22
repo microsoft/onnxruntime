@@ -370,6 +370,15 @@ namespace OperatorHelper
         static const int sc_sinceVer_Shape = 15;
     } // namespace OnnxOperatorSet15
 
+    namespace OnnxOperatorSet16
+    {
+        static const int sc_sinceVer_LeakyRelu = 16;
+        static const int sc_sinceVer_PRelu = 16;
+        static const int sc_sinceVer_Where = 16;
+        static const int sc_sinceVer_GreaterOrEqual = 16;
+        static const int sc_sinceVer_LessOrEqual = 16;
+    } // namespace OnnxOperatorSet16
+
     namespace OnnxOperatorSet17
     {
         static const int sc_sinceVer_LayerNormalization = 17;
@@ -395,6 +404,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_SkipLayerNormalization = 1;
+        static const int sc_sinceVer_EmbedLayerNormalization = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper
