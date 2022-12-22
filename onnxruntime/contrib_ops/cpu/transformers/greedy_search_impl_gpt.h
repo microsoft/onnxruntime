@@ -253,7 +253,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     if (iteration_counter++ == 0 &&
         init_run_decoder_session_state_ != nullptr) {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-      const_cast<SessionState&>(this->init_run_decoder_session_state_).IncrementGraphExecutionCounter();
+      const_cast<SessionState*>(this->init_run_decoder_session_state_)->IncrementGraphExecutionCounter();
 #endif
       status = utils::ExecuteSubgraph(*init_run_decoder_session_state_,
                                       *init_run_feeds_fetches_manager,
