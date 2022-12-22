@@ -524,6 +524,7 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
 
   int count = vocab_idx;
   float sum = 0.0f;
+  // TODO: Optimization needed. e.g. use CUB::SCAN() for cumulative probabilities.
   while (count >= 0) {
     sum += d_sorted_logits_in[start_index];
     ++start_index;
@@ -596,7 +597,7 @@ template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
 
 
 // Ref: https://github.com/pytorch/pytorch/blob/release/1.13/aten/src/ATen/native/cuda/MultinomialKernel.cu
-template <typename scalar_t, typename accscalar_t, unsigned TPB>
+template <typename scalar_t, typename accscalar_t>
 __global__ void sampleMultinomialOnce(int64_t* dest,
                                       int distributions,
                                       int categories,
@@ -605,9 +606,6 @@ __global__ void sampleMultinomialOnce(int64_t* dest,
                                       int stride_dist, // dist->stride(0)
                                       int stride_categories, // dist->stride(1)
                                       int* d_presence_mask) {
-  using BlockReduce = cub::BlockReduce<float, TPB>;
-  __shared__ typename BlockReduce::TempStorage tmp_storage;
-
   extern __shared__  unsigned char my_smem[];
   __shared__ bool found;
   __shared__ unsigned foundPos;
@@ -617,19 +615,9 @@ __global__ void sampleMultinomialOnce(int64_t* dest,
   for (int curDist = blockIdx.x;
        curDist < distributions; curDist += gridDim.x) {
 
-    // Each block handles one distribution
-    // First pass, find the total sum of the distribution
-    accscalar_t sum = accZero;
-    scalar_t val;
-    for (int cat = threadIdx.x; cat < categories; cat += blockDim.x) {
-      val = dist[curDist * stride_dist + cat * stride_categories];
-      // CUDA_KERNEL_ASSERT(!at::_isnan(val));
-      // CUDA_KERNEL_ASSERT(!_isinf(val));
-      // CUDA_KERNEL_ASSERT(!(val < zero));
-      sum = sum + static_cast<accscalar_t>(val);
-    }
-    // threadIdx.x == 0 has the sum value from this
-    sum = BlockReduce(tmp_storage).Reduce(sum, cub::Sum()); // sum = cuda_utils::BlockReduceSum(sum, smem);
+    // Assume sum = 1 in Top P sampling as the input is softmaxed.
+    accscalar_t sum = 1;
+
     // Broadcast sum and sample value
     if (threadIdx.x == 0) {
       // Make sure the sum of our distribution didn't overflow
@@ -748,24 +736,19 @@ void TorchMultinomialKernelLauncher(float* d_input,
   int requiredThreads = std::min(maxThreads, requiredWarps * warp_size);
   int requiredShared = requiredThreads * sizeof(float);
 
-  // bugbug: randomize d_sampled
   dim3 block(requiredThreads);
   dim3 grid(std::min(batch_size, numSM * 4));
 
-  if (block.x == 1024) {
-    const int block_size = 1024;
-    sampleMultinomialOnce<float, float, block_size>
+  sampleMultinomialOnce<float, float>
       <<<grid, block, requiredShared, stream>>>(d_output,
                                                 batch_size,
                                                 vocab_size,
                                                 d_sampled,
                                                 d_input,
                                                 vocab_size,
-                                                batch_size,
+                                                1,
                                                 d_presence_mask);
-  } else {
-    printf("Please add more cases for block size");
-  }
+
 }
 
 
