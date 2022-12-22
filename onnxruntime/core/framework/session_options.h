@@ -11,6 +11,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 #include "core/framework/config_options.h"
+#include "core/framework/library_handle.h"
 
 namespace onnxruntime {
 
@@ -136,6 +137,11 @@ struct SessionOptions {
 
   // custom function callback to join a thread
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+  // Store handles to custom op libraries so that their lifetimes extend the lifetime of the session options object.
+  // Lazily initialized by the first call to SessionOptions::AddCustomOpLibraryHandle().
+  std::shared_ptr<std::vector<LibraryHandle>> custom_op_libs_;
+  void AddCustomOpLibraryHandle(void* library_handle, const char* library_name);
 };
 
 }  // namespace onnxruntime

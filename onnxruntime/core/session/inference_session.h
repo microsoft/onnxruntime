@@ -247,12 +247,6 @@ class InferenceSession {
    * @return OK if success.
    */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
-
-  /**
-   * Add custom op library handles to the session in order to ensure that libraries are not released before the session
-   * is destroyed. This API is not thread safe.
-   */
-  void AddCustomOpLibraries(const std::vector<std::shared_ptr<void>>& library_handles) ORT_MUST_USE_RESULT;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
@@ -675,14 +669,6 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryProfiler memory_profiler_;
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Store handles to custom op libraries so that their lifetimes extend the lifetime of the session.
-  //
-  // IMPORTANT: Needs to be declared *before* the session_state_ so that the library handles are released
-  // *after* the session_state_ is destructed.
-  std::vector<std::shared_ptr<void>> custom_op_lib_handles_;
 #endif
 
   // Immutable state for each op in the model. Shared by all executors.

@@ -638,32 +638,32 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const char* library_path) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
+                    _In_ const char* library_name) {
   API_IMPL_BEGIN
   void* library_handle = nullptr;
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, &library_handle));
-  if (!library_handle)
-    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary_V2: Failed to load library");
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_name, false, &library_handle));
+  if (!library_handle) {
+    std::string err_msg = "RegisterCustomOpsLibrary_V2: Failed to load library ";
+    err_msg += library_name;
+    return OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
+  }
 
-  std::shared_ptr<void> lib_ptr(library_handle,
-      [](void* handle) {
-        auto status = Env::Default().UnloadDynamicLibrary(handle);
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(WARNING) << "RegisterCustomOpsLibrary_V2: Failed to unload custom op library.";
-        }
-      });
+  // SessionOptions will manage the lifetime of library handles.
+  options->value.AddCustomOpLibraryHandle(library_handle, library_name);
 
   OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(lib_ptr.get(), "RegisterCustomOps",
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
                                                                       (void**)&RegisterCustomOps));
-  if (!RegisterCustomOps)
-    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary_V2: Entry point RegisterCustomOps not found in library");
+  if (!RegisterCustomOps) {
+    std::string err_msg = "RegisterCustomOpsLibrary_V2: Entry point RegisterCustomOps not found in library ";
+    err_msg += library_name;
+    return OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
+  }
 
   ORT_API_RETURN_IF_ERROR(RegisterCustomOps(options, OrtGetApiBase()));
-
-  options->custom_op_lib_handles_.push_back(std::move(lib_ptr));
 
   return nullptr;
   API_IMPL_END
@@ -722,12 +722,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Add custom op library handles to the session so that their lifetimes extend
-  // the lifetime of the session.
-  if (options && !options->custom_op_lib_handles_.empty()) {
-    sess->AddCustomOpLibraries(options->custom_op_lib_handles_);
-  }
-
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));

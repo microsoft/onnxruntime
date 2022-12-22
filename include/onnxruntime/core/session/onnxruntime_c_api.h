@@ -3816,7 +3816,7 @@ struct OrtApi {
 
   /** \brief Register custom ops from a shared library.
   *
-  * Loads a shared library (dll on windows, so on linux, etc) named 'library_path' and looks for this entry point:
+  * Loads a shared library (.dll on windows, .so on linux, etc) named 'library_name' and looks for this entry point:
   *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
   * It then passes in the provided session options to this function along with the api base.
   *
@@ -3824,12 +3824,14 @@ struct OrtApi {
   * library handle is released. If no OrtSession is created, then the library handle is released when the provided
   * OrtSessionOptions is released.
   *
-  * \param[in] options
-  * \param[in] library_path
+  * \param[in] options The session options.
+  * \param[in] library_name The name of the shared library to load and register. Refer to OS-specific dynamic library
+  *                         loading utilities (e.g., LoadLibraryEx on Windows or dlopen on Linux/MacOS) for information
+  *                         on the format of library names and search paths.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const char* library_path);
+  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const char* library_name);
 
   /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
   *
