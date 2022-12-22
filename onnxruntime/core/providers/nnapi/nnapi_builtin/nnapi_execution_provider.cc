@@ -184,7 +184,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
       const auto* meta_def = capability->sub_graph->GetMetaDef();
       bool not_empty_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
-        return (graph_viewer.IsConstantInitializer(input, true));
+        return !graph_viewer.IsConstantInitializer(input, true);
       });
 
       if (!not_empty_inputs || meta_def->outputs.empty()) {
