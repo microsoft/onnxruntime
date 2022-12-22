@@ -438,7 +438,6 @@ inline void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_pt
 }
 
 void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device) {
-  /*
   // If the provided py_array is already contiguous, its ref count will be incremented and we will decrement
   // the ref count when this function's scope ends
   PyArrayObject* contiguous_array = PyArray_GETCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_array.ptr()));
@@ -446,7 +445,6 @@ void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, M
 
   // Clean-up the contiguous array after the end of the current scope
   UniqueDecRefPtr<PyArrayObject> contiguous_array_guard(contiguous_array, DecRefFn<PyArrayObject>());
-  */
 
   CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
 }
