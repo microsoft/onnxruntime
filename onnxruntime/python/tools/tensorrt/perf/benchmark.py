@@ -1932,48 +1932,6 @@ def parse_models_helper(args, models):
         parse_models_info_from_directory(model_source, models)
 
 
-class GPUFreqLock:
-    def __init__(self):
-        self.locked = False
-        self.locked_freqs = None
-
-        freqs_query = subprocess.run(
-            ["nvidia-smi", "--query-supported-clocks=mem,gr", "--format=csv,nounits,noheader"],
-            capture_output=True,
-            encoding="utf-8",
-        )
-
-        if freqs_query.returncode == 0 and freqs_query.stdout:
-            freq_pair_lines = freqs_query.stdout.split("\n")
-            freq_pairs = [line.split(",") for line in freq_pair_lines]
-            self.locked_freqs = freq_pairs[0]
-        else:
-            print(f"[WARNING] Cannot query GPU frequencies:\n{freqs_query.stdout}\n{freqs_query.stderr}")
-
-    def __enter__(self):
-        if not self.locked_freqs:
-            return None
-
-        lock_app_clks = subprocess.run(
-            ["nvidia-smi", "-ac", ",".join(self.locked_freqs)],
-            capture_output=True,
-            encoding="utf-8",
-        )
-
-        self.locked = lock_app_clks.returncode == 0
-
-        if not self.locked:
-            print(f"[WARNING] Cannot lock GPU frequencies:\n{lock_app_clks.stdout}\n{lock_app_clks.stderr}")
-
-        return self.locked_freqs if self.locked else None
-
-    def __exit__(self, e_type, e_value, e_traceback):
-        if self.locked:
-            restore_clks = subprocess.run(["nvidia-smi", "-rac"], capture_output=True, encoding="utf-8")
-            action_str = "Restored" if restore_clks.returncode == 0 else "Failed to restore"
-            print(f"[INFO] {action_str} GPU clocks to default values")
-
-
 def main():
     args = parse_arguments()
     pp = pprint.PrettyPrinter(indent=4)
@@ -1981,20 +1939,14 @@ def main():
     models = {}
     parse_models_helper(args, models)
 
-    with GPUFreqLock() as freqs:
-        if freqs:
-            print(f"[INFO] Locked GPU memory and graphics frequencies to {'and '.join(freqs)} MHz")
-
-        perf_start_time = datetime.now()
-        (
-            model_to_latency,
-            model_to_fail_ep,
-            model_to_metrics,
-            model_to_session,
-        ) = test_models_eps(args, models)
-        perf_end_time = datetime.now()
-
-    print(f"[INFO] Total time for test_models_eps() call: {perf_end_time - perf_start_time}")
+    perf_start_time = datetime.now()
+    (
+        model_to_latency,
+        model_to_fail_ep,
+        model_to_metrics,
+        model_to_session,
+    ) = test_models_eps(args, models)
+    perf_end_time = datetime.now()
 
     fail_model_cnt = 0
     for key, value in models.items():
