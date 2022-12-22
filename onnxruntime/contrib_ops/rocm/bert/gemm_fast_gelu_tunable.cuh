@@ -21,13 +21,11 @@ namespace internal {
 template <typename T>
 Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   namespace column_major = onnxruntime::rocm::tunable::blas::column_major;
-  if (column_major::Gemm(params->tuning, params->stream, params->handle,
+  ORT_RETURN_IF_ERROR(column_major::Gemm(params->tuning, params->stream, params->handle,
                          params->opb, params->opa,
                          params->n, params->m, params->k,
                          params->alpha, params->b, params->ldb, params->a, params->lda,
-                         params->beta, params->c, params->ldc) != Status::OK()) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "GemmFastGelu call column_major::Gemm failed");
-  }
+                         params->beta, params->c, params->ldc));
 
   int64_t fast_gelu_input_length = params->m * params->n;
   int64_t bias_length = (params->bias != nullptr) ? params->n : 0;
