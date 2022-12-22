@@ -23,9 +23,8 @@ from pathlib import Path
 
 import numpy
 import torch
-from gpt2_beamsearch_helper import MODEL_CLASSES, Gpt2HelperFactory
-from gpt2_beamsearch_tester import Gpt2TesterFactory
-from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
+from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
+from gpt2_test import Gpt2Tester
 from packaging import version
 from transformers import AutoConfig
 
@@ -146,61 +145,6 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(use_int32_inputs=False)
 
-    parser.add_argument(
-        "--beam_size",
-        type=int,
-        default=4,
-        help="Beam size if greedy/top-p/top-k sampling is needed",
-    )
-
-    search_option_group = parser.add_argument_group("configurable one step search options")
-
-    search_option_group.add_argument(
-        "--ignore_eos",
-        type=bool,
-        default=False,
-        help="If ignore end of sentence token in model inference.",
-    )
-    search_option_group.add_argument(
-        "--repetition_penalty",
-        type=float,
-        default=1,
-        help="Positive. >1 to penalize and <1 to encourage.",
-    )
-    search_option_group.add_argument(
-        "--temperature",
-        type=float,
-        default=1,
-        help="Softmax temperature for output logits.",
-    )
-    search_option_group.add_argument(
-        "--excluded_token_ids",
-        required=False,
-        nargs="+",
-        type=float,
-        help="A list of token ids to be excluded in inference.",
-    )
-    search_option_group.add_argument(
-        "--length_penalty",
-        type=float,
-        default=1,
-        help="Positive. >1 to penalize and <1 to encourage short sentence.",
-    )
-
-    sampling_option_group = parser.add_argument_group("one step sampling options")
-    sampling_option_group.add_argument(
-        "--do_sample",
-        action="store_true",
-        help="If to do sampling instead of beam search or greedy.",
-    )
-    sampling_option_group.add_argument(
-        "--do_sample_top_p",
-        type=float,
-        default=0.95,
-        help="Nuclear/top-p sampling accumulation probability.",
-    )
-    sampling_option_group.add_argument("--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero.")
-
     fp16_option_group = parser.add_argument_group(
         'float to float16 conversion parameters that works when "--precision fp16" is specified'
     )
@@ -305,48 +249,15 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     model_class = MODEL_CLASSES[args.model_class][0]
     use_padding = MODEL_CLASSES[args.model_class][2]
 
-    if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
-        model_type = "beam_search_step"
-    elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
-        model_type = "configurable_one_step_search"
-    else:
-        model_type = "default"
-
-    gpt2helper = Gpt2HelperFactory.create_helper(model_type)
-    gpt2tester = Gpt2TesterFactory.create_tester(model_type)
+    gpt2helper = Gpt2Helper
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
-    if model_type == "beam_search_step":
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            config=config,
-            batch_size=1,
-            beam_size=args.beam_size,
-            cache_dir=cache_dir,
-        )
-    elif model_type == "configurable_one_step_search":
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            config=config,
-            batch_size=1,
-            beam_size=args.beam_size,
-            ignore_eos=args.ignore_eos,
-            temperature=args.temperature,
-            repetition_penalty=args.repetition_penalty,
-            excluded_token_ids=args.excluded_token_ids,
-            length_penalty=args.length_penalty,
-            do_sample=args.do_sample,
-            do_sample_top_p=args.do_sample_top_p,
-            do_sample_top_k=args.do_sample_top_k,
-            cache_dir=cache_dir,
-        )
-    else:
-        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
+    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
 
     if (not args.use_external_data_format) and (config.n_layer > 24):
-        logger.info(f"Try --use_external_data_format when model size > 2GB")
+        logger.info("Try --use_external_data_format when model size > 2GB")
 
     onnx_model_paths = gpt2helper.get_onnx_paths(
         output_dir,
@@ -573,22 +484,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 else:
                     inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
 
-                if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
-                    beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
-
-                    input_log_probs = torch.zeros([input_ids.shape[0], 1])
-                    input_unfinished_sents = torch.ones([input_ids.shape[0], 1], dtype=torch.bool)
-                    inputs.update(
-                        {
-                            "beam_select_idx": beam_select_idx,
-                            "input_log_probs": input_log_probs,
-                            "input_unfinished_sents": input_unfinished_sents,
-                        }
-                    )
-
                 test_inputs.append(inputs)
 
-        gpt2tester.test_generation(
+        Gpt2Tester.test_generation(
             session,
             model,
             device,
