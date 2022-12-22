@@ -427,7 +427,6 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "1",
         "--test_cases",
         "10",
-        "--use_int32_inputs",  # BeamSearch requires to use int32 for input_ids, position_ids and attention_mask
         "--overwrite",  # Overwrite onnx file if existed
     ]
     if args.use_gpu:
