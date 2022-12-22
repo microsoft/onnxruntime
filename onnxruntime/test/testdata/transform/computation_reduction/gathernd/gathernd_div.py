@@ -9,43 +9,48 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
     ["batch", "dynamic_prediction_count", 1],
 )
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
-
-layer_norm1_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-layer_norm1_weight_initializer = numpy_helper.from_array(
-    layer_norm1_weight_np_vals, "bert.encoder.layer.2.output.LayerNorm.weight"
-)
-
-layer_norm1_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-layer_norm1_bias_initializer = numpy_helper.from_array(
-    layer_norm1_bias_np_vals, "bert.encoder.layer.2.output.LayerNorm.bias"
-)
-
+Y2 = helper.make_tensor_value_info("output2", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
 nodes = []
-layer_norm1 = helper.make_node(
-    "LayerNormalization",
-    ["input", layer_norm1_weight_initializer.name, layer_norm1_bias_initializer.name],
-    ["layer_norm1", "saved_mean1", "saved_inv_std_var1"],
-    name="layer_norm_1",
-    epsilon=9.999999960041972e-13,
-    axis=-1,
-)
-nodes.append(layer_norm1)
+
+# case 1
+divisor_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+divisor_initializer = numpy_helper.from_array(divisor_np_val, "divisor")
+div1 = helper.make_node("Div", ["input", "divisor"], ["div_1"], name="div_1")
+nodes.append(div1)
 
 gathernd1 = helper.make_node(
     "GatherND",
-    ["layer_norm1", "unsqueezed_masked_lm_positions"],
+    ["div_1", "unsqueezed_masked_lm_positions"],
     ["output"],
     name="gathernd_1",
     batch_dims=1,
 )
 nodes.append(gathernd1)
 
+# case 2
+divisor2_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+divisor2_initializer = numpy_helper.from_array(divisor2_np_val, "divisor2")
+div2 = helper.make_node("Div", ["divisor2", "input"], ["div_2"], name="div_2")
+nodes.append(div2)
+
+gathernd2 = helper.make_node(
+    "GatherND",
+    ["div_2", "unsqueezed_masked_lm_positions"],
+    ["gathernd_out"],
+    name="gathernd_2",
+    batch_dims=1,
+)
+nodes.append(gathernd2)
+
+identity = helper.make_node("Identity", ["gathernd_out"], ["output2"], name="identity")
+nodes.append(identity)
+
 graph_def = helper.make_graph(
     nodes,
     "test-model",
     [X, unsqueezed_masked_lm_positions],
-    [Y],
-    [layer_norm1_weight_initializer, layer_norm1_bias_initializer],
+    [Y, Y2],
+    [divisor_initializer, divisor2_initializer],
 )
 
 opsets = []
@@ -64,4 +69,4 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name="onnx-example", **kwargs)
 
-onnx.save(model_def, "gathernd_layernormalization.onnx")
+onnx.save(model_def, "gathernd_div.onnx")

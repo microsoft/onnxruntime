@@ -85,6 +85,14 @@ def parse_arguments(argv=None):
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
+        "--provider",
+        required=False,
+        default=None,
+        choices=["dml", "rocm", "migraphx", "cuda", "tensorrt"],
+        help="use dml, rocm, cuda, tensorrt or migraphx for respective backend",
+    )
+
+    parser.add_argument(
         "--tolerance",
         required=False,
         type=float,
@@ -331,7 +339,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     logger.info(f"Output path: {output_path}")
     model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
 
-    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
+    session = create_onnxruntime_session(
+        output_path, args.use_gpu, args.provider, enable_all_optimization=True, verbose=args.verbose
+    )
     if args.model_class == "GPT2LMHeadModel" and session is not None:
         parity_result = gpt2helper.test_parity(
             session,
