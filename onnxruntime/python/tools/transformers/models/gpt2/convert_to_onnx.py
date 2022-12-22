@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy
 import torch
 from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
-from gpt2_test import Gpt2Tester
+from gpt2_tester import Gpt2Tester
 from packaging import version
 from transformers import AutoConfig
 
