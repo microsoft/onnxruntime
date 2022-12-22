@@ -9,46 +9,29 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
     ["batch", "dynamic_prediction_count", 1],
 )
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
-Y2 = helper.make_tensor_value_info("output2", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
-nodes = []
 
-# case 1
-bias_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-bias_initializer = numpy_helper.from_array(bias_np_val, "bias")
-add1 = helper.make_node("Add", ["input", "bias"], ["add_1"], name="add_1")
-nodes.append(add1)
+matmul1_np_vals = np.random.uniform(0.0, 1.0, (128, 128)).astype(np.float32).reshape((128, 128))
+matmul1_initializer = numpy_helper.from_array(matmul1_np_vals, "matmul1_initializer")
+
+nodes = []
+matmul1 = helper.make_node("MatMul", ["input", matmul1_initializer.name], ["matmul1"], name="matmul_1")
+nodes.append(matmul1)
 
 gathernd1 = helper.make_node(
     "GatherND",
-    ["add_1", "unsqueezed_masked_lm_positions"],
-    ["output"],
+    ["matmul1", "unsqueezed_masked_lm_positions"],
+    ["gathernd_out"],
     name="gathernd_1",
     batch_dims=1,
 )
 nodes.append(gathernd1)
 
-# case 2
-bias2_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-bias2_initializer = numpy_helper.from_array(bias2_np_val, "bias2")
-add2 = helper.make_node("Add", ["bias2", "input"], ["add_2"], name="add_2")
-nodes.append(add2)
+identity = helper.make_node("Identity", ["gathernd_out"], ["output"], name="identity")
+nodes.append(identity)
 
-gathernd2 = helper.make_node(
-    "GatherND",
-    ["add_2", "unsqueezed_masked_lm_positions"],
-    ["output2"],
-    name="gathernd_2",
-    batch_dims=1,
-)
-nodes.append(gathernd2)
+initializers = [matmul1_initializer]
 
-graph_def = helper.make_graph(
-    nodes,
-    "test-model",
-    [X, unsqueezed_masked_lm_positions],
-    [Y, Y2],
-    [bias_initializer, bias2_initializer],
-)
+graph_def = helper.make_graph(nodes, "test-model", [X, unsqueezed_masked_lm_positions], [Y], initializers)
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
@@ -66,4 +49,4 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name="onnx-example", **kwargs)
 
-onnx.save(model_def, "gathernd_add.onnx")
+onnx.save(model_def, "gathernd_matmul.onnx")
