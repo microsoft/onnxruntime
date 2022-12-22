@@ -59,9 +59,8 @@ Status QdqOpBuilder::AddQuantizeNodeOnModelInput(QnnModelWrapper& qnn_model_wrap
   LOGS(logger, VERBOSE) << "AddQuantizeNodeOnModelInput: " << input_name << "->" << output_name;
 
   const auto* type_proto = node_unit.GetNode().InputDefs()[2]->TypeAsProto();
-  int32_t onnx_data_type;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(true, type_proto, onnx_data_type, qnn_data_type));
+  ORT_RETURN_IF_ERROR(GetQnnDataType(true, type_proto, qnn_data_type));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape), "Cannot get shape");
@@ -102,8 +101,7 @@ Status QdqOpBuilder::AddQuantizeNodeOnModelInput(QnnModelWrapper& qnn_model_wrap
                                                     qnn_op_type,
                                                     {input_name},
                                                     {output_name},
-                                                    {}
-                                                    ),
+                                                    {}),
                     "Failed to add node.");
 
   return Status::OK();
@@ -118,9 +116,8 @@ Status QdqOpBuilder::AddDequantizeNodeOnModelOutput(QnnModelWrapper& qnn_model_w
 
   // get type from zero_point
   const auto* type_proto = node_unit.GetNode().InputDefs()[2]->TypeAsProto();
-  int32_t onnx_data_type;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(true, type_proto, onnx_data_type, qnn_data_type));
+  ORT_RETURN_IF_ERROR(GetQnnDataType(true, type_proto, qnn_data_type));
 
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Outputs()[0].node_arg, output_shape),
@@ -154,8 +151,7 @@ Status QdqOpBuilder::AddDequantizeNodeOnModelOutput(QnnModelWrapper& qnn_model_w
                                                     qnn_op_type,
                                                     {input_name},
                                                     {output_name},
-                                                    {}
-                                                    ),
+                                                    {}),
                     "Failed to add node.");
 
   return Status::OK();

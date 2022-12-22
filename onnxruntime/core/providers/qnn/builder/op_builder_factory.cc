@@ -112,6 +112,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateResizeOpBuilder("Resize", *this);
   }
+
+  {
+    CreateTopKOpBuilder("TopK", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

@@ -58,14 +58,13 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto* type_proto = inputs[0].node_arg.TypeAsProto();
-  int32_t onnx_data_type;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[0].quant_param,
-                                                                    quantize_param.scaleOffsetEncoding.scale,
-                                                                    quantize_param.scaleOffsetEncoding.offset),
+                                                                   quantize_param.scaleOffsetEncoding.scale,
+                                                                   quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
 
   std::vector<uint8_t> unpacked_tensor;
@@ -114,7 +113,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
       const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       size_t tensor_byte_size = unpacked_tensor.size();
       size_t size = tensor_byte_size / sizeof(int64_t);
-      split_index.push_back(0); // QNN need the start index of each range and starts from 0
+      split_index.push_back(0);  // QNN need the start index of each range and starts from 0
       std::transform(tensor_data, tensor_data + size, std::back_inserter(split_index),
                      [](int64_t item) { return SafeInt<uint32_t>(item); });
       split_index.pop_back();

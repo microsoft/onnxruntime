@@ -32,6 +32,10 @@ class BaseOpBuilder : public IOpBuilder {
   std::string GetOpBuilderType() const override;
 
  protected:
+  virtual Qnn_DataType_t GetSupportedOutputDataType(size_t index, Qnn_DataType_t qnn_data_type) const {
+    return qnn_data_type;
+  }
+
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
@@ -57,12 +61,12 @@ class BaseOpBuilder : public IOpBuilder {
   bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
 
   Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
-                        int32_t& onnx_data_type, Qnn_DataType_t& tensor_data_type) const {
+                        Qnn_DataType_t& tensor_data_type) const {
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
     }
 
-    onnx_data_type = type_proto->tensor_type().elem_type();
+    int32_t onnx_data_type = type_proto->tensor_type().elem_type();
     ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_node),
                       "Failed to map Onnx data type to Qnn data type!");
 
@@ -145,7 +149,8 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"ArgMax", "Argmax"},
         {"ArgMin", "Argmin"},
-        {"ConvTranspose", "TransposeConv2d"}};
+        {"ConvTranspose", "TransposeConv2d"},
+        {"TopK", "TopK"}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;

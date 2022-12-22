@@ -54,14 +54,13 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto* type_proto = input_0.node_arg.TypeAsProto();
-  int32_t onnx_data_type;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(input_0.quant_param,
-                                                                    quantize_param.scaleOffsetEncoding.scale,
-                                                                    quantize_param.scaleOffsetEncoding.offset),
+                                                                   quantize_param.scaleOffsetEncoding.scale,
+                                                                   quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
 
   std::vector<uint8_t> unpacked_tensor;

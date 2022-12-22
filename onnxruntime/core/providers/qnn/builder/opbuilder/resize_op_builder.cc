@@ -104,14 +104,13 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto* type_proto = inputs[0].node_arg.TypeAsProto();
-  int32_t onnx_data_type;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[0].quant_param,
-                                                                    quantize_param.scaleOffsetEncoding.scale,
-                                                                    quantize_param.scaleOffsetEncoding.offset),
+                                                                   quantize_param.scaleOffsetEncoding.scale,
+                                                                   quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
 
   std::vector<uint8_t> unpacked_tensor;
@@ -179,12 +178,11 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   InitializeQuantizeParam(quantize_param, is_quantized_model);
 
   const auto* type_proto = resize_output.node_arg.TypeAsProto();
-  int32_t onnx_data_type;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(resize_output.quant_param,
-                                                                    quantize_param.scaleOffsetEncoding.scale,
-                                                                    quantize_param.scaleOffsetEncoding.offset),
+                                                                   quantize_param.scaleOffsetEncoding.scale,
+                                                                   quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(resize_output.node_arg, output_shape),

@@ -93,7 +93,7 @@ class QnnTensorWrapper {
     if (QNN_TENSOR_TYPE_STATIC == tensor_type) {
       SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
     }
-    
+
     if (mem_type != QNN_TENSORMEMTYPE_RAW) {
       ORT_THROW("mem_type not supported for now.");
     }
@@ -163,7 +163,7 @@ class QnnTensorWrapper {
 class QnnParamWrapper {
  public:
   QnnParamWrapper(NodeIndex node_index,
-                  const std::string& node_name, 
+                  const std::string& node_name,
                   const std::string& name,
                   Qnn_Scalar_t scalarParam) : name_(name), shape_({}), param_data_({}) {
     qnn_param_.paramType = QNN_PARAMTYPE_SCALAR;
@@ -248,11 +248,11 @@ class QnnOpConfigWrapper {
                      std::vector<Qnn_Tensor_t>&& inputs,
                      std::vector<Qnn_Tensor_t>&& outputs,
                      std::vector<Qnn_Param_t>&& params) : name_(name),
-                                                            package_name_(package_name),
-                                                            type_name_(type_name),
-                                                            inputs_(std::move(inputs)),
-                                                            outputs_(std::move(outputs)),
-                                                            params_(std::move(params)) {
+                                                          package_name_(package_name),
+                                                          type_name_(type_name),
+                                                          inputs_(std::move(inputs)),
+                                                          outputs_(std::move(outputs)),
+                                                          params_(std::move(params)) {
     SetNames(name_.c_str(), package_name_.c_str(), type_name_.c_str());
     SetNums(static_cast<uint32_t>(inputs_.size()),
             static_cast<uint32_t>(outputs_.size()),
@@ -279,14 +279,14 @@ class QnnOpConfigWrapper {
   const Qnn_OpConfig_t& GetQnnOpConfig() { return op_config_; }
 
   void SetNames(const char* op_name,
-                           const char* package_name,
-                           const char* type_name);
+                const char* package_name,
+                const char* type_name);
   void SetNums(uint32_t num_inputs,
-                          uint32_t num_outputs,
-                          uint32_t num_params);
+               uint32_t num_outputs,
+               uint32_t num_params);
   void SetData(Qnn_Tensor_t* input_tensors,
-                          Qnn_Tensor_t* output_tensors,
-                          Qnn_Param_t* params);
+               Qnn_Tensor_t* output_tensors,
+               Qnn_Param_t* params);
 
   const std::string& GetOpName() const { return name_; }
   const std::string& GetPackageName() const { return package_name_; }
@@ -338,6 +338,7 @@ class QnnOpProperty {
   const std::vector<std::string>& GetInputNames() const { return input_names_; }
   const std::vector<std::string>& GetOutputNames() const { return output_names_; }
   const std::vector<std::string>& GetParamTensorNames() const { return param_tensor_names_; }
+
   QnnOpProperty(QnnOpProperty&& other) noexcept {
     std::swap(qnn_node_name_, other.qnn_node_name_);
     std::swap(package_name_, other.package_name_);
@@ -423,6 +424,7 @@ const std::string transformation_mode = "transformation_mode";
 const std::string interpolation_mode = "interpolation_mode";
 const std::string nearest_mode = "nearest_mode";
 const std::string rounding_mode = "rounding_mode";
+const std::string topk = "k";
 }  // namespace qnn_def
 
 }  // namespace qnn

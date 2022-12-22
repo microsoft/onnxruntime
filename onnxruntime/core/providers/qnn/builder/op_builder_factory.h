@@ -72,5 +72,7 @@ void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
 
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateTopKOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

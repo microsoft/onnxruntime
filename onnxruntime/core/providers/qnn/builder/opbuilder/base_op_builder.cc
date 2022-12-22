@@ -116,8 +116,7 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
 
     const auto* type_proto = inputs[input_i].node_arg.TypeAsProto();
-    int32_t onnx_data_type;
-    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
     // For Quantized model, Gather indices use int32 without quantization
     if (is_quantized_model && "Gather" == op_type && 1 == input_i) {
       qnn_data_type = QNN_DATATYPE_INT_32;
@@ -127,8 +126,8 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[input_i].quant_param,
-                                                                      quantize_param.scaleOffsetEncoding.scale,
-                                                                      quantize_param.scaleOffsetEncoding.offset),
+                                                                     quantize_param.scaleOffsetEncoding.scale,
+                                                                     quantize_param.scaleOffsetEncoding.offset),
                       "Cannot get quantization parameter");
 
     std::vector<uint8_t> unpacked_tensor;
@@ -176,6 +175,12 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   const auto& outputs = node_unit.Outputs();
   auto output_size = outputs.size();
   std::vector<std::string> output_names;
+  struct CastNodeInfo {
+    std::string node_name;
+    std::string input_name;
+    std::string output_name;
+  };
+  std::vector<CastNodeInfo> cast_node_info_vec;
 
   for (size_t output_i = 0; output_i < output_size && output_i < output_count_; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
@@ -184,18 +189,33 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     InitializeQuantizeParam(quantize_param, is_quantized_model);
 
     const auto* type_proto = outputs[output_i].node_arg.TypeAsProto();
-    int32_t onnx_data_type;
-    Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, onnx_data_type, qnn_data_type));
+    Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
+    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(outputs[output_i].quant_param,
-                                                                      quantize_param.scaleOffsetEncoding.scale,
-                                                                      quantize_param.scaleOffsetEncoding.offset),
+                                                                     quantize_param.scaleOffsetEncoding.scale,
+                                                                     quantize_param.scaleOffsetEncoding.offset),
                       "Cannot get quantization parameter");
     std::vector<uint32_t> output_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[output_i].node_arg, output_shape),
                       "Cannot get shape");
-
+    Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, qnn_data_type);
     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
+    if (supported_qnn_data_type != qnn_data_type && is_graph_output && !do_op_validation) {
+      std::string cast_node_name = output_name + "_cast";
+      std::string cast_input_name = output_name + "_aux";
+      std::vector<uint32_t> cast_output_shape = output_shape;
+      QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+                                                QNN_TENSOR_TYPE_NATIVE,
+                                                supported_qnn_data_type,
+                                                quantize_param,
+                                                std::move(cast_output_shape));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
+      output_names.push_back(cast_input_name);
+      cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});
+    } else {
+      qnn_data_type = supported_qnn_data_type;
+      output_names.push_back(output_name);
+    }
     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     QnnTensorWrapper output_tensorwrapper(output_name,
                                           tensor_type,
@@ -203,7 +223,6 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                           quantize_param,
                                           std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    output_names.push_back(output_name);
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
@@ -214,7 +233,16 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     std::move(param_tensor_names),
                                                     do_op_validation),
                     "Failed to add node.");
-
+  for (const auto& cast_node_info : cast_node_info_vec) {
+    // Insert cast node.
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
+                                                      qnn_def::package_name,
+                                                      "Cast",
+                                                      {cast_node_info.input_name},
+                                                      {cast_node_info.output_name},
+                                                      {}),
+                      " Failed to add Cast node");
+  }
   return Status::OK();
 }
 
