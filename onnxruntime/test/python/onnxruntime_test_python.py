@@ -1050,10 +1050,10 @@ class TestInferenceSession(unittest.TestCase):
 
     def testOrtValue_ghIssue13548(self):
         a = np.arange(8).reshape((1, 2, 2, 2)).astype(dtype=np.float32).transpose(0, 2, 3, 1)
-        ort_a = ort.OrtValue.ortvalue_from_shape_and_type([1, 2, 2, 2], np.float32, "cuda", 0)
-        ort_a.update_inplace(a)
-        ort_a_numpy = ort_a.numpy()
-        self.assertTrue(np.all(a == ort_a_numpy))
+        ortvalue_a = onnxrt.OrtValue.ortvalue_from_shape_and_type([1, 2, 2, 2], np.float32, "cuda", 0)
+        ortvalue_a.update_inplace(a)
+        ortvalue_a_numpy = ortvalue_a.numpy()
+        self.assertTrue(np.all(a == ortvalue_a_numpy))
 
     def testSparseTensorCooFormat(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
