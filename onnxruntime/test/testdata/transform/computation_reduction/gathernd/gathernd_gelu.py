@@ -9,26 +9,25 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
     ["batch", "dynamic_prediction_count", 1],
 )
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
-
-matmul1_np_vals = np.random.uniform(0.0, 1.0, (128, 128)).astype(np.float32).reshape((128, 128))
-matmul1_initializer = numpy_helper.from_array(matmul1_np_vals, "matmul1_initializer")
-
 nodes = []
-matmul1 = helper.make_node("MatMul", ["input", matmul1_initializer.name], ["matmul1"], name="matmul_1")
-nodes.append(matmul1)
+
+# case 1
+gelu1 = helper.make_node("Gelu", ["input"], ["gelu_1"], name="gelu_1", domain="com.microsoft")
+nodes.append(gelu1)
 
 gathernd1 = helper.make_node(
     "GatherND",
-    ["matmul1", "unsqueezed_masked_lm_positions"],
-    ["output"],
+    ["gelu_1", "unsqueezed_masked_lm_positions"],
+    ["gathernd_out"],
     name="gathernd_1",
     batch_dims=1,
 )
 nodes.append(gathernd1)
 
-initializers = [matmul1_initializer]
+identity = helper.make_node("Identity", ["gathernd_out"], ["output"], name="identity")
+nodes.append(identity)
 
-graph_def = helper.make_graph(nodes, "test-model", [X, unsqueezed_masked_lm_positions], [Y], initializers)
+graph_def = helper.make_graph(nodes, "test-model", [X, unsqueezed_masked_lm_positions], [Y])
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
@@ -46,4 +45,4 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name="onnx-example", **kwargs)
 
-onnx.save(model_def, "gathernd_matmul.onnx")
+onnx.save(model_def, "gathernd_gelu.onnx")
