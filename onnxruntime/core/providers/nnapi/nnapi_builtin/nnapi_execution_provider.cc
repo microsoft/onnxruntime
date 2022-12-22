@@ -180,7 +180,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // a) A sub-graph has only initializer as inputs
   // b) A sub-graph has zero inputs
   // So we just remove these sub-graph which is captured by NNAPI.
-  // A existing example is CastLike, as which can be fold in constant folding pass.
+  // A existing example is CastLike, as which can't be fold in constant folding pass.
   // CastLike Op will be inlined into Cast after Pass transform.
   // Can we remove it if support CastLike in CF or support Pass transform after InlineNodes?
   std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
