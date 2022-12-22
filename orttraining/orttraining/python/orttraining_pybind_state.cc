@@ -28,6 +28,8 @@
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
+#include "core/framework/stream_execution_context.h"
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
@@ -709,6 +711,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
+      .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
@@ -874,9 +877,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
              ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
            })
-      .def("reset_grad",
+      .def("lazy_reset_grad",
            [](onnxruntime::training::api::Module* model) -> void {
-             ORT_THROW_IF_ERROR(model->ResetGrad());
+             ORT_THROW_IF_ERROR(model->LazyResetGrad());
            })
       .def("copy_parameters_to_buffer",
            [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {

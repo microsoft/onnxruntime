@@ -10,9 +10,14 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/framework_common.h"
 #include "core/session/inference_session.h"
-#include "core/framework/partial_graph_execution_state.h"
 
 namespace onnxruntime {
+#ifdef ENABLE_TRAINING
+struct PartialGraphExecutionState;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+#endif
+
 namespace training {
 
 class TrainingAgent {

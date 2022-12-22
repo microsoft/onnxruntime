@@ -110,12 +110,12 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     auto& token_offset_shape = getInputShape(ctx, 1);
 
     if (input_shape.dim().size() != 2) {
-        fail_shape_inference("input shall be 2 dimensions");
-      }
+      fail_shape_inference("input shall be 2 dimensions");
+    }
 
     if (token_offset_shape.dim().size() != 2) {
-        fail_shape_inference("token_offset shall be 2 dimensions");
-      }
+      fail_shape_inference("token_offset shall be 2 dimensions");
+    }
 
     ONNX_NAMESPACE::TensorShapeProto output_shape;
     *output_shape.add_dim() = token_offset_shape.dim(0);
@@ -124,7 +124,6 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     updateOutputShape(ctx, 0, output_shape);
   }
 }
-
 
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -168,6 +167,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
               AttributeProto::INTS,
               OPTIONAL_VALUE)
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its size is "
+              "(2, batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, "
@@ -192,7 +196,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "past",
-               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)",
+               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
+               "When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -212,13 +217,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Required when weights is not available.",
                "T",
                OpSchema::Optional)
+        .Input(8,
+               "past_sequence_length",
+               "When past_present_share_buffer, specify past_sequence_length for effective past sequence lenght (could be 0)."
+               "Needed when past_present_share_buffer is not zero.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
         .Output(1,
                 "present",
-                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)",
+                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)"
+                "If past_present_share_buffer, it should be exactly same as past tensor, of shape "
+                "(2, batch_size, num_heads, max_sequence_length, head_size),"
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -375,6 +389,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(SkipLayerNormalization, 1,
                                 .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
                                 .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
                                 .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+                                .Output(3, "input_skip_sum", "Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
                                 .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
@@ -492,7 +507,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           RemovePaddingTypeAndShapeInference(ctx);
         }));
-
 
 constexpr const char* RestorePadding_ver1_doc = R"DOC(
 Restore paddings and fill padding with zeros.

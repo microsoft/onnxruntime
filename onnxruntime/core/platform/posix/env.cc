@@ -175,8 +175,8 @@ class PosixThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
-    if (narrow<size_t>(index) < thread_options.affinity.size()) {
-      param_ptr->affinity = thread_options.affinity[index];
+    if (narrow<size_t>(index) < thread_options.affinities.size()) {
+      param_ptr->affinity = thread_options.affinities[index];
     }
 
     if (custom_create_thread_fn) {
@@ -233,12 +233,21 @@ class PosixThread : public EnvThread {
       if (p->affinity.has_value() && !p->affinity->empty()) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-        for(auto id : *p->affinity) {
-          CPU_SET(id, &cpuset);
+        for (auto id : *p->affinity) {
+          if (id > -1 && id < CPU_SETSIZE) {
+            CPU_SET(id, &cpuset);
+          } else {
+            // Logical processor id starts from 0 internally, but in ort API, it starts from 1,
+            // that's why id need to increase by 1 when logging.
+            LOGS_DEFAULT(ERROR) << "cpu " << id + 1 << " does not exist, skipping it for affinity setting";
+          }
         }
-        // pthread_setaffinity_np() does not set errno, it returns it.
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-        if (ret != 0) {
+        if (0 == ret) {
+          LOGS_DEFAULT(VERBOSE) << "pthread_setaffinity_np succeed for thread: " << syscall(SYS_gettid)
+                                << ", index: " << p->index
+                                << ", mask: " << *p->affinity;
+        } else {
           auto [err_no, err_msg] = GetSystemError(ret);
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
@@ -290,7 +299,7 @@ class PosixEnv : public Env {
     return DefaultNumCores();
   }
 
-  std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
+  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
 
     std::vector<LogicalProcessors> ret;
 #ifdef ORT_USE_CPUINFO
