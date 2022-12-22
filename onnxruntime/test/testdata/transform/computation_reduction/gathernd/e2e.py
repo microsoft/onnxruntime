@@ -1,8 +1,8 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import OperatorSetIdProto, TensorProto, helper, numpy_helper
 
-vocab_size = 256  # 30258
+vocab_size = 256
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 128])
 unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
@@ -127,8 +127,9 @@ graph_def = helper.make_graph(
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
-onnxdomain.version = 12
-onnxdomain.domain = ""  # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
+onnxdomain.version = 14
+onnxdomain.domain = ""  # The empty string ("") or absence of this field implies the operator
+# set that is defined as part of the ONNX specification.
 opsets.append(onnxdomain)
 
 msdomain = OperatorSetIdProto()
@@ -141,4 +142,18 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name="onnx-example", **kwargs)
 
-onnx.save(model_def, "e2e.onnx")
+
+ln1_value_info = model_def.graph.value_info.add()
+ln1_value_info.CopyFrom(X)
+ln1_value_info.name = "layer_norm1"
+
+ln2_value_info = model_def.graph.value_info.add()
+ln2_value_info.CopyFrom(X)
+ln2_value_info.name = "layer_norm2"
+
+gelu1_value_info = model_def.graph.value_info.add()
+gelu1_value_info.CopyFrom(X)
+gelu1_value_info.name = "gelu1"
+
+final_model = onnx.shape_inference.infer_shapes(model_def)
+onnx.save(final_model, "e2e.onnx")
