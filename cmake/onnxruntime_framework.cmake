@@ -41,7 +41,7 @@ if (onnxruntime_USE_CLOUD)
 
   add_dependencies(onnxruntime_framework triton)
   target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
-  link_directories(${TRITON_BIN}/lib ${TRITON_THIRD_PARTY}/curl/lib)
+  link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib {TRITON_THIRD_PARTY}/curl/lib64)
 
   if (WIN32)
 
@@ -52,7 +52,7 @@ if (onnxruntime_USE_CLOUD)
 
     find_package(ZLIB REQUIRED)
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB ${OPENSSL_LIBRARIES})
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
 
   endif() #if (WIN32)
 

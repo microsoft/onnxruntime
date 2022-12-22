@@ -42,5 +42,6 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
     return status;
   }
 }
+
 }  // namespace onnxruntime
 #endif

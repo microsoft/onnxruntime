@@ -60,6 +60,7 @@ TEST(CloudEP, TestSessionRunMissingEP) {
   run_options.AddConfigEntry("use_cloud", "1");
 
   input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
+  // For now, we allow EP to be not added.
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 

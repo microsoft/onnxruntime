@@ -27,7 +27,7 @@ const char* kCloudAuthKey = "cloud.auth_key";
 const char* kCloudTriton = "triton";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
-                                           AllocatorPtr allocator) : config_(config), allocator_(allocator) {
+                                           AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
   if (!allocator_) {
     ORT_THROW("Cannot create invoker on invalid allocator");
   }
@@ -287,12 +287,15 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
     if (config.end() != iter) {
       if (iter->second == kCloudTriton) {
         invoker = std::make_unique<TritonInvoker>(config, allocator);
+        return status;
       }
     }
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Cannot create cloud invoker due to missed or mismatched endpoint type.");
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = Status(ONNXRUNTIME, FAIL, ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
     });
   }
   return status;
