@@ -299,10 +299,6 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
 
   for (const auto& input : ordered_subgraph_inputs) {
-    if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
-      meta_def->constant_initializers.push_back(input->Name());
-    }
-
     meta_def->inputs.push_back(input->Name());
   }
 

@@ -180,13 +180,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // a) A sub-graph has only initializer as inputs
   // b) A sub-graph has zero inputs
   // So we just remove these sub-graph which is captured by NNAPI.
-  std::for_each(result.begin(), result.end(), [](auto& capability) {
+  std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
-      const auto* metadef = capability->sub_graph->GetMetaDef();
-      // metadef->inputs include constant initializers, when inputs is same as constant_initializers
-      //, we can get there is zero external inputs for the sub-graph.
-      if (metadef->inputs.size() == metadef->constant_initializers.size() ||
-          metadef->outputs.empty()) {
+      const auto* meta_def = capability->sub_graph->GetMetaDef();
+      bool not_empty_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
+        return (graph_viewer.IsConstantInitializer(input, true));
+      });
+
+      if (!not_empty_inputs || meta_def->outputs.empty()) {
         capability.reset();
       }
     }
