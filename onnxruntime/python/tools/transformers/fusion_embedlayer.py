@@ -537,8 +537,6 @@ class FusionEmbedLayerNoMask(Fusion):
         if two_gather is None:
             return False
 
-        add_output = add_before_layernorm.output[0]
-
         word_embedding_gather, position_embedding_gather = two_gather
         input_ids = word_embedding_gather.input[1]
         position_ids = position_embedding_gather.input[1]
@@ -549,9 +547,22 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
+        # output of this node.
+
+        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # is the (optional) fourth index output of this node.
+        add_output = None
         optional_embedding_sum_output = False
-        if self.is_embedding_sum_needed(add_before_layernorm):
+        if (add_before_layernorm.op_type == "Add" and self.is_embedding_sum_needed(add_before_layernorm)) or (
+            add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4
+        ):
             optional_embedding_sum_output = True
+            add_output = (
+                add_before_layernorm.output[0]
+                if add_before_layernorm.op_type == "Add"
+                else add_before_layernorm.output[3]
+            )
 
         # make the fused node
         embed_node = self.create_fused_node(
