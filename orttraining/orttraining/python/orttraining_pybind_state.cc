@@ -958,10 +958,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                float initial_lr) {
                 ORT_THROW_IF_ERROR(optimizer->optimizer_->SetInitialLearningRate(initial_lr));
 
-                auto scheduler = std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+                return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
                     optimizer->optimizer_, warmup_step_count, total_step_count);
-
-                return scheduler;
               }))
       .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
         ORT_THROW_IF_ERROR(scheduler->Step());
