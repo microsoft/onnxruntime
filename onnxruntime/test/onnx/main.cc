@@ -963,21 +963,23 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
 
-    broken_tests.insert({"test_identity_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_add_2_sequences_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_add_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_extract_shapes_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_extract_shapes_expanded_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_identity_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_identity_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_identity_1_sequence_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."});
-    broken_tests.insert({"test_sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
 
   }
+
+  broken_tests.insert({"test_identity_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_add_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_add_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_extract_shapes_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_extract_shapes_expanded_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_identity_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_identity_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_identity_1_sequence_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+  broken_tests.insert({"test_sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+
 
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
