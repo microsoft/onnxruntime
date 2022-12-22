@@ -301,12 +301,12 @@ int RunTraining(const TestRunnerParameters& params) {
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         onnxruntime::profile::NvtxRangeCreator resetgrad_range(
-            "ResetGrad",
+            "LazyResetGrad",
             onnxruntime::profile::Color::Red);
         resetgrad_range.Begin();
 #endif
 
-        session.ResetGrad();
+        session.LazyResetGrad();
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         resetgrad_range.End();

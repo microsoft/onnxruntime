@@ -17,8 +17,7 @@ class Einsum final : public onnxruntime::Einsum {
   Einsum(const OpKernelInfo& info) : onnxruntime::Einsum(info) {
     // We need to cast away the const as PerThreadCublasHandle() is currently a non-const method
     // TODO: Clean up the CUDAExecutionProvider interface to avoid this
-    cuda_ep_ = const_cast<CUDAExecutionProvider*>(
-        static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
+    cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -32,7 +31,7 @@ class Einsum final : public onnxruntime::Einsum {
   using onnxruntime::Einsum::equation_;
 
   // We need to access to the CUDA EP instance to get the cublas/cudnn handles
-  CUDAExecutionProvider* cuda_ep_;
+  const CUDAExecutionProvider* cuda_ep_;
 };
 
 }  // namespace cuda

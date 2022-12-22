@@ -14,9 +14,11 @@ from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
+    from fusion_options import FusionOptions
     from onnx_model import OnnxModel
     from optimizer import optimize_by_fusion, optimize_model
 else:
+    from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_by_fusion, optimize_model
 
@@ -120,32 +122,67 @@ class TestFusion(unittest.TestCase):
         hidden_size = 64
         num_heads = 4
         for add_order in [False, True]:
-            model = create_gpt2_attention(
-                hidden_size=hidden_size,
-                num_heads=num_heads,
-                switch_add_inputs=add_order,
-            )
-            dir = "."
-            model_path = os.path.join(dir, "gpt2_attention.onnx")
-            onnx.save(model, model_path)
-            optimized_model = optimize_model(
-                model_path,
-                model_type="gpt2",
-                num_heads=num_heads,
-                hidden_size=hidden_size,
-            )
-            optimized_model.topological_sort()
-            os.remove(model_path)
+            for enable_skip_layer_norm_fusion in [False, True]:
+                model = create_gpt2_attention(
+                    hidden_size=hidden_size,
+                    num_heads=num_heads,
+                    switch_add_inputs=add_order,
+                )
+                dir = "."
+                model_path = os.path.join(dir, "gpt2_attention.onnx")
+                onnx.save(model, model_path)
 
-            model_name = "gpt2_attention_{}.onnx".format("add_opt" if add_order else "opt")
-            self.verify_fusion(optimized_model, model_name)
+                options = FusionOptions("gpt2")
+                options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+                optimized_model = optimize_model(
+                    model_path,
+                    model_type="gpt2",
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    optimization_options=options,
+                )
+
+                optimized_model.topological_sort()
+                os.remove(model_path)
+
+                model_suffix = ""
+                if add_order and enable_skip_layer_norm_fusion:
+                    model_suffix = "add_opt_skiplayernorm"
+                elif add_order and not enable_skip_layer_norm_fusion:
+                    model_suffix = "add_opt_no_skiplayernorm"
+                elif not add_order and enable_skip_layer_norm_fusion:
+                    model_suffix = "opt_skiplayernorm"
+                else:
+                    model_suffix = "opt_no_skiplayernorm"
+
+                model_name = "gpt2_attention_{}.onnx".format(model_suffix)
+                self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
-        path = get_test_data_path("models", "gpt2_megatron.onnx")
-        model = onnx.load(path)
-        optimized_model = optimize_by_fusion(model, model_type="gpt2")
+        for enable_skip_layer_norm_fusion in [False, True]:
+            path = get_test_data_path("models", "gpt2_megatron.onnx")
+            model = onnx.load(path)
 
-        self.verify_fusion(optimized_model, "gpt2_megatron_opt.onnx")
+            options = FusionOptions("gpt2")
+            options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+            optimized_model = optimize_by_fusion(
+                model,
+                model_type="gpt2",
+                num_heads=0,
+                hidden_size=0,
+                optimization_options=options,
+            )
+
+            model_suffix = ""
+            if enable_skip_layer_norm_fusion:
+                model_suffix = "opt_skiplayernorm"
+            else:
+                model_suffix = "opt_no_skiplayernorm"
+
+            model_name = "gpt2_megatron_{}.onnx".format(model_suffix)
+            self.verify_fusion(optimized_model, model_name)
 
 
 if __name__ == "__main__":

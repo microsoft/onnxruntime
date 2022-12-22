@@ -4,6 +4,7 @@
 #import <XCTest/XCTest.h>
 
 #import "ort_coreml_execution_provider.h"
+#import "ort_xnnpack_execution_provider.h"
 #import "ort_env.h"
 #import "ort_session.h"
 #import "ort_value.h"
@@ -215,6 +216,28 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(session, err);
 }
 
+- (void)testAppendXnnpackEP {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  ORTXnnpackExecutionProviderOptions* XnnpackOptions = [[ORTXnnpackExecutionProviderOptions alloc] init];
+  XnnpackOptions.intra_op_num_threads = 2;
+
+  BOOL appendResult = [sessionOptions appendXnnpackExecutionProviderWithOptions:XnnpackOptions
+                                                                          error:&err];
+  // Without xnnpack EP in building also can pass the test
+  NSString* err_msg = [err localizedDescription];
+  if (!appendResult && [err_msg containsString:@"XNNPACK execution provider is not supported in this build. "]) {
+    return;
+  }
+
+  ORTAssertBoolResultSuccessful(appendResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+}
 @end
 
 NS_ASSUME_NONNULL_END

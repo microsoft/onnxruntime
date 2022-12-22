@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
@@ -316,8 +317,12 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
+}
+
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
 #endif
 
@@ -330,8 +335,8 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
   return g_host->CreateROCMPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 
@@ -564,11 +569,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* key,
                                   const Tensor* value,
                                   void* parameters,
-                                  const int max_threads_per_block) const {
+                                  const int max_threads_per_block,
+                                  const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
                                                mask_index, past, extra_add_qk,
                                                key, value, parameters,
-                                               max_threads_per_block);
+                                               max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
                                   int sequence_length, int& past_sequence_length) const {
@@ -624,6 +630,8 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
+void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
+
 #ifdef ENABLE_TRAINING_OPS
 namespace contrib {
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
@@ -678,5 +686,14 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
+
+namespace cann {
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  return g_host->cann__CreateModel(graph_viewer, logger);
+}
+}  // namespace cann
 #endif
 }  // namespace onnxruntime
