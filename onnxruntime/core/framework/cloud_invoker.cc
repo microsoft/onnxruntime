@@ -123,7 +123,7 @@ onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type,
   } else if (data_type == "BOOL") {
     return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<bool>(), TensorShape{dim}, allocator_);
   } else if (data_type == "FP16") {
-    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), TensorShape{dim}, allocator_);
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<MLFloat16>(), TensorShape{dim}, allocator_);
   } else if (data_type == "FP64") {
     return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<double>(), TensorShape{dim}, allocator_);
   } else if (data_type == "UINT32") {
@@ -155,7 +155,7 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
                                         gsl::span<const OrtValue> ort_inputs,
                                         const InlinedVector<std::string>& output_names,
                                         std::vector<OrtValue>& ort_outputs) const {
-  auto auth_key_iter = run_options.find(kCloudAuthKey);
+  const auto auth_key_iter = run_options.find(kCloudAuthKey);
   if (run_options.end() == auth_key_iter) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "auth key must be specified for triton client");
@@ -288,7 +288,7 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
       if (iter->second == kCloudTriton) {
         invoker = std::make_unique<TritonInvoker>(config, allocator);
         return status;
-      }
+      } // else other endpoint types ...
     }
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot create cloud invoker due to missed or mismatched endpoint type.");
