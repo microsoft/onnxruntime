@@ -742,6 +742,12 @@ if (MSVC)
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
+
+if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
+# attention_op_test.cc: Function uses '49152' bytes of stack:  exceeds /analyze:stacksize '16384'..
+target_compile_options(onnxruntime_test_all PRIVATE  "/analyze:stacksize 131072")
+endif()
+
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
