@@ -111,7 +111,7 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(outputs.size(), 1U);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 const int64_t total_step_count = 100;
 const float initial_lr = 1e-3f;
@@ -317,7 +317,7 @@ TEST(TrainingApiTest, ModuleExportModelForInferencingCPU) {
   TestModuleExport(providers);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 TEST(TrainingApiTest, ModuleExportModelForInferencingCUDA) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
