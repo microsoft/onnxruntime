@@ -42,9 +42,9 @@ class TestBeamSearchGpt(unittest.TestCase):
             "The product is released",
             "I enjoy walking in the park",
             "Test best way to invest",
-            "The AI community building the future",
-            "The selloff in tech shares deepened",
-            "Abortion rights take centre stage",
+            #"The AI community building the future",
+            #"The selloff in tech shares deepened",
+            #"Abortion rights take centre stage",
         ]
         self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
         self.remove_onnx_files()
