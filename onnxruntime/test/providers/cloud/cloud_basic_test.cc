@@ -55,12 +55,37 @@ TEST(CloudEP, TestSessionRunMissingEP) {
   const char* input_names[] = {"X"};
   const char* output_names[] = {"Y"};
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
+
+  Ort::RunOptions run_options;
+  //local inference should work
+  EXPECT_NO_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL));
+
+  run_options.AddConfigEntry("use_cloud", "1");
+  //should throw on missing configures
+  EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
+}
+
+TEST(CloudEP, TestSessionRunWrongUri) {
+  const auto* ort_model_path = ORT_TSTR("testdata/mul_1.onnx");
+  Ort::SessionOptions so;
+  so.AddConfigEntry("cloud.endpoint_type", "triton");
+  so.AddConfigEntry("cloud.uri", "https://12341nbasdkjah1239045dsknldjnlvqwf.com");
+  so.AddConfigEntry("cloud.model_name", "modelnotexist");
+  Ort::Session sess(*ort_env, ort_model_path, so);
+
+  float raw_inputs[] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  std::vector<int64_t> input_dims = {3, 2};
+  std::vector<Ort::Value> input_values;
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y"};
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
 
   Ort::RunOptions run_options;
   run_options.AddConfigEntry("use_cloud", "1");
-
-  input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
-  // For now, we allow EP to be not added.
+  run_options.AddConfigEntry("cloud.auth_key", "asdjfakldkvnlkajefoiauh32hriunive2324");
+  //should throw on endpoint that does not exist
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 
