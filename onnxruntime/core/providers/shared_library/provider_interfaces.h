@@ -799,7 +799,7 @@ struct ProviderHost {
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
 
-  virtual void* Allocator__AllocateBufferWithOptions(IAllocator* allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
+  virtual void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
 
   virtual void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) = 0;
   virtual const void* Tensor__DataRaw(const Tensor* p, MLDataType type) = 0;
