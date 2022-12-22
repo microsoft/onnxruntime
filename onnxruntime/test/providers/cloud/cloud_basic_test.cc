@@ -19,6 +19,7 @@ TEST(CloudEP, TestSessionCreation) {
   so.AddConfigEntry("cloud.endpoint_type", "triton");
   onnxruntime::ProviderOptions options;
   so.AppendExecutionProvider("CLOUD", options);
+  //session could be created
   EXPECT_NO_THROW((Ort::Session{*ort_env, ort_model_path, so}));
 }
 
@@ -35,11 +36,11 @@ TEST(CloudEP, TestSessionRunMissingConfig) {
   const char* input_names[] = {"X"};
   const char* output_names[] = {"Y"};
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
 
   Ort::RunOptions run_options;
   run_options.AddConfigEntry("use_cloud", "1");
-
-  input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
+  //exception expected due to the missing of endpoint type
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 
@@ -62,7 +63,7 @@ TEST(CloudEP, TestSessionRunMissingEP) {
   EXPECT_NO_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL));
 
   run_options.AddConfigEntry("use_cloud", "1");
-  //should throw on missing configures
+  //exception expected due to the missing of cloud.uri and cloud.model_name
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 
@@ -85,7 +86,7 @@ TEST(CloudEP, TestSessionRunWrongUri) {
   Ort::RunOptions run_options;
   run_options.AddConfigEntry("use_cloud", "1");
   run_options.AddConfigEntry("cloud.auth_key", "asdjfakldkvnlkajefoiauh32hriunive2324");
-  //should throw on endpoint that does not exist
+  //exception expected due to the non-existing endpoint
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 

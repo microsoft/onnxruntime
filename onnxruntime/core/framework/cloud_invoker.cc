@@ -27,7 +27,7 @@ const char* kCloudAuthKey = "cloud.auth_key";
 const char* kCloudTriton = "triton";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
-                                           AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
+                                           const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
   if (!allocator_) {
     ORT_THROW("Cannot create invoker on invalid allocator");
   }
@@ -35,7 +35,7 @@ CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
 
 class TritonInvoker : public CloudEndPointInvoker {
  public:
-  TritonInvoker(const CloudEndPointConfig& config, AllocatorPtr allocator);
+  TritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
   onnxruntime::Status Send(const CloudEndPointConfig& run_options,
                            const InlinedVector<std::string>& input_names,
                            gsl::span<const OrtValue> ort_inputs,
@@ -138,7 +138,7 @@ onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type,
 }
 
 TritonInvoker::TritonInvoker(const CloudEndPointConfig& config,
-                             AllocatorPtr allocator) : CloudEndPointInvoker(config, allocator) {
+                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
   ReadConfig(kCloudUri, uri_);
   ReadConfig(kCloudModelName, model_name_);
   ReadConfig(kCloudModelVer, model_ver_, false);
@@ -279,7 +279,7 @@ void CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& conf
 }
 
 Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
-                                           AllocatorPtr allocator,
+                                           const AllocatorPtr& allocator,
                                            std::unique_ptr<CloudEndPointInvoker>& invoker) {
   auto status = Status::OK();
   ORT_TRY {

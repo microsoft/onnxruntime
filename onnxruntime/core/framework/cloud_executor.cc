@@ -31,10 +31,12 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
 
   //create invoker
   static const OrtDevice cpu_device;
+  auto allocator = session_state.GetAllocator(cpu_device);
   std::unique_ptr<CloudEndPointInvoker> invoker;
+
   auto status = CloudEndPointInvoker::CreateInvoker(
       session_state.GetSessionOptions().config_options.configurations,
-      session_state.GetAllocator(cpu_device), invoker);
+      allocator, invoker);
 
   if (invoker) {
     return invoker->Send(run_options_, input_names, feeds, output_names, fetches);

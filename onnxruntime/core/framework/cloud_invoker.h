@@ -16,12 +16,12 @@ using TensorPtrArray = onnxruntime::InlinedVector<TensorPtr>;
 
 class CloudEndPointInvoker {
  public:
-  CloudEndPointInvoker(const CloudEndPointConfig& config, AllocatorPtr& allocator);
+  CloudEndPointInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
   virtual ~CloudEndPointInvoker() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CloudEndPointInvoker);
 
   static Status CreateInvoker(const CloudEndPointConfig& config,
-                              AllocatorPtr allocator,
+                              const AllocatorPtr& allocator,
                               std::unique_ptr<CloudEndPointInvoker>& invoker);
 
   virtual onnxruntime::Status Send(const CloudEndPointConfig& run_options,
@@ -33,7 +33,7 @@ class CloudEndPointInvoker {
  protected:
   void ReadConfig(const char* config_name, std::string& config_val, bool required = true);
   CloudEndPointConfig config_;
-  AllocatorPtr& allocator_;
+  const AllocatorPtr& allocator_;
 };
 }  // namespace onnxruntime
 #endif
