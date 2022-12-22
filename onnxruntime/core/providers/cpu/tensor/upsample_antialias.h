@@ -265,6 +265,8 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
 template <class T>
 inline constexpr bool is_8bit_v = std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value;
 
+// It's quite simpler when compared with ComputeInterpolateLevel2.
+// This function always compute interpolation along with the last axis.
 template <typename InputType, typename AccumulateType>
 void ComputeInterpolateLevel1(int64_t num_channels, int64_t input_height, int64_t input_width,
                               int64_t output_height, int64_t output_width, const bool use_extrapolation,
@@ -324,6 +326,11 @@ void ComputeInterpolateLevel1(int64_t num_channels, int64_t input_height, int64_
       });
 }
 
+// This function always calculate interpolation along with penultimate axis.
+// It can work with layout of nchw,chw, nhwc,hwc,nchwc..etc 
+// Take NCHW as example, if you want to do computation in axis "H", you can split it as (NC)HW or [for (CHW) i in N].
+// If in axis C, you can split it as NC(HW) or N1C(HW), C is the penultimate axis.
+// Layout NHWC is the same.
 template <typename InputType, typename AccumulateType>
 void ComputeInterpolateLevel2(int64_t num_channels, int64_t input_height, int64_t input_width,
                               int64_t output_height, int64_t output_width,
@@ -333,6 +340,9 @@ void ComputeInterpolateLevel2(int64_t num_channels, int64_t input_height, int64_
                               const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
                               concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
+  // This condition is set for higher performance.
+  // I find TrySimpleParallelFor in dim num_channels is always have higher efficency, so I would rather 
+  // choose the first path as long as num_channels is 3 or bigger.
   if (num_channels > 2) {
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
