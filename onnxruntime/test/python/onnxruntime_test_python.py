@@ -1050,7 +1050,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testOrtValue_ghIssue13548(self):
         a = np.arange(8).reshape((1, 2, 2, 2)).astype(dtype=np.float32).transpose(0, 2, 3, 1)
-        ortvalue_a = onnxrt.OrtValue.ortvalue_from_shape_and_type([1, 2, 2, 2], np.float32, "cuda", 0)
+        ortvalue_a = onnxrt.OrtValue.ortvalue_from_shape_and_type([1, 2, 2, 2], np.float32, "cpu", 0)
         ortvalue_a.update_inplace(a)
         ortvalue_a_numpy = ortvalue_a.numpy()
         self.assertTrue(np.all(a == ortvalue_a_numpy))
