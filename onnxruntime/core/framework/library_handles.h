@@ -7,18 +7,23 @@
 #include <vector>
 #include <utility>
 #include "core/platform/env.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 
 /**
-  * Unloads dynamic library handles loaded via Env::LoadDynamicLibrary() upon destruction.
+  * Class that owns a collection of dynamic library handles and unloads the library handles when the class instance
+  * goes out of scope.
+  *
+  * Use LibraryHandles::Add() to add a dynamic library handle to an instance of this class.
+  * The destructor unloads all added library handles via Env::UnloadDynamicLibrary().
+  *
+  * This class is currently used in SessionOptions to manage the lifetime of custom operator library handles that have
+  * been registered via OrtApi::RegisterCustomOpsLibrary_V2.
   */
 struct LibraryHandles {
   LibraryHandles() = default;
   ~LibraryHandles();
-
-  LibraryHandles(const LibraryHandles&) = delete;
-  LibraryHandles& operator=(const LibraryHandles&) = delete;
 
   // Move-only.
   LibraryHandles(LibraryHandles&& other);
@@ -29,8 +34,10 @@ struct LibraryHandles {
   void Add(std::string library_name, void* library_handle);
 
  private:
-  std::vector<std::pair<std::string, void*>> libraries_;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(LibraryHandles);
 
   void UnloadLibraries() noexcept;
+
+  InlinedVector<std::pair<std::string, void*>> libraries_;
 };
 }  // namespace onnxruntime

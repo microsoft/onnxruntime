@@ -33,7 +33,7 @@ void LibraryHandles::UnloadLibraries() noexcept {
     for (const auto& it : libraries_) {
       auto status = env.UnloadDynamicLibrary(it.second);
       if (!status.IsOK()) {
-        LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library " << it.first;
+        LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library " << it.first << ": " << status;
       }
     }
   }
