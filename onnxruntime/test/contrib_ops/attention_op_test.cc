@@ -859,6 +859,7 @@ void RawAttentionEmptyPastState(bool past_present_share_buffer) {
   }
 }
 
+#ifndef ENABLE_TRAINING // TRT fused attention is enabled only on non-training builds
 static void GetWeightAndBiasForHiddenSize64(std::vector<float> &weight_data, std::vector<float>& bias_data){
   weight_data = {
       -0.004707f,  -0.006775f,  0.0009236f,  0.003067f,  -0.00806f,  0.00779f,  0.0004425f,  0.00846f,  0.00048f,
@@ -2387,6 +2388,7 @@ TEST(AttentionTest, Causal_EmptyPastState) {
                      use_past_state, past_sequence_length, &past_data, &present_data);
   }
 }
+#endif
 
 TEST(AttentionTest, AttentionEmptyPastState) {
   RawAttentionEmptyPastState(false);

@@ -38,6 +38,7 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, false) {
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
+
   enable_flash_attention_ = sizeof(T) == 2 &&
                             ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFlashAttention, true);
 }
@@ -89,6 +90,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_1d_mask = nullptr != mask_index && mask_index->Shape().NumDimensions() == 1;
 
   MHARunner* fused_runner = nullptr;
+
+#ifndef ENABLE_TRAINING  // Only enable fused kernel on non-training builds
   if (is_unidirectional_) {  // GPT
     // Fused kernels requires left side padding (The mask shall be sequence lengths or no mask)
     // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
@@ -135,6 +138,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
   }
+#endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
