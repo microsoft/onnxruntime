@@ -21,7 +21,13 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import (
+    Precision,
+    create_onnxruntime_session,
+    get_ort_environment_variables,
+    prepare_environment,
+    setup_logger,
+)
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
@@ -88,6 +94,19 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(optimize_onnx=False)
 
+    parser.add_argument(
+        "--stage",
+        type=int,
+        default=0,
+        required=False,
+        choices=[0, 1, 2],
+        help="Stage in generation: 1 (initial decoder), 2 (decoder), 0 (both). "
+        "1 - decode the first token when past_sequence_length is zero; "
+        "2 - decode the remaining tokens when past_sequence_length is not zero; "
+        "0 - one onnx model for both stages 1 and 2. "
+        "Note that we will optimize 1 and 2 differently for best performance.",
+    )
+
     parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
@@ -138,6 +157,12 @@ def parse_arguments(argv=None):
     parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
 
+    parser.add_argument("--output_torch_latency", required=False, action="store_true")
+    parser.set_defaults(output_torch_latency=False)
+
+    parser.add_argument("--disable_io_binding", required=False, action="store_true")
+    parser.set_defaults(disable_io_binding=False)
+
     args = parser.parse_args(argv)
 
     return args
@@ -157,6 +182,9 @@ def main(args):
 
     if args.precision == Precision.INT8:
         assert not args.use_gpu, "quantization only supports CPU"
+
+    if args.stage == 1:
+        assert args.past_sequence_lengths == [0], "past_sequence_lengths shall be 0 for stage==1 (init decoder)"
 
     torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
     print(torch.__config__.parallel_info())
@@ -207,6 +235,7 @@ def main(args):
             model.config.hidden_size,
             use_external_data_format,
             auto_mixed_precision=True,
+            stage=args.stage,
         )
 
         if args.precision == Precision.INT8:
@@ -250,6 +279,8 @@ def main(args):
         column_names = [
             "model_name",
             "model_class",
+            "stage",
+            "environment_variables",
             "gpu",
             "precision",
             "optimizer",
@@ -257,9 +288,9 @@ def main(args):
             "batch_size",
             "sequence_length",
             "past_sequence_length",
+            "disable_io_binding",
             "torch_latency",
             "onnxruntime_latency",
-            "onnxruntime_io_binding_latency",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
@@ -297,46 +328,43 @@ def main(args):
                     )
 
                     try:
-                        outputs, torch_latency = gpt2helper.pytorch_inference(model, dummy_inputs, args.test_times)
+                        if args.validate_onnx or args.output_torch_latency:
+                            outputs, torch_latency = gpt2helper.pytorch_inference(model, dummy_inputs, args.test_times)
 
-                        # Dump Torch output shape
-                        for i, value in enumerate(outputs):
-                            if isinstance(value, tuple):
-                                logger.debug(f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}")
-                            else:
-                                logger.debug(f"torch output {i} shape {value.shape}")
+                            # Dump Torch output shape
+                            for i, value in enumerate(outputs):
+                                if isinstance(value, tuple):
+                                    logger.debug(
+                                        f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}"
+                                    )
+                                else:
+                                    logger.debug(f"torch output {i} shape {value.shape}")
+                        else:
+                            outputs = None
+                            torch_latency = None
 
-                        ort_outputs, ort_latency = gpt2helper.onnxruntime_inference(
-                            session, dummy_inputs, args.test_times
-                        )
-
-                        (ort_io_outputs, ort_io_latency,) = gpt2helper.onnxruntime_inference_with_binded_io(
-                            session,
-                            dummy_inputs,
-                            output_buffers,
-                            output_shapes,
-                            args.test_times,
-                            return_numpy=False,
-                            include_copy_output_latency=args.include_copy_output_latency,
-                        )
+                        if args.disable_io_binding:
+                            ort_outputs, ort_latency = gpt2helper.onnxruntime_inference(
+                                session, dummy_inputs, args.test_times
+                            )
+                        else:
+                            ort_outputs, ort_latency = gpt2helper.onnxruntime_inference_with_binded_io(
+                                session,
+                                dummy_inputs,
+                                output_buffers,
+                                output_shapes,
+                                args.test_times,
+                                return_numpy=False,
+                                include_copy_output_latency=args.include_copy_output_latency,
+                            )
 
                         if args.validate_onnx:
-                            if gpt2helper.compare_outputs(
-                                outputs,
-                                ort_outputs,
-                                model_class=args.model_class,
-                                rtol=DEFAULT_TOLERANCE[args.precision],
-                                atol=DEFAULT_TOLERANCE[args.precision],
-                            ):
-                                logger.info(
-                                    "Pytorch and ONNX Runtime outputs are all close (tolerance=%f).",
-                                    DEFAULT_TOLERANCE[args.precision],
-                                )
-
-                            # Results of IO binding might be in GPU. Copy outputs to CPU for comparison.
-                            copy_outputs = []
-                            for output in ort_io_outputs:
-                                copy_outputs.append(output.cpu().numpy())
+                            copy_outputs = ort_outputs
+                            if not args.disable_io_binding:
+                                # Results of IO binding might be in GPU. Copy outputs to CPU for comparison.
+                                copy_outputs = []
+                                for output in ort_outputs:
+                                    copy_outputs.append(output.cpu().numpy())
 
                             if gpt2helper.compare_outputs(
                                 outputs,
@@ -346,24 +374,24 @@ def main(args):
                                 atol=DEFAULT_TOLERANCE[args.precision],
                             ):
                                 logger.info(
-                                    "Pytorch and ONNX Runtime IO Binding outputs are all close (tolerance=%f)).",
-                                    DEFAULT_TOLERANCE[args.precision],
+                                    f"Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]})."
                                 )
 
                         logger.info(
-                            "batch_size=%d, sequence_length=%d, past_sequence_length=%d, "
-                            "torch_latency=%.2f, onnxruntime_latency=%.2f, onnxruntime_io_binding_latency=%.2f",
+                            "batch_size=%d, sequence_length=%d, past_sequence_length=%d, onnxruntime_latency=%.2f %s %s",
                             batch_size,
                             sequence_length,
                             past_sequence_length,
-                            torch_latency,
                             ort_latency,
-                            ort_io_latency,
+                            "(disable_io_binding)" if args.disable_io_binding else "",
+                            ", torch_latency={torch_latency}" if torch_latency else "",
                         )
 
                         row = {
                             "model_name": args.model_name_or_path,
                             "model_class": args.model_class,
+                            "stage": args.stage,
+                            "environment_variables": get_ort_environment_variables(),
                             "gpu": args.use_gpu,
                             "precision": args.precision,
                             "optimizer": args.optimize_onnx,
@@ -371,9 +399,9 @@ def main(args):
                             "batch_size": batch_size,
                             "sequence_length": sequence_length,
                             "past_sequence_length": past_sequence_length,
-                            "torch_latency": f"{torch_latency:.2f}",
+                            "disable_io_binding": args.disable_io_binding,
+                            "torch_latency": f"{torch_latency:.2f}" if torch_latency else "None",
                             "onnxruntime_latency": f"{ort_latency:.2f}",
-                            "onnxruntime_io_binding_latency": f"{ort_io_latency:.2f}",
                         }
                         csv_writer.writerow(row)
                     except:

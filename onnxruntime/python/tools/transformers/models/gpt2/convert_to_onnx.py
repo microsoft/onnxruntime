@@ -30,7 +30,13 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import (
+    Precision,
+    create_onnxruntime_session,
+    get_ort_environment_variables,
+    prepare_environment,
+    setup_logger,
+)
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
@@ -146,12 +152,26 @@ def parse_arguments(argv=None):
     parser.set_defaults(overwrite=False)
 
     parser.add_argument(
-        "--use_int32_inputs",
+        "--use_int64_inputs",
         required=False,
         action="store_true",
         help="Use int32 instead of int64 for input_ids, position_ids and attention_mask.",
     )
-    parser.set_defaults(use_int32_inputs=False)
+    parser.set_defaults(use_int64_inputs=False)
+
+    parser.add_argument(
+        "-s",
+        "--stage",
+        type=int,
+        default=0,
+        required=False,
+        choices=[0, 1, 2],
+        help="Stage in generation: 1 (initial decoder), 2 (decoder), 0 (both). "
+        "1 - decode the first token when past_sequence_length is zero; "
+        "2 - decode the remaining tokens when past_sequence_length is not zero; "
+        "0 - one onnx model for both stages 1 and 2. "
+        "Note that we will optimize 1 and 2 differently for best performance.",
+    )
 
     fp16_option_group = parser.add_argument_group(
         'float to float16 conversion parameters that works when "--precision fp16" is specified'
@@ -185,7 +205,8 @@ def parse_arguments(argv=None):
         "--op_block_list",
         nargs="+",
         default=[],
-        help="List of operators (like Attention Gather Add LayerNormalization FastGelu MatMul) to compute in float32 instead of float16.",
+        help="List of operators (like Add LayerNormalization SkipLayerNormalization EmbedLayerNormalization FastGelu) "
+        "to compute in float32 instead of float16.",
     )
 
     fp16_option_group.add_argument(
@@ -215,11 +236,11 @@ def get_onnx_model_size(onnx_path: str, use_external_data_format: bool):
         return sum([f.stat().st_size for f in Path(onnx_path).parent.rglob("*")])
 
 
-def get_latency_name():
-    return "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+def get_latency_name(batch_size, sequence_length, past_sequence_length):
+    return f"average_latency(batch_size={batch_size},sequence_length={sequence_length},past_sequence_length={past_sequence_length})"
 
 
-def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
+def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: str = "gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
 
@@ -277,6 +298,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     raw_onnx_model = onnx_model_paths["raw"]
 
+    int_data_type = torch.int64 if args.use_int64_inputs else torch.int32
+
     if os.path.exists(raw_onnx_model) and not args.overwrite:
         logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
     else:
@@ -289,9 +312,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             args.use_external_data_format,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
         )
 
     fp16_params = {"keep_io_types": args.keep_io_types}
@@ -306,11 +329,13 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     is_io_float16 = args.precision == Precision.FLOAT16 and not args.keep_io_types
 
+    optimized_ops = ""
+    all_ops = ""
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else "fp32"]
 
         logger.info(f"Optimizing model to {output_path}")
-        gpt2helper.optimize_onnx(
+        m = gpt2helper.optimize_onnx(
             raw_onnx_model,
             output_path,
             args.precision == Precision.FLOAT16,
@@ -318,8 +343,18 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model.config.hidden_size,
             args.use_external_data_format,
             auto_mixed_precision=args.auto_mixed_precision,
+            stage=args.stage,
             **fp16_params,
         )
+
+        nodes = m.nodes()
+        op_list = set([node.op_type for node in nodes])
+        all_ops = ",".join(op_list)
+
+        # print optimized operators
+        optimized_op_counter = m.get_fused_operator_statistics()
+        if optimized_op_counter:
+            optimized_ops = ",".join([key for key in optimized_op_counter if optimized_op_counter[key] > 0])
     else:
         output_path = raw_onnx_model
 
@@ -353,13 +388,19 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model_class=args.model_class,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
             test_cases_per_run=args.test_cases,
             total_runs=args.test_runs,
+            stage=args.stage,
             verbose=args.verbose,
         )
+
+        # An example configuration for testing performance
+        batch_size = 8
+        sequence_length = 32 if args.stage == 1 else 1
+        past_sequence_length = 0 if args.stage == 1 else 32
 
         latency = gpt2helper.test_performance(
             session,
@@ -371,12 +412,12 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model_class=args.model_class,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            batch_size=8,
-            sequence_length=1,
-            past_sequence_length=32,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            past_sequence_length=past_sequence_length,
         )
 
         if args.precision == Precision.FLOAT16:
@@ -387,7 +428,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
         from onnxruntime import __version__ as ort_version
 
-        latency_name = get_latency_name()
+        latency_name = get_latency_name(batch_size, sequence_length, past_sequence_length)
         csv_file_existed = os.path.exists(csv_filename)
         with open(csv_filename, mode="a", newline="") as csv_file:
             column_names = [
@@ -395,6 +436,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "run_id",
                 "model_name",
                 "model_class",
+                "stage",
                 "gpu",
                 "precision",
                 "optimizer",
@@ -406,8 +448,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list",
                 "force_fp16_initializers",
                 "auto_mixed_precision",
-                "ORT_TRANSFORMER_OPTIONS",
-                "ORT_CUDA_GEMM_OPTIONS",
+                "optimized_operators",
+                "operators",
+                "environment_variables",
                 "onnxruntime",
                 latency_name,
                 "top1_match_rate",
@@ -428,6 +471,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "run_id": run_id,
                 "model_name": args.model_name_or_path,
                 "model_class": args.model_class,
+                "stage": args.stage,
                 "gpu": args.use_gpu,
                 "precision": args.precision,
                 "optimizer": args.optimize_onnx,
@@ -439,8 +483,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list": args.node_block_list,
                 "force_fp16_initializers": args.force_fp16_initializers,
                 "auto_mixed_precision": args.auto_mixed_precision,
-                "ORT_TRANSFORMER_OPTIONS": os.getenv("ORT_TRANSFORMER_OPTIONS"),
-                "ORT_CUDA_GEMM_OPTIONS": os.getenv("ORT_CUDA_GEMM_OPTIONS"),
+                "optimized_operators": optimized_ops,
+                "operators": all_ops,
+                "environment_variables": get_ort_environment_variables(),
                 "onnxruntime": ort_version,
                 latency_name: f"{latency:.2f}",
                 "diff_50_percentile": parity_result["max_diff_percentile_50"],
@@ -487,12 +532,12 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                         position_ids.masked_fill_(position_ids < 0, 0)
 
                     inputs = {
-                        "input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
-                        "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
-                        "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask,
+                        "input_ids": input_ids.to(int_data_type),
+                        "position_ids": position_ids.to(int_data_type),
+                        "attention_mask": attention_mask.to(int_data_type),
                     }
                 else:
-                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
+                    inputs = {"input_ids": input_ids.to(int_data_type)}
 
                 test_inputs.append(inputs)
 
