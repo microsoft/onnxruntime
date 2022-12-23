@@ -25,7 +25,7 @@ using std::string_view;
  *                /              \
  * [supported_children_ops] [supported_children_ops]
  *              |                 |
- *          [other_ops]      [other_ops]
+ *          [any_ops_a]      [any_ops_b]
  *
  * will be transformed to:
  *
