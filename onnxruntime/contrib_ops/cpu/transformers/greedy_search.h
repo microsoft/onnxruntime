@@ -21,7 +21,6 @@ namespace transformers {
 
 using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
-// bugbug: refactor
 class GreedySearch : public IControlFlowKernel {
  public:
   explicit GreedySearch(const OpKernelInfo& info)

@@ -103,8 +103,8 @@ namespace cuda {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// CUDA ArgMax/ArgMin doesn't have OpSet12 implementation (with select_last_index attr), keep it in OpSet11 for now.
-#define REGISTER_KERNEL_TYPED_11(name, T)                                                  \
+// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
+#define REGISTER_KERNEL_VERSIONED_TYPED_11(name, T)                                        \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -113,10 +113,10 @@ namespace cuda {
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
-      11,                                                                                  \
+      11, 11,                                                                              \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -923,13 +923,13 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
   REGISTER_KERNEL_TYPED(name, double)    \
   REGISTER_KERNEL_TYPED(name, BFloat16)
 
-#define REGISTER_KERNEL_HFD_11(name)        \
-  REGISTER_KERNEL_TYPED_11(name, MLFloat16) \
-  REGISTER_KERNEL_TYPED_11(name, float)     \
-  REGISTER_KERNEL_TYPED_11(name, double)
+#define REGISTER_KERNEL_HFD_VERSIONED_11(name)        \
+  REGISTER_KERNEL_VERSIONED_TYPED_11(name, MLFloat16) \
+  REGISTER_KERNEL_VERSIONED_TYPED_11(name, float)     \
+  REGISTER_KERNEL_VERSIONED_TYPED_11(name, double)
 
-REGISTER_KERNEL_HFD_11(ArgMax)
-REGISTER_KERNEL_HFD_11(ArgMin)
+REGISTER_KERNEL_HFD_VERSIONED_11(ArgMax)
+REGISTER_KERNEL_HFD_VERSIONED_11(ArgMin)
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 
