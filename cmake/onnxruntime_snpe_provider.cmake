@@ -21,7 +21,7 @@ endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_snpe_cc_srcs})
 onnxruntime_add_static_library(onnxruntime_providers_snpe ${onnxruntime_providers_snpe_cc_srcs})
-onnxruntime_add_include_to_target(onnxruntime_providers_snpe onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_providers_snpe onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers::flatbuffers)
 link_directories(${SNPE_CMAKE_DIR}/lib/${SNPE_ARCH_ABI} ${SNPE_CMAKE_DIR}/lib/dsp)
 add_dependencies(onnxruntime_providers_snpe onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_providers_snpe PROPERTIES CXX_STANDARD_REQUIRED ON)
