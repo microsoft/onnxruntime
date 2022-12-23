@@ -1273,6 +1273,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         if args.output_token_scores:
             raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
 
+    precision = "fp16" if args.precision == Precision.FLOAT16 else "fp32"
+
     if is_gpt2:
         if args.init_onnx and os.path.exists(args.init_onnx):
             logger.info(f"skip convert_to_onnx since init_onnx path existed: {args.init_onnx}")
