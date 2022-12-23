@@ -12,9 +12,9 @@ Example 2: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                   \
-        --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
-        --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
+    python convert_generation.py -m t5-small --model_type t5                    \
+        --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx            \
+        --init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
 Example 3: convert T5 model with beam search. All in one step:
@@ -129,11 +129,11 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     input_group.add_argument(
-        "--encoder_decoder_init_onnx",
+        "--init_onnx",
         required=False,
         type=str,
         default="",
-        help="Path of ONNX model for encoder and decoder initialization. Specify it when you have exported the model.",
+        help="Path of ONNX model for encoder and initial decoder or only the later. Specify it when you have exported the model.",
     )
 
     parser.add_argument(
@@ -178,22 +178,12 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(run_shape_inference=False)
 
     output_group.add_argument(
-        "-pvs",
-        "--pad_vocab_size",
+        "--disable_pad_vocab_size",
         required=False,
         action="store_true",
-        help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size",
+        help="do not pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size",
     )
-    output_group.set_defaults(pad_vocab_size=True)
-
-    output_group.add_argument(
-        "-sgd",
-        "--separate_gpt2_decoder_for_init_run",
-        required=False,
-        action="store_true",
-        help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
-    )
-    output_group.set_defaults(separate_gpt2_decoder_for_init_run=True)
+    output_group.set_defaults(disable_pad_vocab_size=False)
 
     output_group.add_argument(
         "-i",
@@ -308,6 +298,16 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     beam_parameters_group.add_argument(
+        "--vocab_size",
+        type=int,
+        required=False,
+        default=-1,
+        help="Vocab_size of the underlying model used to decide the shape of vocab mask",
+    )
+
+    sampling_group = parser.add_argument_group("Top P sampling parameters")
+
+    sampling_group.add_argument(
         "--temperature",
         type=float,
         required=False,
@@ -315,7 +315,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="The value used to module the next token probabilities.",
     )
 
-    beam_parameters_group.add_argument(
+    sampling_group.add_argument(
         "--top_p",
         type=float,
         required=False,
@@ -323,7 +323,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Top P for sampling",
     )
 
-    beam_parameters_group.add_argument(
+    sampling_group.add_argument(
         "--filter_value",
         type=float,
         required=False,
@@ -331,15 +331,15 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Filter value for Top P sampling",
     )
 
-    beam_parameters_group.add_argument(
+    sampling_group.add_argument(
         "--min_tokens_to_keep",
         type=int,
         required=False,
         default=1,
-        help="Minimumber of tokens we keep per batch example in the output.",
+        help="Mininum number of tokens we keep per batch example in the output.",
     )
 
-    beam_parameters_group.add_argument(
+    sampling_group.add_argument(
         "--presence_penalty",
         type=float,
         required=False,
@@ -347,20 +347,12 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="presence penalty for custom sampling.",
     )
 
-    beam_parameters_group.add_argument(
+    sampling_group.add_argument(
         "--custom",
         type=int,
         required=False,
         default=0,
         help="If 1 customized top P logic is applied",
-    )
-
-    beam_parameters_group.add_argument(
-        "--vocab_size",
-        type=int,
-        required=False,
-        default=-1,
-        help="Vocab_size of the underlying model used to decide the shape of vocab mask",
     )
 
     test_group = parser.add_argument_group("Other options for testing parity and performance")
@@ -407,11 +399,12 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return args
 
 
-def gpt2_to_onnx(args: argparse.Namespace):
+def gpt2_to_onnx(args: argparse.Namespace, stage=0):
     """Convert GPT-2 model to onnx
 
     Args:
         args (argparse.Namespace): arguments parsed from command line
+        stage (int): 1 for init onnx, 2 for decoder onnx, 0 for both stages.
     """
     model_name = args.model_name_or_path
 
@@ -419,7 +412,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "--model_name_or_path",
         model_name,
         "--output",
-        args.decoder_onnx,
+        args.init_onnx if stage == 1 else args.decoder_onnx,
         "--optimize_onnx",
         "--precision",
         "fp32" if args.precision == Precision.FLOAT32 else "fp16",
@@ -428,7 +421,10 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "--test_cases",
         "10",
         "--overwrite",  # Overwrite onnx file if existed
+        "--stage",
+        str(stage),
     ]
+
     if args.use_gpu:
         arguments.append("--use_gpu")
     if args.use_external_data_format:
@@ -472,7 +468,7 @@ def t5_to_onnx(args: argparse.Namespace):
 
     logger.debug(f"onnx model for encoder: {paths[0]}")
     logger.debug(f"onnx model for decoder: {paths[1]}")
-    args.encoder_decoder_init_onnx = paths[0]
+    args.init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
 
@@ -1070,18 +1066,17 @@ def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_exter
     return True
 
 
-def generate_gpt2_init_decoder(
-    decoder_onnx_path: str, init_decoder_onnx_path: str, use_external_data_format: bool = True
+def optimize_gpt2_init_decoder(
+    input_onnx_path: str, optimized_init_onnx_path: str, use_external_data_format: bool = True
 ) -> bool:
-    """Generates the initial decoder GPT2 subgraph and saves it for downstream use.
-       The initial decoder model will be saved to init_decoder_onnx_path.
+    """Optimize the initial decoder GPT2 graph and saves it for downstream use.
 
     Args:
-        decoder_onnx_path (str): Path of GPT-2 decoder onnx model
-        init_decoder_onnx_path (str): Path of GPT-2 init decoder onnx model
+        input_onnx_path (str): Path of GPT-2 init onnx model
+        optimized_init_onnx_path (str): Path of GPT-2 optimized initial decoder onnx model
         use_external_data_format(bool): output tensors to external data or not.
     """
-    init_decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
+    init_decoder_model_proto = onnx.load_model(input_onnx_path, load_external_data=True)
 
     logits_output_name = init_decoder_model_proto.graph.output[0].name
 
@@ -1250,7 +1245,7 @@ def generate_gpt2_init_decoder(
     gpt2_init_decoder_model.topological_sort()
 
     # Save the init decoder model
-    OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
+    OnnxModel.save(init_decoder_model_proto, optimized_init_onnx_path, save_as_external_data=use_external_data_format)
     return True
 
 
@@ -1260,6 +1255,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     Args:
         args (argparse.Namespace): arguments parsed from command line
     """
+    assert generation_type in [GenerationType.BEAMSEARCH, GenerationType.GREEDYSEARCH]
+
     is_gpt2: bool = args.model_type == "gpt2"
     is_beamsearch: bool = generation_type == GenerationType.BEAMSEARCH
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
@@ -1277,20 +1274,30 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
 
     if is_gpt2:
-        if args.decoder_onnx and os.path.exists(args.decoder_onnx):
-            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+        if args.init_onnx and os.path.exists(args.init_onnx):
+            logger.info(f"skip convert_to_onnx since init_onnx path existed: {args.init_onnx}")
         else:
+            stage = 1
+            if not args.init_onnx:
+                onnx_filename = "gpt2_stage{}_{}.onnx".format(stage, precision)
+                args.init_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
+
+            logger.info(f"Convert GPT model {args.model_name_or_path} (stage {stage}) to onnx {args.init_onnx} ...")
+            gpt2_to_onnx(args, stage=stage)
+
+        if args.decoder_onnx and os.path.exists(args.decoder_onnx):
+            logger.info(f"skip convert_to_onnx since decoder_onnx path existed: {args.decoder_onnx}")
+        else:
+            stage = 2
             if not args.decoder_onnx:
-                onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
+                onnx_filename = "gpt2_stage{}_{}.onnx".format(stage, precision)
                 args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
 
-            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
-            gpt2_to_onnx(args)
+            logger.info(f"Convert GPT model {args.model_name_or_path} (stage {stage}) to onnx {args.decoder_onnx} ...")
+            gpt2_to_onnx(args, stage=stage)
     else:  # t5 or mt5
-        if args.decoder_onnx and args.encoder_decoder_init_onnx:
-            logger.info(
-                f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.encoder_decoder_init_onnx}"
-            )
+        if args.decoder_onnx and args.init_onnx:
+            logger.info(f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.init_onnx}")
         else:
             logger.info(f"Convert model {args.model_name_or_path} to onnx ...")
             t5_to_onnx(args)
@@ -1301,60 +1308,56 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # NOTE: We currently only support padding the MatMul logits weight for GPT2 GreedySearch/BeamSearch.
     # This can be expanded to other models/decoding strategies later
     logits_matmul_weight_padded = False
-    if (
-        args.pad_vocab_size
-        and args.precision == Precision.FLOAT16
-        and is_gpt2
-        and (is_beamsearch or is_greedysearch or is_sampling)
-    ):
-        logger.info(
-            f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
-            "The file will be overwritten."
-        )
-        logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
-        if not logits_matmul_weight_padded:
-            logger.warning(
-                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+    if (not args.disable_pad_vocab_size) and args.precision == Precision.FLOAT16 and is_gpt2:
+        for onnx_path in [args.init_onnx, args.decoder_onnx]:
+            logger.info(
+                f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {onnx_path}. "
+                "The file will be overwritten."
             )
+            if not pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format):
+                raise ValueError(f"Failed to pad logits MatMul weights for {onnx_path}. ")
+        logits_matmul_weight_padded = True
 
-    gpt2_init_decoder_generated = False
-    gpt2_init_decoder_onnx_path = None
-    if args.separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
-        logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
+    gpt2_init_decoder_optimized = False
+    decoder_input_shape_updated = False
+    init_onnx_path = args.init_onnx
+    if is_gpt2:
+        gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(precision)
+        optimized_init_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
 
-        gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
-            "fp16" if args.precision == Precision.FLOAT16 else "fp32"
+        logger.info(f"Optimizing initial GPT2 decoder from {args.init_onnx} to {optimized_init_onnx_path}. ")
+
+        gpt2_init_decoder_optimized = optimize_gpt2_init_decoder(
+            args.init_onnx, optimized_init_onnx_path, args.use_external_data_format
         )
 
-        gpt2_init_decoder_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
-
-        gpt2_init_decoder_generated = generate_gpt2_init_decoder(
-            args.decoder_onnx, gpt2_init_decoder_onnx_path, args.use_external_data_format
-        )
-
-        if not gpt2_init_decoder_generated:
+        if not gpt2_init_decoder_optimized:
             logger.warning(
                 "Tried and failed to generate the init decoder GPT2 model. "
                 "Performance may be sub-optimal for the initial decoding run"
             )
+        else:
+            init_onnx_path = optimized_init_onnx_path
 
         # Update the graph input shapes for the non-initial decoder model to account
         # for the fact that the sequence length will always be 1
-        if gpt2_init_decoder_generated and not update_input_shapes_for_gpt2_decoder_model(
+        decoder_input_shape_updated = update_input_shapes_for_gpt2_decoder_model(
             args.decoder_onnx, args.use_external_data_format
-        ):
+        )
+        if not decoder_input_shape_updated:
             # Can't proceed further - better to raise an exception
             raise ValueError(f"Could not update the input shapes for the non-initial decoder subgraph.")
 
     # If the user explicitly requests running shape inference or if we padded/mutated
-    # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new
-    # shapes
-    if logits_matmul_weight_padded or args.run_shape_inference or gpt2_init_decoder_generated:
+    # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new shapes
+    if logits_matmul_weight_padded or args.run_shape_inference or decoder_input_shape_updated:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
-        if gpt2_init_decoder_generated:
-            logger.info(f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten.")
-            shape_inference(gpt2_init_decoder_onnx_path, args.use_external_data_format)
+
+    # For other models (t5 or mt5), shape inference of init onnx will be run later.
+    if (logits_matmul_weight_padded or args.run_shape_inference or gpt2_init_decoder_optimized) and is_gpt2:
+        logger.info(f"Run symbolic shape inference on {init_onnx_path}. The file will be overwritten.")
+        shape_inference(init_onnx_path, args.use_external_data_format)
 
     if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -1381,11 +1384,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     if args.model_type == "gpt2":
         verify_gpt2_subgraph(decoder_model.graph, args.precision)
 
-        # If we generated the init decoder model, verify that as well
-        if gpt2_init_decoder_generated:
-            gpt2_init_decoder_model = onnx.load_model(gpt2_init_decoder_onnx_path, load_external_data=True)
-            gpt2_init_decoder_model.graph.name = f"{args.model_type} init decoder"
-            verify_gpt2_subgraph(gpt2_init_decoder_model.graph, args.precision)
+        gpt2_init_decoder_model = onnx.load_model(init_onnx_path, load_external_data=True)
+        gpt2_init_decoder_model.graph.name = f"{args.model_type} init decoder"
+        verify_gpt2_subgraph(gpt2_init_decoder_model.graph, args.precision)
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
@@ -1498,9 +1499,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     initializers = []
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
-            logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
-            shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
-        encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
+            logger.info(f"Symbolic shape inference on {args.init_onnx}. The file will be overwritten.")
+            shape_inference(args.init_onnx, args.use_external_data_format)
+        encoder_model = onnx.load_model(args.init_onnx, load_external_data=True)
         encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
@@ -1530,27 +1531,17 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             ]
         )
     else:
-        if gpt2_init_decoder_generated:
-            # Move shared initializers (shared between init decoder and decoder models) to the main
-            # graph and remove them from these models
-            if not args.disable_shared_initializers:
-                # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
-                initializers = get_shared_initializers(gpt2_init_decoder_model, decoder_model)
-                logger.info(
-                    f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
-                )
-            if past_present_share_buffer:
-                logger.info("*****update init decoder subgraph to make past and present share buffer******************")
-                update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
-            node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
-        else:
-            # Move initializer from subgraph to main graph could reduce memory usage in inference.
-            initializers = move_initializers(decoder_model.graph)
-            logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+        # Move shared initializers (shared between init decoder and decoder models) to the main
+        # graph and remove them from these models
+        if not args.disable_shared_initializers:
+            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
+            initializers = get_shared_initializers(gpt2_init_decoder_model, decoder_model)
+            logger.info(
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
+            )
 
-        if past_present_share_buffer:
-            logger.info("*****update decoder subgraph to make past and present share buffer******************")
-            update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
+        node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
+
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
@@ -1649,7 +1640,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         opset_imports=decoder_model.opset_import,
     )
 
-    # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
     if args.use_external_data_format:
         from packaging import version
 
@@ -2146,9 +2136,9 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
         sentences (Optional[List[str]], optional): input text. Defaults to None.
 
     Raises:
-        ValueError: Path does not exist: --encoder_decoder_init_onnx
+        ValueError: Path does not exist: --init_onnx
         ValueError: Path does not exist: --decoder_onnx
-        ValueError: --decoder_onnx and --encoder_decoder_init_onnx are not used together for T5
+        ValueError: --decoder_onnx and --init_onnx are not used together for T5
 
     Returns:
         Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
@@ -2158,14 +2148,12 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     setup_logger(args.verbose)
 
     if args.model_type in ["t5", "mt5"]:
-        if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
-            raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
+        if args.init_onnx and not os.path.exists(args.init_onnx):
+            raise ValueError(f"Path does not exist: --init_onnx {args.init_onnx}")
         if args.decoder_onnx and not os.path.exists(args.decoder_onnx):
             raise ValueError(f"Path does not exist: --decoder_onnx {args.decoder_onnx}")
-        if (args.encoder_decoder_init_onnx and not args.decoder_onnx) or (
-            args.decoder_onnx and not args.encoder_decoder_init_onnx
-        ):
-            raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
+        if (args.init_onnx and not args.decoder_onnx) or (args.decoder_onnx and not args.init_onnx):
+            raise ValueError("--decoder_onnx shall use together with --init_onnx")
 
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
