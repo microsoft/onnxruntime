@@ -191,7 +191,8 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                                             context.Input<Tensor>(0),     // input_ids
                                             context.Input<Tensor>(7),     // vocab_mask
                                             context.Input<Tensor>(8),     // prefix_vocab_mask
-                                            context.Input<Tensor>(9)));  // attention_mask
+                                            context.Input<Tensor>(9),    // attention_mask
+                                            nullptr));                    // presence_mask
 
   return Status::OK();
 }
