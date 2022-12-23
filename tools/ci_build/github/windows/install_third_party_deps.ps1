@@ -7,7 +7,8 @@
  param (
     [string]$cpu_arch = "x64",
     [string]$build_config = "RelWithDebInfo",
-    [string]$install_prefix = "."
+    [string]$install_prefix = ".",
+    [switch]$use_cache
  )
 
 . "$PSScriptRoot\helpers.ps1"
@@ -27,15 +28,23 @@ New-Item -Path "$install_prefix" -ItemType Directory -Force
 $compile_flags = '/MP /guard:cf /Qspectre /DWIN32 /D_WINDOWS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /DNTDDI_VERSION=0x06010000 /W3 '
 $linker_flags=@('/guard:cf')
 
+if ($use_cache) {
+  $debug_info_format = "/Z7"
+}
+else {
+  $debug_info_format = "/Zi"
+}
+
 if($build_config -eq 'Release'){
   $compile_flags += "/O2", "/Ob2", "/DNDEBUG", "/Gw", "/GL"
 } elseif($build_config -eq 'RelWithDebInfo'){
-  $compile_flags += "/Zi", "/O2", "/Ob1", "/DNDEBUG", "/Gw", "/GL"
+    $compile_flags += "$debug_info_format", "/O2", "/Ob1", "/DNDEBUG", "/Gw", "/GL"
 } elseif($build_config -eq 'Debug'){
-  $compile_flags += "/Zi", "/Ob0", "/Od", "/RTC1"
+  $compile_flags += "$debug_info_format", "/Ob0", "/Od", "/RTC1"
 } elseif($build_config -eq 'MinSizeRel'){
   $compile_flags += "/O1", "/Ob1", "/DNDEBUG", "/Gw", "/GL"
 }
+Write-Host $compile_flags
 # cmake args that applies to every 3rd-party library
 [string[]]$cmake_extra_args="-DCMAKE_CXX_STANDARD=17 `"-DCMAKE_CXX_FLAGS=$compile_flags /EHsc`" ", "`"-DCMAKE_C_FLAGS=$compile_flags`"", "--compile-no-warning-as-error", "--fresh", "-Wno-dev"
 if($cpu_arch -eq 'x86'){
@@ -47,11 +56,19 @@ if($cpu_arch -eq 'x86'){
   throw "$cpu_arch is not supported"
 }
 
+if ($use_cache) {
+  if ($build_config -eq 'RelWithDebInfo') {
+    $cmake_extra_args += "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=`"/MD /Z7 /O2 /Ob1 /DNDEBUG`""
+  }
+  elseif ($build_config -eq 'Debug') {
+    $cmake_extra_args += "-DCMAKE_CXX_FLAGS_Debug=`"/MDd /Z7 /Ob0 /Od /RTC1`""
+  }
+}
 
 $cmake_extra_args += "-DCMAKE_EXE_LINKER_FLAGS=`"$linker_flags`""
 
 # Find the full path of cmake.exe
-$cmake_command = Get-Command -CommandType Application cmake
+$cmake_command = (Get-Command -CommandType Application cmake)[0]
 $cmake_path = $cmake_command.Path
 
 Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args
