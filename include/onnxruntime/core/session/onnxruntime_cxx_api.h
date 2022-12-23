@@ -458,7 +458,7 @@ std::string MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* c
 ///   Ort::CustomOpConfigs op_configs;
 ///   op_configs.AddConfig("my_custom_op", "device_type", "CPU");
 ///
-/// Passed to Ort::SessionOptions::RegisterCustomOpLibrary.
+/// Passed to Ort::SessionOptions::RegisterCustomOpsLibrary.
 /// </summary>
 struct CustomOpConfigs {
   CustomOpConfigs() = default;
@@ -468,13 +468,24 @@ struct CustomOpConfigs {
   CustomOpConfigs(CustomOpConfigs&& o) = default;
   CustomOpConfigs& operator=(CustomOpConfigs&& o) = default;
 
-  // Add a configuration entry for a specific custom operator. Returns a reference to *this to allow chaining calls.
+  /** \brief Adds a session configuration entry/value for a specific custom operator.
+   *
+   * \param custom_op_name The name of the custom operator for which to add a configuration entry.
+   *                       Must match the name returned by the CustomOp's GetName() method.
+   * \param config_key The name of the configuration entry.
+   * \param config_value The value of the configuration entry.
+   * \return A reference to this object to enable call chaining.
+   */
   CustomOpConfigs& AddConfig(const char* custom_op_name, const char* config_key, const char* config_value);
 
-  // Get a map of all custom operator configurations where the key has been flattened to include both
-  // the custom operator name and the config key.
-  // Example:
-  // A prior call to AddConfig("my_op", "key", "value") corresponds to the flattened key/value pair {"my_op.key", "value"}.
+  /** \brief Returns a flattened map of custom operator configuration entries and their values.
+   *
+   * The keys has been flattened to include both the custom operator name and the configuration entry key name.
+   * For example, a prior call to AddConfig("my_op", "key", "value") corresponds to the flattened key/value pair
+   * {"my_op.key", "value"}.
+   *
+   * \return An unordered map of flattened configurations.
+  */
   const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
 
  private:
