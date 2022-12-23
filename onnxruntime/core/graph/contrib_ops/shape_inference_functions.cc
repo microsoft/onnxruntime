@@ -174,31 +174,36 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
           fail_shape_inference("The past input shall be 5 dimensions");
         }
 
-        int64_t total_sequence_length = -1;
-        if (!hasInputShape(ctx, 1)) {  // no weights
-          if (hasInputShape(ctx, 6)) {
-            auto& key_shape = getInputShape(ctx, 6);
-            auto& key_dims = key_shape.dim();
-            if (key_dims.size() == 3 && key_dims[1].has_dim_value()) {
-              total_sequence_length = key_dims[1].dim_value();  // kv_sequence_length
+        auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
+        if (past_present_share_buffer) {
+          propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
+        } else {
+          int64_t total_sequence_length = -1;
+          if (!hasInputShape(ctx, 1)) {  // no weights
+            if (hasInputShape(ctx, 6)) {
+              auto& key_shape = getInputShape(ctx, 6);
+              auto& key_dims = key_shape.dim();
+              if (key_dims.size() == 3 && key_dims[1].has_dim_value()) {
+                total_sequence_length = key_dims[1].dim_value();  // kv_sequence_length
+              }
+            }
+          } else {
+            if (input_dims[1].has_dim_value()) {
+              total_sequence_length = input_dims[1].dim_value();
             }
           }
-        } else {
-          if (input_dims[1].has_dim_value()) {
-            total_sequence_length = input_dims[1].dim_value();
+
+          if (total_sequence_length >= 0 && past_dims[3].has_dim_value()) {
+            total_sequence_length += past_shape.dim(3).dim_value();
+
+            ONNX_NAMESPACE::TensorShapeProto present_shape;
+            for (auto& dim : past_dims) {
+              *present_shape.add_dim() = dim;
+            }
+            present_shape.mutable_dim(3)->set_dim_value(total_sequence_length);
+
+            updateOutputShape(ctx, 1, present_shape);
           }
-        }
-
-        if (total_sequence_length >= 0 && past_dims[3].has_dim_value()) {
-          total_sequence_length += past_shape.dim(3).dim_value();
-
-          ONNX_NAMESPACE::TensorShapeProto present_shape;
-          for (auto& dim : past_dims) {
-            *present_shape.add_dim() = dim;
-          }
-          present_shape.mutable_dim(3)->set_dim_value(total_sequence_length);
-
-          updateOutputShape(ctx, 1, present_shape);
         }
       }
     }

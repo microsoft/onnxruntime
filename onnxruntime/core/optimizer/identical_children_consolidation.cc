@@ -1,0 +1,44 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/graph/graph_utils.h"
+#include "identical_children_consolidation.h"
+namespace onnxruntime {
+Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, int  /*graph_level*/, const logging::Logger&  /*logger*/) const {
+//  return Status::OK();
+  GraphViewer const graph_viewer(graph);
+  for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+    Node& node = *(graph.GetNode(node_index));
+    if(supported_parent_optypes.count(node.OpType()) == 0) { continue; }
+    // 1. Checking if the has any qualifying children
+    if (node.GetOutputEdgesCount() < 2) { continue;}
+    auto identical_children_indexes = GetIndenticalChildrenSet(node);
+    if(identical_children_indexes.empty()) { continue;}
+    for (size_t i = 1; i < identical_children_indexes.size(); i++) {
+      auto *first_child = graph.GetNode(identical_children_indexes[0]);
+      auto *other_child = graph.GetNode(identical_children_indexes[i]);
+      //Currently Only support single output
+      graph_utils::ReplaceDownstreamNodeInput(graph, *other_child, 0, *first_child, 0);
+      graph_utils::RemoveNode(graph,*other_child);
+      modified = true;
+      return Status::OK();
+    }
+  }
+  return Status::OK();
+}
+
+std::vector<NodeIndex> IdenticalChildrenConsolidation::GetIndenticalChildrenSet(Node &node) const {
+  unordered_set<NodeIndex> identical_set;
+    for (auto i = node.OutputEdgesBegin(); i != std::prev(node.OutputEdgesEnd(),1); ++i) {
+      if(supported_children_optypes.count(i->GetNode().OpType()) == 0) {
+        continue; // this op is not currently supported
+      }
+      for (auto j = std::next(i); j != node.OutputEdgesEnd(); ++j) {
+        if (i->GetNode().OpType() == j->GetNode().OpType()) {
+          identical_set.insert({i->GetNode().Index(), j->GetNode().Index()});
+        }
+      }
+    }
+    return {identical_set.begin(),identical_set.end()};
+  }
+}

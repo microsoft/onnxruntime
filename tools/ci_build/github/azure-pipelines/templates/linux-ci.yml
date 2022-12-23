@@ -13,8 +13,8 @@ parameters:
   ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
-  AllowReleasedOpsetOnly: '1' 
-  # to inject strategy, you need to pass in the whole yaml structure - 
+  AllowReleasedOpsetOnly: '1'
+  # to inject strategy, you need to pass in the whole yaml structure -
   # https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema?view=azure-devops&tabs=schema#strategies
   # see example in orttraining-linux-gpu-ci-pipeline.yml
   Strategy: ''
@@ -37,7 +37,7 @@ jobs:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
     - task: NodeTool@0
       inputs:
-        versionSpec: '12.16.3'
+        versionSpec: '16.x'
     - template: run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: '${{ parameters.RunDockerBuildArgs }}'
