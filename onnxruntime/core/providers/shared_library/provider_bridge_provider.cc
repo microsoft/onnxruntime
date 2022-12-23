@@ -33,6 +33,7 @@
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/greedy_search.h"
+#include "contrib_ops/cpu/transformers/sampling.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -601,6 +602,15 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
   return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
                                                              subgraph_session_state);
 }
+
+void Sampling::Init(const OpKernelInfo& info) { g_host_cpu.Sampling__Init(this, info); }
+
+Status Sampling::Compute(OpKernelContext* ctx) const { return g_host_cpu.Sampling__Compute(this, ctx); }
+
+Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                            const SessionState& subgraph_session_state) {
+  return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
