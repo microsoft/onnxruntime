@@ -3,55 +3,43 @@
 
 #include <core/graph/graph_utils.h>
 #include "identical_children_consolidation.h"
-
+#include "core/graph/graph_utils.cc"
 namespace onnxruntime {
-Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  GraphViewer graph_viewer(graph);
-  for (auto node_index : graph_viewer.GetRootNodes()) {
+Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, int  /*graph_level*/, const logging::Logger&  /*logger*/) const {
+//  return Status::OK();
+  GraphViewer const graph_viewer(graph);
+  for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     Node& node = *(graph.GetNode(node_index));
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-  }
-  for (auto node_index : graph_viewer.GetRootNodes()) {
-    Node& node = *(graph.GetNode(node_index));
-    // 1. Checking if the node is a supported op type.
-    if (supported_ops_and_supported_children.find(node.OpType()) != supported_ops_and_supported_children.end()) {
-      // 2. Grouping the children nodes by their OpType.
-      unordered_map<std::string_view,std::vector<Node*>> children_groups;
-      const auto& supported_children_ops = supported_ops_and_supported_children.at(node.OpType());
-      const auto& group_size = supported_children_ops.size();
-      // 3. Checking if the node has children that are supported op types and if the child has single parent.
-      // If yes, add them to the children vector.
-      for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-        if (supported_children_ops.find(it->GetNode().OpType()) != supported_children_ops.end()
-            && it->GetNode().GetInputEdgesCount() == 1) {
-          children_groups[it->GetNode().OpType()].emplace_back(&it->GetNode());
-        }
-      }
-      // 4. Checking if each group of the children vector has more than one node.
-      for (const auto& children_group: children_groups){
-          const auto& children = children_group.second;
-          std::vector<NodeArg*> input_defs = node.MutableInputDefs();
-          if (children.size() > 1) {
-            // 5. Consolidating the children nodes.
-            Node& new_node = graph.AddNode(
-                graph.GenerateNodeName(node.Name() /*+ "_consolidated"*/),
-                node.OpType(),
-                node.Description(),
-                node.MutableInputDefs(),
-                node.MutableOutputDefs(),// todo: check if this is correct
-                &node.GetAttributes(),
-                node.Domain()
-            );
-            for (auto& child : children) {
-              graph_utils::RemoveNodeOutputEdges(graph, *child);
-              graph.RemoveNode(child->Index());
-            }
-//            graph_utils::FinalizeNodeFusion(graph, new_node, children); todo: check if this is correct
-            modified = true;
-          }
-      }
+    if(supported_parent_optypes.count(node.OpType()) == 0) { continue; }
+    // 1. Checking if the has any qualifying children
+    if (node.GetOutputEdgesCount() < 2) { continue;}
+    auto identical_children_indexes = GetIndenticalChildrenSet(node);
+    if(identical_children_indexes.empty()) { continue;}
+    for (size_t i = 1; i < identical_children_indexes.size(); i++) {
+      auto *first_child = graph.GetNode(identical_children_indexes[0]);
+      auto *other_child = graph.GetNode(identical_children_indexes[i]);
+      //Currently Only support single output
+      graph_utils::ReplaceDownstreamNodeInput(graph, *other_child, 0, *first_child, 0);
+      graph_utils::RemoveNode(graph,*other_child);
+      modified = true;
+      return Status::OK();
     }
   }
   return Status::OK();
 }
+
+std::vector<NodeIndex> IdenticalChildrenConsolidation::GetIndenticalChildrenSet(Node &node) const {
+  unordered_set<NodeIndex> identical_set;
+    for (auto i = node.OutputEdgesBegin(); i != std::prev(node.OutputEdgesEnd(),1); ++i) {
+      if(supported_children_optypes.count(i->GetNode().OpType()) == 0) {
+        continue; // this op is not currently supported
+      }
+      for (auto j = std::next(i); j != node.OutputEdgesEnd(); ++j) {
+        if (i->GetNode().OpType() == j->GetNode().OpType()) {
+          identical_set.insert({i->GetNode().Index(), j->GetNode().Index()});
+        }
+      }
+    }
+    return {identical_set.begin(),identical_set.end()};
+  }
 }
