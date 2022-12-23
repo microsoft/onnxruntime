@@ -33,6 +33,7 @@
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/greedy_search.h"
+#include "contrib_ops/cpu/transformers/sampling.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -247,6 +248,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                                               attribute_name,
                                                                               subgraph_session_state);
   }
+
+  void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
+  Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
+  Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

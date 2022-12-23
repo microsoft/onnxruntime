@@ -170,8 +170,7 @@ void MyCustomKernelWithOptionalInput::Compute(OrtKernelContext* context) {
 
 void MyCustomStringLengthsKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
-  std::array<const int64_t, 1> output_shape = {1};
-
+  constexpr std::array<const int64_t, 1> output_shape = {1};
   const size_t num_inputs = kcontext.GetInputCount();
 
   // Each output is set to the length of the corresponding input string.
@@ -189,20 +188,19 @@ void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* a
                                           std::vector<std::string>& output_names,
                                           std::vector<std::vector<int64_t>>& expected_dims,
                                           std::vector<std::vector<int64_t>>& expected_outputs) {
-  const size_t index = ort_inputs.size();
-
-  std::array<int64_t, 1> input_dims = {1};
+  const size_t input_index = ort_inputs.size();
+  constexpr std::array<int64_t, 1> input_dims = {1};
   Ort::Value& ort_value = ort_inputs.emplace_back(
       Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
                                ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
   std::ostringstream oss(std::ostringstream::ate);
 
   oss.str("input_");
-  oss << index;
+  oss << input_index;
   input_names.emplace_back(oss.str());
 
   oss.str("output_");
-  oss << index;
+  oss << input_index;
   output_names.emplace_back(oss.str());
 
   expected_dims.push_back({1});
@@ -212,12 +210,11 @@ void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* a
 
 void MyCustomEchoReversedArgsKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
-  std::array<const int64_t, 1> output_shape = {1};
+  constexpr std::array<int64_t, 1> output_shape = {1};
+  const size_t num_inputs = kcontext.GetInputCount();
 
-  const size_t num_ios = kcontext.GetInputCount();
-
-  for (size_t i = 0; i < num_ios; ++i) {
-    const size_t out_index = num_ios - i - 1;
+  for (size_t i = 0; i < num_inputs; ++i) {
+    const size_t out_index = num_inputs - i - 1;
     auto input = kcontext.GetInput(i);
     auto output = kcontext.GetOutput(out_index, output_shape.data(), output_shape.size());
 
