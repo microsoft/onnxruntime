@@ -7,11 +7,9 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/controlflow/utils.h"
-#include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
-#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
-#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
+#include "contrib_ops/cpu/transformers/sampling_parameters.h"
 
 namespace onnxruntime {
 class FeedsFetchesManager;
@@ -21,11 +19,10 @@ namespace transformers {
 
 using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
-class GreedySearch : public IControlFlowKernel {
+class Sampling : public IControlFlowKernel {
  public:
-  explicit GreedySearch(const OpKernelInfo& info)
+  explicit Sampling(const OpKernelInfo& info)
       : IControlFlowKernel(info),
-        // encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
         dumper_(nullptr) {
     Init(info);
@@ -88,30 +85,15 @@ class GreedySearch : public IControlFlowKernel {
   //------------------------------------------------------------
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   //------------------------------------------------------------
-
-  // Relevant only for GPT2
-  // The init_run_gpt_subgraph_ (if the `init_decoder` attribute is present) will be
-  // used for the first decoding run and the gpt_subgraph_ will be used
-  // for subsequent runs.
-  // If the `init_decoder` attribute is missing, the `gpt_subgraph_` will be
-  // used for all decoding runs.
   std::unique_ptr<GptSubgraph> init_run_gpt_subgraph_;
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
 
-  // Relevant only for T5
-  // Same concept as above.
-  // The encoder will be used for the first run and the decoder will
-  // be used for subsequent runs.
-  // std::unique_ptr<T5EncoderSubgraph> t5_encoder_subgraph_;
-  // std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
-
-  // FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
   FeedsFetchesManager* init_run_decoder_feeds_fetches_manager_;
 
   IConsoleDumper* dumper_;
 
-  GreedySearchParameters parameters_;
+  SamplingParameters parameters_;
 
   bool has_init_decoder_ = false;
 };
