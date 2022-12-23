@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>  // for round
 #include <vector>
 #include "core/framework/tensor.h"
@@ -265,16 +266,15 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
 template <class T>
 inline constexpr bool is_8bit_v = std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value;
 
-// It's quite simpler when compared with ComputeInterpolateLevel2.
+// It's quite simpler when compared with ComputeInterpolationAtLevel2.
 // This function always compute interpolation along with the last axis.
 template <typename InputType, typename AccumulateType>
-void ComputeInterpolateLevel1(int64_t num_channels, int64_t input_height, int64_t input_width,
-                              int64_t output_height, int64_t output_width, const bool use_extrapolation,
-                              const float extrapolation_value,
-                              gsl::span<const InputType> Xdata_span, gsl::span<InputType> Ydata_span,
-                              const FilterParamsAntiAlias<AccumulateType>& p,
-                              const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
-                              concurrency::ThreadPool* tp) {
+void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, int64_t input_width,
+                                  int64_t output_height, int64_t output_width,
+                                  gsl::span<const InputType> Xdata_span, gsl::span<InputType> Ydata_span,
+                                  const FilterParamsAntiAlias<AccumulateType>& p,
+                                  const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
+                                  concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
 
   concurrency::ThreadPool::TrySimpleParallelFor(
@@ -296,14 +296,6 @@ void ComputeInterpolateLevel1(int64_t num_channels, int64_t input_height, int64_
           auto* Ydata_offset = Ydata + output_width * y;
           auto* bound = p_dim.bound.data();
           for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
-            // when use_extrapolation is set and original index of x or y is out of the dim range
-            // then use extrapolation_value as the output value.
-            if (use_extrapolation &&
-                ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
-                 (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
-              *Ydata_offset++ = static_cast<InputType>(extrapolation_value);
-              continue;
-            }
             AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
 
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * x;
@@ -327,21 +319,20 @@ void ComputeInterpolateLevel1(int64_t num_channels, int64_t input_height, int64_
 }
 
 // This function always calculate interpolation along with penultimate axis.
-// It can work with layout of nchw,chw, nhwc,hwc,nchwc..etc 
+// It can work with layout of nchw,chw, nhwc,hwc,nchwc..etc
 // Take NCHW as example, if you want to do computation in axis "H", you can split it as (NC)HW or [for (CHW) i in N].
 // If in axis C, you can split it as NC(HW) or N1C(HW), C is the penultimate axis.
 // Layout NHWC is the same.
 template <typename InputType, typename AccumulateType>
-void ComputeInterpolateLevel2(int64_t num_channels, int64_t input_height, int64_t input_width,
-                              int64_t output_height, int64_t output_width,
-                              const bool use_extrapolation, const float extrapolation_value,
-                              gsl::span<const InputType> Xdata_span, gsl::span<InputType> Ydata_span,
-                              const FilterParamsAntiAlias<AccumulateType>& p,
-                              const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
-                              concurrency::ThreadPool* tp) {
+void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, int64_t input_width,
+                                  int64_t output_height, int64_t output_width,
+                                  gsl::span<const InputType> Xdata_span, gsl::span<InputType> Ydata_span,
+                                  const FilterParamsAntiAlias<AccumulateType>& p,
+                                  const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
+                                  concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
   // This condition is set for higher performance.
-  // I find TrySimpleParallelFor in dim num_channels is always have higher efficency, so I would rather 
+  // I find TrySimpleParallelFor in dim num_channels is always have higher efficency, so I would rather
   // choose the first path as long as num_channels is 3 or bigger.
   if (num_channels > 2) {
     concurrency::ThreadPool::TrySimpleParallelFor(
@@ -366,13 +357,6 @@ void ComputeInterpolateLevel2(int64_t num_channels, int64_t input_height, int64_
             int64_t ymax = *y_bound++;
             auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
-              if (use_extrapolation &&
-                  ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
-                   (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
-                *Ydata_offset++ = static_cast<InputType>(extrapolation_value);
-                continue;
-              }
-
               AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
               auto* weight_coeff_start = weight_coeff;
 
@@ -414,17 +398,10 @@ void ComputeInterpolateLevel2(int64_t num_channels, int64_t input_height, int64_
 
             const auto* y_bound = p_dim.bound.data();
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * y;
-            int64_t ymin = y_bound[2 * y];
-            int64_t ymax = y_bound[2 * y + 1];
+            int64_t ymin = y_bound[2 * narrow<size_t>(y)];
+            int64_t ymax = y_bound[2 * narrow<size_t>(y) + 1];
             auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
-              if (use_extrapolation &&
-                  ((p.dim_y.original[y] < 0 || p.dim_y.original[y] > static_cast<float>(input_height - 1)) ||
-                   (p.dim_x.original[x] < 0 || p.dim_x.original[x] > static_cast<float>(input_width - 1)))) {
-                *Ydata_offset++ = static_cast<InputType>(extrapolation_value);
-                continue;
-              }
-
               AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
               auto* weight_coeff_start = weight_coeff;
 
@@ -444,6 +421,40 @@ void ComputeInterpolateLevel2(int64_t num_channels, int64_t input_height, int64_
           }
         });
   }
+}
+
+template <typename InputType, typename AccumulateType>
+void HandleExtrapolation(int64_t num_channels,
+                         int64_t output_height, int64_t output_width, int64_t output_depth,
+                         const float extrapolation_value, gsl::span<InputType> Ydata_span,
+                         const FilterParamsAntiAlias<AccumulateType>& p,
+                         concurrency::ThreadPool* tp) {
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      tp, static_cast<std::ptrdiff_t>(num_channels),
+      [&](std::ptrdiff_t nc) {
+        InputType* Ydata_base_nc = Ydata_span.data() + (nc) * (output_depth * output_height * output_width);
+
+        for (int64_t z = 0; z < output_depth; ++z) {
+          for (int64_t y = 0; y < output_height; ++y) {
+            InputType* Ydata_offset = Ydata_base_nc + (z * output_height + y) * output_width;
+            for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
+              Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
+            }
+          }
+        }
+
+        for (int64_t z = 0; z < output_depth; ++z) {
+          for (int64_t y : p.dim_y.out_of_bound_idx) {
+            InputType* Ydata_offset = Ydata_base_nc + (z * output_height + y) * output_width;
+            std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
+          }
+        }
+
+        for (int64_t z : p.dim_z.out_of_bound_idx) {
+          InputType* Ydata_offset = Ydata_base_nc + z * output_height * output_width;
+          std::fill_n(Ydata_offset, narrow<size_t>(output_height * output_width), static_cast<InputType>(extrapolation_value));
+        }
+      });
 }
 
 template <typename T, typename T1>
@@ -470,8 +481,8 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
                                        narrow<size_t>(input_height * num_channels * input_width));
       auto ydata_span = gsl::make_span(image_temp_buffer.get(), narrow<size_t>(input_height * num_channels * output_width));
 
-      ComputeInterpolateLevel1(num_channels, input_height, input_width, input_height, output_width,
-                               use_extrapolation, extrapolation_value, xdata_span, ydata_span, p, p.dim_x, tp);
+      ComputeInterpolationAtLevel1(num_channels, input_height, input_width, input_height, output_width,
+                                   xdata_span, ydata_span, p, p.dim_x, tp);
     }
     {
       // vertical interpolate
@@ -480,9 +491,15 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
       auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width),
                                           narrow<size_t>(output_height * num_channels * output_width));
 
-      ComputeInterpolateLevel2(num_channels, input_height, output_width, output_height, output_width,
-                               use_extrapolation, extrapolation_value, xdata_span, ydata_span, p, p.dim_y, tp);
+      ComputeInterpolationAtLevel2(num_channels, input_height, output_width, output_height, output_width,
+                                   xdata_span, ydata_span, p, p.dim_y, tp);
     }
+  }
+  if (use_extrapolation) {
+    auto ydata_span = gsl::make_span<T>(Ydata_base,
+                                        narrow<size_t>(batch_size * output_height * num_channels * output_width));
+    HandleExtrapolation(batch_size * num_channels, output_height, output_width, 1,
+                        extrapolation_value, ydata_span, p, tp);
   }
 }
 
@@ -599,8 +616,8 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
                                        narrow<size_t>(input_height * num_channels * input_width));
       auto ydata_span = gsl::make_span(image_temp_buffer.get(), narrow<size_t>(input_height * num_channels * output_width));
 
-      ComputeInterpolateLevel2(input_height, input_width, num_channels, output_width, num_channels,
-                               use_extrapolation, extrapolation_value, xdata_span, ydata_span, p, p.dim_x, tp);
+      ComputeInterpolationAtLevel2(input_height, input_width, num_channels, output_width, num_channels,
+                                   xdata_span, ydata_span, p, p.dim_x, tp);
     }
 
     // vertical interpolate
@@ -611,9 +628,16 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
       auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width),
                                           narrow<size_t>(output_height * num_channels * output_width));
 
-      ComputeInterpolateLevel2(1, input_height, output_width * num_channels, output_height, output_width * num_channels,
-                               use_extrapolation, extrapolation_value, xdata_span, ydata_span, p, p.dim_y, tp);
+      ComputeInterpolationAtLevel2(1, input_height, output_width * num_channels, output_height, output_width * num_channels,
+                                   xdata_span, ydata_span, p, p.dim_y, tp);
     }
+  }
+
+  if (use_extrapolation) {
+    auto ydata_span = gsl::make_span<T>(Ydata_base,
+                                        narrow<size_t>(batch_size * output_height * num_channels * output_width));
+    HandleExtrapolation(batch_size * num_channels, output_height, output_width, 1,
+                        extrapolation_value, ydata_span, p, tp);
   }
 }
 
@@ -683,21 +707,28 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
                                  input_depth * num_channels));
 
   UpsampleBaseAntiAlias<T>(p, batch_size, num_channels * input_depth, input_height, input_width, output_height, output_width,
-                           use_extrapolation, extrapolation_value,
+                           false, extrapolation_value,
                            X->Data<T>(), image_temp_buffer.get(), alloc, tp);
 
   for (int64_t n = 0; n < batch_size; ++n) {
-    // channel interpolate
+    // depth interpolate
     {
-      // channel interpolate
+      // depth interpolate
       auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get() + n * (output_height * num_channels * output_width * input_depth),
                                                 narrow<size_t>(output_height * num_channels * output_width * input_depth));
       auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width * output_depth),
                                           narrow<size_t>(output_height * num_channels * output_width * output_depth));
 
-      ComputeInterpolateLevel2(num_channels, input_depth, output_height * output_width, output_depth, output_height * output_width,
-                               use_extrapolation, extrapolation_value, xdata_span, ydata_span, p, p.dim_z, tp);
+      ComputeInterpolationAtLevel2(num_channels, input_depth, output_height * output_width, output_depth, output_height * output_width,
+                                   xdata_span, ydata_span, p, p.dim_z, tp);
     }
+  }
+
+  if (use_extrapolation) {
+    auto ydata_span = gsl::make_span<T>(Ydata_base,
+                                        narrow<size_t>(batch_size * output_height * num_channels * output_width * output_depth));
+    HandleExtrapolation(batch_size * num_channels, output_height, output_width, output_depth,
+                        extrapolation_value, ydata_span, p, tp);
   }
 }
 
