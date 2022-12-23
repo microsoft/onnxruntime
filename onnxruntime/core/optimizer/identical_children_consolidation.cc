@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/graph/graph_utils.h>
+#include "core/graph/graph_utils.h"
 #include "identical_children_consolidation.h"
-#include "core/graph/graph_utils.cc"
 namespace onnxruntime {
 Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, int  /*graph_level*/, const logging::Logger&  /*logger*/) const {
 //  return Status::OK();
