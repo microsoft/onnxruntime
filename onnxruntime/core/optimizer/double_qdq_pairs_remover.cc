@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "qdq_double_pairs_remover.h"
+#include "double_qdq_pairs_remover.h"
 namespace onnxruntime {
-Status QDQDoublePairsRemover::ApplyImpl(
+Status DoubleQDQPairsRemover::ApplyImpl(
     Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();

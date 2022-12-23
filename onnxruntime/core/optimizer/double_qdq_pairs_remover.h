@@ -7,9 +7,9 @@
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
-class QDQDoublePairsRemover : public GraphTransformer {
+class DoubleQDQPairsRemover : public GraphTransformer {
 public:
-  QDQDoublePairsRemover() : GraphTransformer("QDQDoublePairsRemover", {}) {}
+  DoubleQDQPairsRemover() : GraphTransformer("DoubleQDQPairsRemover", {}) {}
 
 private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level,

@@ -9,7 +9,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
-#include "core/optimizer/qdq_double_pairs_remover.h"
+#include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
@@ -192,9 +192,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
-      if (!disable_quant_qdq){
-        transformers.emplace_back(std::make_unique<QDQDoublePairsRemover>());
-      }
 
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
 
@@ -202,6 +199,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
       transformers.emplace_back(std::make_unique<IdenticalChildrenConsolidation>());
+      transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       transformers.emplace_back(std::make_unique<ConstantSharing>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
