@@ -2591,6 +2591,88 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
+//slx
+  static const char* FasterTransformerBert_ver1_doc =
+      R"DOC(FasterTransformerBert)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FasterTransformerBert)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(FasterTransformerBert_ver1_doc)
+      ///.Input(0, "c2c_attention", "content-to-content attention tensor, QcKc^T.", "T")
+      ///.Input(1, "c2p_attention", "content-to-position attention tensor, QcKr^T.", "T")
+      ///.Input(2, "p2c_attention", "position-to-content attention tensor, KcQr^T.", "T")
+      ///.Output(0, "disentangled_attention", "The disentangled attention output tensor.", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      ///.Attr("span", "Maximum relative distance, k.", AttributeProto::INT)
+      ///.Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT)
+/*
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape Inference
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+
+        auto& input0_shape = getInputShape(ctx, 0);
+        auto& input0_dims = input0_shape.dim();
+        if (input0_dims.size() != 3) {
+          fail_shape_inference("Input 0 shall be 3 dimensions");
+        }
+
+        // output dims is same as input[0] dims, i.e., regular c2c attention dims
+        // ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
+        // for (auto& dim : input0_dims) {
+        //   *disentangled_attention_shape.add_dim() = dim;
+        // }
+        // updateOutputShape(ctx, 0, disentangled_attention_shape);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      })*/;
+
+  static const char* FasterTransformerVit_ver1_doc =
+      R"DOC(FasterTransformerVit)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FasterTransformerVit)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(FasterTransformerVit_ver1_doc)
+      ///.Input(0, "c2c_attention", "content-to-content attention tensor, QcKc^T.", "T")
+      ///.Input(1, "c2p_attention", "content-to-position attention tensor, QcKr^T.", "T")
+      ///.Input(2, "p2c_attention", "position-to-content attention tensor, KcQr^T.", "T")
+      ///.Output(0, "disentangled_attention", "The disentangled attention output tensor.", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      ///.Attr("span", "Maximum relative distance, k.", AttributeProto::INT)
+      ///.Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT)
+/*
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape Inference
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+
+        auto& input0_shape = getInputShape(ctx, 0);
+        auto& input0_dims = input0_shape.dim();
+        if (input0_dims.size() != 3) {
+          fail_shape_inference("Input 0 shall be 3 dimensions");
+        }
+
+        // output dims is same as input[0] dims, i.e., regular c2c attention dims
+        // ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
+        // for (auto& dim : input0_dims) {
+        //   *disentangled_attention_shape.add_dim() = dim;
+        // }
+        // updateOutputShape(ctx, 0, disentangled_attention_shape);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      })*/;
+//slx
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {

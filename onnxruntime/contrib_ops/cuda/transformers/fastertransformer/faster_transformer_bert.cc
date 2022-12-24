@@ -149,7 +149,7 @@ int bertExample(size_t batch_size,
 }
 ONNX_OPERATOR_KERNEL_EX(
     FasterTransformerBert,
-    kOnnxDomain,
+    kMSDomain,///kOnnxDomain,
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
