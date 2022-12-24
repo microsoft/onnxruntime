@@ -790,6 +790,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                       execution_mode,
                       run_options.terminate,
                       logger,
+                      run_options.synchronize_execution_providers,
                       run_options.only_execute_path_to_fetches);
 }
 
