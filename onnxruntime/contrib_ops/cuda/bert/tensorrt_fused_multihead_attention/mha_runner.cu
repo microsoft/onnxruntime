@@ -26,7 +26,7 @@ union __half2_uint32_t_union {
   uint32_t u32;
 };
 
-static inline void set_alpha_fp16(uint32_t& alpha, float norm) {
+void set_alpha_fp16(uint32_t& alpha, float norm) {
   __half2_uint32_t_union temp;
   temp.fp162 = __float2half2_rn(norm);
   alpha = temp.u32;

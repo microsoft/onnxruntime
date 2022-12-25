@@ -14,33 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
-#include <cstdint>
-#include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/fmha_flash_attention.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-enum Data_type {
-  DATA_TYPE_BOOL,
-  DATA_TYPE_E8M10,
-  DATA_TYPE_E8M7,
-  DATA_TYPE_FP16,
-  DATA_TYPE_FP32,
-  DATA_TYPE_INT4,
-  DATA_TYPE_INT8,
-  DATA_TYPE_INT32
-};
+bool has_flash_attention_kernel(int sm, int head_size);
 
-constexpr int32_t kSM_70 = 70;
-constexpr int32_t kSM_75 = 75;
-constexpr int32_t kSM_80 = 80;
-constexpr int32_t kSM_86 = 86;
-constexpr int32_t kSM_89 = 89;
-
-void set_alpha_fp16(uint32_t& alpha, float norm);
+void run_flash_attention_kernel(
+    const void* input,
+    const void* cu_seqlens,
+    void* output,
+    FusedMultiHeadFlashAttentionKernel const* kernels,
+    int32_t batch_size,
+    int32_t num_heads,
+    int32_t head_size,
+    int32_t sequence_length,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -64,14 +64,14 @@ struct Fused_multihead_attention_params_v2 {
 
   // Additional parameters for relative position bias
   // void* packed_relative_position_bias_ptr{};
-
   int window_num{};
-  int actual_seqlen{};
+  // int actual_seqlen{};
 
   void clear() {
     *this = Fused_multihead_attention_params_v2();
   }
 };
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 extern unsigned char cubin_fmha_v2_fp16_512_32_sm80_cu_cubin[];
 extern unsigned char cubin_fmha_v2_fp16_384_32_sm80_cu_cubin[];
