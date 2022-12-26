@@ -815,7 +815,8 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          auto allocator = exec_provider->GetAllocator(exec_provider->GetDeviceId(), p_kernel_def->OutputMemoryType(i));
+          int device_id = p_kernel_def->IsOutputOnCpu(i) ? 0 : exec_provider->GetDeviceId();
+          auto allocator = exec_provider->GetAllocator(device_id, p_kernel_def->OutputMemoryType(i));
           ORT_ENFORCE(allocator);
           plan_.SetLocation(static_cast<size_t>(index),
                             allocator->Info());
