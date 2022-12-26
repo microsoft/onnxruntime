@@ -25,6 +25,9 @@ Example 4: convert MT5 model with external data file like mt5-base-beamsearch.on
 
 Example 5: convert gpt2 model with greedy search:
     python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
+
+Example 6: convert gpt2 model with sampling:
+    python convert_generation.py -m gpt2 --output gpt2_sampling.onnx --num_beams 1 --num_return_sequences 1 --top_p 0.6
 """
 
 import argparse
@@ -72,6 +75,7 @@ logger = logging.getLogger("")
 class GenerationType(Enum):
     BEAMSEARCH = "beam_search"
     GREEDYSEARCH = "greedy_search"
+    SAMPLING = "sampling"
 
     def __str__(self):
         return self.value
@@ -261,6 +265,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     model_group.set_defaults(custom_attention_mask=False)
 
+    model_group.add_argument(
+        "--presence_mask",
+        required=False,
+        action="store_true",
+        help="Presence mask for custom sampling",
+    )
+    model_group.set_defaults(presence_mask=False)
+
     beam_parameters_group = parser.add_argument_group(
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
@@ -293,6 +305,54 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         required=False,
         default=1,
         help="Positive. >1 to penalize and <1 to encourage.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--temperature",
+        type=float,
+        required=False,
+        default=1.0,
+        help="The value used to module the next token probabilities.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--top_p",
+        type=float,
+        required=False,
+        default=1.0,
+        help="Top P for sampling",
+    )
+
+    beam_parameters_group.add_argument(
+        "--filter_value",
+        type=float,
+        required=False,
+        default=-float("Inf"),
+        help="Filter value for Top P sampling",
+    )
+
+    beam_parameters_group.add_argument(
+        "--min_tokens_to_keep",
+        type=int,
+        required=False,
+        default=1,
+        help="Minimumber of tokens we keep per batch example in the output.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--presence_penalty",
+        type=float,
+        required=False,
+        default=0.0,
+        help="presence penalty for custom sampling.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--custom",
+        type=int,
+        required=False,
+        default=0,
+        help="If 1 customized top P logic is applied",
     )
 
     beam_parameters_group.add_argument(
@@ -367,7 +427,6 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "1",
         "--test_cases",
         "10",
-        "--use_int32_inputs",  # BeamSearch requires to use int32 for input_ids, position_ids and attention_mask
         "--overwrite",  # Overwrite onnx file if existed
     ]
     if args.use_gpu:
@@ -1202,18 +1261,20 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         args (argparse.Namespace): arguments parsed from command line
     """
     is_gpt2: bool = args.model_type == "gpt2"
+    is_beamsearch: bool = generation_type == GenerationType.BEAMSEARCH
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
+    is_sampling: bool = generation_type == GenerationType.SAMPLING
     past_present_share_buffer: bool = args.past_present_share_buffer and is_greedysearch
 
     logger.info(f"**** past_present_share_buffer={past_present_share_buffer}, is_greedysearch={is_greedysearch}")
 
-    if is_greedysearch:
+    if is_greedysearch or is_sampling:
         if not is_gpt2:
-            raise NotImplementedError("Currently only gpt2 with greedy search is supported")
+            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is supported")
         if args.output_sequences_scores:
-            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search")
+            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search/sampling")
         if args.output_token_scores:
-            raise NotImplementedError("output_token_scores currently is not supported in greedy search")
+            raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
 
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
@@ -1244,7 +1305,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         args.pad_vocab_size
         and args.precision == Precision.FLOAT16
         and is_gpt2
-        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
+        and (is_beamsearch or is_greedysearch or is_sampling)
     ):
         logger.info(
             f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
@@ -1258,11 +1319,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     gpt2_init_decoder_generated = False
     gpt2_init_decoder_onnx_path = None
-    if (
-        args.separate_gpt2_decoder_for_init_run
-        and is_gpt2
-        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
-    ):
+    if args.separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
@@ -1332,8 +1389,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
-    inputs = (
-        [
+    inputs = None
+    if is_beamsearch:
+        inputs = [
             "input_ids",
             "max_length",
             "min_length",
@@ -1342,14 +1400,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             "length_penalty",
             "repetition_penalty",
         ]
-        if not is_greedysearch
-        else [
+    elif is_greedysearch or is_sampling:
+        inputs = [
             "input_ids",
             "max_length",
             "min_length",
             "repetition_penalty",
         ]
-    )
 
     if args.vocab_mask:
         inputs.append("vocab_mask")
@@ -1366,6 +1423,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     else:
         inputs.append("")
 
+    if is_sampling and args.custom and args.presence_mask:
+        inputs.append("presence_mask")
+
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
@@ -1374,40 +1434,60 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = (
-        onnx.helper.make_node(
+    node = None
+    if is_beamsearch:
+        node = onnx.helper.make_node(
             "BeamSearch",
             inputs=inputs,
             outputs=outputs,
             name=f"BeamSearch_{args.model_type}",
         )
-        if not is_greedysearch
-        else onnx.helper.make_node(
+    elif is_greedysearch:
+        node = onnx.helper.make_node(
             "GreedySearch",
             inputs=inputs,
             outputs=outputs,
             name=f"GreedySearch_{args.model_type}",
         )
-    )
+    elif is_sampling:
+        node = onnx.helper.make_node(
+            "Sampling",
+            inputs=inputs,
+            outputs=outputs,
+            name=f"Sampling_{args.model_type}",
+        )
 
     node.domain = "com.microsoft"
 
-    attr_to_extend = (
-        [
+    attr_to_extend = None
+    if is_beamsearch:
+        attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
         ]
-        if not is_greedysearch
-        else [
+    elif is_greedysearch:
+        attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         ]
-    )
+    elif is_sampling:
+        attr_to_extend = [
+            onnx.helper.make_attribute("eos_token_id", eos_token_id),
+            onnx.helper.make_attribute("pad_token_id", pad_token_id),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
+            onnx.helper.make_attribute("temperature", args.temperature),
+            onnx.helper.make_attribute("top_p", args.top_p),
+            onnx.helper.make_attribute("filter_value", args.filter_value),
+            onnx.helper.make_attribute("min_tokens_to_keep", args.min_tokens_to_keep),
+            onnx.helper.make_attribute("custom", args.custom),
+            onnx.helper.make_attribute("presence_penalty", args.presence_penalty),
+        ]
 
     # Explicitly pass in the vocab size via an attribute
     if logits_matmul_weight_padded:
@@ -1482,8 +1562,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
 
-    graph_inputs = (
-        [
+    graph_inputs = None
+    if is_beamsearch:
+        graph_inputs = [
             input_ids,
             max_length,
             min_length,
@@ -1492,14 +1573,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             length_penalty,
             repetition_penalty,
         ]
-        if not is_greedysearch
-        else [
+    elif is_greedysearch or is_sampling:
+        graph_inputs = [
             input_ids,
             max_length,
             min_length,
             repetition_penalty,
         ]
-    )
 
     if args.vocab_mask:
         vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
@@ -1517,37 +1597,41 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         )
         graph_inputs.append(attention_mask)
 
+    if args.custom and args.presence_mask:
+        presence_mask = onnx.helper.make_tensor_value_info(
+            "presence_mask", TensorProto.INT32, ["batch_size", vocab_size]
+        )
+        graph_inputs.append(presence_mask)
+
     # graph outputs
-    sequences = (
-        onnx.helper.make_tensor_value_info(
+    sequences = None
+    if is_beamsearch:
+        sequences = onnx.helper.make_tensor_value_info(
             "sequences",
             TensorProto.INT32,
             ["batch_size", "num_return_sequences", "max_length"],
         )
-        if not is_greedysearch
-        else onnx.helper.make_tensor_value_info(
+    elif is_greedysearch or is_sampling:
+        sequences = onnx.helper.make_tensor_value_info(
             "sequences",
             TensorProto.INT32,
             ["batch_size", "max_length"],
         )
-    )
-
-    sequences_scores = onnx.helper.make_tensor_value_info(
-        "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
-    )
-
-    scores = onnx.helper.make_tensor_value_info(
-        "scores",
-        TensorProto.FLOAT,
-        ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
-    )
 
     graph_outputs = [sequences]
 
     if args.output_sequences_scores:
+        sequences_scores = onnx.helper.make_tensor_value_info(
+            "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
+        )
         graph_outputs.append(sequences_scores)
 
     if args.output_token_scores:
+        scores = onnx.helper.make_tensor_value_info(
+            "scores",
+            TensorProto.FLOAT,
+            ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
+        )
         graph_outputs.append(scores)
 
     new_graph = onnx.helper.make_graph(
@@ -2086,6 +2170,10 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
     if args.model_type == "gpt2" and is_greedy:
+        if args.top_p > 0.0 and args.top_p < 1.0:
+            convert_generation_model(args, GenerationType.SAMPLING)
+            logger.info("The test for gpt2_sampling onnx model is not implemented yet")
+            return
         convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)

@@ -124,6 +124,13 @@ Before full qualified name can be got from exporter, this environment variables 
 	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
 	```
 
+#### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
+the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
+debugging).
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
