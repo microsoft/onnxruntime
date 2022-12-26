@@ -90,6 +90,9 @@ class TFusedMultiHeadAttentionXMMAKernel {
   }
 
   virtual void run(TKernelParam& params, cudaStream_t ss, bool flash_attention = false, bool causal_mask = false) const {
+    ORT_UNUSED_PARAMETER(flash_attention);
+    ORT_UNUSED_PARAMETER(causal_mask);
+
     const auto findIter = mFunctions.find(hashID(params.s, params.d));
     ORT_ENFORCE(findIter != mFunctions.end());
 

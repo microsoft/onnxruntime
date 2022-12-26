@@ -15,8 +15,6 @@
  * limitations under the License.
  */
 
-#pragma once
-
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/flash_attention.h"
 
 namespace onnxruntime {
