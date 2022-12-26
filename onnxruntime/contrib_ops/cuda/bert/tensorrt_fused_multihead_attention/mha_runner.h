@@ -23,7 +23,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kMinSequenceLengthFlashAttention = 512;
+constexpr int kMinSequenceLengthFlashAttention = 385;
 
 // Multi-Head Attention runner
 class MHARunner {

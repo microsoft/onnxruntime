@@ -88,7 +88,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
         } else if (S == 192 || S == 256) {
           warps_m = 1;
           warps_n = 4;
-        } else if (S == 384 || S == 512) {
+        } else if (S == 384) {
           warps_m = 1;
           warps_n = 8;
         } else {
@@ -206,8 +206,6 @@ class FusedMHARunnerFP16v2::mhaImpl {
       S = 256;
     } else if (max_seq_len <= 384) {
       S = 384;
-    } else if (max_seq_len <= 512) {
-      S = 512;
     }
 
     return S;
@@ -283,13 +281,13 @@ bool FusedMHARunnerFP16v2::is_supported(int sm, int head_size, int sequence_leng
     return false;
   }
 
-  // Use flash attention when sequence_length >= 512 for BERT
+  // Use flash attention when sequence_length >= 385 for BERT
   if (use_flash) {
     return true;
   }
 
-  // TODO: enable flash attention when sequence_length > 384.
-  const int max_sequence_length = ((sm >= kSM_80 || head_size == 32) ? 512 : 384);
+  // Normal (not flash) fused kernel supports sequence length up to 384.
+  constexpr int max_sequence_length = 384;
   return sequence_length <= max_sequence_length;
 }
 
