@@ -105,7 +105,8 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   out << "\nExecution Plan:\n";
   for (size_t i = 0; i < plan.execution_plan.size(); ++i) {
     auto& execution_plan = plan.execution_plan[i];
-    out << " Start logic stream : " << i << "on device: " << execution_plan->device_.Type() << std::endl;
+    out << "Start logic stream: " << i << " on device: " << std::to_string(execution_plan->device_.Type())
+        << std::endl;
     for (auto& step : execution_plan->steps_) {
       out << step->ToString() << std::endl;
     }
