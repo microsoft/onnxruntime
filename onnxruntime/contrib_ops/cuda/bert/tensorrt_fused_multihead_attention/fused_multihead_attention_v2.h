@@ -3017,7 +3017,7 @@ class FusedMultiHeadAttentionXMMAKernelV2 : public TFusedMultiHeadAttentionXMMAK
                    cudaStream_t ss,
                    bool flash_attention = false,
                    bool causal_mask = false) const {
-    ORT_ENFORCE(!params.interleaved); // only int8 has interleaved
+    ORT_ENFORCE(!params.interleaved);  // only int8 has interleaved
 
     bool forceUnroll = params.force_unroll;
     if (!forceUnroll && !params.ignore_b1opt && mSM >= kSM_75) {
@@ -3028,27 +3028,17 @@ class FusedMultiHeadAttentionXMMAKernelV2 : public TFusedMultiHeadAttentionXMMAK
         int mD;
         int mMaxBatch;
       } unrollList[] = {
-        {kSM_75, DATA_TYPE_FP16, 64, 32, 1},
-        {kSM_75, DATA_TYPE_FP16, 64, 40, 1},
-        {kSM_75, DATA_TYPE_FP16, 64, 64, 1},
         {kSM_75, DATA_TYPE_FP16, 128, 32, 1},
         {kSM_75, DATA_TYPE_FP16, 128, 40, 1},
         {kSM_75, DATA_TYPE_FP16, 128, 64, 1},
         {kSM_75, DATA_TYPE_FP16, 256, 64, 1},
         {kSM_75, DATA_TYPE_FP16, 384, 64, 1},
 #if CUDA_VERSION >= 11000
-        {kSM_80, DATA_TYPE_FP16, 64, 32, 4},
-        {kSM_80, DATA_TYPE_FP16, 64, 40, 4},
-        {kSM_80, DATA_TYPE_FP16, 64, 64, 4},
         {kSM_80, DATA_TYPE_FP16, 128, 32, 4},
         {kSM_80, DATA_TYPE_FP16, 128, 40, 4},
         {kSM_80, DATA_TYPE_FP16, 128, 64, 4},
         {kSM_80, DATA_TYPE_FP16, 256, 64, 4},
         {kSM_80, DATA_TYPE_FP16, 384, 64, 4},
-
-        {kSM_86, DATA_TYPE_FP16, 64, 32, 4},
-        {kSM_86, DATA_TYPE_FP16, 64, 40, 4},
-        {kSM_86, DATA_TYPE_FP16, 64, 64, 4},
         {kSM_86, DATA_TYPE_FP16, 128, 32, 4},
         {kSM_86, DATA_TYPE_FP16, 128, 40, 4},
         {kSM_86, DATA_TYPE_FP16, 128, 64, 4},
