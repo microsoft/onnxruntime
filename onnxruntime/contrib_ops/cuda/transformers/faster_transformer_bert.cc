@@ -15,6 +15,23 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+ONNX_OPERATOR_KERNEL_EX(
+    FasterTransformerBert,
+    kMSDomain,///kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    FasterTransformerBert);
+
+FasterTransformerBert::FasterTransformerBert(const OpKernelInfo& info) : CudaKernel(info) {//????? or like /transformer/beam_search.cc,
+///FasterTransformerVit::FasterTransformerVit(const OpKernelInfo& op_kernel_info) : onnxruntime::contrib::transformers::FasterTransformerVit(op_kernel_info) {
+  ///ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ///ORT_ENFORCE(epsilon_ >= 0);
+}
+
+
 using namespace fastertransformer;
 template<typename T>
 int bertExample(size_t batch_size,
@@ -147,14 +164,7 @@ int bertExample(size_t batch_size,
     delete cublas_wrapper_mutex;
     return 0;
 }
-ONNX_OPERATOR_KERNEL_EX(
-    FasterTransformerBert,
-    kMSDomain,///kOnnxDomain,
-    1,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    FasterTransformerBert);
+
 
 Status FasterTransformerBert::ComputeInternal(OpKernelContext* /*context*/) const {
 
@@ -190,6 +200,19 @@ Status FasterTransformerBert::ComputeInternal(OpKernelContext* /*context*/) cons
   
   return Status::OK();
 
+}
+
+Status FasterTransformerBert::Compute(OpKernelContext* context) const {//??????
+  auto s = ComputeInternal(context);
+
+  if (s.IsOK()) {
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
+    }
+  }
+
+  return s;
 }
 
 }  // namespace cuda

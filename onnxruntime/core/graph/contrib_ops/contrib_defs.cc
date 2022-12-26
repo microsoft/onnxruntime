@@ -2066,6 +2066,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+//slx
+ONNX_MS_OPERATOR_SET_SCHEMA(FasterTransformerBert, 1,
+                            OpSchema()
+                                .SetDoc("FasterTransformerBert.")
+                                .Input(0, "input_ids", "input_ids", "T")
+                                .Input(1, "attention_mask", "attention_mask", "T")
+                                .Input(2, "token_type_ids", "token_type_ids", "T")
+                                .Output(0, "last_hidden_state", "last_hidden_state", "T1")
+                                .Output(1, "output_1525", "output_1525", "T1")
+                                // TODO(wy): support scores if needed.
+                                .TypeConstraint("T", {"tensor(int64)"}, "Constrain input types to int64 tensors.")
+                                .TypeConstraint("T1", {"tensor(float)"}, "Constrain output types to float tensors.")
+                                );
+
+ONNX_MS_OPERATOR_SET_SCHEMA(FasterTransformerVit, 1,
+                            OpSchema()
+                                .SetDoc("FasterTransformerVit.")
+                                .Input(0, "pixel_values", "pixel_values", "T")
+                                .Output(0, "last_hidden_state", "last_hidden_state", "T")
+                                .Output(1, "output_1519", "output_1519", "T")
+                                // TODO(wy): support scores if needed.
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                );
+//slx
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
@@ -2590,7 +2615,7 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif
-
+/*??????
 //slx
   static const char* FasterTransformerBert_ver1_doc =
       R"DOC(FasterTransformerBert)DOC";
@@ -2605,32 +2630,7 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       ///.Output(0, "disentangled_attention", "The disentangled attention output tensor.", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       ///.Attr("span", "Maximum relative distance, k.", AttributeProto::INT)
-      ///.Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT)
-/*
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        using namespace ONNX_NAMESPACE;
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        // Shape Inference
-        if (!hasInputShape(ctx, 0)) {
-          return;
-        }
-
-        auto& input0_shape = getInputShape(ctx, 0);
-        auto& input0_dims = input0_shape.dim();
-        if (input0_dims.size() != 3) {
-          fail_shape_inference("Input 0 shall be 3 dimensions");
-        }
-
-        // output dims is same as input[0] dims, i.e., regular c2c attention dims
-        // ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
-        // for (auto& dim : input0_dims) {
-        //   *disentangled_attention_shape.add_dim() = dim;
-        // }
-        // updateOutputShape(ctx, 0, disentangled_attention_shape);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
-      })*/;
+      ///.Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT);
 
   static const char* FasterTransformerVit_ver1_doc =
       R"DOC(FasterTransformerVit)DOC";
@@ -2639,39 +2639,16 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(FasterTransformerVit_ver1_doc)
-      ///.Input(0, "c2c_attention", "content-to-content attention tensor, QcKc^T.", "T")
+      .Input(0, "pixel_values", "pixel_values.", "T")
       ///.Input(1, "c2p_attention", "content-to-position attention tensor, QcKr^T.", "T")
       ///.Input(2, "p2c_attention", "position-to-content attention tensor, KcQr^T.", "T")
-      ///.Output(0, "disentangled_attention", "The disentangled attention output tensor.", "T")
+      .Output(0, "last_hidden_state", "last_hidden_state.", "T")
+      .Output(1, "output_1519", "output_1519.", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       ///.Attr("span", "Maximum relative distance, k.", AttributeProto::INT)
-      ///.Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT)
-/*
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        using namespace ONNX_NAMESPACE;
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        // Shape Inference
-        if (!hasInputShape(ctx, 0)) {
-          return;
-        }
-
-        auto& input0_shape = getInputShape(ctx, 0);
-        auto& input0_dims = input0_shape.dim();
-        if (input0_dims.size() != 3) {
-          fail_shape_inference("Input 0 shall be 3 dimensions");
-        }
-
-        // output dims is same as input[0] dims, i.e., regular c2c attention dims
-        // ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
-        // for (auto& dim : input0_dims) {
-        //   *disentangled_attention_shape.add_dim() = dim;
-        // }
-        // updateOutputShape(ctx, 0, disentangled_attention_shape);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
-      })*/;
+      ///.Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT);
 //slx
+*/
 
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.

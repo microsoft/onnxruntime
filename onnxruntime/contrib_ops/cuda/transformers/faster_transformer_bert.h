@@ -13,10 +13,12 @@ using namespace onnxruntime::cuda;
 
 class FasterTransformerBert final : public CudaKernel {
  public:
-  explicit FasterTransformerBert(const OpKernelInfo& info);
+  FasterTransformerBert(const OpKernelInfo& info);///explicit
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status Compute(OpKernelContext* context) const override;
 
+ private:
+  Status ComputeInternal(OpKernelContext* context) const;
 /* int bertExample(size_t batch_size,
                 size_t num_layers,
                 size_t seq_len,

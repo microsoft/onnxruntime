@@ -563,6 +563,11 @@ void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Ini
 Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
 Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
+//slx, for CPU, no need
+//void FasterTransformerVit::Init(const OpKernelInfo& info) { g_host_cpu.FasterTransformerVit__Init(this, info); }
+//Status FasterTransformerVit::Compute(OpKernelContext* ctx) const { return g_host_cpu.FasterTransformerVit__Compute(this, ctx); }
+//Status FasterTransformerVit::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.FasterTransformerVit__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+//slx
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

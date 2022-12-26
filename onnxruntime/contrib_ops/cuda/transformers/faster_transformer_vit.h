@@ -9,14 +9,17 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using namespace onnxruntime::cuda;//??????
 
 class FasterTransformerVit final : public CudaKernel {
  public:
-  explicit FasterTransformerVit(const OpKernelInfo& info);
+  ///explicit FasterTransformerVit(const OpKernelInfo& info);
+  FasterTransformerVit(const OpKernelInfo& info);
+  ///Status ComputeInternal(OpKernelContext* context) const override;
+  Status Compute(OpKernelContext* context) const override;
 
-  Status ComputeInternal(OpKernelContext* context) const override;
-
+ private:
+  Status ComputeInternal(OpKernelContext* context) const;
 };
 
 }  // namespace cuda

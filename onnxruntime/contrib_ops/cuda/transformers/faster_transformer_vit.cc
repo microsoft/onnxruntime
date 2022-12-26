@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "faster_transformer_vit.h"
+///#include "faster_transformer_vit.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "contrib_ops/cuda/transformers/faster_transformer_vit.h"
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -15,7 +19,23 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-using namespace fastertransformer;
+
+ONNX_OPERATOR_KERNEL_EX(
+    FasterTransformerVit,
+    kMSDomain,///kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    FasterTransformerVit);
+
+FasterTransformerVit::FasterTransformerVit(const OpKernelInfo& info) : CudaKernel(info) {//????? or like /transformer/beam_search.cc,
+///FasterTransformerVit::FasterTransformerVit(const OpKernelInfo& op_kernel_info) : onnxruntime::contrib::transformers::FasterTransformerVit(op_kernel_info) {
+  ///ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ///ORT_ENFORCE(epsilon_ >= 0);
+}
+
+using namespace fastertransformer;///??????????
 template<typename T>
 int vitExample(int batch_size, int img_size, int patch_size, int embed_dim, int head_num, int layer_num, int token_classifier)
 {
@@ -148,14 +168,6 @@ int vitExample(int batch_size, int img_size, int patch_size, int embed_dim, int 
     check_cuda_error(cudaGetLastError());
     return 0;
 }
-ONNX_OPERATOR_KERNEL_EX(
-    FasterTransformerVit,
-    kMSDomain,///kOnnxDomain,
-    1,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    FasterTransformerVit);
 
 Status FasterTransformerVit::ComputeInternal(OpKernelContext* /*context*/) const {
 
@@ -191,6 +203,19 @@ Status FasterTransformerVit::ComputeInternal(OpKernelContext* /*context*/) const
   
   return Status::OK();
 
+}
+
+Status FasterTransformerVit::Compute(OpKernelContext* context) const {//??????
+  auto s = ComputeInternal(context);
+
+  if (s.IsOK()) {
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
+    }
+  }
+
+  return s;
 }
 
 }  // namespace cuda
