@@ -30,6 +30,11 @@ limitations under the License.
 #include "contrib_ops/rocm/bert/attention_softmax.h"
 #include "contrib_ops/rocm/bert/transformer_common.h"
 
+#include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
+#include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
+#include "ck/tensor_operation/gpu/device/impl/device_gemm_multiple_d_xdl_cshuffle.hpp"
+#include "ck/tensor_operation/gpu/device/impl/device_contraction_multiple_d_xdl_cshuffle.hpp"
+
 using namespace onnxruntime::rocm;
 using namespace hipcub;
 
@@ -91,7 +96,8 @@ Status QkvToContext(
     const T* past,
     const T* extra_add_qk,
     T* present,
-    bool use_persistent_softmax) {
+    bool use_persistent_softmax,
+    bool use_gemm_rcr_bias_permute) {
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, all_sequence_length);
@@ -101,9 +107,11 @@ Status QkvToContext(
 
   const int max_threads_per_block = prop.maxThreadsPerBlock;
 
+  if (!use_gemm_rcr_bias_permute) {
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
   ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
                       max_threads_per_block, false, input, scratch3));
+  }
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
   const int batches = batch_size * num_heads;
@@ -209,7 +217,9 @@ Status LaunchAttentionKernel(
     const void* extra_add_qk,
     void* workspace,
     void* output,
-    void* present) {
+    void* present,
+    bool use_gemm_rcr_bias_permute
+    ) {
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
   const TransformerOptions* options = TransformerOptions::GetInstance();
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
@@ -227,7 +237,9 @@ Status LaunchAttentionKernel(
         reinterpret_cast<const __half*>(past),
         reinterpret_cast<const __half*>(extra_add_qk),
         reinterpret_cast<__half*>(present),
-        use_persistent_softmax);
+        use_persistent_softmax,
+        use_gemm_rcr_bias_permute
+        );
   } else {
     return QkvToContext(
         prop, tuning, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
@@ -242,7 +254,8 @@ Status LaunchAttentionKernel(
         reinterpret_cast<const float*>(past),
         reinterpret_cast<const float*>(extra_add_qk),
         reinterpret_cast<float*>(present),
-        use_persistent_softmax);
+        use_persistent_softmax,
+        use_gemm_rcr_bias_permute);
   }
 }
 

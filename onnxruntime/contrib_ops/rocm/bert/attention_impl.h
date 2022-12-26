@@ -45,7 +45,8 @@ Status LaunchAttentionKernel(
     const void* extra_add_qk,                  // Additional Add
     void* workspace,                           // Temporary buffer
     void* output,                              // Output tensor
-    void* present                              // Present state output
+    void* present,                             // Present state output
+    bool use_gemm_rcr_bias_permute
 );
 
 Status LaunchDecoderAttentionKernel(

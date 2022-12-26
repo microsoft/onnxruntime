@@ -17,6 +17,19 @@ class Attention final : public RocmKernel, public AttentionBase {
  public:
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
+  // Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* /*prepacked_weights*/) override {
+  //   is_packed = false;
+
+  //   if (input_idx == 1) {
+
+
+  //   }
+
+  //   return Status::OK();
+  // }
+
+  mutable IAllocatorUniquePtr<char> gemm_rcr_bias_permute_m2n3_weight;
 };
 
 }  // namespace rocm
