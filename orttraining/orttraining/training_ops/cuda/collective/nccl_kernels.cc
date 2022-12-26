@@ -227,7 +227,7 @@ Status NcclAllReduceV2::ComputeInternal(OpKernelContext* context) const {
 
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
 #endif
   return Status::OK();
 }
@@ -251,7 +251,7 @@ Status NcclAllGatherV2::ComputeInternal(OpKernelContext* context) const {
 
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream(context)));
 #endif
   return Status::OK();
 }
