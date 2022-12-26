@@ -43,14 +43,14 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_ite
     momentum2_tolerance.second = 1e-6f;
   }
 
-  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  std::vector<std::pair<const ORTCHAR_T*, ExecutionProviderCreationFunc>> testdata_ep_pair_vector;
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_single_weight_mode_0.json"),
-      DefaultCpuExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); }));
 #if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_single_weight_mode_0.json"),
-      DefaultCudaExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCudaExecutionProvider(); }));
 #endif
 
   for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
@@ -86,7 +86,7 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_ite
     std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
         {{"fc1.weight", {2, 3}}};
 
-    AdamWTestLoop(std::move(it->second),
+    AdamWTestLoop(it->second,
                   use_baseline_inputs_for_each_iteration, total_step, lr,
                   static_cast<float>(0.9f),    // alpha
                   static_cast<float>(0.999f),  // beta
@@ -132,14 +132,14 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_inputs_for_each_
     momentum2_tolerance.second = 1e-6f;
   }
 
-  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  std::vector<std::pair<const ORTCHAR_T*, ExecutionProviderCreationFunc>> testdata_ep_pair_vector;
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_multiple_weights_mode_0.json"),
-      DefaultCpuExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); }));
 #if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_multiple_weights_mode_0.json"),
-      DefaultCudaExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCudaExecutionProvider(); }));
 #endif
 
   for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
@@ -215,14 +215,14 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iterat
   std::pair<float, float> momentum1_tolerance{1e-3f, 1e-6f};
   std::pair<float, float> momentum2_tolerance{1e-2f, 1e-7f};
 
-  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  std::vector<std::pair<const ORTCHAR_T*, ExecutionProviderCreationFunc>> testdata_ep_pair_vector;
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_single_weight_mode_1.json"),
-      DefaultCpuExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); }));
 #if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_single_weight_mode_1.json"),
-      DefaultCudaExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCudaExecutionProvider(); }));
 #endif
 
   for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
@@ -298,14 +298,14 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
     momentum2_tolerance.second = 1e-6f;
   }
 
-  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  std::vector<std::pair<const ORTCHAR_T*, ExecutionProviderCreationFunc>> testdata_ep_pair_vector;
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_multiple_weights_mode_1.json"),
-      DefaultCpuExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); }));
 #if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_multiple_weights_mode_1.json"),
-      DefaultCudaExecutionProvider()));
+      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCudaExecutionProvider(); }));
 #endif
 
   for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
