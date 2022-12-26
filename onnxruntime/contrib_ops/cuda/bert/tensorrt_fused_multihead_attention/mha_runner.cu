@@ -16,7 +16,7 @@
 
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_v2.h"
-#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/flash_attention.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/fmha_flash_attention.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -248,44 +248,6 @@ static const struct FusedMultiHeadFlashAttentionKernelMetaInfoV2 {
     {DATA_TYPE_FP16, S, 64, 16, 256, kSM_89, cubin_fmha_v2_flash_attention_fp16_64_16_S_256_sm89_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_16_S_256_sm89_cu_cubin_len, "fmha_v2_flash_attention_fp16_64_16_S_256_sm89_kernel", 98304, 128, 0, false},
     {DATA_TYPE_FP16, S, 64, 16, 256, kSM_89, cubin_fmha_v2_flash_attention_fp16_64_16_S_256_sm89_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_16_S_256_sm89_cu_cubin_len, "fmha_v2_flash_attention_fp16_64_16_S_256_sm89_kernel_nl", 98304, 128, 64, false}};
 
-/*
-static Fused_multihead_attention_params_v2 getMHFAParams(
-    int32_t b, int32_t s, int32_t h, int32_t d,
-    void const* qkv_packed_d, void* cu_seqlens_d, void* o_packed_d)
-{
-    Fused_multihead_attention_params_v2 params{};
-
-    // Set the pointers.
-    params.qkv_ptr = const_cast<void*>(qkv_packed_d);
-    params.qkv_stride_in_bytes = h * 3 * d * sizeof(half);
-    params.o_ptr = o_packed_d;
-    params.o_stride_in_bytes = h * d * sizeof(half);;
-    params.cu_seqlens = static_cast<int*>(cu_seqlens_d);
-
-    // Set the dimensions.
-    params.b = b;
-    params.h = h;
-    params.s = s;
-    params.d = d;
-
-    // Set the different scale values.
-    const float scale_bmm1 = 1.f / sqrtf(static_cast<float>(d));
-    constexpr float scale_softmax = 1.f;
-    constexpr float scale_bmm2 = 1.f;
-    set_alpha_fp16(params.scale_bmm1, scale_bmm1);
-    set_alpha_fp16(params.scale_softmax, scale_softmax);
-    set_alpha_fp16(params.scale_bmm2, scale_bmm2);
-
-    // Set flags
-    params.interleaved = false;
-    params.ignore_b1opt = false;
-    params.force_unroll = true;
-    params.use_int8_scale_max = false;
-
-    return params;
-}
-*/
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 class FusedMultiHeadFlashAttentionKernel
     : public TSharedCubinKernel<FusedMultiHeadFlashAttentionKernelMetaInfoV2, Fused_multihead_attention_params_v2> {
@@ -339,6 +301,13 @@ using FusedMHAFlashKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadFlash
 inline FusedMultiHeadFlashAttentionKernel const* get_flash_attention_kernels(Data_type type, int32_t sm) {
   return FusedMHAFlashKernelFactory::Get().getCubinKernels(
       sMhaKernelMetaInfos, sizeof(sMhaKernelMetaInfos) / sizeof(sMhaKernelMetaInfos[0]), type, sm);
+}
+
+inline bool has_flash_attention_kernel(int sm, int head_size) {
+  return (sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
+         (head_size == 16 || head_size == 32 || head_size == 40 ||
+          head_size == 64 || head_size == 80 || head_size == 128 ||
+          head_size == 160 || head_size == 256);
 }
 
 }  // namespace cuda
