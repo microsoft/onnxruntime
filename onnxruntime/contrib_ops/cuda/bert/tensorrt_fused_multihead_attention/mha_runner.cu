@@ -16,6 +16,7 @@
 
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_v2.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/flash_attention.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -35,21 +36,33 @@ void set_alpha_fp16(uint32_t& alpha, float norm) {
 class FusedMHARunnerFP16v2::mhaImpl {
  public:
   mhaImpl(FusedMHARunnerFP16v2* interface)
-      : interface(interface), sm(interface->mSm), xmmaKernel(getXMMAKernelsV2(DATA_TYPE_FP16, sm)) {
+      : interface(interface),
+        sm(interface->mSm),
+        xmmaKernel(getXMMAKernelsV2(DATA_TYPE_FP16, sm)) {
     ORT_ENFORCE((sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86),
                 "Unsupported architecture");
+
+    flash_attention_kernel = nullptr;
+    if (interface->mEnableFlashAttention) {
+      if (sm != kSM_70) {
+        flash_attention_kernel = get_flash_attention_kernels(DATA_TYPE_FP16, sm);
+      }
+    }
+
     params.clear();
   }
 
   ~mhaImpl() {}
 
   void setup(const int S, const int B) {
+    // For bert and vit, use flash attention when sequence length is larger than the threshold.
+    use_flash_attention = is_flash_attention(S);
+
+    params.force_unroll = use_flash_attention;
+
     size_t warps_m = 2;
     size_t warps_n = 2;
     size_t warps_k = 1;
-
-    // For bert and vit, use flash attention when sequence length is larger than the threshold.
-    use_flash_attention = is_flash_attention(S);
 
     if (use_flash_attention) {
       warps_m = 4;
@@ -66,7 +79,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
           warps_m = 1;
           warps_n = 8;
         } else {
-          ORT_ENFORCE(false, "Unsupporte sequence length");
+          ORT_ENFORCE(false, "Unsupported sequence length");
         }
       } else {
         if (S == 32 || S == 64 || S == 96 || S == 128) {
@@ -79,7 +92,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
           warps_m = 1;
           warps_n = 8;
         } else {
-          ORT_ENFORCE(false, "Unsupporte sequence length");
+          ORT_ENFORCE(false, "Unsupported sequence length");
         }
       }
     }
@@ -89,7 +102,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     // The number of xmmas in the M dimension. We use one uint32_t per XMMA in the M dimension.
     xmmas_m = (S + 16 * warps_m - 1) / (16 * warps_m);
     // The number of xmmas in the N dimension.
-    xmmas_n = (S + 16 * warps_n - 1) / (16 * warps_n);
+    // xmmas_n = (S + 16 * warps_n - 1) / (16 * warps_n);
 
     const float scale_bmm1 = interface->mRsqrtHeadSize;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
@@ -128,9 +141,6 @@ class FusedMHARunnerFP16v2::mhaImpl {
     params.s = S;
     params.d = interface->mHeadSize;
 
-    // mLdQKV = 3 * B * mNumHeads * mHeadSize;
-    // mLdOut = B * mNumHeads * mHeadSize;
-
     params.qkv_stride_in_bytes = 3 * interface->mNumHeads * interface->mHeadSize * sizeof(half);
     params.o_stride_in_bytes = interface->mNumHeads * interface->mHeadSize * sizeof(half);
 
@@ -155,12 +165,25 @@ class FusedMHARunnerFP16v2::mhaImpl {
     params.qkv_ptr = const_cast<void*>(input);
     params.o_ptr = output;
     params.cu_seqlens = static_cast<int*>(const_cast<void*>(cu_seqlens));
-    xmmaKernel->run(params, stream, use_flash_attention, has_causal_mask);
+
+    if (use_flash_attention && flash_attention_kernel != nullptr) {
+      flash_attention_kernel->run(params, stream);
+    } else {
+      xmmaKernel->run(params, stream, use_flash_attention, has_causal_mask);
+    }
+
     CUDA_CALL_THROW(cudaPeekAtLastError());
   }
 
   bool isValid(int s) const {
-    return xmmaKernel->isValid(s) || is_flash_attention(s);
+    if (is_flash_attention(s)) {
+      if (flash_attention_kernel != nullptr) {
+        return flash_attention_kernel->isValid(s);
+      }
+      return true;
+    }
+
+    return xmmaKernel->isValid(s);
   }
 
   int getSFromMaxSeqLen(const int max_seq_len) const {
@@ -170,7 +193,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
     int S = max_seq_len;
     if (max_seq_len <= 32) {
-      S = 32;
+      S = (sm == 70) ? 64 : 32;
     } else if (max_seq_len <= 64) {
       S = 64;
     } else if (max_seq_len <= 96) {
@@ -178,7 +201,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     } else if (max_seq_len <= 128) {
       S = 128;
     } else if (max_seq_len <= 192) {
-      S = 192;
+      S = (sm == 70) ? 256 : 192;
     } else if (max_seq_len <= 256) {
       S = 256;
     } else if (max_seq_len <= 384) {
@@ -201,8 +224,9 @@ class FusedMHARunnerFP16v2::mhaImpl {
   Fused_multihead_attention_params_v2 params;
   int sm;
   const FusedMultiHeadAttentionXMMAKernelV2* xmmaKernel;
+  const FusedMultiHeadFlashAttentionKernel* flash_attention_kernel;
   size_t xmmas_m;
-  size_t xmmas_n;
+  // size_t xmmas_n;
   size_t threads_per_cta;
   bool use_flash_attention = false;
   bool has_causal_mask = false;
@@ -242,6 +266,11 @@ bool FusedMHARunnerFP16v2::is_supported(int sm, int head_size, int sequence_leng
     return (head_size == 64 || head_size == 32 || head_size == 40) && sequence_length <= 128;
   }
 
+  bool use_flash = enable_flash_attention && sequence_length >= kMinSequenceLengthFlashAttention;
+  if (use_flash && has_flash_attention_kernel(sm, head_size)) {
+    return true;
+  }
+
   if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86)) {
     return false;
   }
@@ -255,7 +284,7 @@ bool FusedMHARunnerFP16v2::is_supported(int sm, int head_size, int sequence_leng
   }
 
   // Use flash attention when sequence_length >= 512 for BERT
-  if (enable_flash_attention && sequence_length >= kMinSequenceLengthFlashAttention) {
+  if (use_flash) {
     return true;
   }
 

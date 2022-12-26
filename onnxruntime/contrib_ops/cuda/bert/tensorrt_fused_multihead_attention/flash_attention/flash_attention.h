@@ -25,16 +25,16 @@ namespace cuda {
 
 bool has_flash_attention_kernel(int sm, int head_size);
 
-void run_flash_attention_kernel(
-    const void* input,
-    const void* cu_seqlens,
-    void* output,
-    FusedMultiHeadFlashAttentionKernel const* kernels,
-    int32_t batch_size,
-    int32_t num_heads,
-    int32_t head_size,
-    int32_t sequence_length,
-    cudaStream_t stream);
+// void run_flash_attention_kernel(
+//     const void* input,
+//     const void* cu_seqlens,
+//     void* output,
+//     FusedMultiHeadFlashAttentionKernel const* kernels,
+//     int32_t batch_size,
+//     int32_t num_heads,
+//     int32_t head_size,
+//     int32_t sequence_length,
+//     cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
