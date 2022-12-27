@@ -5,503 +5,465 @@ parameters:
   type: string
   default: ''
 
-- name: enable_linux_cpu
-  displayName: 'Whether Linux CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_ubuntu_cpu
-  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
-  type: boolean
-  default: true
-
-- name: enable_linux_gpu
-  displayName: 'Whether Linux GPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_cpu
-  displayName: 'Whether Windows CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_gpu
-  displayName: 'Whether Windows GPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_mac_cpu
-  displayName: 'Whether Mac CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_mac_silicon
-  displayName: 'Whether Mac silicon package is built.'
-  type: boolean
-  default: true
-
-- name: enable_linux_arm
-  displayName: 'Whether Linux ARM package is built.'
-  type: boolean
-  default: true
-
 stages:
-- stage: Python_Packaging
+
+- stage: Windows CPU
+  dependsOn: []
+  - job: Windows_py_Wheels
+    pool: 'Win-CPU-2021'
+    strategy:
+      matrix:
+        Python37_x64:
+          PythonVersion: '3.7'
+          MsbuildPlatform: x64
+          buildArch: x64
+        Python38_x64:
+          PythonVersion: '3.8'
+          MsbuildPlatform: x64
+          buildArch: x64
+        Python39_x64:
+          PythonVersion: '3.9'
+          MsbuildPlatform: x64
+          buildArch: x64
+        Python310_x64:
+          PythonVersion: '3.10'
+          MsbuildPlatform: x64
+          buildArch: x64
+        # Training build cannot support Win32 for now because one or more of its python
+        # dependencies does not support Win32. So, don't build a training package for Win32
+        ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
+          Python37_x86:
+            PythonVersion: '3.7'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python38_x86:
+            PythonVersion: '3.8'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python39_x86:
+            PythonVersion: '3.9'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python310_x86:
+            PythonVersion: '3.10'
+            MsbuildPlatform: Win32
+            buildArch: x86
+    variables:
+      OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+      EnvSetupScript: setup_env.bat
+      setVcvars: true
+      BuildConfig: 'RelWithDebInfo'
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+
+    steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - template: telemetry-steps.yml
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(PythonVersion)
+        addToPath: true
+        architecture: $(buildArch)
+
+    - task: PythonScript@0
+      displayName: 'Run a Python script'
+      inputs:
+        scriptPath: 'tools\ci_build\update_tsaoptions.py'
+
+    - template: set-nightly-build-option-variable-step.yml
+
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+    - script: |
+        python -m pip install -q setuptools wheel numpy==1.21.6
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
+
+    - template: download-deps.yml
+
+    - task: PythonScript@0
+      displayName: 'Update deps.txt'
+      inputs:
+        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+        arguments: --new_dir $(Build.BinariesDirectory)/deps
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PowerShell@2
+      displayName: 'Install ONNX'
+      inputs:
+        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+        workingDirectory: '$(Build.BinariesDirectory)'
+        arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >
+          --config $(BuildConfig)
+          --enable_lto
+          --build_dir $(Build.BinariesDirectory)
+          --skip_submodule_sync
+          --cmake_generator "Visual Studio 16 2019"
+          --enable_pybind
+          --enable_onnx_tests
+          ${{ parameters.build_py_parameters }}
+          --parallel --update
+          $(TelemetryOption)
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+        platform: $(MsbuildPlatform)
+        configuration: $(BuildConfig)
+        msbuildArchitecture: $(buildArch)
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+        createLogFile: true
+
+    # Esrp signing
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime\capi'
+        DisplayName: 'ESRP - Sign Native dlls'
+        DoEsrp: true
+        Pattern: '*.pyd,*.dll'
+
+    - task: PythonScript@0
+      displayName: 'Build wheel'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\setup.py'
+        arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\dist'
+        Contents: '*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime
+
+    - script: |
+        7z x *.whl
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+      displayName: 'unzip the package'
+
+    - task: CredScan@3
+      displayName: 'Run CredScan'
+      inputs:
+        debugMode: false
+      continueOnError: true
+
+    - task: BinSkim@4
+      displayName: 'Run BinSkim'
+      inputs:
+        AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+      continueOnError: true
+
+    - powershell: |
+       python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+       Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+       Remove-Item -Recurse -Force onnxruntime
+       $env:path="$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;$env:path"
+       python onnx_backend_test_series.py
+      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      displayName: 'Run Python Tests'
+
+    #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
+    #in 32 bits Win32 build. I tried all the settings but they all don't work.
+    - task: SDLNativeRules@3
+      displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+      condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7')))
+      inputs:
+        msBuildArchitecture: amd64
+        setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+        msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+        excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+
+    - task: TSAUpload@2
+      displayName: 'TSA upload'
+      condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      inputs:
+        GdnPublishTsaOnboard: false
+        GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+      continueOnError: true
+
+    - template: component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
+  ${{ if eq(parameters.enable_windows_gpu, true) }}:
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+        PYTHON_VERSION: '3.7'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+        PYTHON_VERSION: '3.8'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+        PYTHON_VERSION: '3.9'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+        PYTHON_VERSION: '3.10'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'aiinfra-dml-winbuild'
+        PYTHON_VERSION: '3.7'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'aiinfra-dml-winbuild'
+        PYTHON_VERSION: '3.8'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'aiinfra-dml-winbuild'
+        PYTHON_VERSION: '3.9'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'aiinfra-dml-winbuild'
+        PYTHON_VERSION: '3.10'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+
+  ${{ if eq(parameters.enable_mac_cpu, true) }}:
+  - job: MacOS_py_Wheels
+    timeoutInMinutes: 90
+    workspace:
+      clean: all
+    pool:
+      vmImage: 'macOS-11'
+    variables:
+      MACOSX_DEPLOYMENT_TARGET: '10.14'
+    strategy:
+      matrix:
+        Python37:
+          PythonVersion: '3.7'
+        Python38:
+          PythonVersion: '3.8'
+        Python39:
+          PythonVersion: '3.9'
+        Python310:
+          PythonVersion: '3.10'
+    steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
+      inputs:
+        versionSpec: $(PythonVersion)
+
+    - script: |
+        set -e -x
+        pushd .
+        mkdir -p /tmp/scripts
+        mkdir -p $(Build.BinariesDirectory)/installed
+        cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
+        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
+        popd
+        export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
+        export ONNX_ML=1
+        export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+        python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+      displayName: 'Command Line Script'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
+        Contents: '*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime
+
+    - template: component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+
+- stage: Mac Silicon
+  dependsOn: []
+  - job: MacOS_silicon_py_Wheels
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      vmImage: 'macOS-11'
+    variables:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    strategy:
+      # As of 3.9.1, Python now fully supports building and running on macOS 11.0 (Big Sur) and on Apple Silicon Macs (based on the ARM64 architecture).
+      # https://docs.python.org/3/whatsnew/3.9.html
+      matrix:
+        Python38:
+          PythonVersion: '3.8'
+        Python39:
+          PythonVersion: '3.9'
+        Python310:
+          PythonVersion: '3.10'
+    steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
+      inputs:
+        versionSpec: $(PythonVersion)
+
+    - script: |
+        set -ex
+        uname -m
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac machine info'
+
+    - script: |
+        set -e -x
+        pushd .
+        mkdir -p /tmp/scripts
+        mkdir -p $(Build.BinariesDirectory)/installed
+        cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
+        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
+        popd
+        export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
+        export ONNX_ML=1
+        export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+        python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
+      displayName: 'Command Line Script'
+
+    - script: |
+        python -m pip install --upgrade delocate
+        cd '$(Build.BinariesDirectory)/Release/dist'
+        for file in *.whl
+        do
+          delocate-listdeps "$file"
+          delocate-wheel --require-archs=arm64 -w fixed_wheels -v "$file"
+        done
+      displayName: 'delocate wheel'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)/Release/dist/fixed_wheels'
+        Contents: '*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime
+
+    - template: component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+
+- stage: Linux ARM
+  dependsOn: []
+  - template: py-linux.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+      base_image: 'arm64v8/centos:7'
+      devtoolset_rootpath: /opt/rh/devtoolset-10/root
+      ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+
+- stage: Linux CPU
+  dependsOn: []
+  - template: py-linux.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+      base_image: 'centos:7'
+      devtoolset_rootpath: /opt/rh/devtoolset-11/root
+      ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
+      ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+        device: '-d CLOUD'
+
+- stage: Ubuntu CPU
   dependsOn: []
 
-  jobs:
-  - ${{ if eq(parameters.enable_windows_cpu, true) }}:
-    - job: Windows_py_Wheels
-      pool: 'Win-CPU-2021'
-      strategy:
-        matrix:
-          Python37_x64:
-            PythonVersion: '3.7'
-            MsbuildPlatform: x64
-            buildArch: x64
-          Python38_x64:
-            PythonVersion: '3.8'
-            MsbuildPlatform: x64
-            buildArch: x64
-          Python39_x64:
-            PythonVersion: '3.9'
-            MsbuildPlatform: x64
-            buildArch: x64
-          Python310_x64:
-            PythonVersion: '3.10'
-            MsbuildPlatform: x64
-            buildArch: x64
-          # Training build cannot support Win32 for now because one or more of its python
-          # dependencies does not support Win32. So, don't build a training package for Win32
-          ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
-            Python37_x86:
-              PythonVersion: '3.7'
-              MsbuildPlatform: Win32
-              buildArch: x86
-            Python38_x86:
-              PythonVersion: '3.8'
-              MsbuildPlatform: Win32
-              buildArch: x86
-            Python39_x86:
-              PythonVersion: '3.9'
-              MsbuildPlatform: Win32
-              buildArch: x86
-            Python310_x86:
-              PythonVersion: '3.10'
-              MsbuildPlatform: Win32
-              buildArch: x86
-      variables:
-        OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-        EnvSetupScript: setup_env.bat
-        setVcvars: true
-        BuildConfig: 'RelWithDebInfo'
-      timeoutInMinutes: 120
-      workspace:
-        clean: all
+  - template: py-linux-ubuntu.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+      base_image: 'arm64v8/ubuntu:18.04'
+      ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+        device: '-d CLOUD' 
 
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+  - template: py-linux-ubuntu.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'Linux-CPU'
+      base_image: 'ubuntu:18.04'
+      ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+        device: '-d CLOUD' 
 
-      - template: telemetry-steps.yml
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: $(buildArch)
-
-      - task: PythonScript@0
-        displayName: 'Run a Python script'
-        inputs:
-          scriptPath: 'tools\ci_build\update_tsaoptions.py'
-
-      - template: set-nightly-build-option-variable-step.yml
-
-      - task: BatchScript@1
-        displayName: 'setup env'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-          modifyEnvironment: true
-          workingFolder: '$(Build.BinariesDirectory)'
-
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
-
-      - template: download-deps.yml
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
-
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config $(BuildConfig)
-            --enable_lto
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "Visual Studio 16 2019"
-            --enable_pybind
-            --enable_onnx_tests
-            ${{ parameters.build_py_parameters }}
-            --parallel --update
-            $(TelemetryOption)
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-          platform: $(MsbuildPlatform)
-          configuration: $(BuildConfig)
-          msbuildArchitecture: $(buildArch)
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-          createLogFile: true
-
-      # Esrp signing
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime\capi'
-          DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: true
-          Pattern: '*.pyd,*.dll'
-
-      - task: PythonScript@0
-        displayName: 'Build wheel'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
-          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\dist'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - script: |
-          7z x *.whl
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'unzip the package'
-
-      - task: CredScan@3
-        displayName: 'Run CredScan'
-        inputs:
-          debugMode: false
-        continueOnError: true
-
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
-        continueOnError: true
-
-      - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         $env:path="$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\vcpkg\src\vcpkg\installed\x86-windows\bin;$env:path"
-         python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-        displayName: 'Run Python Tests'
-
-      #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
-      #in 32 bits Win32 build. I tried all the settings but they all don't work.
-      - task: SDLNativeRules@3
-        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7')))
-        inputs:
-          msBuildArchitecture: amd64
-          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
-
-
-      - task: TSAUpload@2
-        displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        inputs:
-          GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-        continueOnError: true
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
-
-  - ${{ if eq(parameters.enable_windows_gpu, true) }}:
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
-          PYTHON_VERSION: '3.7'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
-          EP_NAME: gpu
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
-          PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
-          EP_NAME: gpu
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
-          PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
-          EP_NAME: gpu
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
-          PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
-          EP_NAME: gpu
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'aiinfra-dml-winbuild'
-          PYTHON_VERSION: '3.7'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
-          EP_NAME: directml
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'aiinfra-dml-winbuild'
-          PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
-          EP_NAME: directml
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'aiinfra-dml-winbuild'
-          PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
-          EP_NAME: directml
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'aiinfra-dml-winbuild'
-          PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
-          EP_NAME: directml
-
-  - ${{ if eq(parameters.enable_mac_cpu, true) }}:
-    - job: MacOS_py_Wheels
-      timeoutInMinutes: 90
-      workspace:
-        clean: all
-      pool:
-        vmImage: 'macOS-11'
-      variables:
-        MACOSX_DEPLOYMENT_TARGET: '10.14'
-      strategy:
-        matrix:
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-          Python310:
-            PythonVersion: '3.10'
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - task: UsePythonVersion@0
-        displayName: 'Use Python'
-        inputs:
-          versionSpec: $(PythonVersion)
-
-      - script: |
-          set -e -x
-          pushd .
-          mkdir -p /tmp/scripts
-          mkdir -p $(Build.BinariesDirectory)/installed
-          cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
-          $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
-          popd
-          export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
-          export ONNX_ML=1
-          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-          python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
-        displayName: 'Command Line Script'
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-  - ${{ if eq(parameters.enable_mac_silicon, true) }}:
-    - job: MacOS_silicon_py_Wheels
-      timeoutInMinutes: 120
-      workspace:
-        clean: all
-      pool:
-        vmImage: 'macOS-11'
-      variables:
-        MACOSX_DEPLOYMENT_TARGET: '11.0'
-      strategy:
-        # As of 3.9.1, Python now fully supports building and running on macOS 11.0 (Big Sur) and on Apple Silicon Macs (based on the ARM64 architecture).
-        # https://docs.python.org/3/whatsnew/3.9.html
-        matrix:
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-          Python310:
-            PythonVersion: '3.10'
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - task: UsePythonVersion@0
-        displayName: 'Use Python'
-        inputs:
-          versionSpec: $(PythonVersion)
-
-      - script: |
-          set -ex
-          uname -m
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac machine info'
-
-      - script: |
-          set -e -x
-          pushd .
-          mkdir -p /tmp/scripts
-          mkdir -p $(Build.BinariesDirectory)/installed
-          cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
-          $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
-          popd
-          export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
-          export ONNX_ML=1
-          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-          python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
-        displayName: 'Command Line Script'
-
-      - script: |
-          python -m pip install --upgrade delocate
-          cd '$(Build.BinariesDirectory)/Release/dist'
-          for file in *.whl
-          do
-            delocate-listdeps "$file"
-            delocate-wheel --require-archs=arm64 -w fixed_wheels -v "$file"
-          done
-        displayName: 'delocate wheel'
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/Release/dist/fixed_wheels'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-  - ${{ if eq(parameters.enable_linux_arm, true) }}:
-      - template: py-linux.yml
-        parameters:
-          arch: 'aarch64'
-          machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-          base_image: 'arm64v8/centos:7'
-          devtoolset_rootpath: /opt/rh/devtoolset-10/root
-          ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
-
-  - ${{ if eq(parameters.enable_linux_cpu, true) }}:
-      - template: py-linux.yml
-        parameters:
-          arch: 'x86_64'
-          machine_pool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
-          base_image: 'centos:7'
-          devtoolset_rootpath: /opt/rh/devtoolset-11/root
-          ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
-          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
-            device: '-d CLOUD' 
-
-  - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
-      - template: py-linux-ubuntu.yml
-        parameters:
-          arch: 'aarch64'
-          machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-          base_image: 'arm64v8/ubuntu:18.04'
-          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
-            device: '-d CLOUD' 
-
-  - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
-      - template: py-linux-ubuntu.yml
-        parameters:
-          arch: 'x86_64'
-          machine_pool: 'Linux-CPU'
-          base_image: 'ubuntu:18.04'
-          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
-            device: '-d CLOUD' 
-
-  - ${{ if eq(parameters.enable_linux_gpu, true) }}:
-      - template: py-linux-gpu.yml
-        parameters:
-          arch: 'x86_64'
-          machine_pool: 'Linux-CPU'
+- stage: Linux GPU
+  dependsOn: []
+  - template: py-linux-gpu.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'Linux-CPU'
