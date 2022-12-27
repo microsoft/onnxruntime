@@ -15,7 +15,7 @@
 #endif
 
 // Providers
-#define MAX_KEY_COUNT 1024
+#define MAX_KEY_COUNT 128
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
