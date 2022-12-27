@@ -184,7 +184,8 @@ void RunSince(size_t stream_idx,
               StreamExecutionContext& ctx,
               SessionScope& session_scope,
               const bool& terminate_flag,
-              size_t since);
+              size_t since,
+              bool is_downstream = false);
 
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,
