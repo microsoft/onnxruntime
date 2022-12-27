@@ -4,6 +4,7 @@ parameters:
   displayName: 'Specify extra build parameters'
   type: string
   default: ''
+  required: false
 
 trigger: none
 
