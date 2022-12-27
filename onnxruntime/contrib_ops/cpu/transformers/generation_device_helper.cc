@@ -6,11 +6,13 @@
 #include <memory>
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/providers/cpu/generator/random.h"
 #include "core/common/safeint.h"
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
+#include "contrib_ops/cpu/transformers/sampling_cpu_helper.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 
@@ -175,6 +177,13 @@ Status CreateGptInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
+  if (num_beams == 1) {
+    expanded_input_ids = std::move(input_ids);
+    expanded_position_ids = std::move(position_ids);
+    expanded_attention_mask = std::move(attention_mask);
+    return Status::OK();
+  }
+
   ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
   ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
   ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
@@ -243,7 +252,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                      transformers::ILogitsProcessorList* logits_processors,  // logits processors
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* stream,                                         // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
@@ -400,17 +409,16 @@ template <typename T>
 Status GreedySearchProcessLogits(
   const OrtValue& logits,                                     // logits output of subgraph
   transformers::IGreedySearchState<T>* greedy_state,          // state
+  transformers::ISamplingState<T>* sampling_state,        // sampling_state
   transformers::ISequences* sequences,                        // sequences
   AllocatorPtr& allocator,                                    // default allocator
   onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
   transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IBeamSearchParameters* parameters,      // parameters
+  const transformers::IGenerationParameters* parameters,      // parameters
+  bool do_sampling,                                           // whether to do sampling
   int step,                                                   // iteration counter
   Stream* stream,                                             // cuda stream (for CUDA only)
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
-#ifndef DEBUG_GENERATION
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
@@ -448,6 +456,18 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
 
+  if (do_sampling) {
+    ORT_RETURN_IF_ERROR(SamplingCpuHelper::Sample(allocator,
+                                                  thread_pool,
+                                                  next_token_scores,
+                                                  sampling_state,
+                                                  greedy_state,
+                                                  parameters,
+                                                  dumper));
+
+    return Status::OK();
+  }
+
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
@@ -460,28 +480,27 @@ Status GreedySearchProcessLogits(
                        next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
-  constexpr int axis = 1;
   constexpr unsigned top_k = 1;
+  constexpr int axis = 1;
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
   Tensor topk_scores;
   Tensor topk_indices;
-  ORT_RETURN_IF_ERROR(
-    TopK(&input,
-         axis,
-         top_k,
-         largest,
-         sorted,
-         allocator,
-         stream,
-         thread_pool,
-         topk_scores,
-         topk_indices));
+  ORT_RETURN_IF_ERROR(TopK(&input,
+                           axis,
+                           top_k,
+                           largest,
+                           sorted,
+                           allocator,
+                           stream,
+                           thread_pool,
+                           topk_scores,
+                           topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", topk_scores);
-  dumper->Print("topk_indices", topk_indices);
+    dumper->Print("topk_scores", topk_scores);
+    dumper->Print("topk_indices", topk_indices);
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
@@ -829,7 +848,7 @@ template Status ProcessLogits<float>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     transformers::IBeamScorer* beam_scorer,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     Stream* stream,
     const transformers::IConsoleDumper* dumper);
@@ -837,11 +856,13 @@ template Status ProcessLogits<float>(
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
+    transformers::ISamplingState<float>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
     Stream* ort_stream,
     const transformers::IConsoleDumper* dumper);

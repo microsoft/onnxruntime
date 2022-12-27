@@ -15,8 +15,7 @@ from datetime import datetime
 
 import psutil
 import torch
-from gpt2_beamsearch_helper import MODEL_CLASSES, Gpt2HelperFactory
-from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS, Gpt2Helper
+from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
 from packaging import version
 from transformers import AutoConfig
 
@@ -124,12 +123,6 @@ def parse_arguments(argv=None):
     parser.set_defaults(torchscript=False)
 
     parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1], help="batch size")
-    parser.add_argument(
-        "--beam_size",
-        type=int,
-        default=4,
-        help="Beam size if greedy/top-p/top-k sampling is needed",
-    )
 
     parser.add_argument(
         "--sequence_lengths",
@@ -170,54 +163,6 @@ def parse_arguments(argv=None):
     parser.add_argument("--disable_io_binding", required=False, action="store_true")
     parser.set_defaults(disable_io_binding=False)
 
-    search_option_group = parser.add_argument_group("configurable one step search options")
-
-    search_option_group.add_argument(
-        "--ignore_eos",
-        type=bool,
-        default=False,
-        help="If ignore end of sentence token in model inference.",
-    )
-    search_option_group.add_argument(
-        "--repetition_penalty",
-        type=float,
-        default=1,
-        help="Positive. >1 to penalize and <1 to encorage.",
-    )
-    search_option_group.add_argument(
-        "--temperature",
-        type=float,
-        default=1,
-        help="Softmax temperature for output logits.",
-    )
-    search_option_group.add_argument(
-        "--excluded_token_ids",
-        required=False,
-        nargs="+",
-        type=float,
-        help="A list of token ids to be excluded in inference.",
-    )
-    search_option_group.add_argument(
-        "--length_penalty",
-        type=float,
-        default=1,
-        help="Positive. >1 to penalize and <1 to encorage short sentence.",
-    )
-
-    sampling_option_group = parser.add_argument_group("one step sampling options")
-    sampling_option_group.add_argument(
-        "--do_sample",
-        action="store_true",
-        help="If to do sampling instead of beam search or greedy.",
-    )
-    sampling_option_group.add_argument(
-        "--do_sample_top_p",
-        type=float,
-        default=0.95,
-        help="Nuclear/top-p sampling accumulation probability.",
-    )
-    sampling_option_group.add_argument("--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero.")
-
     args = parser.parse_args(argv)
 
     return args
@@ -249,41 +194,9 @@ def main(args):
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
     model_class = MODEL_CLASSES[args.model_class][0]
-    if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
-        model_type = "beam_search_step"
-    elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
-        model_type = "configurable_one_step_search"
-    else:
-        model_type = "default"
-
-    gpt2helper = Gpt2HelperFactory.create_helper(model_type)
+    gpt2helper = Gpt2Helper
     config = AutoConfig.from_pretrained(args.model_name_or_path, torchscript=args.torchscript, cache_dir=cache_dir)
-    if model_type == "beam_search_step":
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            config=config,
-            batch_size=1,
-            beam_size=args.beam_size,
-            cache_dir=cache_dir,
-        )
-    elif model_type == "configurable_one_step_search":
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            config=config,
-            batch_size=1,
-            beam_size=args.beam_size,
-            ignore_eos=args.ignore_eos,
-            temperature=args.temperature,
-            repetition_penalty=args.repetition_penalty,
-            excluded_token_ids=args.excluded_token_ids,
-            length_penalty=args.length_penalty,
-            do_sample=args.do_sample,
-            do_sample_top_p=args.do_sample_top_p,
-            do_sample_top_k=args.do_sample_top_k,
-            cache_dir=cache_dir,
-        )
-    else:
-        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
+    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     # This scirpt does not support float16 for PyTorch.
     # if args.float16:
@@ -352,29 +265,14 @@ def main(args):
         return
 
     # Allocate output buffers for IO Binding
-    if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
-        max_output_shapes = gpt2helper.get_output_shapes(
-            max(args.batch_sizes),
-            context_len=max(args.past_sequence_lengths),
-            past_sequence_length=max(args.past_sequence_lengths),
-            sequence_length=max(args.sequence_lengths),
-            beam_size=args.beam_size,
-            step=0,
-            config=config,
-            model_class=args.model_class,
-        )
-
-        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
-
-    else:
-        max_output_shapes = gpt2helper.get_output_shapes(
-            max(args.batch_sizes),
-            max(args.past_sequence_lengths),
-            max(args.sequence_lengths),
-            config,
-            args.model_class,
-        )
-        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
+    max_output_shapes = gpt2helper.get_output_shapes(
+        max(args.batch_sizes),
+        max(args.past_sequence_lengths),
+        max(args.sequence_lengths),
+        config,
+        args.model_class,
+    )
+    output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline="") as csv_file:
@@ -402,53 +300,32 @@ def main(args):
                 for past_sequence_length in args.past_sequence_lengths:
                     assert batch_size > 0 and sequence_length > 0 and past_sequence_length >= 0
                     logger.debug(
-                        f"Running test for batch_size={batch_size} sequence_length={sequence_length} past_sequence_length={past_sequence_length}..."
+                        "Running test for batch_size=%d sequence_length=%d past_sequence_length=%d ...",
+                        batch_size,
+                        sequence_length,
+                        past_sequence_length,
                     )
-                    if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
-                        dummy_inputs = gpt2helper.get_dummy_inputs(
-                            batch_size,
-                            past_sequence_length,
-                            sequence_length,
-                            config.num_attention_heads,
-                            config.hidden_size,
-                            config.n_layer,
-                            config.vocab_size,
-                            device,
-                            float16=(args.precision == Precision.FLOAT16),
-                            has_position_ids=use_padding,
-                            has_attention_mask=use_padding,
-                        )
-                        output_shapes = gpt2helper.get_output_shapes(
-                            batch_size,
-                            past_sequence_length,
-                            past_sequence_length,
-                            sequence_length,
-                            args.beam_size,
-                            0,
-                            config,
-                            args.model_class,
-                        )
-                    else:
-                        dummy_inputs = gpt2helper.get_dummy_inputs(
-                            batch_size,
-                            past_sequence_length,
-                            sequence_length,
-                            config.num_attention_heads,
-                            config.hidden_size,
-                            config.n_layer,
-                            config.vocab_size,
-                            device,
-                            float16=(args.precision == Precision.FLOAT16),
-                            has_position_ids=use_padding,
-                            has_attention_mask=use_padding,
-                        )
-                        output_shapes = gpt2helper.get_output_shapes(
-                            batch_size,
-                            past_sequence_length,
-                            sequence_length,
-                            config,
-                            args.model_class,
-                        )
+
+                    dummy_inputs = gpt2helper.get_dummy_inputs(
+                        batch_size,
+                        past_sequence_length,
+                        sequence_length,
+                        config.num_attention_heads,
+                        config.hidden_size,
+                        config.n_layer,
+                        config.vocab_size,
+                        device,
+                        float16=(args.precision == Precision.FLOAT16),
+                        has_position_ids=use_padding,
+                        has_attention_mask=use_padding,
+                    )
+                    output_shapes = gpt2helper.get_output_shapes(
+                        batch_size,
+                        past_sequence_length,
+                        sequence_length,
+                        config,
+                        args.model_class,
+                    )
 
                     try:
                         if args.validate_onnx or args.output_torch_latency:
