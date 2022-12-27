@@ -45,6 +45,11 @@ parameters:
   type: boolean
   default: true
 
+- name: build_py_parameters
+  displayName: 'Specify extra build parameters'
+  type: string
+  default: ''
+
 stages:
 - stage: Python_Packaging
   dependsOn: []
