@@ -44,9 +44,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
     flash_attention_kernel = nullptr;
     if (interface->mEnableFlashAttention) {
-      if (sm != kSM_70) {
-        flash_attention_kernel = get_flash_attention_kernels(DATA_TYPE_FP16, sm);
-      }
+      flash_attention_kernel = get_flash_attention_kernels(DATA_TYPE_FP16, sm);
     }
 
     params.clear();
@@ -101,8 +99,6 @@ class FusedMHARunnerFP16v2::mhaImpl {
     threads_per_cta = warps_m * warps_n * warps_k * 32;
     // The number of xmmas in the M dimension. We use one uint32_t per XMMA in the M dimension.
     xmmas_m = (S + 16 * warps_m - 1) / (16 * warps_m);
-    // The number of xmmas in the N dimension.
-    // xmmas_n = (S + 16 * warps_n - 1) / (16 * warps_n);
 
     const float scale_bmm1 = interface->mRsqrtHeadSize;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
@@ -116,9 +112,6 @@ class FusedMHARunnerFP16v2::mhaImpl {
     params.h = interface->mNumHeads;
     params.s = S;
     params.d = interface->mHeadSize;
-
-    // For now we set window_num = 0, to avoid using fused multi-head window-attention kernel
-    // params.window_num = 0;
 
     params.qkv_stride_in_bytes = 3 * interface->mNumHeads * interface->mHeadSize * sizeof(half);
     params.packed_mask_stride_in_bytes = xmmas_m * threads_per_cta * sizeof(uint32_t);
@@ -177,10 +170,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
   bool isValid(int s) const {
     if (is_flash_attention(s)) {
-      if (flash_attention_kernel != nullptr) {
-        return flash_attention_kernel->isValid(s);
-      }
-      return true;
+        return (flash_attention_kernel != nullptr) && flash_attention_kernel->isValid(s);
     }
 
     return xmmaKernel->isValid(s);
@@ -224,7 +214,6 @@ class FusedMHARunnerFP16v2::mhaImpl {
   const FusedMultiHeadAttentionXMMAKernelV2* xmmaKernel;
   const FusedMultiHeadFlashAttentionKernel* flash_attention_kernel;
   size_t xmmas_m;
-  // size_t xmmas_n;
   size_t threads_per_cta;
   bool use_flash_attention = false;
   bool has_causal_mask = false;
@@ -279,11 +268,6 @@ bool FusedMHARunnerFP16v2::is_supported(int sm, int head_size, int sequence_leng
 
   if (sm == kSM_70 && head_size == 32) {
     return false;
-  }
-
-  // Use flash attention when sequence_length >= 385 for BERT
-  if (use_flash) {
-    return true;
   }
 
   // Normal (not flash) fused kernel supports sequence length up to 384.

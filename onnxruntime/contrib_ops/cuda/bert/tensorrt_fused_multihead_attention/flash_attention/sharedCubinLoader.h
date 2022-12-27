@@ -126,22 +126,24 @@ public:
         ORT_ENFORCE(!params.interleaved); // interleaved is for int8
 
         auto const findIter = mFunctions.find(hashID(params));
-        std::ostringstream errMsg;
-        errMsg << "Could not find kernel for:\n"
-               << "\t s: " << params.s << "\n"
-               << "\t d: " << params.d << "\n"
-               << "\t interleaved: " << params.interleaved << "\n"
-               << "\t force_unroll: " << params.force_unroll << "\n"
-               << "Was the plugin compiled on a compatible CUDA and SM version?\n"
-               << "\t Compiled on CUDA " << CUDA_VERSION << "\n"
-               << "\t Current SM version: " << mSM << "\n"
-               << "\t SM versions enabled during compilation: "
-               << "75 "
-               << "80 "
-               << "86 "
-               << "89 "
-               << "\n";
-        ORT_ENFORCE(findIter != mFunctions.end(), errMsg.str().c_str());
+        if (findIter == mFunctions.end()) {
+            std::ostringstream errMsg;
+            errMsg << "Could not find kernel for:\n"
+                << "\t s: " << params.s << "\n"
+                << "\t d: " << params.d << "\n"
+                << "\t interleaved: " << params.interleaved << "\n"
+                << "\t force_unroll: " << params.force_unroll << "\n"
+                << "Was the plugin compiled on a compatible CUDA and SM version?\n"
+                << "\t Compiled on CUDA " << CUDA_VERSION << "\n"
+                << "\t Current SM version: " << mSM << "\n"
+                << "\t SM versions enabled during compilation: "
+                << "75 "
+                << "80 "
+                << "86 "
+                << "89 "
+                << "\n";
+            ORT_ENFORCE(findIter != mFunctions.end(), errMsg.str().c_str());
+        }
 
         auto const& kernelMeta = mKernelMeta[findIter->second.mMetaInfoIndex];
         CUfunction const func = findIter->second.mDeviceFunction;

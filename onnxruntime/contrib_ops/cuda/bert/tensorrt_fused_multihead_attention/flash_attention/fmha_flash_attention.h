@@ -25,6 +25,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+extern unsigned char cubin_fmha_v2_flash_attention_fp16_64_64_S_64_sm70_cu_cubin[];
 extern unsigned char cubin_fmha_v2_flash_attention_fp16_64_64_S_16_sm75_cu_cubin[];
 extern unsigned char cubin_fmha_v2_flash_attention_fp16_64_64_S_32_sm75_cu_cubin[];
 extern unsigned char cubin_fmha_v2_flash_attention_fp16_64_64_S_40_sm75_cu_cubin[];
@@ -76,6 +77,7 @@ extern unsigned char cubin_fmha_v2_flash_attention_fp16_128_32_S_128_sm89_cu_cub
 extern unsigned char cubin_fmha_v2_flash_attention_fp16_64_16_S_160_sm89_cu_cubin[];
 extern unsigned char cubin_fmha_v2_flash_attention_fp16_64_16_S_256_sm89_cu_cubin[];
 
+extern uint32_t cubin_fmha_v2_flash_attention_fp16_64_64_S_64_sm70_cu_cubin_len;
 extern uint32_t cubin_fmha_v2_flash_attention_fp16_64_64_S_16_sm75_cu_cubin_len;
 extern uint32_t cubin_fmha_v2_flash_attention_fp16_64_64_S_32_sm75_cu_cubin_len;
 extern uint32_t cubin_fmha_v2_flash_attention_fp16_64_64_S_40_sm75_cu_cubin_len;
@@ -144,6 +146,10 @@ static const struct FusedMultiHeadFlashAttentionKernelMetaInfoV2 {
   int32_t mUnrollStep;
   bool mInterleaved;
 } sMhaKernelMetaInfos[] = {
+    // SM70 kernel is from FasterTransformer
+    {DATA_TYPE_FP16, S, 64, 64, 64, kSM_70, cubin_fmha_v2_flash_attention_fp16_64_64_S_64_sm70_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_64_S_64_sm70_cu_cubin_len, "fmha_v2_flash_attention_fp16_0_64_sm70_kernel", 24576, 128, 0, false},
+    {DATA_TYPE_FP16, S, 64, 64, 64, kSM_70, cubin_fmha_v2_flash_attention_fp16_64_64_S_64_sm70_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_64_S_64_sm70_cu_cubin_len, "fmha_v2_flash_attention_fp16_0_64_sm70_kernel_nl", 24576, 128, 64, false},
+
     {DATA_TYPE_FP16, S, 64, 64, 16, kSM_75, cubin_fmha_v2_flash_attention_fp16_64_64_S_16_sm75_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_64_S_16_sm75_cu_cubin_len, "fmha_v2_flash_attention_fp16_64_64_S_16_sm75_kernel", 6144, 128, 0, false},
     {DATA_TYPE_FP16, S, 64, 64, 16, kSM_75, cubin_fmha_v2_flash_attention_fp16_64_64_S_16_sm75_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_64_S_16_sm75_cu_cubin_len, "fmha_v2_flash_attention_fp16_64_64_S_16_sm75_kernel_nl", 6144, 128, 64, false},
     {DATA_TYPE_FP16, S, 64, 64, 32, kSM_75, cubin_fmha_v2_flash_attention_fp16_64_64_S_32_sm75_cu_cubin, cubin_fmha_v2_flash_attention_fp16_64_64_S_32_sm75_cu_cubin_len, "fmha_v2_flash_attention_fp16_64_64_S_32_sm75_kernel", 12288, 128, 0, false},
@@ -276,8 +282,8 @@ class FusedMultiHeadFlashAttentionKernel
       case 32:
       case 40:
       case 64:
-        qStep = isSM75 ? 64 : (isSmallBS ? 64 : 128);
-        kvStep = isSM75 ? 64 : (isSmallBS ? 32 : 16);
+        qStep = (isSM75 || mSM == 70) ? 64 : (isSmallBS ? 64 : 128);
+        kvStep = (isSM75 || mSM == 70) ? 64 : (isSmallBS ? 32 : 16);
         break;
       case 80:
       case 128:
@@ -304,10 +310,11 @@ inline FusedMultiHeadFlashAttentionKernel const* get_flash_attention_kernels(Dat
 }
 
 inline bool has_flash_attention_kernel(int sm, int head_size) {
-  return (sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
-         (head_size == 16 || head_size == 32 || head_size == 40 ||
-          head_size == 64 || head_size == 80 || head_size == 128 ||
-          head_size == 160 || head_size == 256);
+  return (sm == 70 && head_size == 64) ||
+         ((sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
+          (head_size == 16 || head_size == 32 || head_size == 40 ||
+           head_size == 64 || head_size == 80 || head_size == 128 ||
+           head_size == 160 || head_size == 256));
 }
 
 }  // namespace cuda
