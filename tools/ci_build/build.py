@@ -2080,6 +2080,7 @@ def build_python_wheel(
     use_armnn,
     use_dml,
     use_cann,
+    use_cloud,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2138,6 +2139,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
+        elif use_cloud:
+            args.append("--use_cloud")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2824,6 +2827,7 @@ def main():
                 args.use_armnn,
                 args.use_dml,
                 args.use_cann,
+                args.use_cloud,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
