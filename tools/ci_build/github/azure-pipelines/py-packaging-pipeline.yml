@@ -39,11 +39,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_linux_arm
-  displayName: 'Whether Linux ARM package is built.'
-  type: boolean
-  default: true
-
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
