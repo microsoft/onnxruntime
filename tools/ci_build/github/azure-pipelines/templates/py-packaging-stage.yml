@@ -347,6 +347,7 @@ stages:
 
 - stage: Mac Silicon
   dependsOn: []
+  jobs:
   - job: MacOS_silicon_py_Wheels
     timeoutInMinutes: 120
     workspace:
@@ -425,6 +426,7 @@ stages:
 
 - stage: Linux ARM
   dependsOn: []
+  jobs:
   - template: py-linux.yml
     parameters:
       arch: 'aarch64'
@@ -436,6 +438,7 @@ stages:
 
 - stage: Linux CPU
   dependsOn: []
+  jobs:
   - template: py-linux.yml
     parameters:
       arch: 'x86_64'
@@ -449,7 +452,7 @@ stages:
 
 - stage: Ubuntu CPU(manylinux_2_27)
   dependsOn: []
-
+  jobs:
   - template: py-linux-ubuntu.yml
     parameters:
       arch: 'aarch64'
@@ -468,6 +471,7 @@ stages:
 
 - stage: Linux GPU
   dependsOn: []
+  jobs:
   - template: py-linux-gpu.yml
     parameters:
       arch: 'x86_64'
