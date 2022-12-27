@@ -7,7 +7,7 @@ parameters:
 
 stages:
 
-- stage: Windows CPU
+- stage: Windows_CPU
   dependsOn: []
   jobs:
   - job: Windows_py_Wheels
@@ -215,7 +215,7 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- stage: Windows GPU
+- stage: Windows_GPU
   dependsOn: []
   jobs:
   - template: py-win-gpu.yml
@@ -282,7 +282,7 @@ stages:
       ENV_SETUP_SCRIPT: setup_env.bat
       EP_NAME: directml
 
-- stage: Mac CPU
+- stage: Mac_CPU
   dependsOn: []
   jobs:
   - job: MacOS_py_Wheels
@@ -345,7 +345,7 @@ stages:
       parameters:
         condition: 'succeeded'
 
-- stage: Mac Silicon
+- stage: Mac_Silicon
   dependsOn: []
   jobs:
   - job: MacOS_silicon_py_Wheels
@@ -424,7 +424,7 @@ stages:
       parameters:
         condition: 'succeeded'
 
-- stage: Linux ARM
+- stage: Linux_ARM
   dependsOn: []
   jobs:
   - template: py-linux.yml
@@ -436,7 +436,7 @@ stages:
       ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
       prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
 
-- stage: Linux CPU
+- stage: Linux_CPU
   dependsOn: []
   jobs:
   - template: py-linux.yml
@@ -450,7 +450,7 @@ stages:
       ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
         device: '-d CLOUD'
 
-- stage: Ubuntu CPU(manylinux_2_27)
+- stage: Ubuntu_CPU_manylinux_2_27
   dependsOn: []
   jobs:
   - template: py-linux-ubuntu.yml
@@ -469,7 +469,7 @@ stages:
       ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
         device: '-d CLOUD' 
 
-- stage: Linux GPU
+- stage: Linux_GPU
   dependsOn: []
   jobs:
   - template: py-linux-gpu.yml
