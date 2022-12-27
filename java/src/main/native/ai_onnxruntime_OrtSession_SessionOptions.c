@@ -15,6 +15,7 @@
 #endif
 
 // Providers
+#define MAX_KEY_COUNT 1024
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
@@ -633,10 +634,14 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
   int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
 
-  const char** keyArray = (const char**)malloc(keyCount * sizeof(const char*));
-  const char** valueArray = (const char**)malloc(keyCount * sizeof(const char*));
-  jstring* jkeyArray = (jstring*)malloc(keyCount * sizeof(jstring));
-  jstring* jvalueArray = (jstring*)malloc(keyCount * sizeof(jstring));
+  if (keyCount > MAX_KEY_COUNT) {
+    throwOrtException(jniEnv, ORT_INVALID_ARGUMENT, "Too many provider options.");
+  }
+
+  const char* keyArray[MAX_KEY_COUNT];
+  const char* valueArray[MAX_KEY_COUNT];
+  jstring jkeyArray[MAX_KEY_COUNT];
+  jstring jvalueArray[MAX_KEY_COUNT];
 
   for (int i = 0; i < keyCount; i++) {
     jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
@@ -652,8 +657,4 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
-  free((void*)keyArray);
-  free((void*)valueArray);
-  free((void*)jkeyArray);
-  free((void*)jvalueArray);
 }
