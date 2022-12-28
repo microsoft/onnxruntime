@@ -18,6 +18,12 @@ namespace optimizer {
 
 using ExecutionProviderCreationFunc = std::function<std::unique_ptr<IExecutionProvider>()>;
 
+// key: weight name; value: multiple steps of weight/grad/momentums values.
+typedef std::unordered_map<std::string, std::vector<std::vector<float>>> WeightDictType;
+// key: name of data, e.g. one of kParamName, kGradientName, etc.
+// value: weight dicts.
+typedef std::unordered_map<std::string, WeightDictType> TestDataDictType;
+
 struct TensorInfo {
   TensorInfo(const VectorInt64& shapes, const std::vector<float>& values);
 

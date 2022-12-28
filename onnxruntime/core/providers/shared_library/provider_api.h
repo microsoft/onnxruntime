@@ -174,6 +174,7 @@ class Group;
 class PassThrough;
 class YieldOp;
 class AdamWOptimizerBase;
+class SGDOptimizerV2Base;
 }  // namespace contrib
 
 class UnsqueezeBase;

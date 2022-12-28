@@ -42,6 +42,7 @@
 #ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -609,7 +610,8 @@ Status Sampling::Compute(OpKernelContext* ctx) const { return g_host_cpu.Samplin
 
 Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
                                             const SessionState& subgraph_session_state) {
-  return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+  return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
+}
 
 }  // namespace transformers
 
@@ -649,11 +651,10 @@ Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.
 Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const {
   return g_host_cpu.contrib__AdamWOptimizerBase__PrepareForCompute(this, ctx, reinterpret_cast<contrib__AdamWOptimizerBase__Prepare&>(prepare));
 }
-Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
-                                           const TensorSeq* values, TensorSeq* updated_values) const {
-  return g_host_cpu.contrib__AdamWOptimizerBase__GenerateOutputs(this, ctx, number_of_values, values, updated_values);
+Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV2Base::Prepare& prepare) const {
+  return g_host_cpu.contrib__SGDOptimizerV2Base__PrepareForCompute(this, ctx, reinterpret_cast<contrib__SGDOptimizerV2Base__Prepare&>(prepare));
 }
-}
+}  // namespace contrib
 #endif
 
 #ifdef ENABLE_TRAINING
