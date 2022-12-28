@@ -735,7 +735,9 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+#ifdef MLAS_AMX_SUPPORTED
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
@@ -988,7 +990,7 @@ MlasPartitionWork(
 #if defined(_MSC_VER) && !defined(__clang__)
   #pragma warning(push)
   // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
-  #pragma warning(disable:26497) 
+  #pragma warning(disable:26497)
 #endif
 
 MLAS_FORCEINLINE
@@ -2110,4 +2112,3 @@ MlasThreadedBufAlloc(size_t size)
         ThreadedBufSize = size;
     }
 }
-

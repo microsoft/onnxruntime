@@ -156,7 +156,6 @@ class QgemmShortExecuteTest<AType, BType, float, Packed, Threaded> : public Mlas
 
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
-    test_registered += RegisterSingleTest(64, 64, 64, 0, 0);
 
     for (size_t b = 1; b < 16; b++) {
       test_registered += RegisterSingleTest(b, b, b, 34, 46);

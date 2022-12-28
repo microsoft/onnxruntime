@@ -60,7 +60,7 @@ MLASCPUIDInfo::MLASCPUIDInfo() {}
 #endif
 
 #endif // Windows vs Linux vs Unknown
-#else // not MLAS_TARGET_ARM64 
+#else // not MLAS_TARGET_ARM64
 
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo() {}
@@ -399,6 +399,7 @@ Return Value:
                     }
                 }
 
+#ifdef MLAS_AMX_SUPPORTED
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -409,6 +410,7 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
+#endif // MLAS_AMX_SUPPORTED
 
 #endif // ORT_MINIMAL_BUILD
 

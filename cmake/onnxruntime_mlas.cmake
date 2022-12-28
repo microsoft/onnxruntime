@@ -3,6 +3,18 @@
 
 set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 
+
+set(MLAS_AMX_SUPPORTED FALSE)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER 10)
+  set(MLAS_AMX_SUPPORTED TRUE)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  set(MLAS_AMX_SUPPORTED TRUE)
+endif()
+
+
 onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
@@ -28,6 +40,10 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
+
+if(MLAS_AMX_SUPPORTED)
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_AMX_SUPPORTED)
+endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
@@ -411,8 +427,6 @@ else()
         # not including the logic to set this flag for the assembler.
         set(CMAKE_ASM${ASM_DIALECT}_OSX_DEPLOYMENT_TARGET_FLAG "${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")
 
-        set_source_files_properties(${MLAS_SRC_DIR}/platform.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile")
-
         # The LLVM assembler does not support the .arch directive to enable instruction
         # set extensions and also doesn't support AVX-512F instructions without
         # turning on support via command-line option. Group the sources by the
@@ -442,7 +456,6 @@ else()
         set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
         set(mlas_platform_srcs_avx2
-          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAvx2.S
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx2.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8U8KernelAvx2.S
@@ -479,18 +492,25 @@ else()
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
-        set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
-
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
           ${mlas_platform_srcs_avx2}
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
         )
+
+        if(MLAS_AMX_SUPPORTED)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
+        endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
