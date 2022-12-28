@@ -14,7 +14,6 @@ import pytest
 import torch
 from _orttraining_ortmodule_models import (
     MyCustomClassInputNet,
-    MyCustomFunctionReluModel,
     NeuralNetCustomClassOutput,
     NeuralNetSinglePositionalArgument,
 )
