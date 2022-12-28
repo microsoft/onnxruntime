@@ -3,8 +3,7 @@ parameters:
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
-  default: ''
-  required: false
+  default: 'NONE'
 
 trigger: none
 
@@ -19,4 +18,5 @@ resources:
 stages:
 - template: templates/py-packaging-stage.yml
   parameters:
-    build_py_parameters: ${{ parameters.build_py_parameters }}
+    ${{ if not(eq(parameters.build_py_parameters, 'NONE')) }}:
+      build_py_parameters: ${{ parameters.build_py_parameters }}
