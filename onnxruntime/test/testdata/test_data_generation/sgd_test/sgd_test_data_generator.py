@@ -77,9 +77,7 @@ def generate_sgd_test_data(seed, _model_setup_func, data_func, train_step_count,
 
     # Dump the optimizer configs, our adam tests should align with these.
     for group in sgd_optimizer.param_groups:
-        print(
-            f"lr={group['lr']}"
-        )
+        print(f"lr={group['lr']}")
 
     p_dict = {}
     g_dict = {}
