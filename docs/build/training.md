@@ -110,6 +110,6 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 
 `.\build.bat --enable_training --use_dnnl`
 
-Add `--build_wheel` to build the ONNX Runtime wheel
+Add `--build_wheel` to build the ONNX Runtime wheel.
 
-This will produce a .whl file in `build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training
+This will produce a .whl file in `build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
