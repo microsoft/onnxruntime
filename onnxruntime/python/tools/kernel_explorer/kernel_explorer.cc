@@ -14,6 +14,8 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+void InitBatchedGemmSoftmaxGemmPermute(py::module);
+
 PYBIND11_MODULE(_kernel_explorer, m) {
   py::class_<DeviceArray>(m, "DeviceArray")
       .def(py::init<py::array>())
@@ -24,6 +26,7 @@ PYBIND11_MODULE(_kernel_explorer, m) {
   InitGemm(m);
   InitSkipLayerNorm(m);
   InitGemmFastGelu(m);
+  InitBatchedGemmSoftmaxGemmPermute(m);
 #endif
 
   m.def("is_composable_kernel_available", []() {
