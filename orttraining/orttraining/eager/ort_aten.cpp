@@ -279,9 +279,13 @@ bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid
   return std::find(valid_types.begin(), valid_types.end(), tensor.scalar_type()) != valid_types.end();
 }
 
-bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(at::IntArrayRef array, const std::vector<at::ScalarType>& valid_types) {
   return std::find(valid_types.begin(), valid_types.end(), at::kInt) != valid_types.end() ||
          std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
+}
+
+bool IsSupportedType(at::OptionalIntArrayRef array, const std::vector<at::ScalarType>& valid_types) {
+  return array.has_value() ? IsSupportedType(array.value(), valid_types) : false;
 }
 
 bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types) {
