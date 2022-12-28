@@ -21,7 +21,6 @@ from _orttraining_ortmodule_models import (
 
 from onnxruntime.training.ortmodule import ORTMODULE_TORCH_CPP_DIR, ORTModule, _fallback
 from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
-from onnxruntime.training.ortmodule import DebugOptions
 
 # PyTorch model definitions for tests
 
