@@ -194,7 +194,7 @@ class Conv : public CudaKernel {
     return GetScratchBuffer<void>(s_.workspace_bytes, stream);
   }
 
-  Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
+  Status UpdateState(OpKernelContext* context) const;
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;

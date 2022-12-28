@@ -87,7 +87,7 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 }
 
 template <typename T>
-Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const {
+Status Conv<T>::UpdateState(OpKernelContext* context) const {
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -237,22 +237,43 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
-      ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
-      b_dims[1] = b_shape[0];
-      ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      //s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-    } else if (bias_expected) {
-      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
-      b_dims[1] = w_dims[0];
-      auto malloc_size = b_dims[1] * sizeof(CudaT);
-      ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      if (s_.b_zero) {
-        CUDA_CALL_THROW(cudaFree(s_.b_zero));
-        s_.b_zero = nullptr;
+      if (b_shape.NumDimensions() == 1) {
+        TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
+        b_dims[1] = b_shape[0];
+        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
+      } else {
+        const auto& y_rank = y_dims_cudnn.size();
+        const auto& b_rank = b_shape.GetDims().size();
+        ORT_RETURN_IF_NOT(b_rank <= y_rank, "rank of B is ", b_rank, ", which is bigger than the rank of Y - ", y_rank);
+        if (b_rank == y_rank) {
+          ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+        } else {
+          TensorShapeVector b_extended_dims = b_shape.AsShapeVector();
+          for (auto i = b_rank; i < y_rank; ++i) {
+            ORT_RETURN_IF_NOT(y_dims_cudnn[i] == 1, "dim ", i, " of Y is ", y_dims_cudnn[i], ", cannot apply it to that dim of B");
+            b_extended_dims.push_back(1);
+          }
+          ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_extended_dims, CudnnTensor::GetDataType<CudaT>()));
+        }
       }
-      CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
+    }
+
+    if (context->InputCount() >= 4) {
+      const Tensor* Z = context->Input<Tensor>(3);
+      const auto& z_shape = Z->Shape();
+      const auto& z_rank = z_shape.GetDims().size();
+      const auto& y_rank = y_dims_cudnn.size();
+      ORT_RETURN_IF_NOT(z_rank <= y_rank, "rank of Z is ", z_rank, ", which is bigger than the rank of Y - ", y_rank);
+      if (z_rank == y_rank) {
+        ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+      } else {
+        TensorShapeVector z_extended_dims = z_shape.AsShapeVector();
+        for (auto i = z_rank; i < y_rank; ++i) {
+          ORT_RETURN_IF_NOT(y_dims_cudnn[i] == 1, "dim ", i, " of Y is ", y_dims_cudnn[i], ", cannot apply it to that dim of Z");
+          z_extended_dims.push_back(1);
+        }
+        ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_extended_dims, CudnnTensor::GetDataType<CudaT>()));
+      }
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
