@@ -24,7 +24,7 @@
   {
     // test loadModelFromBuffer()
     NSMutableDictionary *options = [NSMutableDictionary dictionary];
-    NSData *fileData = [NSData dataWithContentsOfFile: dataPath];
+    NSData *fileData = [NSData dataWithContentsOfFile:dataPath];
 
     NSDictionary *resultMap = [onnxruntimeModule loadModelFromBuffer:fileData options:options];
     sessionKey = resultMap[@"key"];
@@ -37,7 +37,7 @@
 
     // test loadModel()
     NSDictionary *resultMap2 = [onnxruntimeModule loadModel:dataPath options:options];
-    sessionKey2= resultMap2[@"key"];
+    sessionKey2 = resultMap2[@"key"];
     NSArray *inputNames2 = resultMap2[@"inputNames"];
     XCTAssertEqual([inputNames2 count], 1);
     XCTAssertEqualObjects(inputNames2[0], @"input");
