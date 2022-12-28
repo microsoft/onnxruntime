@@ -44,7 +44,6 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     }
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
-    ORT_ENFORCE(has_b, "FusedConv op must have bias");
     typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
     static const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     static const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
