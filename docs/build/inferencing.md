@@ -272,7 +272,7 @@ There are a few options for building for ARM.
 
 *EASY, SLOW, RECOMMENDED*
 
-This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
+This method relies on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
 Here is [an example for Raspberrypi3 and Raspbian](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
 
@@ -291,9 +291,9 @@ This option is very fast and allows the package to be built in minutes, but is c
     You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
 
     In GCC terms:
-    * "build" describes the type of system on which GCC is being configured and compiled
+    * "build" describes the type of system on which GCC is being configured and compiled.
     * "host" describes the type of system on which GCC runs.
-    * "target" to describe the type of system for which GCC produce code
+    * "target" to describe the type of system for which GCC produce code.
 
     When not cross compiling, usually "build" = "host" = "target". When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64. In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
 
