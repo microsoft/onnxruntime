@@ -47,14 +47,27 @@ class TFusedMultiHeadAttentionXMMAKernel {
       : mDataType(type), mKernelMeta(pMetaStart), mKernelMetaCount(nMetaCount), mSM(sm) {
   }
 
-  void loadXMMAKernels() {
-    if (!mFunctions.empty()) {
-      return;
-    }
-
-    for (unsigned int i = 0; i < mKernelMetaCount; ++i) {
+  void loadXMMAKernels(uint32_t smVersion) {
+    for (uint32_t i = 0; i < mKernelMetaCount; ++i) {
       const auto& kernelMeta = mKernelMeta[i];
-      if (kernelMeta.mSM == mSM && kernelMeta.mDataType == mDataType) {
+      const auto kernelKey = hashID(kernelMeta);
+      if (kernelMeta.mSM == smVersion &&
+          kernelMeta.mDataType == mDataType &&
+          mFunctions.find(kernelKey) == mFunctions.end()) {
+        constexpr uint32_t DEFAULT_SMEM_SIZE = 48 * 1024;
+        if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
+          int32_t deviceID{0};
+          cudaGetDevice(&deviceID);
+          int32_t sharedMemPerMultiprocessor{0};
+          if (cudaDeviceGetAttribute(
+                  &sharedMemPerMultiprocessor, cudaDevAttrMaxSharedMemoryPerBlockOptin, deviceID) != cudaSuccess ||
+              sharedMemPerMultiprocessor < static_cast<int32_t>(kernelMeta.mSharedMemBytes)) {
+            // skip load function because not enough shared memory to launch the kernel
+            printf("skip loading trt fused attention kernel %s because no enough shared memory",
+                   kernelMeta.mFuncName);
+            continue;
+          }
+        }
         CUmodule hmod{0};
         auto findModuleIter = mModules.find(kernelMeta.mCubin);
         if (findModuleIter != mModules.end()) {
@@ -63,11 +76,10 @@ class TFusedMultiHeadAttentionXMMAKernel {
           cuErrCheck(mDriver.cuModuleLoadData(&hmod, kernelMeta.mCubin), mDriver);
           mModules.insert(std::make_pair(kernelMeta.mCubin, hmod));
         }
-
         FusedMultiHeadAttentionKernelInfo funcInfo;
         funcInfo.mMetaInfoIndex = i;
         cuErrCheck(mDriver.cuModuleGetFunction(&funcInfo.mDeviceFunction, hmod, kernelMeta.mFuncName), mDriver);
-        if (kernelMeta.mSharedMemBytes >= 48 * 1024) {
+        if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
           if (CUDA_SUCCESS != mDriver.cuFuncSetAttribute(funcInfo.mDeviceFunction,
                                                          CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                                          kernelMeta.mSharedMemBytes)) {
@@ -77,11 +89,26 @@ class TFusedMultiHeadAttentionXMMAKernel {
             continue;
           }
         }
-        mFunctions.insert(std::make_pair(hashID(kernelMeta), funcInfo));
-        int s = static_cast<int>(kernelMeta.mS);
-        if (mValidSequences.find(s) == mValidSequences.end())
+        mFunctions.insert({kernelKey, funcInfo});
+        const int s = static_cast<int>(kernelMeta.mS);
+        if (mValidSequences.find(s) == mValidSequences.end()) {
           mValidSequences.insert(s);
+        }
       }
+    }
+  }
+
+  void loadXMMAKernels() {
+    if (!mFunctions.empty()) {
+      return;
+    }
+
+    loadXMMAKernels(mSM);
+    
+    // sm_86 chips prefer sm_86 kernel, but can also use sm_80 kernel if sm_86 not exist.
+    // sm_89 will reuse sm_80 kernels
+    if (mSM == kSM_86 || mSM == kSM_89) {
+      loadXMMAKernels(kSM_80);
     }
   }
 
@@ -143,22 +170,19 @@ class TFusedMHAKernelFactory {
   }
 
   static TFusedMHAKernelFactory<TFusedMHAKernelList>& Get() {
-    int device_id;
-    cudaGetDevice(&device_id);
-    static std::unique_ptr<TFusedMHAKernelFactory<TFusedMHAKernelList>> s_factory[32] = {nullptr};
-    if (s_factory[device_id] == nullptr) {
-      ORT_ENFORCE(device_id <= 32);
-      s_factory[device_id] = std::make_unique<TFusedMHAKernelFactory<TFusedMHAKernelList>>(TFusedMHAKernelFactory<TFusedMHAKernelList>());
-    }
-
-    return *(s_factory[device_id]);
+    static TFusedMHAKernelFactory<TFusedMHAKernelList> s_factory;
+    return s_factory;
   }
 
  private:
   TFusedMHAKernelFactory() = default;
 
-  inline uint64_t hashID(Data_type type, unsigned int sm) const {
-    return (uint64_t)type << 32 | sm;
+  inline uint64_t hashID(Data_type type, uint32_t sm) const {
+    // use deviceID in hasID for multi GPU support before driver support context-less loading of cubin
+    int32_t deviceID{0};
+    CUDA_CALL_THROW(cudaGetDevice(&deviceID));
+    ORT_ENFORCE((deviceID & 0xFFFF) == deviceID);
+    return (uint64_t)type << 48 | (uint64_t)deviceID << 32 | sm;
   }
 
   std::unordered_map<uint64_t, const std::unique_ptr<TFusedMHAKernelList>> mKernels;

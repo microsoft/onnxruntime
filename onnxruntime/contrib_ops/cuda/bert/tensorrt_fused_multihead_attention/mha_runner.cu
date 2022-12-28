@@ -39,7 +39,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
       : interface(interface),
         sm(interface->mSm),
         xmmaKernel(getXMMAKernelsV2(DATA_TYPE_FP16, sm)) {
-    ORT_ENFORCE((sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86),
+    ORT_ENFORCE((sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86 || sm == kSM_89),
                 "Unsupported architecture");
 
     flash_attention_kernel = nullptr;
@@ -170,7 +170,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
   bool isValid(int s) const {
     if (is_flash_attention(s)) {
-        return (flash_attention_kernel != nullptr) && flash_attention_kernel->isValid(s);
+      return (flash_attention_kernel != nullptr) && flash_attention_kernel->isValid(s);
     }
 
     return xmmaKernel->isValid(s);
@@ -235,7 +235,7 @@ void FusedMHARunnerFP16v2::setup(const int S, const int B) {
 bool FusedMHARunnerFP16v2::is_supported(int sm, int head_size, int sequence_length,
                                         bool enable_flash_attention, bool causal) {
   if (causal) {
-    if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86)) {
+    if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86 || sm == kSM_89)) {
       return false;
     }
 
@@ -258,7 +258,7 @@ bool FusedMHARunnerFP16v2::is_supported(int sm, int head_size, int sequence_leng
     return true;
   }
 
-  if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86)) {
+  if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86 || sm == kSM_89)) {
     return false;
   }
 
