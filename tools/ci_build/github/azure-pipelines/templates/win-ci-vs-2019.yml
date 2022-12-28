@@ -198,6 +198,7 @@ jobs:
 
   - powershell: |
       ccache -sv
+      ccache -z
     displayName: cache stat
 
   - ${{ if eq(parameters.EnablePython, true) }}:
@@ -283,6 +284,11 @@ jobs:
           customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
           publishXML: true
 
+      - powershell: |
+          ccache -sv
+          ccache -z
+        displayName: cache stat
+
       - task: SdtReport@2
         displayName: 'Create Security Analysis Report'
         inputs:
@@ -313,7 +319,7 @@ jobs:
       displayName: 'Generate documentation'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate --use_cache'
         workingDirectory: '$(Build.BinariesDirectory)'
 
   # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
