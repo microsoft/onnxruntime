@@ -54,7 +54,7 @@ public:
         // Pad the input and the output with trailing 1's until they are at least 4D
         auto sizes = m_inputTensorDescs[0].GetSizes();
         std::vector<uint32_t> tensorShape(sizes.begin(), sizes.end());
-        tensorShape.resize(static_cast<size_t>(dmlDimensionCount));
+        tensorShape.resize(static_cast<size_t>(dmlDimensionCount), 1);
         m_inputTensorDescs[0] = TensorDesc(
             m_inputTensorDescs[0].GetDmlDataType(),
             tensorShape);
