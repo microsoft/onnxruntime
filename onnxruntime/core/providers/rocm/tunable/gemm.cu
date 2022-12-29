@@ -19,7 +19,7 @@ namespace blas {
 namespace row_major {
 
 namespace {
-// a simple utilify function that normalize alpha or beta to the desired datatype by an optional casting
+// a simple utility function that normalize alpha or beta to the desired datatype by an optional casting
 template<typename DesiredT, typename ScalarT>
 inline DesiredT NormalizeScalar(ScalarT v) {
   if constexpr (!std::is_same_v<DesiredT, ScalarT> && std::is_same_v<ScalarT, float>) {
@@ -279,6 +279,8 @@ STRIDED_BATCHED_GEMM(BFloat16, float   ) { return CALL_STRIDED_BATCHED_GEMM_WITH
 // clang-format on
 
 #undef CALL_GEMM_WITH_AB_SWAPPED
+#undef CALL_BATCHED_GEMM_WITH_AB_SWAPPED
+#undef CALL_STRIDED_BATCHED_GEMM_WITH_AB_SWAPPED
 
 }  // namespace column_major
 

@@ -104,7 +104,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // result(N, M) = 1 * weights x input + 1 x B.
   ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      this->IsTunableOpEnabled(), this->Stream(context), rocblas,
+      IsTunableOpEnabled(), Stream(context), rocblas,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       n, m, k,
       /*alpha=*/1.0f,
