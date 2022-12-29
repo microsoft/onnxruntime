@@ -1,6 +1,6 @@
 ---
-title: ONNX Runtime IoT Deployment on Raspberry Pi
-description:  ONNX Runtime IoT Deployment on Raspberry Pi
+title: IoT Deployment on Raspberry Pi
+description:  IoT Deployment on Raspberry Pi
 parent: Deploy on IoT and edge
 grand_parent: Tutorials
 has_children: false
@@ -10,7 +10,7 @@ nav_order: 2
 # ONNX Runtime IoT Deployment on Raspberry Pi
 {: .no_toc }
 
-In this tutorial we will look at how
+In this tutorial we will look at how we can deploy ML Models to a Raspberry Pi edge device. 
 
 ## Contents
 {: .no_toc }
@@ -29,6 +29,8 @@ In this tutorial we will look at how
 
 ## Download the Source
 
+Its time to download the source to the Raspberry Pi
+[](https://github.com/cassiebreviu/onnxruntime-raspberrypi)
 ## Install the prerequisites
 
 ## Run Inference
