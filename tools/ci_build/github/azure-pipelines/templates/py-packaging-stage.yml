@@ -129,7 +129,7 @@ stages:
 
       - powershell: |
           echo $(ExtraParam)
-          if ($(ExtraParam) -contains "--use_cloud") {
+          if ("$(ExtraParam)" -contains "--use_cloud") {
             echo "this is cloud build"
           }
           else {
