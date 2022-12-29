@@ -954,13 +954,15 @@ bool equal(
 // aten::resize_(Tensor(a!) self, int[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)
 const at::Tensor& resize_(
     const at::Tensor& self,
-    at::IntArrayRef size,
+    c10::SymIntArrayRef size,
     c10::optional<at::MemoryFormat> optional_memory_format) {
   ORT_LOG_FN(self, size, optional_memory_format);
   assert_tensor_supported(self);
 
+  at::IntArrayRef size_int_array = c10::asIntArrayRefUnchecked(size);
+
   // If self is already desired size, then return early
-  if (self.sizes() == size) {
+  if (self.sizes() == size_int_array) {
     return self;
   }
 
@@ -968,7 +970,7 @@ const at::Tensor& resize_(
   resize_impl_ort_(
       invoker,
       dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl()),
-      size);
+      size_int_array);
   return self;
 }
 
