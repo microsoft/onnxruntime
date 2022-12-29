@@ -103,6 +103,7 @@ Below is the source for the `inference_mobilenet.py` script.
 
 ```python
 #%%
+# import the packages
 from PIL import Image
 import numpy as np
 import onnxruntime
@@ -135,34 +136,36 @@ def run_sample(session, image_file, categories):
     top5_catid = np.argsort(-output)[:5]
     for catid in top5_catid:
         print(categories[catid], output[catid])
-    # write the result to a file
+    # Write the result to a file.
     with open("result.txt", "w") as f:
         for catid in top5_catid:
             f.write(categories[catid] + " " + str(output[catid]) + " \r")
 
-
-
 #%%
-# create main function
+# Create main function to run inference.
 if __name__ == "__main__":
-    # Read the categories
+    # Read the categories from the classes file.
     with open("imagenet_classes.txt", "r") as f:
         categories = [s.strip() for s in f.readlines()]
     
     # Create Inference Session
     session = onnxruntime.InferenceSession("mobilenet_v2_float.onnx")
 
-    # get image from camera
+    # Get image from the camera.
     cap = cv2.VideoCapture(0)
     cap.set(3,640) # set Width
     cap.set(4,480) # set Height
 
-    # capture image from camera
     ret, frame = cap.read()
     frame = cv2.flip(frame, -1) # Flip camera vertically
     cv2.imwrite('capture.jpg', frame)
     cap.release()
     cv2.destroyAllWindows()
 
+    # Run inference
     run_sample(session, 'capture.jpg', categories)
 ```
+
+## Conclusion
+
+## Resources
