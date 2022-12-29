@@ -503,8 +503,8 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
       0.3f, 0.2f, 4.0f, 2.2f};
 
   std::vector<float> output_data = {
-      0.3491, -0.1455,  0.0000,  3.2005,
-      0.3487,  0.0930,  2.7899, -3.0689};
+      0.3491f, -0.1455f,  0.0000f,  3.2005f,
+      0.3487f,  0.0930f,  2.7899f, -3.0689f};
 
   RunTest(input_data,
           skip_data,

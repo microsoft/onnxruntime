@@ -198,6 +198,7 @@ class SymbolicShapeInference:
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
+            "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -2029,6 +2030,8 @@ class SymbolicShapeInference:
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
+        if len(node.output) > 3:
+            self._propagate_shape_and_type(node, 0, 3)
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")
