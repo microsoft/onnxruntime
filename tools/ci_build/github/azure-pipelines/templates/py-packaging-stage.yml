@@ -129,9 +129,14 @@ stages:
 
       - powershell: |
           echo $(ExtraParam)
+          if ($(ExtraParam) -contains "--use_cloud") {
+            echo "this is cloud build"
+          }
+          else {
+            echo "this is not cloud build"
+          }
         workingDirectory: '$(Build.SourcesDirectory)'
         displayName: 'This is just a test'
-
 
       - script: |
           python -m pip install -q setuptools wheel numpy==1.21.6
