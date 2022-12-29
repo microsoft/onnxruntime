@@ -8,7 +8,7 @@ Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, i
   GraphViewer const graph_viewer(graph);
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     Node* node = graph.GetNode(node_index);
-    if (IsSupportedParentOp(node)) {
+    if (IsSupportedParentNode(node)) {
       auto identical_children_indexes = GetIdenticalChildrenIndexes(node);
       if(identical_children_indexes.empty()) { continue;}
       auto *first_child = graph.GetNode(identical_children_indexes[0]);
@@ -38,7 +38,7 @@ std::vector<NodeIndex> IdenticalChildrenConsolidation::GetIdenticalChildrenIndex
   return {identical_set.begin(), identical_set.end()};
 }
 
-  bool IdenticalChildrenConsolidation::IsSupportedParentOp(const Node *node) const {
+  bool IdenticalChildrenConsolidation::IsSupportedParentNode(const Node *node) const {
     return node != nullptr
        && supported_parent_optypes.count(node->OpType()) != 0
        && node->GetOutputEdgesCount() > 1;
