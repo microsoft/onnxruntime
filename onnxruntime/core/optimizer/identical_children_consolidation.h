@@ -41,9 +41,12 @@ class IdenticalChildrenConsolidation : public GraphTransformer {
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  bool IsSupportedParentNode(const Node* node) const;
+  std::vector<NodeIndex> GetIdenticalChildrenIndexes (Node *node) const;
+
   unordered_set<string_view> supported_children_optypes = {"DequantizeLinear","QuantizeLinear"} ;
   unordered_set<string_view> supported_parent_optypes = {"DequantizeLinear","QuantizeLinear"} ;
-  std::vector<NodeIndex> GetIndenticalChildrenSet (Node& node) const;
+
 };
 }  // namespace onnxruntime
 
