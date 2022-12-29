@@ -56,14 +56,13 @@ In this tutorial we are using the Raspberry Pi [Camera Module](https://www.raspb
 ```bash
 python cameratest.py
 ```
-The cameratest.py script is below for reference:
+- The `cameratest.py` script is below for reference:
 
 ```python
 import numpy as np
 import cv2
 
 # Create test image using opencv.
-
 cap = cv2.VideoCapture(0)
 cap.set(3,640) # set Width
 cap.set(4,480) # set Height
@@ -90,20 +89,23 @@ cv2.destroyAllWindows()
 ```
 ## Run inference on the Raspberry Pi with the `inference_mobilenet.py`script
 
-Now that we have validated that the camera is connected and working on the Raspberry Pi, its time to inference the onnx model provided in the source. The model is a [MobileNet](https://github.com/onnx/models/tree/main/vision/classification/mobilenet) model that performs image classification on 1000 classes.
+Now that we have validated that the camera is connected and working on the Raspberry Pi, its time to inference the ONNX model provided in the source. The model is a [MobileNet](https://github.com/onnx/models/tree/main/vision/classification/mobilenet) model that performs image classification on 1000 classes.
 
-To run the below inference script run the `python inference_mobilenet.py` command.
+- Run the inference script with the below command.
+```python
+python inference_mobilenet.py
+```
 
-Terminal output and `capture.jpg` that was inferenced:
+- Terminal output:
 <img src="../../../images/terminal-output-rasp-pi.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
+- The image that was inferenced capture.png:
 <img src="../../../images/rasp-pi-can.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
 
 
-Below is the source for the `inference_mobilenet.py` script.
+- The `inference_mobilenet.py` script:
 
 ```python
-#%%
-# import the packages
+# Import the packages.
 from PIL import Image
 import numpy as np
 import onnxruntime
@@ -122,8 +124,6 @@ def preprocess_image(image_path, height, width, channels=3):
     image_data = np.expand_dims(image_data, 0)
     return image_data
 
-#%%
-
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
@@ -141,7 +141,6 @@ def run_sample(session, image_file, categories):
         for catid in top5_catid:
             f.write(categories[catid] + " " + str(output[catid]) + " \r")
 
-#%%
 # Create main function to run inference.
 if __name__ == "__main__":
     # Read the categories from the classes file.
@@ -168,4 +167,9 @@ if __name__ == "__main__":
 
 ## Conclusion
 
-## Resources
+Now that we have successfully run inference on the Raspberry Pi, we can use the same code to run inference on any device that supports ONNX Runtime. We can also use the same code to run inference on the Raspberry Pi with a different model. Check out the other models in the [ONNX Model Zoo](https://github.com/onnx/models).
+
+## More examples
+
+* [Jetson Nano embedded device: Fast model inferencing](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/README-ONNXRUNTIME-arm64.md)
+* [Intel VPU edge device with OpenVINO: Deploy small quantized model](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/README-ONNXRUNTIME-OpenVINO.md)
