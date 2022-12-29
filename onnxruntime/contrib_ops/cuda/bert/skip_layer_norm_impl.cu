@@ -152,7 +152,6 @@ Status LaunchSkipLayerNormKernel(
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
                                                  maybe2half<T>(epsilon), output,
                                                  skip_input_add_output, hasBias, hasSkipInputAdditionOutput);
-      cudaDeviceSynchronize();
     } else if (ld <= 64) {
       constexpr int block_size = 64 / 2;
       SkipLayerNormKernelSmall<T, block_size, 2, Simplified>
