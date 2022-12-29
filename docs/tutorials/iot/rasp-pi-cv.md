@@ -32,14 +32,29 @@ In this tutorial we will look at how we can deploy ML Models to a Raspberry Pi e
 
 Once you have imaged the Raspberry Pi and configured it for use its time to download the source to your device.
 
-- [Download the source](https://github.com/cassiebreviu/onnxruntime-raspberrypi)
+1. Connect to your Raspberry Pi device
 
-Lets go over the source code!
+In this tutorial we are using VNC Viewer to remote in. If you are going to use VNC Viewer be sure to follow [these setup steps to establish a connection.](https://www.realvnc.com/en/blog/how-to-setup-vnc-connect-raspberry-pi/). Once VNC is enabled on Raspberry Pi and you have [downloaded the VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) app on your computer, then you can remote into the device.
 
--
+<img src="../../../images/vncviewerrasppi.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
 
-## Test the Camera
-No
+2. [Download the source](https://github.com/cassiebreviu/onnxruntime-raspberrypi) to your Raspberry Pi. The source code includes everything you need to run inference including a `mobilenet` ONNX model from the [model zoo](https://github.com/onnx/models) and `imagenet_classes.txt` classes.
+
+```bash
+git clone https://github.com/cassiebreviu/onnxruntime-raspberrypi.git
+```
+
+3. Navigate to the `onnxruntime-raspberrypi` download location and install the package from the `requirements.txt` with the following command.
+
+```bash
+pip install -r requirements.txt
+```
+
+4. Configure and test the camera.
+
+In this tutorial we are using the Raspberry Pi [Camera Module](https://www.raspberrypi.com/products/camera-module-v2/). We want to test the camera with the `cameratest.py` script provided. 
+
+
 
 ## Install the prerequisites
 
