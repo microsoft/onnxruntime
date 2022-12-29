@@ -29,36 +29,65 @@ In this tutorial we will look at how we can deploy ML Models to a Raspberry Pi e
 
 ## Download the source code, ML model and install the packages
 
-Once you have imaged the Raspberry Pi and configured it for use its time to download the source to your device.
+Once you have imaged the Raspberry Pi and configured it for use its time to connect and download the source code to your device.
 
-1. Connect to your Raspberry Pi device
+- Connect to your Raspberry Pi device
 
 In this tutorial we are using VNC Viewer to remote in. If you are going to use VNC Viewer be sure to follow [these setup steps to establish a connection.](https://www.realvnc.com/en/blog/how-to-setup-vnc-connect-raspberry-pi/). Once VNC is enabled on Raspberry Pi and you have [downloaded the VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) app on your computer, then you can remote into the device.
 
 <img src="../../../images/vncviewerrasppi.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
 
-2. [Download the source](https://github.com/cassiebreviu/onnxruntime-raspberrypi) to your Raspberry Pi. The source code includes everything you need to run inference including a `mobilenet` ONNX model from the [model zoo](https://github.com/onnx/models) and `imagenet_classes.txt` classes.
+- [Download the source](https://github.com/cassiebreviu/onnxruntime-raspberrypi) to your Raspberry Pi. The source code includes everything you need to run inference including a `mobilenet` ONNX model from the [model zoo](https://github.com/onnx/models) and `imagenet_classes.txt` classes.
 
 ```bash
 git clone https://github.com/cassiebreviu/onnxruntime-raspberrypi.git
 ```
 
-3. Navigate to the `onnxruntime-raspberrypi` download location and install the package from the `requirements.txt` with the following command.
+- Navigate to the `onnxruntime-raspberrypi` download location and install the package from the `requirements.txt` with the following command.
 
 ```bash
+cd onnxruntime-raspberrypi
 pip install -r requirements.txt
 ```
+In this tutorial we are using the Raspberry Pi [Camera Module](https://www.raspberrypi.com/products/camera-module-v2/). We want to test the camera with the `cameratest.py` script provided. If you have issues getting the camera to work run `sudo apt update sudo apt upgrade` to update the board and firmware.
 
-4. Configure and test the camera.
+- Configure and test the camera by running the below command. This will create a image capture called `test.jpg` in the current directory and open a live video stream of the camera output. Hit `ESC` to cancel out of the live video output. 
 
-In this tutorial we are using the Raspberry Pi [Camera Module](https://www.raspberrypi.com/products/camera-module-v2/). We want to test the camera with the `cameratest.py` script provided. 
+```bash
+python cameratest.py
+```
+The cameratest.py script is below for reference:
 
+```python
+import numpy as np
+import cv2
 
+# Create test image using opencv.
 
-## Install the prerequisites
+cap = cv2.VideoCapture(0)
+cap.set(3,640) # set Width
+cap.set(4,480) # set Height
 
-## Run Inference
+ret, frame = cap.read()
+frame = cv2.flip(frame, -1) # Flip camera vertically
+cv2.imwrite('test.jpg', frame)
+ 
+# Start live video feed until `ESC` is pressed to quit.
+while(True):
+    ret, frame = cap.read()
+    frame = cv2.flip(frame, -1) # Flip camera vertically
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    cv2.imshow('frame', frame)
+    cv2.imshow('gray', gray)
+    
+    k = cv2.waitKey(30) & 0xff
+    if k == 27: # press 'ESC' to quit
+        break
 
-## Part 2 Add a Remote Control Arduino Powered Car
+cap.release()
+cv2.destroyAllWindows()
+```
+<img src="../../../images/rasp-pi-camera-test.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
 
-Now that you have got the CV model working on the Raspberry Pi, lets look at how we can add it to a remote control car. The instructions to build the remote control car can be found on this (Instructables tutorial)[https://www.instructables.com/HackerBoxes-0013-Autosport/]
+## Run inference on the Raspberry Pi with the `inference_mobilenet.py`script
