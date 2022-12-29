@@ -32,7 +32,7 @@ def mobileDescription = 'The ONNX Runtime Mobile package is a size optimized inf
 	'but with reduced disk footprint targeting mobile platforms. To minimize binary size this library supports a ' +
 	'reduced set of operators and types aligned to typical mobile applications. The ONNX model must be converted to ' +
 	'ORT format in order to use it with this package. ' +
-	'See https://onnxruntime.ai/docs/reference/ort-model-format.html for more details.'
+	'See https://onnxruntime.ai/docs/reference/ort-format-models.html for more details.'
 def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network ' +
 	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime. It includes support for all ' +
 	'types and operators, for ONNX format models. All standard ONNX models can be executed with this package. ' +

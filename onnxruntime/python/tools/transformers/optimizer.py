@@ -187,7 +187,7 @@ def optimize_model(
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
-    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/resources/graph-optimizations.html).
+    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/performance/graph-optimizations.html).
     However, the coverage is limited. We also have graph fusions that implemented in Python to improve the coverage.
     They can combined: ONNX Runtime will run first when opt_level > 0, then graph fusions in Python will be applied.
 

@@ -88,7 +88,7 @@ git submodule update --init
 
 ### **1. Using pre-built container images for Python API**
 
-The unified container image from [Dockerhub](https://hub.docker.com/repository/docker/openvino/onnxruntime_ep_ubuntu18) can be used to run an application on any of the target accelerators. In order to select the target accelerator, the application should explicitly specifiy the choice using the `device_type`  configuration option for OpenVINO Execution provider. Refer to [OpenVINO EP runtime configuration documentation](https://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options) for details on specifying this option in the application code.
+The unified container image from [Dockerhub](https://hub.docker.com/repository/docker/openvino/onnxruntime_ep_ubuntu18) can be used to run an application on any of the target accelerators. In order to select the target accelerator, the application should explicitly specifiy the choice using the `device_type`  configuration option for OpenVINO Execution provider. Refer to [OpenVINO EP runtime configuration documentation](https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#configuration-options) for details on specifying this option in the application code.
 If the `device_type` runtime config option is not explicitly specified, CPU will be chosen as the hardware target execution.
 ### **2. Building from Dockerfile**
 

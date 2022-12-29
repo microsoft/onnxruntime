@@ -243,7 +243,7 @@ It should be able to consumed by both from projects that uses NPM packages (thro
 
 #### Reduced WebAssembly artifacts
 
-By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/tutorials/mobile/overview.html) for more information.
+By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/reference/ort-format-models.html) for more information.
 
 #### Reduced JavaScript bundle file fize
 

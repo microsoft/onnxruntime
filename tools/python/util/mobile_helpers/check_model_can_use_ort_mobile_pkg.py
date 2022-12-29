@@ -236,7 +236,7 @@ def run_check_with_model(
     if unsupported:
         logger.info("\nModel is not supported by the pre-built package due to unsupported types and/or operators.")
         logger.info(
-            "Please see https://onnxruntime.ai/docs/reference/mobile/prebuilt-package/ for information "
+            "Please see https://onnxruntime.ai/docs/install/#install-on-web-and-mobile for information "
             "on what is supported in the pre-built package."
         )
         logger.info(
