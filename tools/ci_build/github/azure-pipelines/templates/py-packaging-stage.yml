@@ -95,6 +95,10 @@ stages:
         EnvSetupScript: setup_env.bat
         setVcvars: true
         BuildConfig: 'RelWithDebInfo'
+        ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+          CloudBuild: true
+        ${{ else }}:
+          CloudBuild: false
       timeoutInMinutes: 120
       workspace:
         clean: all
