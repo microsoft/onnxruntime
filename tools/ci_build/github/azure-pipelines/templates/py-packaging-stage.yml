@@ -137,7 +137,7 @@ stages:
           else {
             echo "This is not a cloud biuld"
           }
-        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+        workingDirectory: '$(Build.SourcesDirectory)'
         displayName: 'This is just a test'
 
 
