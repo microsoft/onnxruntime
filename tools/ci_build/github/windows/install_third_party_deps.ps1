@@ -61,7 +61,7 @@ if ($use_cache) {
     $cmake_extra_args += "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=`"/MD /Z7 /O2 /Ob1 /DNDEBUG`""
   }
   elseif ($build_config -eq 'Debug') {
-    $cmake_extra_args += "-DCMAKE_CXX_FLAGS_Debug=`"/MDd /Z7 /Ob0 /Od /RTC1`""
+    $cmake_extra_args += "-DCMAKE_CXX_FLAGS_DEBUG=`"/MDd /Z7 /Ob0 /Od /RTC1`""
   }
 }
 
