@@ -954,7 +954,7 @@ bool equal(
 // aten::resize_(Tensor(a!) self, int[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)
 const at::Tensor& resize_(
     const at::Tensor& self,
-    at::IntArrayRef size,
+     c10::SymIntArrayRef size,
     c10::optional<at::MemoryFormat> optional_memory_format) {
   ORT_LOG_FN(self, size, optional_memory_format);
   assert_tensor_supported(self);
