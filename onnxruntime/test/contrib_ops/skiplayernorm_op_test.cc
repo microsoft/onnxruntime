@@ -47,10 +47,12 @@ static void RunTest(
     test.AddInput<float>("input", input_dims, input_data);
     test.AddInput<float>("skip", skip_dims, skip_data);
     test.AddInput<float>("gamma", gamma_dims, gamma_data);
-    if (!no_beta) {
-      test.AddInput<float>("beta", beta_dims, beta_data);
-    } else {
-      test.AddOptionalInputEdge<float>();
+    if (!simplified) {
+      if (!no_beta) {
+        test.AddInput<float>("beta", beta_dims, beta_data);
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -77,10 +79,12 @@ static void RunTest(
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
     test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
-    if (!no_beta) {
-      test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
-    } else {
-      test.AddOptionalInputEdge<float>();
+    if (!simplified) {
+      if (!no_beta) {
+        test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -513,6 +517,7 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           batch_size,
           sequence_length,
           hidden_size,
+          true,
           true,
           true);
 }
