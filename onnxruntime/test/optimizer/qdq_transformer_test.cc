@@ -763,14 +763,30 @@ TEST(QDQTransformerTests, Gather) {
 
   test_case({12, 37}, {24, 12});
 }
-
-TEST(QDQTransformerTests, Split) {
+//Because split isn't one the supported ops, this will stay the same
+TEST(QDQTransformerTests, Split_without_IdenticalChildrenConsolidation) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Split"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 3);
+    };
+    TransformerTester(BuildQDQSplitTestCase<int8_t, int8_t>(input_shape, axis),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,12,{},{}, nullptr,{},
+                      {"IdenticalChildrenConsolidation"});
+  };
+  test_case({6, 18, 54}, 0);
+}
+TEST(QDQTransformerTests, Split_with_IdenticalChildrenConsolidation) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Split"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 3);
     };
     TransformerTester(BuildQDQSplitTestCase<int8_t, int8_t>(input_shape, axis),
                       check_graph,

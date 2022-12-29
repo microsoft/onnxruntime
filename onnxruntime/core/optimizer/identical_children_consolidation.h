@@ -21,19 +21,19 @@ using std::string_view;
  *
  * For example, the following graph
  *
- *                [supported_ops]
+ *           [supported_parent_optypes]
  *                /              \
  * [supported_children_ops] [supported_children_ops]
  *              |                 |
- *          [any_ops_a]      [any_ops_b]
+ *      [grandchildren_a]   [grandchildren_b]
  *
  * will be transformed to:
  *
- *                [supported_ops]
+ *            [supported_parent_optypes]
  *                      |
  *           [supported_children_ops]
  *               /              \
- *        [any_ops_a]     [any_ops_b]
+ *     [grandchildren_a]   [grandchildren_b]
  */
 class IdenticalChildrenConsolidation : public GraphTransformer {
  public:
