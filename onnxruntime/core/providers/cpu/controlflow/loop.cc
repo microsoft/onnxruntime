@@ -180,8 +180,7 @@ class LoopImpl {
   LoopImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Loop::Info& info,
-           const Loop::ConcatOutput& concat_output_func,
-           void* stream);
+           const Loop::ConcatOutput& concat_output_func);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -214,7 +213,6 @@ class LoopImpl {
   std::vector<std::vector<OrtValue>> loop_output_tensors_;
 
   const Loop::ConcatOutput& concat_output_func_;
-  void* stream_;
 };
 
 static Status ConcatenateCpuOutput(void* /*stream*/,
@@ -258,13 +256,11 @@ void Loop::Init(const OpKernelInfo& info) {
   ORT_IGNORE_RETURN_VALUE(proto);
 
   concat_output_func_ = ConcatenateCpuOutput;
-  stream_ = nullptr;
 }
 
-std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream) {
+std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* /*stream*/) {
   auto result = std::make_unique<Loop>(info);
   result->SetConcatOutputFunc(concat_output_func);
-  result->SetComputeStream(stream);
   return result;
 }
 
@@ -355,7 +351,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_, stream_};
+  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_};
 
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -368,14 +364,12 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info,
-                   const Loop::ConcatOutput& concat_output_func,
-                   void* stream)
+                   const Loop::ConcatOutput& concat_output_func)
     : context_(context),
       session_state_(session_state),
       info_(subgraph_info),
       implicit_inputs_(context_.GetImplicitInputs()),
-      concat_output_func_(concat_output_func),
-      stream_(stream) {
+      concat_output_func_(concat_output_func) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 
@@ -475,7 +469,8 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   TensorShape output_shape{dims};
   Tensor* output = context_.Output(output_index, output_shape);
 
-  ORT_RETURN_IF_ERROR(concat_output_func_(stream_, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
+  Stream* ort_stream = context_.GetComputeStream();
+  ORT_RETURN_IF_ERROR(concat_output_func_(ort_stream ? ort_stream->GetHandle() : nullptr, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
 
   return Status::OK();
 }
@@ -497,8 +492,11 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
-
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
+                                    context_.GetComputeStream(),
+                                    // because the fetch[0] is the loop condition which we need to access on CPU,
+                                    // have to perofrm a stream sync to make sure the data arrived.
+                                    true);
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
@@ -531,7 +529,11 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       // Loop on CUDA if the copy stream is the same as the compute stream.
       // So there is no explicit sync required between the compute and copy streams
       // to avoid data races.
-      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input_tensor, *output));
+      auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(input_tensor.Location().device, output->Location().device);
+      if (context_.GetComputeStream())
+        ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(input_tensor, *output, *context_.GetComputeStream()));
+      else
+        ORT_RETURN_IF_ERROR(data_transer->CopyTensor(input_tensor, *output));
     } else if (input.IsTensorSequence()) {
       TensorSeq* output = context_.Output<TensorSeq>(output_idx);
 
@@ -555,7 +557,11 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
           // Loop on CUDA if the copy stream is the same as the compute stream.
           // So there is no explicit sync required between the compute and copy streams
           // to avoid data races.
-          ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(*it, tmp));
+          auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Location().device, tmp.Location().device);
+          if (context_.GetComputeStream())
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(*it, tmp, *context_.GetComputeStream()));
+          else
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensor(*it, tmp));
           tensors.push_back(std::move(tmp));
         }
 

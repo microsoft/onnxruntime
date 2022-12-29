@@ -78,18 +78,18 @@ std::pair<Status, std::unique_ptr<GptSubgraph>> CreateGptSubgraphAndUpdateParame
 
 void GreedySearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
+  parameters_.vocab_size = (parameters_.vocab_size == 0 ? -1 : parameters_.vocab_size);
 
   // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
-  ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
-              parameters_.model_type == IBeamSearchParameters::kModelTypeT5);
+  ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt);
 
   ONNX_NAMESPACE::GraphProto proto;
-  if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
+  if (parameters_.model_type != IGenerationParameters::kModelTypeGpt) {
     // Make sure the encoder sub-graph attribute is present for the T5 model.
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
-  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
+  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {
     // Check if the init_decoder sub-graph attribute is present for the GPT2 model.
     if (info.GetAttr<ONNX_NAMESPACE::GraphProto>("init_decoder", &proto).IsOK()) {
       has_init_decoder_ = true;
@@ -104,7 +104,7 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
                                                 const std::string& attribute_name,
                                                 const SessionState& subgraph_session_state) {
   const auto& node = Node();
-  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {  // GPT-2
+  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {  // GPT-2
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
@@ -130,8 +130,7 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
       init_run_gpt_subgraph_ = std::move(res.second);
       init_run_decoder_feeds_fetches_manager_ = init_run_gpt_subgraph_->GetFeedsFetchesManager();
     }
-
-  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {  // encoder-decoder like T5
+  } else if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {  // encoder-decoder like T5
     ORT_THROW("Not Implemented");
     // if (attribute_name == "encoder") {
     //   ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
@@ -172,6 +171,9 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
   if (has_init_decoder_) {
     ORT_ENFORCE(init_run_decoder_session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
     ORT_ENFORCE(init_run_decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
+    ORT_ENFORCE(init_run_gpt_subgraph_ && gpt_subgraph_
+                  && init_run_gpt_subgraph_->past_present_share_buffer_ == gpt_subgraph_->past_present_share_buffer_,
+                "past_present_share_buffer mode must be same for init decoder and decoder subgraphes");
   }
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -182,14 +184,14 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
   if (parameters_.model_type == 0) {  // GPT-2
     // Subgraph has constraint that the output is either float or float16
     if (!gpt_subgraph_->IsOutputFloat16()) {
-      GreedySearchGpt<float> impl{
+      GreedySearchGpt<float, GreedySearchParameters> impl{
           *ctx_internal,
           has_init_decoder_ ? init_run_decoder_session_state : nullptr,
           has_init_decoder_ ? init_run_gpt_subgraph_.get() : nullptr,
           *decoder_session_state,
           *gpt_subgraph_,
           thread_pool,
-          cuda_stream_,
+          ctx->GetComputeStream(),
           dumper_,
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
@@ -203,14 +205,14 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {
-      GreedySearchGpt<MLFloat16> impl{
+      GreedySearchGpt<MLFloat16, GreedySearchParameters> impl{
           *ctx_internal,
           has_init_decoder_ ? init_run_decoder_session_state : nullptr,
           has_init_decoder_ ? init_run_gpt_subgraph_.get() : nullptr,
           *decoder_session_state,
           *gpt_subgraph_,
           thread_pool,
-          cuda_stream_,
+          ctx->GetComputeStream(),
           dumper_,
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,

@@ -154,8 +154,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               CublasHandle(),
+                                               Stream(ctx),
+                                               GetCublasHandle(ctx),
                                                permutation, *X, *temp_input));
     transposed_input = std::move(temp_input);
 
@@ -194,8 +194,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               CublasHandle(),
+                                               Stream(ctx),
+                                               GetCublasHandle(ctx),
                                                permutation, *intermediate_output, *Y));
   }
 
