@@ -128,7 +128,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - powershell: |
-          echo ${ExtraParam}
+          echo $(ExtraParam)
         workingDirectory: '$(Build.SourcesDirectory)'
         displayName: 'This is just a test'
 
