@@ -170,6 +170,16 @@ std::vector<OrtValue> create_ort_value(
   return output;
 }
 
+std::vector<OrtValue> create_ort_value(
+    onnxruntime::ORTInvoker& invoker,
+    const at::ITensorListRef& values) {
+  auto output = std::vector<OrtValue>{};
+  for (auto element : values) {
+    output.push_back(create_ort_value(element));
+  }
+  return output;
+}
+
 onnx::AttributeProto create_ort_attribute(
     const char* name,
     at::Scalar value,
@@ -298,6 +308,10 @@ bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarTyp
 
 bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types) {
   return IsSupportedType(tensors[0], valid_types);
+}
+
+bool IsSupportedType(at::ITensorListRef tensors, const std::vector<at::ScalarType>& valid_types) {
+  return IsSupportedType(tensors.front(), valid_types);
 }
 
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype) {
@@ -616,13 +630,15 @@ at::IntArrayRef BroadcastShape(
 namespace aten {
 
 at::Tensor empty_strided(
-    at::IntArrayRef size,
-    at::IntArrayRef stride,
+    c10::SymIntArrayRef sym_size,
+    c10::SymIntArrayRef sym_stride,
     c10::optional<at::ScalarType> dtype_opt,
     c10::optional<at::Layout> layout_opt,  // Ignored because there's no ONNX support.
     c10::optional<at::Device> device_opt,  // Will be ORT by the time this is dispatched.
     c10::optional<bool> pin_memory_opt) {  // Ignored because there's no ONNX support.
-  ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
+  ORT_LOG_FN(sym_size, sym_stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
+  at::IntArrayRef size = c10::asIntArrayRefUnchecked(sym_size);
+  at::IntArrayRef stride = c10::asIntArrayRefUnchecked(sym_stride);
 
   OrtValue ot;
   assert(device_opt.has_value());
@@ -639,7 +655,7 @@ at::Tensor empty_strided(
 }
 
 at::Tensor empty_memory_format(
-    at::IntArrayRef size,
+    c10::SymIntArrayRef size,
     c10::optional<at::ScalarType> dtype_opt,
     c10::optional<at::Layout> layout_opt,
     c10::optional<at::Device> device_opt,
@@ -648,21 +664,23 @@ at::Tensor empty_memory_format(
   ORT_LOG_FN(size, dtype_opt, layout_opt, device_opt, pin_memory, memory_format);
 
   // Use the strided impl with default (no strides specified).
-  return empty_strided(size, at::IntArrayRef({}), dtype_opt, layout_opt, device_opt, pin_memory);
+  return empty_strided(size, c10::SymIntArrayRef({}), dtype_opt, layout_opt, device_opt, pin_memory);
 }
 
 // aten::as_strided(Tensor(a) self, int[] size, int[] stride, int? storage_offset=None) -> Tensor(a)
 at::Tensor as_strided(
     const at::Tensor& self,
-    at::IntArrayRef size,
-    at::IntArrayRef stride,
-    c10::optional<int64_t> storage_offset) {
-  ORT_LOG_FN(self, size, stride, storage_offset);
+    c10::SymIntArrayRef sym_size,
+    c10::SymIntArrayRef sym_stride,
+    c10::optional<c10::SymInt> storage_offset) {
+  ORT_LOG_FN(self, sym_size, sym_stride, storage_offset);
+  at::IntArrayRef size = c10::asIntArrayRefUnchecked(sym_size);
+  at::IntArrayRef stride = c10::asIntArrayRefUnchecked(sym_stride);
   auto& invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
   auto* tensor = ort_input.GetMutable<onnxruntime::Tensor>();
 
-  auto byte_offset = storage_offset.has_value() ? (*storage_offset * tensor->DataType()->Size()) : 0;
+  auto byte_offset = storage_offset.has_value() ? ((*storage_offset).expect_int() * tensor->DataType()->Size()) : 0;
   OrtValue ot;
   onnxruntime::Tensor::InitOrtValue(tensor->DataType(), onnxruntime::TensorShape(size.vec()), tensor->MutableDataRaw(),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
@@ -674,9 +692,10 @@ at::Tensor as_strided(
 
 at::Tensor _reshape_alias(
     const at::Tensor& self,
-    at::IntArrayRef size,
-    at::IntArrayRef stride) {
-  ORT_LOG_FN(self, size, stride);
+    c10::SymIntArrayRef sym_size,
+    c10::SymIntArrayRef sym_stride) {
+  ORT_LOG_FN(self, sym_size, sym_stride);
+  at::IntArrayRef size = c10::asIntArrayRefUnchecked(sym_size);
   // TODO(unknown): support stride
   auto& invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
@@ -690,8 +709,9 @@ at::Tensor _reshape_alias(
       self.options());
 }
 
-at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
-  ORT_LOG_FN(self, size);
+at::Tensor view(const at::Tensor& self, c10::SymIntArrayRef sym_size) {
+  ORT_LOG_FN(self, sym_size);
+  at::IntArrayRef size = c10::asIntArrayRefUnchecked(sym_size);
   auto& invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
   return aten_tensor_from_ort(
@@ -788,10 +808,11 @@ at::Tensor& zero_(at::Tensor& self) {
 at::Tensor slice_Tensor(
     const at::Tensor& self,
     int64_t dim,
-    c10::optional<int64_t> start,
-    c10::optional<int64_t> end,
-    int64_t step) {
-  ORT_LOG_FN(self, dim, start, end, step);
+    c10::optional<c10::SymInt> start,
+    c10::optional<c10::SymInt> end,
+    c10::SymInt sym_step) {
+  ORT_LOG_FN(self, dim, start, end, sym_step);
+  int64_t step = sym_step.expect_int();
   int64_t ndim = self.dim();
   if (ndim == 0) {
     throw std::runtime_error("slice() cannot be applied to a 0-dim tensor.");
@@ -803,8 +824,8 @@ at::Tensor slice_Tensor(
   auto* ort_tensor = ort_input.GetMutable<onnxruntime::Tensor>();
   auto& shape = ort_tensor->Shape();
   auto strides = ort_tensor->Strides();
-  int64_t l_start = start.has_value() ? *start : 0;
-  int64_t l_end = end.has_value() ? *end : shape[dim];
+  int64_t l_start = start.has_value() ? (*start).expect_int() : 0;
+  int64_t l_end = end.has_value() ? (*end).expect_int() : shape[dim];
   if (l_start < 0) {
     l_start += shape[dim];
   }
@@ -954,11 +975,7 @@ bool equal(
 // aten::resize_(Tensor(a!) self, int[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)
 const at::Tensor& resize_(
     const at::Tensor& self,
-<<<<<<< HEAD
     c10::SymIntArrayRef size,
-=======
-     c10::SymIntArrayRef size,
->>>>>>> 954fac091577e471e860cd0ae7fc197fc65f41a0
     c10::optional<at::MemoryFormat> optional_memory_format) {
   ORT_LOG_FN(self, size, optional_memory_format);
   assert_tensor_supported(self);
@@ -980,7 +997,7 @@ const at::Tensor& resize_(
 
 // aten::cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
 at::Tensor& cat_out(
-    at::TensorList tensors,
+    const at::ITensorListRef& tensors,
     int64_t dim,
     // *,
     at::Tensor& out) {
@@ -995,15 +1012,15 @@ at::Tensor& cat_out(
         &at::native::cpu_fallback,
         ATEN_OP(cat_out)>::call(tensors, dim, out);
   }
-  int64_t ndim = tensors[0].dim();
+  int64_t ndim = tensors.front().dim();
   assert(ndim != 0);
   dim = at::maybe_wrap_dim(dim, ndim);
 
-  auto& invoker = GetORTInvoker(tensors[0].device());
+  auto& invoker = GetORTInvoker(tensors.front().device());
 
   // IntArrayRef isn't writeable, convert to vector.
   std::vector<int64_t> sizes;
-  for (auto s : tensors[0].sizes())
+  for (auto s : tensors.front().sizes())
     sizes.push_back(s);
 
   // Calculate the new size of the dimension being concatenated.
