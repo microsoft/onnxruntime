@@ -98,11 +98,10 @@ python inference_mobilenet.py
 
 - Terminal output:
 <img src="../../../images/terminal-output-rasp-pi.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
-- The image that was inferenced capture.png:
+- The image that was inferenced on the Raspberry Pi:
 <img src="../../../images/rasp-pi-can.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
 
-
-- The `inference_mobilenet.py` script:
+- The `inference_mobilenet.py` script below for reference:
 
 ```python
 # Import the packages.
@@ -173,3 +172,4 @@ Now that we have successfully run inference on the Raspberry Pi, we can use the 
 
 * [Jetson Nano embedded device: Fast model inferencing](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/README-ONNXRUNTIME-arm64.md)
 * [Intel VPU edge device with OpenVINO: Deploy small quantized model](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/README-ONNXRUNTIME-OpenVINO.md)
+
