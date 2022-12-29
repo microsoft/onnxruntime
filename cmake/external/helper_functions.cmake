@@ -179,7 +179,6 @@ macro(onnxruntime_fetchcontent_makeavailable)
           if(MSVC)
           # Replace /Zi and /ZI with /Z7
           if(MSVC_Z7_OVERRIDE)
-            message(FATAL_ERROR, "Z7 override")
             foreach(flag_var
             CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
             CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
