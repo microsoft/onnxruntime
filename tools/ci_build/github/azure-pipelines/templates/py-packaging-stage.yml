@@ -130,6 +130,17 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
+      - powershell: |
+          if ($(CloudBuild) -eq $true) {
+            echo "This is a cloud biuld"
+          }
+          else {
+            echo "This is not a cloud biuld"
+          }
+        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+        displayName: 'This is just a test'
+
+
       - script: |
           python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
