@@ -776,7 +776,7 @@ Linux example:
 
 See more information on the CANN Execution Provider [here](../execution-providers/community-maintained/CANN-ExecutionProvider.md).
 
-### Prerequisitesß
+### Prerequisites
 {: .no_toc }
 
 1. Install the CANN Toolkit for the appropriate OS and target hardware by following [documentation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/51RC1alphaX/softwareinstall/instg/atlasdeploy_03_0017.html) for detailed instructions, please.
