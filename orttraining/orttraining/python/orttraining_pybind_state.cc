@@ -550,7 +550,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so, env)) {
+        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so.value, env)) {
     }
   };
 
