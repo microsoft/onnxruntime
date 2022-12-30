@@ -818,7 +818,6 @@ static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOpt
 }
 #endif
 
-
 void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types,
