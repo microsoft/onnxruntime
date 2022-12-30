@@ -8,9 +8,9 @@ redirect_from: /docs/get-started/with-iot
 
 # Deploy ML model on IoT and edge  
 
-ONNX Runtime allows you to deploy to many IoT and Edge devices. There are packages available to support many board architectures [included when you install ONNX Runtime](https://pypi.org/project/onnxruntime/#files).
+ONNX Runtime allows you to deploy to many IoT and Edge devices to support a variety of use cases. There are packages available to support many board architectures [included when you install ONNX Runtime](https://pypi.org/project/onnxruntime/#files). Below are some considerations when deciding to if deploying on-device is right for your use case.
 
-## Benefits and limitations to doing on-device inference.
+## Benefits and limitations to doing on-device inference
 
 * It’s faster. That’s right, you can cut inferencing time down when inferencing is done right on the client for models that are optimized to work on less powerful hardware.
 * It’s safer and helps with privacy. Since the data never leaves the device for inferencing, it is a safer method of doing inferencing.

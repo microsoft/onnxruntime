@@ -33,7 +33,7 @@ Once you have imaged the Raspberry Pi and configured it for use its time to conn
 
 - Connect to your Raspberry Pi device
 
-In this tutorial we are using VNC Viewer to remote in. If you are going to use VNC Viewer be sure to follow [these setup steps to establish a connection.](https://www.realvnc.com/en/blog/how-to-setup-vnc-connect-raspberry-pi/). Once VNC is enabled on Raspberry Pi and you have [downloaded the VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) app on your computer, then you can remote into the device.
+In this tutorial we are using VNC Viewer to remote in. If you are going to use VNC Viewer be sure to follow [these setup steps to establish a connection.](https://www.realvnc.com/en/blog/how-to-setup-vnc-connect-raspberry-pi/) Once VNC is enabled on Raspberry Pi and you have [downloaded the VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) app on your computer, then you can remote into the device.
 
 <img src="../../../images/vncviewerrasppi.png" width="100%" height="100%" alt="Image of VNC Viewer"/>
 
@@ -87,7 +87,7 @@ while(True):
 cap.release()
 cv2.destroyAllWindows()
 ```
-## Run inference on the Raspberry Pi with the `inference_mobilenet.py`script
+## Run inference on the Raspberry Pi with the `inference_mobilenet.py` script
 
 Now that we have validated that the camera is connected and working on the Raspberry Pi, its time to inference the ONNX model provided in the source. The model is a [MobileNet](https://github.com/onnx/models/tree/main/vision/classification/mobilenet) model that performs image classification on 1000 classes.
 
