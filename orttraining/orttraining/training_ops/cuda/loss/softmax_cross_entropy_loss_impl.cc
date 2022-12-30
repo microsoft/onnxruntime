@@ -121,7 +121,7 @@ Status SoftmaxCrossEntropyLoss<T, TLabel, TOut>::ComputeInternal(OpKernelContext
 
   IAllocatorUniquePtr<CudaT_OUT> weight_data_nd = GetScratchBuffer<CudaT_OUT>(N_D, ctx->GetComputeStream());
   CudaT_OUT* weight_data_nd_data = weight_data_nd.get();
-  ComputeSoftmaxCrossEntropyWeightsImpl(Stream(),
+  ComputeSoftmaxCrossEntropyWeightsImpl(Stream(ctx),
                                         label_data,
                                         reinterpret_cast<const CudaT_IN*>(weight_data),
                                         N_D, C,
@@ -138,7 +138,7 @@ Status SoftmaxCrossEntropyLoss<T, TLabel, TOut>::ComputeInternal(OpKernelContext
   auto normalize_factor_data = GetScratchBuffer<TBuf>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::MEAN) {
     ORT_RETURN_IF_ERROR(reduce_sum(
-        Stream(),
+        Stream(ctx),
         reinterpret_cast<CudaT_OUT*>(weight_data_nd_data),
         normalize_factor_data.get(),
         static_cast<int>(N_D),
@@ -233,8 +233,8 @@ Status SoftmaxCrossEntropyLossGrad<T, TLabel, TOut>::ComputeInternal(OpKernelCon
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, probability_shape, new_shape, permutations);
     transpose_output = AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
-    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), ctx->GetComputeStream(), permutations, log_prob,
-                                                     *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), ctx->GetComputeStream(), permutations,
+                                                     log_prob, *transpose_output.GetMutable<Tensor>()));
     log_prob_data = (*transpose_output.GetMutable<Tensor>()).Data<T>();
   }
 

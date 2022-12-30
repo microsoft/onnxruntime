@@ -112,16 +112,16 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
   __device__ __inline__ TOut operator()(CUDA_LONG idx) const {
     // normalize_factor is sum of labels' weights. Because zero sum implies all weights are 0, the loss function should
     // be constant 0 and its corresponding gradient should be 0 as well.
-    TOut result = TOut(0.f);
+    TAcc result = TAcc(0.f);
     if (*normalize_factor_data_ != TAcc(0.f)) {
       int row, d;
       C_fdm_.divmod(idx, row, d);
       CUDA_KERNEL_ASSERT(weight_data_[row] == T(0.f) || (label_data_[row] >= 0 && label_data_[row] < C_));
-      result = static_cast<TOut>(static_cast<TAcc>((IsReductionNone ? dY_data_[row] : *dY_data_) * weight_data_[row]) *
-                                 (_Exp(static_cast<TAcc>(log_prob_data_[idx])) - (TAcc)(d == label_data_[row])) /
-                                 (*normalize_factor_data_));
+      result = static_cast<TAcc>((IsReductionNone ? dY_data_[row] : *dY_data_) * weight_data_[row]) *
+               (_Exp(static_cast<TAcc>(log_prob_data_[idx])) - (TAcc)(d == label_data_[row])) /
+               (*normalize_factor_data_);
     }
-    return HasBias ? result + bias_data_[idx] : result;
+    return HasBias ? static_cast<TOut>(result + static_cast<TAcc>(bias_data_[idx])) : static_cast<TOut>(result);
   }
 
   const T* dY_data_;

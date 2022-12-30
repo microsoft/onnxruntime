@@ -157,8 +157,9 @@ std::pair<bool, int64_t> HandleDifferedInputOutputDataType(const int64_t input_e
       {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 4},
       {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE, 8},
   };
-  bool use_input_elem_type_for_compute =
-      bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_elem_type)] >= bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(output_elem_type)];
+  bool use_input_elem_type_for_compute = false;
+  // bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_elem_type)] >=
+  // bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(output_elem_type)];
   return std::make_pair(use_input_elem_type_for_compute,
                         use_input_elem_type_for_compute ? input_elem_type : output_elem_type);
 }
@@ -173,6 +174,7 @@ bool SCELossInternalFunBuilder(
   bool add_cast_for_input = false;
   bool add_cast_for_output = false;
   auto output_type_attr = ctx.getAttribute("output_type");
+  int64_t output_type = 0;
   std::pair<bool, int64_t> cast_info;
   if (output_type_attr != nullptr) {
     const TypeProto* first_input_type_proto = ctx.getInputType(0);
@@ -181,8 +183,9 @@ bool SCELossInternalFunBuilder(
         output_elem_type != first_input_type_proto->tensor_type().elem_type()) {
       cast_info = HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
                                                     output_elem_type);
-      add_cast_for_input = cast_info.first;
-      add_cast_for_output = !cast_info.first;
+      add_cast_for_input = !cast_info.first;
+      add_cast_for_output = (output_elem_type != cast_info.second);
+      output_type = output_elem_type;
     }
   }
 
@@ -227,9 +230,9 @@ bool SCELossInternalFunBuilder(
     builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
 
   if (add_cast_for_output) {
-    builder.Add("output = Cast(intermediate_output)", "to", cast_info.second);
+    builder.Add("output = Cast(intermediate_output)", "to", output_type);
     if (ctx.hasOutput(1)) {
-      builder.Add("log_prob = Cast(intermediate_log_prob)", "to", cast_info.second);
+      builder.Add("log_prob = Cast(intermediate_log_prob)", "to", output_type);
     }
   } else {
     builder.Add("output = Identity (intermediate_output)");
