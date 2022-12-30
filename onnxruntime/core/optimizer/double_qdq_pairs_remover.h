@@ -7,18 +7,30 @@
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
-  /**
-   * @Class DoubleQDQPairsRemover
-   * @brief Remove one pair of Q-DQ Double Q-DQ pairs.
-   */
+/**
+ * @Class DoubleQDQPairsRemover
+ * @brief Remove one pair of Q-DQ Double Q-DQ pairs.
+ */
 class DoubleQDQPairsRemover : public GraphTransformer {
 public:
   DoubleQDQPairsRemover() : GraphTransformer("DoubleQDQPairsRemover", {}) {}
 
 private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                   const logging::Logger& logger) const override;
-  bool IsPairDQQRemovable(const Node& dq_node, const Node& q_node) const;
-  std::vector<const Node*> GetQualifiedQChildren(const Node& dq_node) const;
+  Status ApplyImpl(
+      Graph &graph,
+      bool &modified,
+      int graph_level,
+      const logging::Logger &logger
+                  ) const override;
+
+  static bool IsNodeRemovable(
+      const Graph &graph,
+      const logging::Logger &logger,
+      const NodeIndex &node_index,
+      NodeIndex &parent_index,
+      NodeIndex &child_index,
+      NodeIndex &grandchild_index
+                             );
+
 };
 } // namespace onnxruntime

@@ -2,40 +2,76 @@
 // Licensed under the MIT License.
 #include "double_qdq_pairs_remover.h"
 #include "core/graph/graph_utils.h"
-namespace onnxruntime {
-Status DoubleQDQPairsRemover::ApplyImpl(
-    Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto node_index : node_topology_list) {
-    auto* node_ptr = graph.GetNode(node_index);
-    if (node_ptr == nullptr)
-      continue;  // node was removed as part of an earlier optimization
 
-    Node& node = *node_ptr;
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+namespace onnxruntime {
+Status
+DoubleQDQPairsRemover::ApplyImpl(
+    Graph &graph,
+    bool &modified,
+    int /*graph_level*/,
+    const logging::Logger &logger
+                                ) const {
+  const GraphViewer graph_viewer(graph);
+  const auto &node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (const auto &node_index: node_topology_list) {
+    NodeIndex parent_index = 0;
+    NodeIndex child_index = 0;
+    NodeIndex grandchild_index = 0;
+    if (IsNodeRemovable(graph, logger, node_index, parent_index, child_index, grandchild_index)) {
+      graph.RemoveEdge(parent_index, node_index, 0, 0);
+      graph.RemoveEdge(node_index, child_index, 0, 0);
+      graph.RemoveEdge(child_index, grandchild_index, 0, 0);
+      graph_utils::ReplaceNodeInput(*graph.GetNode(grandchild_index), 0, *graph.GetNode(node_index)
+          ->MutableInputDefs()[0]);
+      graph.AddEdge(parent_index, grandchild_index, 0, 0);
+      graph.RemoveNode(child_index);
+      graph.RemoveNode(node_index);
+      modified = true;
+    }
   }
   return Status::OK();
 }
 
-  bool DoubleQDQPairsRemover::IsPairDQQRemovable(const Node &dq_node, const Node &q_node) const {
-  auto dq_proto = dq_node.InputDefs()[1]->ToProto();
-  auto q_proto = q_node.OutputDefs()[1]->ToProto();
-  dq_proto.
-  return true;
-  }
+bool
+DoubleQDQPairsRemover::IsNodeRemovable(
+    const Graph &graph,
+    const logging::Logger &logger,
+    const NodeIndex &node_index,
+    NodeIndex &parent_index,
+    NodeIndex &child_index,
+    NodeIndex &grandchild_index
+                                      ) {
+  // Check if the node is a DQ node
+  const Node *node = graph.GetNode(node_index);
+  if (node == nullptr || node->OpType() != "DequantizeLinear" || node->GetInputEdgesCount() != 1) { return false; }
 
-  std::vector<const Node *> DoubleQDQPairsRemover::GetQualifiedQChildren(const Node &dq_node) const {
-    auto q_children = graph_utils::FindChildrenByType(dq_node, "QuantizeLinear");
-    q_children.erase(
-        std::remove_if(
-            q_children.begin(),
-            q_children.end(),
-            [&]( const Node* q_node) {
-              return IsPairDQQRemovable(dq_node, *q_node);
-            }),
-        q_children.end());
-    return q_children;
+  // parent should be a Q node, and have only one perent
+  parent_index = node->InputEdgesBegin()->GetNode().Index();
+  const Node *parent = graph.GetNode(parent_index);
+  if (parent == nullptr || parent->OpType() != "QuantizeLinear") { return false; }
+
+  // child should be a Q node, and have only one child
+  if (node->GetOutputEdgesCount() != 1) {
+    LOGS(logger, WARNING)
+      << "GraphTransformer:DoubleQDQPairsRemover: Found more than one Q node under DQ node " << node->Name()
+      << ". Please run IdenticalChildrenConsolidation before DoubleQDQPairsRemover. ";
+    return false;
   }
+  child_index = node->OutputEdgesBegin()->GetNode().Index();
+  const Node *child = graph.GetNode(child_index);
+  if (child == nullptr || child->OpType() != "QuantizeLinear") { return false; }
+
+  // grandchild should be a DQ node, and have only one grandchild
+  if (child->GetOutputEdgesCount() != 1) {
+    LOGS(logger, WARNING)
+      << "GraphTransformer:DoubleQDQPairsRemover: Found more than one DQ node under Q node " << child->Name()
+      << ". Please run IdenticalChildrenConsolidation before DoubleQDQPairsRemover. ";
+    return false;
+  }
+  grandchild_index = child->OutputEdgesBegin()->GetNode().Index();
+  const Node *grandchild = graph.GetNode(grandchild_index);
+  return grandchild != nullptr && grandchild->OpType() == "DequantizeLinear";
+}
 
 }  // namespace onnxruntime
