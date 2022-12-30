@@ -20,6 +20,40 @@ OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), provider_factories(other.provider_factories) {
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(std::string library_name) {
+  const auto& platform_env = onnxruntime::Env::Default();
+  void* library_handle = nullptr;
+
+  ORT_RETURN_IF_ERROR(platform_env.LoadDynamicLibrary(library_name, false, &library_handle));
+  if (!library_handle) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ", library_name);
+  }
+
+  OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api) = nullptr;
+  ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
+                                                        (void**)&RegisterCustomOps));
+
+  // Call the exported RegisterCustomOps function and store the return value in a unique_ptr.
+  const std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> status(RegisterCustomOps(this, OrtGetApiBase()),
+                                                                             OrtApis::ReleaseStatus);
+
+  if (status) {  // A non-nullptr status indicates an error registering custom ops.
+    auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
+    if (!unload_status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library " << library_name << ": " << unload_status;
+    }
+
+    return onnxruntime::ToStatus(status.get());
+  }
+
+  // The internal onnxruntime::SessionOptions will manage the lifetime of library handles.
+  this->value.AddCustomOpLibraryHandle(std::move(library_name), library_handle);
+
+  return onnxruntime::Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_BEGIN
   GSL_SUPPRESS(r .11)

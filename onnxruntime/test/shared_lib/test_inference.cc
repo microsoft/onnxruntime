@@ -91,7 +91,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           int provider_type,
                           OrtCustomOpDomain* custom_op_domain_ptr,
                           const char* custom_op_library_filename,
-                          void** library_handle = nullptr,
                           bool test_session_creation_only = false,
                           void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
@@ -120,8 +119,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 
   if (custom_op_library_filename) {
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options,
-                                                             custom_op_library_filename, library_handle));
+    session_options.RegisterCustomOpsLibrary(custom_op_library_filename);
   }
 
   // if session creation passes, model loads fine
@@ -399,7 +397,7 @@ TEST(CApiTest, custom_op_handler) {
 
 #ifdef USE_CUDA
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+                       custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 #else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
@@ -434,7 +432,7 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+                       custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 
 }
@@ -1186,7 +1184,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cuda);
 
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                       expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+                       expected_values_y, 1, custom_op_domain, nullptr, true);
 }
 #endif
 
@@ -1229,21 +1227,12 @@ TEST(CApiTest, test_custom_op_library) {
   lib_name = "./libcustom_op_library.so";
 #endif
 
-  void* library_handle = nullptr;
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 1, nullptr, lib_name.c_str(), &library_handle);
+                         expected_values_y, 1, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
-#endif
-
-#ifdef _WIN32
-  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
-  ORT_ENFORCE(success, "Error while closing custom op shared library");
-#else
-  int retval = dlclose(library_handle);
-  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+                         expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
 
@@ -1342,7 +1331,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   try {
     // only test model loading, exception expected
     TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                         nullptr, nullptr, nullptr, true);
+                         nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }

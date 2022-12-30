@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include "core/common/status.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/providers.h"
@@ -18,4 +19,8 @@ struct OrtSessionOptions {
   ~OrtSessionOptions();
   OrtSessionOptions(const OrtSessionOptions& other);
   OrtSessionOptions& operator=(const OrtSessionOptions& other);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  onnxruntime::Status RegisterCustomOpsLibrary(std::string library_name);
+#endif
 };

@@ -9,6 +9,8 @@
 
 namespace onnxruntime {
 _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
+
+Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
 };
 
 #ifndef ORT_NO_EXCEPTIONS
