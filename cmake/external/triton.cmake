@@ -8,7 +8,10 @@ if (WIN32)
   function(get_vcpkg)
     ExternalProject_Add(vcpkg
       GIT_REPOSITORY https://github.com/microsoft/vcpkg.git
+      GIT_TAG 2022.11.14
       PREFIX vcpkg
+      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/vcpkg-src
+      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/vcpkg-build
       CONFIGURE_COMMAND ""
       INSTALL_COMMAND ""
       UPDATE_COMMAND ""
@@ -58,6 +61,8 @@ if (WIN32)
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
                       GIT_TAG r22.12
                       PREFIX triton
+                      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-src
+                      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-build
                       CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=${onnxruntime_target_platform}-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
@@ -68,8 +73,10 @@ else()
 
   ExternalProject_Add(rapidjson
                       GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
-                      GIT_TAG f54b0e47a08782a6131cc3d60f94d038fa6e0a51
+                      GIT_TAG v1.1.0
                       PREFIX rapidjson
+                      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-src
+                      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-build
                       CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF)
 
   ExternalProject_Get_Property(rapidjson source_dir)
@@ -80,6 +87,8 @@ else()
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
                       GIT_TAG r22.12
                       PREFIX triton
+                      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-src
+                      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-build
                       CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
