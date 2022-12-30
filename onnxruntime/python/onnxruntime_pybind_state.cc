@@ -804,9 +804,8 @@ static void GenerateProviderOptionsMap(const std::vector<std::string>& providers
   }
 }
 
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so) {
+static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOptions& so) {
   if (!so.custom_op_domains_.empty()) {
     // Register all custom op domains that will be needed for the session
     std::vector<OrtCustomOpDomain*> custom_op_domains;
@@ -1456,7 +1455,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #if !defined(ORT_MINIMAL_BUILD)
           sess = std::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
 
-          RegisterCustomOpDomainsAndLibraries(sess.get(), so);
+          RegisterCustomOpDomains(sess.get(), so);
 
           OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
 #else
@@ -1465,7 +1464,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         } else {
           sess = std::make_unique<PyInferenceSession>(env, so);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-          RegisterCustomOpDomainsAndLibraries(sess.get(), so);
+          RegisterCustomOpDomains(sess.get(), so);
 #endif
 
           if (is_arg_file_name) {

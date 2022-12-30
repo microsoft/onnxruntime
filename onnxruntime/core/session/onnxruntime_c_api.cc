@@ -2624,7 +2624,7 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
-    &OrtApis::RegisterCustomOpsLibrary_V2
+    &OrtApis::RegisterCustomOpsLibrary_V2,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
