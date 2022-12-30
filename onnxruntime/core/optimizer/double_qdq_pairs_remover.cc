@@ -52,26 +52,27 @@ DoubleQDQPairsRemover::IsNodeRemovable(
   if (parent == nullptr || parent->OpType() != "QuantizeLinear") { return false; }
 
   // child should be a Q node, and have only one child
+  child_index = node->OutputEdgesBegin()->GetNode().Index();
+  const Node *child = graph.GetNode(child_index);
+  if (child == nullptr || child->OpType() != "QuantizeLinear") { return false; }
   if (node->GetOutputEdgesCount() != 1) {
     LOGS(logger, WARNING)
       << "GraphTransformer:DoubleQDQPairsRemover: Found more than one Q node under DQ node " << node->Name()
       << ". Please run IdenticalChildrenConsolidation before DoubleQDQPairsRemover. ";
     return false;
   }
-  child_index = node->OutputEdgesBegin()->GetNode().Index();
-  const Node *child = graph.GetNode(child_index);
-  if (child == nullptr || child->OpType() != "QuantizeLinear") { return false; }
 
   // grandchild should be a DQ node, and have only one grandchild
+  grandchild_index = child->OutputEdgesBegin()->GetNode().Index();
+  const Node *grandchild = graph.GetNode(grandchild_index);
+  if(grandchild == nullptr || grandchild->OpType() != "DequantizeLinear") {return false;}
   if (child->GetOutputEdgesCount() != 1) {
     LOGS(logger, WARNING)
       << "GraphTransformer:DoubleQDQPairsRemover: Found more than one DQ node under Q node " << child->Name()
       << ". Please run IdenticalChildrenConsolidation before DoubleQDQPairsRemover. ";
     return false;
   }
-  grandchild_index = child->OutputEdgesBegin()->GetNode().Index();
-  const Node *grandchild = graph.GetNode(grandchild_index);
-  return grandchild != nullptr && grandchild->OpType() == "DequantizeLinear";
+  return true;
 }
 
 }  // namespace onnxruntime
