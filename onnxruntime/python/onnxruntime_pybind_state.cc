@@ -1292,7 +1292,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "register_custom_ops_library",
           [](PySessionOptions* options, const char* library_name) -> void {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-            OrtPybindThrowIfError(options->RegisterCustomOpsLibrary(library_name));
+            OrtPybindThrowIfError(options->RegisterCustomOpsLibrary(ToPathString(library_name)));
 #else
             ORT_UNUSED_PARAMETER(options);
             ORT_UNUSED_PARAMETER(library_name);
