@@ -1222,9 +1222,9 @@ TEST(CApiTest, test_custom_op_library) {
 #if defined(_WIN32)
   lib_name = ORT_TSTR("custom_op_library.dll");
 #elif defined(__APPLE__)
-  lib_name = ORT_TSTR ("libcustom_op_library.dylib");
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
 #else
-  lib_name = ORT_TSTR "./libcustom_op_library.so");
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
 #endif
 
 #ifdef USE_CUDA
