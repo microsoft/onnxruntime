@@ -6,13 +6,13 @@
 #include <utility>
 
 namespace onnxruntime {
-LibraryHandles::~LibraryHandles() {
+LibraryHandles::~LibraryHandles() noexcept {
   UnloadLibraries();
 }
 
-LibraryHandles::LibraryHandles(LibraryHandles&& other) : libraries_(std::move(other.libraries_)) {}
+LibraryHandles::LibraryHandles(LibraryHandles&& other) noexcept : libraries_(std::move(other.libraries_)) {}
 
-LibraryHandles& LibraryHandles::operator=(LibraryHandles&& other) {
+LibraryHandles& LibraryHandles::operator=(LibraryHandles&& other) noexcept {
   if (this != &other) {
     UnloadLibraries();
 

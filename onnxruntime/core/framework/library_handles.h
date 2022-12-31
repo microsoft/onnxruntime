@@ -24,11 +24,11 @@ namespace onnxruntime {
   */
 struct LibraryHandles {
   LibraryHandles() = default;
-  ~LibraryHandles();
+  ~LibraryHandles() noexcept;
 
   // Move-only.
-  LibraryHandles(LibraryHandles&& other);
-  LibraryHandles& operator=(LibraryHandles&& other);
+  LibraryHandles(LibraryHandles&& other) noexcept;
+  LibraryHandles& operator=(LibraryHandles&& other) noexcept;
 
   // Add a library handle that should be unloaded upon destruction of this object.
   // The `library_name` is used for error reporting if unloading should fail.
