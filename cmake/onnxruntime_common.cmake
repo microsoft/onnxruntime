@@ -114,8 +114,11 @@ target_include_directories(onnxruntime_common
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-
-target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS})
+if (WIN32)
+  target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS})
+else()
+  target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET})
+endif()
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
