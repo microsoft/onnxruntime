@@ -21,13 +21,14 @@ OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(std::string library_name) {
+onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::PathString library_name) {
   const auto& platform_env = onnxruntime::Env::Default();
   void* library_handle = nullptr;
 
   ORT_RETURN_IF_ERROR(platform_env.LoadDynamicLibrary(library_name, false, &library_handle));
   if (!library_handle) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ", library_name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ",
+                           onnxruntime::PathToUTF8String(library_name));
   }
 
   OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api) = nullptr;
@@ -41,7 +42,8 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(std::string libr
   if (status) {  // A non-nullptr status indicates an error registering custom ops.
     auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
     if (!unload_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library " << library_name << ": " << unload_status;
+      LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library "
+                            << onnxruntime::PathToUTF8String(library_name) << ": " << unload_status;
     }
 
     return onnxruntime::ToStatus(status.get());

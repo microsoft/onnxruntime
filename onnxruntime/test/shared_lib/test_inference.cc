@@ -90,7 +90,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::vector<OutT>& expected_values_y,
                           int provider_type,
                           OrtCustomOpDomain* custom_op_domain_ptr,
-                          const char* custom_op_library_filename,
+                          const ORTCHAR_T* custom_op_library_filename,
                           bool test_session_creation_only = false,
                           void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
@@ -1218,13 +1218,13 @@ TEST(CApiTest, test_custom_op_library) {
        17, 18, 18, 18, 17,
        17, 17, 17, 17, 17};
 
-  std::string lib_name;
+  onnxruntime::PathString lib_name;
 #if defined(_WIN32)
-  lib_name = "custom_op_library.dll";
+  lib_name = ORT_TSTR("custom_op_library.dll");
 #elif defined(__APPLE__)
-  lib_name = "libcustom_op_library.dylib";
+  lib_name = ORT_TSTR ("libcustom_op_library.dylib");
 #else
-  lib_name = "./libcustom_op_library.so";
+  lib_name = ORT_TSTR "./libcustom_op_library.so");
 #endif
 
 #ifdef USE_CUDA

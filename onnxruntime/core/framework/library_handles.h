@@ -7,6 +7,7 @@
 #include <vector>
 #include <utility>
 #include "core/platform/env.h"
+#include "core/common/path_string.h"
 #include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
@@ -31,13 +32,13 @@ struct LibraryHandles {
 
   // Add a library handle that should be unloaded upon destruction of this object.
   // The `library_name` is used for error reporting if unloading should fail.
-  void Add(std::string library_name, void* library_handle);
+  void Add(PathString library_name, void* library_handle);
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(LibraryHandles);
 
   void UnloadLibraries() noexcept;
 
-  InlinedVector<std::pair<std::string, void*>> libraries_;
+  InlinedVector<std::pair<PathString, void*>> libraries_;
 };
 }  // namespace onnxruntime

@@ -59,7 +59,7 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-void SessionOptions::AddCustomOpLibraryHandle(std::string library_name, void* library_handle) {
+void SessionOptions::AddCustomOpLibraryHandle(PathString library_name, void* library_handle) {
   if (!this->custom_op_libs) {
     this->custom_op_libs = std::make_shared<LibraryHandles>();
   }

@@ -145,7 +145,7 @@ struct SessionOptions {
   // Store handles to custom op libraries so that their lifetimes extend the lifetime of the session options object.
   // Lazily initialized by the first call to SessionOptions::AddCustomOpLibraryHandle().
   std::shared_ptr<LibraryHandles> custom_op_libs;
-  void AddCustomOpLibraryHandle(std::string library_name, void* library_handle);
+  void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
 #endif
 };
 

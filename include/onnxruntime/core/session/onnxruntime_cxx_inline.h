@@ -710,7 +710,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
 }
 
 template <typename T>
-inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const char* library_name) {
+inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
   ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
 }
 
