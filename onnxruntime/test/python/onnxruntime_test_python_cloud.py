@@ -3,6 +3,7 @@ import numpy as np
 from helper import get_name
 import onnxruntime as ort
 
+
 class TestAmlEndpoint(unittest.TestCase):
 
     # test an endpoint of adding floats
@@ -104,6 +105,7 @@ class TestAmlEndpoint(unittest.TestCase):
 
         expected_z = np.array([True, False]).astype(np.bool)
         np.testing.assert_allclose(z, expected_z, rtol=1e-05, atol=1e-08)
+
 
 if __name__ == "__main__":
     unittest.main()
