@@ -158,3 +158,20 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// This Option allows setting affinities for intra op threads.
+// Affinity string follows format:
+// logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id
+// Semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.
+// e.g.1,2,3;4,5
+// specifies affinities for two threads, with the 1st thread attach to the 1st, 2nd, and 3rd processor, and 2nd thread to the 4th and 5th.
+// To ease the configuration, an "interval" is also allowed:
+// e.g. 1-8;8-16;17-24
+// orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
+// Note:
+// 1. Once set, the number of thread affinities must equal to intra_op_num_threads - 1, since ort does not set affinity on the main thread which
+//    is started and managed by the calling app;
+// 2. For windows, ort will infer the group id from a logical processor id, for example, assuming there are two groups with each has 64 logical processors,
+//    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
+//    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
+static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";
