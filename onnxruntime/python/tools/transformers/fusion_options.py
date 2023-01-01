@@ -30,9 +30,6 @@ class FusionOptions:
         self.enable_gemm_fast_gelu = False
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
-        if model_type == "gpt2":
-            self.enable_skip_layer_norm = False
-
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
             self.attention_mask_format = AttentionMaskFormat.AttentionMask
