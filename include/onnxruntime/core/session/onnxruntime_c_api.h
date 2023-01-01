@@ -586,11 +586,13 @@ struct OrtApiBase {
   /** \brief Get a pointer to the requested version of the ::OrtApi
   *
   * \param[in] version Must be ::ORT_API_VERSION
-  * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
+  * \return The ::OrtApi for the version requested, nullptr will be returned if
+  *   this version is unsupported, for example when using a runtime
   *   older than the version created with this header file.
   */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  // Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
 typedef struct OrtApiBase OrtApiBase;
 

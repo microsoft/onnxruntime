@@ -1,11 +1,11 @@
 # sets up common build tools for the windows build machines before build
 
 parameters:
-- name: buildConfig  
+- name: buildConfig
   type: string
   default: 'Release'
 
-- name: artifactName  
+- name: artifactName
   type: string
   default: 'onnxruntime-linux-x64'
 
@@ -13,10 +13,10 @@ parameters:
   type: string
   default: 'onnxruntime-linux-x64'
 
-- name: libraryName  
+- name: libraryName
   type: string
   default: 'libonnxruntime.so'
-  
+
 steps:
     - task: ShellScript@2
       displayName: 'Copy build artifacts for zipping'
