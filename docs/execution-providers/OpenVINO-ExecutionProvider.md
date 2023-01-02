@@ -140,7 +140,7 @@ For more information on Auto-Device plugin of OpenVINO™, please refer to the
 
 ### Model caching feature for OpenVINO™ Execution Provider
 
-The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
+The model caching setting enables blobs with Myriadx(VPU), CPU and iGPU.
 
 ### OpenCL queue throttling for GPU devices
 
@@ -148,46 +148,27 @@ Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtim
 
 ### Model caching
 
-Starting from version 2021.4, OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO™  2021.4, it is supported on Myriadx(VPU)
-and iGPU.
+Starting from version 2021.4, OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO™ 2021.4, it is supported on Myriadx(VPU) and iGPU.
 
-From OpenVINO™ 2022.1 version, this feature is supported on Myriadx(VPU), iGPU and CPU.
+From OpenVINO™ 2022.1 version, model caching feature is supported on Myriadx(VPU), CPU and kernel caching on iGPU.
 
-iGPU:
-This feature enables users to save and load the cl_cache files directly. These cl_cache files can be loaded directly onto the iGPU hardware device target and inferencing can be performed.
+From OpenVINO™ 2022.3 version, the model caching feature is also supported on iGPU as preview.
 
-Myriadx(VPU) and CPU:
+Myriadx(VPU), iGPU and CPU:
+
 This feature enables users to save and load the blob file directly. This file can be loaded directly on to the hardware device target and inferencing can be performed.
 
-There are two different methods of exercising this feature:
+iGPU :
 
-#### <b>option 1. Enabling via Runtime options using c++/python API's.</b>
+This feature also allows user to save kernel caching as cl_cache files for models with dynamic input shapes. These cl_cache files can be loaded directly onto the iGPU hardware device target and inferencing can be performed.
+
+#### <b> Enabling model caching via Runtime options using c++/python API's.</b>
 
 This flow can be enabled by setting the runtime config option 'use_compiled_network' to True while using the c++/python API'S. This config option acts like a switch to on and off the feature.
 
-The blobs are saved and loaded from a directory named 'ov_compiled_blobs' relative to the executable path by default. This path however can be overridden using the runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU, CPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
+The blobs are saved and loaded from a directory named 'ov_compiled_blobs' relative to the executable path by default. This path however can be overridden using the runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU, CPU, iGPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
-
-#### <b>option 2. Importing the pre-compiled blobs directly from the path set by the user.</b>
-
-This flow enables users to import/load the pre-compiled blob directly if available readily. This option is enabled by explicitly setting the path to the blob using environment variables and setting the OV_USE_COMPILED_NETWORK flag to true.
-
-This flow only works for MyriadX(VPU) device.
-
-For Linux:
-```
-export OV_USE_COMPILED_NETWORK=1
-export OV_BLOB_PATH=<path to the blob>
-Example: export OV_BLOB_PATH=/home/blobs_dir/model.blob
-```
-
-For Windows:
-```
-set OV_USE_COMPILED_NETWORK=1
-set OV_BLOB_PATH=<path to the blob>
-Example: set OV_BLOB_PATH=\home\blobs_dir\model.blob
-```
 
 compile_tool:
 
