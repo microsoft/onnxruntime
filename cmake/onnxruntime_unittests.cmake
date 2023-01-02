@@ -1318,7 +1318,8 @@ if (onnxruntime_USE_OPENVINO)
     endif()
   endif()
 
-  set_property(TARGET custom_op_openvino_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
+  set_property(TARGET custom_op_openvino_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
