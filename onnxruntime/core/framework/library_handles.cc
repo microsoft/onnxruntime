@@ -6,13 +6,13 @@
 #include <utility>
 
 namespace onnxruntime {
-LibraryHandles::~LibraryHandles() {
+LibraryHandles::~LibraryHandles() noexcept {
   UnloadLibraries();
 }
 
-LibraryHandles::LibraryHandles(LibraryHandles&& other) : libraries_(std::move(other.libraries_)) {}
+LibraryHandles::LibraryHandles(LibraryHandles&& other) noexcept : libraries_(std::move(other.libraries_)) {}
 
-LibraryHandles& LibraryHandles::operator=(LibraryHandles&& other) {
+LibraryHandles& LibraryHandles::operator=(LibraryHandles&& other) noexcept {
   if (this != &other) {
     UnloadLibraries();
 
@@ -22,7 +22,7 @@ LibraryHandles& LibraryHandles::operator=(LibraryHandles&& other) {
   return *this;
 }
 
-void LibraryHandles::Add(std::string library_name, void* library_handle) {
+void LibraryHandles::Add(PathString library_name, void* library_handle) {
   libraries_.push_back(std::make_pair(std::move(library_name), library_handle));
 }
 
@@ -33,10 +33,12 @@ void LibraryHandles::UnloadLibraries() noexcept {
     for (const auto& it : libraries_) {
       auto status = env.UnloadDynamicLibrary(it.second);
       if (!status.IsOK()) {
-        LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library " << it.first << ": " << status;
+        LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library "
+                              << onnxruntime::PathToUTF8String(it.first) << ": " << status;
       }
     }
   }
 }
 
 }  // namespace onnxruntime
+

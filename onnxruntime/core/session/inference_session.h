@@ -656,6 +656,9 @@ class InferenceSession {
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;
 
+  // session_options_ must be declared *before* session_state_ in order to guarantee that session_options_ is destroyed
+  // *after* the session_state_. This destruction order ensures that the custom operator library handles stored within
+  // the session options are released after the individual operators are destroyed.
   SessionOptions session_options_;
 
   /// Logging manager if provided.

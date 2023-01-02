@@ -60,7 +60,15 @@ static SessionOptions session_options = {
     false,                             //use_deterministic_compute
     {},                                //config_options
     {},                                //initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},                                // external_initializers
+#endif
+    nullptr,                           // custom_create_thread_fn
+    nullptr,                           // custom_thread_creation_options
+    nullptr,                           // custom_join_thread_fn
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    {},                                // custom_op_libs
+#endif
 };
 
 struct BertParameters : public TrainingRunner::Parameters {

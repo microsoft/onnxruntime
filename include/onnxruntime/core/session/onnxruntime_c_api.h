@@ -983,7 +983,9 @@ struct OrtApi {
   */
   ORT_API2_STATUS(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
 
-  /** \brief Register custom ops from a shared library
+  /** \deprecated Use OrtApi::RegisterCustomOpsLibrary_V2.
+  *
+  * Registers custom ops from a shared library.
   *
   * Loads a shared library (dll on windows, so on linux, etc) named 'library_path' and looks for this entry point:
   *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
@@ -3831,7 +3833,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const char* library_name);
+  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
 
   /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
   *

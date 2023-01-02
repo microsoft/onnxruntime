@@ -746,14 +746,14 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
 }
 
 template <typename T>
-inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const char* library_path, const CustomOpConfigs& custom_op_configs) {
+inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name, const CustomOpConfigs& custom_op_configs) {
   // Add custom op config entries before registering the custom op library. Otherwise, the config entries _may_ be ignored by
   // the custom op library.
   for (const auto& config_iter : custom_op_configs.GetFlattenedConfigs()) {
     AddConfigEntry(config_iter.first.c_str(), config_iter.second.c_str());
   }
 
-  ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_path));
+  ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
 }
 
 /// Session

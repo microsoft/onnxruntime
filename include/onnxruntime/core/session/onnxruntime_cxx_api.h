@@ -570,7 +570,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   ///< Registers the custom operator library via OrtApi::RegisterCustomOpsLibrary.
   ///< The custom operator configurations are optional. If provided, custom operator configs are set via
   ///< OrtApi::AddSessionConfigEntry.
-  void RegisterCustomOpsLibrary(const char* library_path, const CustomOpConfigs& custom_op_configs = {});
+  void RegisterCustomOpsLibrary(const ORTCHAR_T* library_name, const CustomOpConfigs& custom_op_configs = {});
 };
 }  // namespace detail
 
