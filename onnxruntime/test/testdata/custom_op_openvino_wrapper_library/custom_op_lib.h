@@ -5,11 +5,17 @@
 
 #include <onnxruntime_c_api.h>
 
+#ifdef _WIN32
+#define OV_WRAPPER_EXPORT __declspec(dllexport)
+#else
+#define OV_WRAPPER_EXPORT
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-ORT_EXPORT OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api_base);
+OV_WRAPPER_EXPORT OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api_base);
 
 #ifdef __cplusplus
 }
