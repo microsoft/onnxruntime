@@ -272,11 +272,9 @@ class FusedMultiHeadFlashAttentionKernel
     return static_cast<uint64_t>(qStep << 16 | kvStep) << 32 | (headsize << 2) | (interleaved ? 2U : 0U) | (unroll ? 1U : 0U);
   }
 
-  uint64_t hashID(Fused_multihead_attention_params_v2 const& param) const {
+  void updateSteps(Fused_multihead_attention_params_v2 const& param, int32_t& qStep, int32_t& kvStep) const {
     bool const isSmallBS = param.b * param.h < 64;
     bool const isSM75 = mSM == 75;
-    int32_t qStep{64};
-    int32_t kvStep{16};
     switch (param.d) {
       case 16:
       case 32:
@@ -293,7 +291,28 @@ class FusedMultiHeadFlashAttentionKernel
       default:
         break;
     }
+  }
+
+  uint64_t hashID(Fused_multihead_attention_params_v2 const& param) const {
+    int32_t qStep{64};
+    int32_t kvStep{16};
+    updateSteps(param, qStep, kvStep);
     return hashID(param.d, qStep, kvStep, param.interleaved, param.force_unroll);
+  }
+
+  void dumpHashId(Fused_multihead_attention_params_v2 const& param, std::ostringstream& message) const override {
+    int32_t qStep{64};
+    int32_t kvStep{16};
+    updateSteps(param, qStep, kvStep);
+    message << "\t d: " << param.d << "\n"
+            << "\t qStep: " << qStep << "\n"
+            << "\t kvStep: " << kvStep << "\n"
+            << "\t interleaved: " << param.interleaved << "\n"
+            << "\t force_unroll: " << param.force_unroll << "\n";
+  }
+
+  int32_t getSForUnroll(Fused_multihead_attention_params_v2 const& param) const override {
+    return param.s;
   }
 
   uint64_t hashID(KernelMeta const& kernelMeta) const {
