@@ -49,24 +49,19 @@ jobs:
     displayName: Docker restore
     condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
-  - script: |
-      echo ${{ variables.IMAGE_CACHE_RESTORED }}
-      echo "----"
-      echo $(variables.IMAGE_CACHE_RESTORED)
-    displayName: test step
-
   - ${{ if ne(variables.IMAGE_CACHE_RESTORED, 'true') }}:
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BUILD_UID=$(tag)"
+        DockerBuildArgs: "--build-arg BUILD_UID=$tag)"
         Repository: '$(repository)'
         UseImageCacheContainerRegistry: false
 
   - script: |
+      set -ex
       mkdir -p $(Pipeline.Workspace)/docker
-      docker save -o $(Pipeline.Workspace)/docker/cache.tar $(repository):$(tag)
+      docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}:${{variables.tag}}
     displayName: Docker save
     condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
 
