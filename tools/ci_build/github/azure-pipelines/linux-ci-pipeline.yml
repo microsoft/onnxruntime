@@ -61,7 +61,7 @@ jobs:
   - script: |
       set -ex
       mkdir -p $(Pipeline.Workspace)/docker
-      docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}:${{variables.tag}}
+      docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}:latest
     displayName: Docker save
     condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
 
