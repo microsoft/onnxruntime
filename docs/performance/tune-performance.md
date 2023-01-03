@@ -172,11 +172,12 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 * Set thread affinity to desired cores.
 * Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
 
-#### Set intra thread affinity
+#### Set intra-op thread affinity
 
 Sometimes, it may be beneficial to customize intra-op thread affinities, for example:
-* There are multiple sessions run in parallel, customer might prefer their intra-op thread pools run on separate cores to reduce contention.
-* The machine has severel NUMA nodes, customer want to limit a intra-op thread pool to run on only one node to reduce overhead of cache miss.
+* There are multiple sessions run in parallel, customer might prefer their intra-op thread pools run on separate cores to avoid contention.
+* Customer want to limit a intra-op thread pool to run on only one of the NUMA nodes to reduce overhead of cache miss.
+
 For session intra-op thread pool, please read the [configuration](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L180) and consume it like:
 
 ```python
