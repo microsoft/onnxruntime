@@ -1236,6 +1236,30 @@ TEST(CApiTest, test_custom_op_library) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+TEST(CApiTest, test_custom_op_library_registration_error) {
+  // Loads a custom op library with a RegisterCustomOps function that returns an error status.
+  // This test tries to register the library with the session options and expects an error.
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_invalid_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_invalid_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
+#endif
+
+  Ort::SessionOptions session_options;
+
+  try {
+    session_options.RegisterCustomOpsLibrary(lib_name);
+    FAIL();
+  } catch (const Ort::Exception& exception) {
+    ASSERT_THAT(exception.what(), testing::HasSubstr("Failure from custom op library's RegisterCustomOps()"));
+  }
+}
+#endif
+
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
 std::once_flag my_module_flag;
 
