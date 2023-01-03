@@ -49,16 +49,7 @@ jobs:
     displayName: Docker restore
     condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
-  - task: Docker@2
-    displayName: 'Build Docker'
-    inputs:
-      command: 'build'
-      repository: '$(repository)'
-      dockerfile: '$(dockerfilePath)'
-      tags: |
-        '$(tag)'
-
-  - ${{ if eq(variables.IMAGE_CACHE_RESTORED, 'true') }}:
+  - ${{ if eq(variables.IMAGE_CACHE_RESTORED, 'false') }}:
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
