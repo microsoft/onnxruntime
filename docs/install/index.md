@@ -244,15 +244,8 @@ The _location_ needs to be specified for any specific version other than the def
 
 ||Official build (location)|Nightly build (location)|
 |---|---|---|
-|PyTorch 1.8.1 (CUDA 10.2)|[**onnxruntime_stable_torch181.cu102**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html)|[onnxruntime_nightly_torch181.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html)|
-|PyTorch 1.8.1 (CUDA 11.1)|[**onnxruntime_stable_torch181.cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html )|[onnxruntime_nightly_torch181.cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu111.html)|
-|PyTorch 1.9 (CUDA 10.2) **Default**|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training/)|[onnxruntime_nightly_torch190.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html)|
-|PyTorch 1.9 (CUDA 11.1)|[**onnxruntime_stable_torch190.cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html)|[onnxruntime_nightly_torch190.cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu111.html)|
-|PyTorch 1.8.1 (ROCm 4.2)|[**onnxruntime_stable_torch181.rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html)|[onnxruntime_nightly_torch181.rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.rocm42.html)|
-|PyTorch 1.9 (ROCm 4.2)|[**onnxruntime_stable_torch190.rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html)|[onnxruntime_nightly_torch190.rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.rocm42.html)|
-|PyTorch 1.11 (ROCm 5.1.1)|[**onnxruntime_stable_torch1110.rocm511**](https://download.onnxruntime.ai/onnxruntime_stable_rocm511.html)|[onnxruntime_nightly_torch1110.rocm511](https://download.onnxruntime.ai/onnxruntime_nightly_rocm511.html)|
 |PyTorch 1.11 (ROCm 5.2)||[onnxruntime_nightly_torch1110.rocm52](https://download.onnxruntime.ai/onnxruntime_stable_rocm52.html)|
 |PyTorch 1.12.1 (ROCm 5.2.3)||[onnxruntime_nightly_torch1121.rocm523](https://download.onnxruntime.ai/onnxruntime_nightly_rocm523.html)|
-|PyTorch 1.12.1 (ROCm 5.3.2)||[onnxruntime_nightly_torch1121.rocm532](https://download.onnxruntime.ai/onnxruntime_nightly_rocm532.html)|
 |PyTorch 1.13 (ROCm 5.2.3)||[onnxruntime_nightly_torch1130.rocm523](https://download.onnxruntime.ai/onnxruntime_nightly_rocm523.html)|
+|PyTorch 1.12.1 (ROCm 5.3.2)||[onnxruntime_nightly_torch1121.rocm532](https://download.onnxruntime.ai/onnxruntime_nightly_rocm532.html)|
 |PyTorch 1.13.1(ROCm 5.4)||[onnxruntime_nightly_torch1131.rocm54](https://download.onnxruntime.ai/onnxruntime_nightly_rocm54.html)|
