@@ -14,6 +14,10 @@ jobs:
   variables:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    # cache docker image
+    repository: 'onnxruntimecpubuild'
+    dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
+    tag: '$(Build.BuildId)'
   pool: Linux-CPU-2019
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -33,12 +37,39 @@ jobs:
       versionSpec: '3.8'
       addToPath: true
 
-  - template: templates/get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
+  - task: Cache@2
+    displayName: Cache task
+    inputs:
+      key: 'docker | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(Pipeline.Workspace)/docker
+      cacheHitVar: CACHE_RESTORED
+
+  - script: |
+      docker load -i $(Pipeline.Workspace)/docker/cache.tar
+    displayName: Docker restore
+    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+
+  - task: Docker@2
+    displayName: 'Build Docker'
+    inputs:
+      command: 'build'
+      repository: '$(repository)'
+      dockerfile: '$(dockerfilePath)'
+      tags: |
+        '$(tag)'
+
+  - script: |
+      mkdir -p $(Pipeline.Workspace)/docker
+      docker save -o $(Pipeline.Workspace)/docker/cache.tar $(repository):$(tag)
+    displayName: Docker save
+    condition: and(not(canceled()), or(failed(), ne(variables.CACHE_RESTORED, 'true')))
+
+  #- template: templates/get-docker-image-steps.yml
+  #  parameters:
+  #    Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+  #    Context: tools/ci_build/github/linux/docker
+  #    DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+  #    Repository: onnxruntimecpubuild
 
   - task: Cache@2
     inputs:
