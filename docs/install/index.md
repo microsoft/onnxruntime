@@ -255,3 +255,4 @@ The _location_ needs to be specified for any specific version other than the def
 |PyTorch 1.12.1 (ROCm 5.2.3)||[onnxruntime_nightly_torch1121.rocm523](https://download.onnxruntime.ai/onnxruntime_nightly_rocm523.html)|
 |PyTorch 1.12.1 (ROCm 5.3.2)||[onnxruntime_nightly_torch1121.rocm532](https://download.onnxruntime.ai/onnxruntime_nightly_rocm532.html)|
 |PyTorch 1.13 (ROCm 5.2.3)||[onnxruntime_nightly_torch1130.rocm523](https://download.onnxruntime.ai/onnxruntime_nightly_rocm523.html)|
+|PyTorch 1.13.1(ROCm 5.4)||[onnxruntime_nightly_torch1131.rocm54](https://download.onnxruntime.ai/onnxruntime_nightly_rocm54.html)|
