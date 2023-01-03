@@ -21,6 +21,7 @@ struct AttentionParameters {
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
+  // bool is_packed_kv;  // K and V is packed with shape (B, L, N * 2 * H)
 };
 
 namespace attention {

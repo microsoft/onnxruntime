@@ -52,6 +52,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   extra_add_qk            : (B, N, S, T) or NULL
   //   key           (K)       : (B, L, D)
   //   value         (V)       : (B, L, D_v)
+  // //   when key and value are packed, key and value shall be same tensor with shape (B, L, N * 2 * H)
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
@@ -122,6 +123,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     v_hidden_size = qkv_hidden_sizes_[2];
   }
 
+  // bool is_packed_kv = false;
   int64_t kv_sequence_length = sequence_length;
   if (weights_shape == nullptr) {  // no weights
     if (this->require_weights_) {
@@ -162,6 +164,34 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     k_hidden_size = key_dims[2];
     v_hidden_size = value_dims[2];
     kv_sequence_length = key_dims[1];
+
+    // // key and value were packed into one tensor with shape (B, L, N * 2 * H)
+    // if (key == value) {
+    //   is_packed_kv = true;
+    //   if (2 * q_hidden_size != k_hidden_size) {
+    //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                            "Input 'key' and 'value' are packed but hidden size of Q and K are not the same.");
+    //   }
+    //   if (past != nullptr) {
+    //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                            "'past' is not supported when 'key' and 'value' are packed.");
+    //   }
+    //   if (extra_add_qk != nullptr) {
+    //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                            "'extra_add_qk' is not supported when 'key' and 'value' are packed.");
+    //   }
+    //   if (is_unidirectional_) {
+    //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                            "'is_unidirectional' is not supported when 'key' and 'value' are packed.");
+    //   }
+    //   if (mask_index != nullptr) {
+    //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                            "'mask_index' is not supported when 'key' and 'value' are packed.");
+    //   }
+
+    //   k_hidden_size /= 2;
+    //   v_hidden_size /= 2;
+    // }
 
     if (qkv_hidden_sizes_.size() != 0 &&
         (q_hidden_size != qkv_hidden_sizes_[0] ||
@@ -315,6 +345,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0);
+    output_parameters->is_packed_kv = is_packed_kv;
   }
 
   return Status::OK();

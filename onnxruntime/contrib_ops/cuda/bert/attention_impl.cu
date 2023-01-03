@@ -83,7 +83,13 @@ size_t GetAttentionWorkspaceSize(
     size_t sequence_length,
     size_t kv_sequence_length,
     size_t total_sequence_length,
-    void* fused_runner) {
+    void* fused_runner,
+    bool use_fused_cross_attention) {
+  if (use_fused_cross_attention) {
+    const size_t kv_bytes = element_size * batch_size * num_heads * kv_sequence_length * (qk_head_size + v_head_size);
+    return kv_bytes + 2 * GetSequenceOffsetSize(static_cast<int>(batch_size), false);
+  }
+
   const size_t qkv_bytes = element_size * batch_size * num_heads *
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
@@ -110,7 +116,7 @@ __global__ void AddBiasTransAppendKvToPresentSmall(
   const int S = gridDim.x;
   const int B = gridDim.y;
 
-  constexpr int M = 3; // Matrix count in qkv
+  constexpr int M = 3;           // Matrix count in qkv
   const int m = blockIdx.z + 1;  // k = 1, v = 2
 
   const int NH = N * head_size;
@@ -124,7 +130,7 @@ __global__ void AddBiasTransAppendKvToPresentSmall(
   const int MsH = max_sequence_length * head_size;
   const int NMsH = N * MsH;
   const int BNMsH = B * NMsH;
-  present += ((past_sequence_length + s) * head_size + n * MsH + b * NMsH + (m-1) * BNMsH);
+  present += ((past_sequence_length + s) * head_size + n * MsH + b * NMsH + (m - 1) * BNMsH);
 
   for (int h = threadIdx.x; h < head_size; h += blockDim.x) {
     T bias = (biases ? biases[h] : (T)0.0f);
@@ -146,7 +152,7 @@ __global__ void AddBiasTransAppendKvToPresent(
   const int S = gridDim.y;
   const int B = (gridDim.z >> 1);
 
-  constexpr int M = 3; // Matrix count in qkv
+  constexpr int M = 3;                   // Matrix count in qkv
   const int m = (blockIdx.z & 0x1) + 1;  // k = 1, v = 2
 
   const int NH = N * head_size;
@@ -160,7 +166,7 @@ __global__ void AddBiasTransAppendKvToPresent(
   const int MsH = max_sequence_length * head_size;
   const int NMsH = N * MsH;
   const int BNMsH = B * NMsH;
-  present += ((past_sequence_length + s) * head_size + n * MsH + b * NMsH + (m-1) * BNMsH);
+  present += ((past_sequence_length + s) * head_size + n * MsH + b * NMsH + (m - 1) * BNMsH);
 
   for (int h = threadIdx.x; h < head_size; h += blockDim.x) {
     T bias = (biases ? biases[h] : (T)0.0f);
@@ -228,15 +234,16 @@ template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
 
 template <typename T>
 Status QkvToContext(
-    const cudaDeviceProp& prop,
+    const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     void* fused_runner,
-    int past_present_share_buffer) {
+    int past_present_share_buffer,
+    const void* fused_cross_attention_kernel) {
   constexpr size_t element_size = sizeof(T);
-  const int max_threads_per_block = prop.maxThreadsPerBlock;
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
@@ -286,7 +293,16 @@ Status QkvToContext(
   } else {  // gemm_buffer == nullptr
     ORT_ENFORCE(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
-    if (use_fused_kernel) {
+    if (fused_cross_attention_kernel != nullptr) {
+      // For fused cross attention, transpose K and V or packed KV to BxSxNx2xH, and no change for q (BxSxNxH)
+      //    K (BxSxNxH), V (BxSxNxH) => BxSxNx2xH
+      //    packed_KV (BxSx2xNxH)    => BxSxNx2xH
+      LaunchAddBiasTransposeTrt(
+          stream, max_threads_per_block,
+          batch_size, sequence_length,
+          num_heads, qk_head_size,
+          data.bias, nullptr, data.key, data.value, reinterpret_cast<T*>(data.workspace));
+    } else if (use_fused_kernel) {
       ORT_ENFORCE(sequence_length == kv_sequence_length && qk_head_size == v_head_size);
 
       // Q (BxSxNxH), K (BxSxNxH), V (BxSxNxH) => BxSxNx(H + H + H)
@@ -319,8 +335,39 @@ Status QkvToContext(
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
-  T* scratch1 = qkv + elements_q + elements_k + elements_v;
+  if (fused_cross_attention_kernel != nullptr) {
+    ORT_ENFORCE(data.mask_index == nullptr);
+    T* scratch = reinterpret_cast<T*>(data.workspace) + elements_k + elements_v;
+    int* q_sequence_offset = reinterpret_cast<int*>(scratch);
+    LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+    int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
+    LaunchTrtSequenceOffset(kv_sequence_offset, nullptr, batch_size, kv_sequence_length, stream);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    int sm = device_prop.major * 10 + device_prop.minor;
+    FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
+        reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(fused_cross_attention_kernel);
+
+    run_fused_cross_attention(
+        data.query,              // Q in device
+        data.workspace,          // KV in device
+        q_sequence_offset,       // cumulated sequence length of Q in device
+        kv_sequence_offset,      // cumulated sequence length of KV in device
+        data.output,             // output in device
+        sm,                      // SM of device
+        cross_attention_kernel,  // kernels
+        batch_size,              // batch size
+        num_heads,               // number of heads
+        qk_head_size,            // head size
+        sequence_length,         // sequence length of Q
+        kv_sequence_length,      // sequence lenth of KV
+        stream);
+    return Status::OK();
+  }
+
+  T* scratch1 = qkv + elements_q + elements_k + elements_v;
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);

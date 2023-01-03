@@ -27,7 +27,8 @@ size_t GetAttentionWorkspaceSize(
     size_t sequence_length,
     size_t kv_sequence_length,
     size_t total_sequence_length,
-    void* fused_runner);
+    void* fused_runner,
+    bool use_fused_cross_attention);
 
 template <typename T>
 struct AttentionData {
@@ -55,7 +56,8 @@ Status QkvToContext(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     void* fused_runner,
-    int past_present_share_buffer = 0);
+    int past_present_share_buffer = 0,
+    const void* fused_cross_attention_kernel = nullptr);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties

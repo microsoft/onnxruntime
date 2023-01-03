@@ -148,6 +148,113 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size,
 }
 
 template <typename T>
+__global__ void AddBiasTransposeKV(const T* key, const T* value, const T* biases, T* output) {
+  // Separated K/V inputs for TensorRT fused cross attention (H <= 1024)
+  //     K:  BxSxNxH
+  //     V:  BxSxNxH
+  //     Output: BxSxNxMxH
+  // B is batch_size, S is sequence_length, M is number of matrices (2), N is num_heads, H is head_size
+
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int H = blockDim.x;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int M = gridDim.z;
+
+  const T* input = (m == 0 ? key : value);
+  const int NH = N * H;
+  const int in_offset = (b * S + s) * NH + n * H;
+  const int out_offset = (b * S + s) * M * NH + (n * M + m) * H;
+
+  const int h = threadIdx.x;
+  if (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[(1 + m) * NH + n * H + h];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeKVLarge(const int head_size, const T* key, const T* value, const T* biases, T* output) {
+  // Separated K/V inputs for TensorRT fused cross attention (H > 1024)
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int stride = blockDim.x;
+  const int H = head_size;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int M = gridDim.z;
+
+  const T* input = (m == 0 ? key : value);
+  const int NH = N * H;
+  const int in_offset = (b * S + s) * NH + n * H;
+  const int out_offset = (b * S + s) * M * NH + (n * M + m) * H;
+
+  int h = threadIdx.x;
+  if (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[(1 + m) * NH + n * H + h];
+    h += stride;
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeKV(const T* input, const T* biases, T* output) {
+  // Packed K/V inputs for TensorRT fused cross attention (H <= 1024)
+  //     input:  BxSx2xNxH
+  //     Output: BxSxNx2xH
+  // B is batch_size, S is sequence_length, M is number of matrices (2), N is num_heads, H is head_size
+
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int H = blockDim.x;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int M = gridDim.z;
+
+  const int NH = N * H;
+  const int in_offset = (b * S + s) * M * NH + m * NH + n * H;
+  const int out_offset = (b * S + s) * M * NH + (n * M + m) * H;
+
+  const int h = threadIdx.x;
+  if (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[(1 + m) * NH + n * H + h];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeKVLarge(const int head_size, const T* input, const T* biases, T* output) {
+  // Packed K/V inputs for TensorRT fused cross attentio (H > 1024)
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int stride = blockDim.x;
+  const int H = head_size;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int M = gridDim.z;
+
+  const int NH = N * H;
+  const int in_offset = (b * S + s) * M * NH + m * NH + n * H;
+  const int out_offset = (b * S + s) * M * NH + (n * M + m) * H;
+
+  int h = threadIdx.x;
+  if (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[(1 + m) * NH + n * H + h];
+    h += stride;
+  }
+}
+
+template <typename T>
 __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias) {
   // Format 1 for unfused attention, or fused causal attention
   //     Input:  BxSxMxNxH
@@ -429,14 +536,34 @@ void InvokeAddBiasTransposeTrt(
     cudaStream_t stream, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const T* biases, const T* query, const T* key, const T* value, T* output) {
-  constexpr int num_matrices = 3;
-  const dim3 grid(sequence_length, batch_size, num_matrices);
-  if (head_size * num_heads <= max_threads_per_block) {
-    const dim3 block(head_size, num_heads, 1);
-    AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, key, value, biases, output);
-  } else {
-    const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
-    AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, key, value, biases, output);
+  if (query != nullptr) {
+    constexpr int num_matrices = 3;
+    const dim3 grid(sequence_length, batch_size, num_matrices);
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, key, value, biases, output);
+    } else {
+      const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+      AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, key, value, biases, output);
+    }
+  } else {  // only K and V
+    constexpr int num_matrices = 2;
+    const dim3 grid(sequence_length, batch_size, num_matrices);
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      if (key != value) {
+        AddBiasTransposeKV<T><<<grid, block, 0, stream>>>(key, value, biases, output);
+      } else {  // packed kv
+        AddBiasTransposeKV<T><<<grid, block, 0, stream>>>(key, biases, output);
+      }
+    } else {
+      const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+      if (key != value) {
+        AddBiasTransposeKVLarge<T><<<grid, block, 0, stream>>>(head_size, key, value, biases, output);
+      } else {  // packed kv
+        AddBiasTransposeKVLarge<T><<<grid, block, 0, stream>>>(head_size, key, biases, output);
+      }
+    }
   }
 }
 

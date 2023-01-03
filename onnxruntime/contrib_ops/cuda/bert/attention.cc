@@ -17,25 +17,27 @@ namespace contrib {
 namespace cuda {
 
 #define PastSequenceLength 8
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Attention,                                                  \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .MayInplace(4, 1)                                       \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .InputMemoryType(OrtMemTypeCPUInput, PastSequenceLength)\
-      ,                                                           \
+#define REGISTER_KERNEL_TYPED(T)                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+      Attention,                                                    \
+      kMSDomain,                                                    \
+      1,                                                            \
+      T,                                                            \
+      kCudaExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                                 \
+          .MayInplace(4, 1)                                         \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())    \
+          .InputMemoryType(OrtMemTypeCPUInput, PastSequenceLength), \
       Attention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, false) {
+Attention<T>::Attention(const OpKernelInfo& info)
+    : CudaKernel(info),
+      AttentionBase(info, false, false),
+      fused_fp16_cross_attention_kernel_(nullptr) {
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
@@ -79,9 +81,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-    2, parameters.batch_size, parameters.num_heads,
-    past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-    parameters.head_size};
+      2, parameters.batch_size, parameters.num_heads,
+      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+      parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
 
@@ -92,7 +94,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_1d_mask = nullptr != mask_index && mask_index->Shape().NumDimensions() == 1;
 
-  if (is_unidirectional_) {  // GPT
+  bool use_fused_cross_attention = (sizeof(T) == 2 &&
+                                    weights == nullptr &&
+                                    has_fused_cross_attention_kernel(sm, parameters.head_size) &&
+                                    mask_index == nullptr &&
+                                    past == nullptr &&
+                                    extra_add_qk == nullptr &&
+                                    is_unidirectional_);
+  if (use_fused_cross_attention) {
+    if (fused_fp16_cross_attention_kernel_ == nullptr) {
+      fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);
+    }
+  } else if (is_unidirectional_) {  // GPT
     // Fused kernels requires left side padding (The mask shall be sequence lengths or no mask)
     // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
     // where past state is empty.
@@ -172,7 +185,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.sequence_length,
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   use_fused_cross_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -191,7 +205,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
 
   return QkvToContext<CudaT>(
-    device_prop, cublas, Stream(context), parameters, data, reinterpret_cast<void*>(fused_runner), past_present_share_buffer_);
+      device_prop, cublas, Stream(context), parameters, data,
+      reinterpret_cast<void*>(fused_runner),
+      past_present_share_buffer_,
+      fused_fp16_cross_attention_kernel_);
 }
 
 }  // namespace cuda

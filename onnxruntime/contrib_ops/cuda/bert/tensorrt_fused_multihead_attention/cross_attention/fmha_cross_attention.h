@@ -270,15 +270,38 @@ class FusedMultiHeadCrossAttentionKernel
 
 using FusedMHACrossKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadCrossAttentionKernel>;
 
-inline FusedMultiHeadCrossAttentionKernel const* get_fused_cross_attention_kernels(Data_type type, int32_t sm) {
-  return FusedMHACrossKernelFactory::Get().getCubinKernels(
-      sMhaKernelMetaInfos, sizeof(sMhaKernelMetaInfos) / sizeof(sMhaKernelMetaInfos[0]), type, sm);
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Below are public interface
 
 inline bool has_fused_cross_attention_kernel(int sm, int head_size) {
   constexpr int min_head_size = 32;
   const int max_head_size = (sm == 75 ? 128 : 256);
   return (sm == 75 || sm == 80 || sm == 86 || sm == 89) && (head_size > min_head_size) && (head_size <= max_head_size);
+}
+
+inline FusedMultiHeadCrossAttentionKernel const* get_fused_cross_attention_kernels(int32_t sm) {
+  return FusedMHACrossKernelFactory::Get().getCubinKernels(
+      sMhaKernelMetaInfos, sizeof(sMhaKernelMetaInfos) / sizeof(sMhaKernelMetaInfos[0]), DATA_TYPE_FP16, sm);
+}
+
+inline void run_fused_cross_attention(
+    void const* devQ,                                   // Q in device
+    void const* devKV,                                  // KV in device
+    void* cuSeqlensQ,                                   // cumulated sequence length of Q in device
+    void* cuSeqlensKV,                                  // cumulated sequence length of KV in device
+    void* devOutput,                                    // output in device
+    int32_t sm,                                         // SM of device
+    FusedMultiHeadCrossAttentionKernel const* kernels,  // kernels
+    int32_t b = 2,                                      // batch size
+    int32_t h = 8,                                      // number of heads
+    int32_t d = 64,                                     // head size
+    int32_t seqQ = 4096,                                // sequence length of Q
+    int32_t seqKV = 77,                                 // sequence lenth of KV
+    cudaStream_t stream = 0) {                          // cuda stream
+  Fused_multihead_attention_params_mhca params = getMHCAParams(
+      b, seqQ, seqKV, h, d, devQ, devKV, cuSeqlensQ, cuSeqlensKV, devOutput);
+
+  kernels->run(params, stream);
 }
 
 }  // namespace cuda
