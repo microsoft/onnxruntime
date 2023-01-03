@@ -253,8 +253,8 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  file(GLOB onnxruntime_test_training_on_device_src
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  file(GLOB onnxruntime_test_training_api_src
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
@@ -684,8 +684,8 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND all_tests ${onnxruntime_test_training_api_src})
   endif()
 endif()
 

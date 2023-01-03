@@ -12,7 +12,6 @@ jobs:
       -e
       -x "
       --enable_training
-      --enable_training_torch_interop
       --config $(buildConfig)
       --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6
       --build_wheel
