@@ -676,6 +676,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
+    parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
@@ -1265,6 +1266,9 @@ def generate_build_tree(
 
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
+
+    if args.use_cloud:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -2077,6 +2081,7 @@ def build_python_wheel(
     use_armnn,
     use_dml,
     use_cann,
+    use_cloud,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2135,6 +2140,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
+        elif use_cloud:
+            args.append("--use_cloud")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2821,6 +2828,7 @@ def main():
                 args.use_armnn,
                 args.use_dml,
                 args.use_cann,
+                args.use_cloud,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

@@ -467,6 +467,10 @@ if(onnxruntime_USE_DML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
 endif()
 
+if(onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
+endif()
+
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
@@ -510,6 +514,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -584,6 +589,13 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_xnnpack)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
+endif()
+
+if(onnxruntime_USE_CLOUD)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
 endif()
 
 if(WIN32)
@@ -709,7 +721,7 @@ endif()
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
     if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
-       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock. 
+       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock.
        # Therefore we only run filtered TRT EP tests.
       list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
       #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
@@ -742,6 +754,12 @@ if (MSVC)
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
+
+if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
+# attention_op_test.cc: Function uses '49152' bytes of stack:  exceeds /analyze:stacksize '16384'..
+target_compile_options(onnxruntime_test_all PRIVATE  "/analyze:stacksize 131072")
+endif()
+
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
@@ -1003,7 +1021,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_optimizer
           onnxruntime_providers
           onnxruntime_util
-          onnxruntime_framework          
+          onnxruntime_framework
           onnxruntime_graph
           ${ONNXRUNTIME_MLAS_LIBS}
           onnxruntime_common

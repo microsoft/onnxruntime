@@ -196,6 +196,8 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
+option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
+
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
 # 1. ORTModule
@@ -650,6 +652,11 @@ if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
+endif()
+if (onnxruntime_USE_CLOUD)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CLOUD=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CLOUD=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cloud)
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
