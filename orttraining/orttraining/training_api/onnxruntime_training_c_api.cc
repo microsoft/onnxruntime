@@ -144,7 +144,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
@@ -185,7 +185,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
