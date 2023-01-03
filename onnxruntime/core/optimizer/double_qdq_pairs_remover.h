@@ -12,25 +12,22 @@ namespace onnxruntime {
  * @brief Remove one pair of Q-DQ Double Q-DQ pairs.
  */
 class DoubleQDQPairsRemover : public GraphTransformer {
-public:
+ public:
   DoubleQDQPairsRemover() : GraphTransformer("DoubleQDQPairsRemover", {}) {}
 
-private:
+ private:
   Status ApplyImpl(
-      Graph &graph,
-      bool &modified,
+      Graph& graph,
+      bool& modified,
       int graph_level,
-      const logging::Logger &logger
-                  ) const override;
+      const logging::Logger& logger) const override;
 
   static bool IsNodeRemovable(
-      const Graph &graph,
-      const logging::Logger &logger,
-      const NodeIndex &node_index,
-      NodeIndex &parent_index,
-      NodeIndex &child_index,
-      NodeIndex &grandchild_index
-                             );
-
+      const Graph& graph,
+      const logging::Logger& logger,
+      const NodeIndex& node_index,
+      NodeIndex& parent_index,
+      NodeIndex& child_index,
+      NodeIndex& grandchild_index);
 };
-} // namespace onnxruntime
+}  // namespace onnxruntime
