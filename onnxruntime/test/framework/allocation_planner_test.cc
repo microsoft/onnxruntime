@@ -151,6 +151,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<concurrency::ThreadPool> tp_;
   DataTransferManager dtm_;
   profiling::Profiler profiler_;
+  std::unique_ptr<SessionOptions> sess_options_;
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::optional<SequentialExecutionPlan> plan_;
@@ -183,6 +184,12 @@ class PlannerTest : public ::testing::Test {
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
+    sess_options_ = std::make_unique<SessionOptions>();
+    sess_options_->enable_mem_pattern = false;
+    sess_options_->use_deterministic_compute = false;
+    sess_options_->enable_mem_reuse = true;
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+                                  DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
@@ -256,8 +263,8 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
-    state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
-                                  DefaultLoggingManager().DefaultLogger(), profiler_));
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+                                  DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
