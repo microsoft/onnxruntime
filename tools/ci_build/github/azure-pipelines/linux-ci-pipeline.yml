@@ -15,6 +15,7 @@ jobs:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     # cache docker image
+    CCACHE_IMAGE_DIR: $(Pipeline.Workspace)/image
     repository: 'onnxruntimecpubuild'
     dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
     tag: '$(Build.BuildId)'
@@ -38,14 +39,17 @@ jobs:
       addToPath: true
 
   - task: Cache@2
-    displayName: Cache task
+    displayName: Cache Docker Image Task
     inputs:
       key: 'docker | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(Pipeline.Workspace)/docker
+      path: $(CCACHE_IMAGE_DIR)
+      restoreKeys: |
+        docker | "$(Build.SourceBranch)"
+        docker |
       cacheHitVar: IMAGE_CACHE_RESTORED
 
   - script: |
-      docker load -i $(Pipeline.Workspace)/docker/cache.tar
+      docker load -i $(CCACHE_IMAGE_DIR)/cache.tar
     displayName: Docker restore
     condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
@@ -60,8 +64,9 @@ jobs:
 
   - script: |
       set -ex
-      mkdir -p $(Pipeline.Workspace)/docker
-      docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}:latest
+      mkdir -p $(CCACHE_IMAGE_DIR)
+      chmod 777 $(CCACHE_IMAGE_DIR)
+      docker save -o $(CCACHE_IMAGE_DIR)/cache.tar ${{variables.repository}}
     displayName: Docker save
     condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
 
@@ -73,7 +78,7 @@ jobs:
       restoreKeys: |
         "ccache" | "$(Build.SourceBranch)"
         "ccache"
-    displayName: Cach Task
+    displayName: Cache OnnxRuntime Task
 
   - script: |
       sudo mkdir -p $(Pipeline.Workspace)/ccache
