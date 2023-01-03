@@ -653,22 +653,26 @@ common::Status WindowsEnv::GetCanonicalPath(
 
 // Return the path of the executable/shared library for the current running code. This is to make it
 // possible to load other shared libraries installed next to our core runtime code.
-std::string WindowsEnv::GetRuntimePath() const {
-  char buffer[MAX_PATH];
-  if (!GetModuleFileNameA(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer)))
-    return "";
+PathString WindowsEnv::GetRuntimePath() const {
+  wchar_t buffer[MAX_PATH];
+  if (!GetModuleFileNameW(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer))) {
+    return PathString();
+  }
 
   // Remove the filename at the end, but keep the trailing slash
-  std::string path(buffer);
-  auto slash_index = path.find_last_of('\\');
-  if (slash_index == std::string::npos)
-    return "";
-
+  PathString path(buffer);
+  auto slash_index = path.find_last_of(ORT_TSTR('\\'));
+  if (slash_index == std::string::npos) {
+    // Windows supports forward slashes
+    slash_index = path.find_last_of(ORT_TSTR('/'));
+    if (slash_index == std::string::npos) {
+      return PathString();
+    }
+  }
   return path.substr(0, slash_index + 1);
 }
 
-Status WindowsEnv::LoadDynamicLibrary(const std::string& library_filename, bool /*global_symbols*/, void** handle) const {
-  const std::wstring& wlibrary_filename = ToWideString(library_filename);
+Status WindowsEnv::LoadDynamicLibrary(const PathString& wlibrary_filename, bool /*global_symbols*/, void** handle) const {
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
   *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
 #else
