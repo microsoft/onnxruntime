@@ -169,9 +169,6 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 ### Thread management
 
-* Set thread affinity to desired cores.
-* Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
-
 #### Set intra-op thread affinity
 
 Sometimes, it may be beneficial to customize intra-op thread affinities, for example:
