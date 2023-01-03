@@ -13,20 +13,20 @@
 import argparse
 import csv
 import datetime
+import json
 import logging
 import os
 import sys
 
 import onnx
 import scipy.stats
-import torch
-from convert_to_onnx import get_latency_name, main
+from convert_to_onnx import main
 from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
 from onnx_model import OnnxModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import setup_logger
+from benchmark_helper import get_ort_environment_variables, setup_logger
 
 logger = logging.getLogger("")
 
@@ -85,6 +85,14 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(skip_test=False)
 
+    parser.add_argument(
+        "--overwrite",
+        required=False,
+        action="store_true",
+        help="Overwrite existing csv file",
+    )
+    parser.set_defaults(overwrite=False)
+
     args = parser.parse_args(argv)
 
     return args
@@ -110,11 +118,13 @@ class ParityTask:
                 run_id=run_id,
                 csv_filename=self.csv_path,
             )
+            if result:
+                self.results.append(result)
         except:
             logger.exception(f"Failed to run experiment {experiment_name}")
+            result = None
 
-        if result:
-            self.results.append(result)
+        return result
 
 
 def load_results_from_csv(csv_path):
@@ -128,9 +138,17 @@ def load_results_from_csv(csv_path):
     return rows
 
 
+def get_latency(row):
+    for name in row:
+        if name.startswith("average_latency(batch_size="):
+            return float(row[name])
+
+    raise RuntimeError("Failed to get average_latency from output")
+
+
 def score(row):
     """Scoring function based on 3 metrics. The larger score is better."""
-    latency_in_ms = float(row[get_latency_name()])
+    latency_in_ms = get_latency(row)
     top1_match_rate = float(row["top1_match_rate"])
     onnx_size_in_MB = float(row["onnx_size_in_MB"])
     # A simple scoring function: cost of 0.1ms latency ~ 0.1% match rate ~ 100MB size
@@ -167,17 +185,15 @@ def print_wins(wins, rows, test_name):
         for row in rows:
             if row["run_id"] == key:
                 logger.info(
-                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={} {}".format(
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f}, top1_match={:.4f}, size={}_MB, experiment={}, {}".format(
                         rank,
                         value,
                         key,
-                        float(row[get_latency_name()]),
+                        get_latency(row),
                         float(row["top1_match_rate"]),
                         row["onnx_size_in_MB"],
                         row["experiment"],
-                        " (Half2 Disabled)"
-                        if (row["ORT_CUDA_GEMM_OPTIONS"] == "4" and "Half2" not in row["experiment"])
-                        else "",
+                        get_ort_environment_variables(),
                     )
                 )
                 break
@@ -215,6 +231,11 @@ def run_significance_test(rows, output_csv_path):
         for i in range(num_results - 1):
             result1 = rows[i]
 
+            if isinstance(result1["top1_match_rate_per_run"], str):
+                a = json.loads(result1["top1_match_rate_per_run"])
+            else:
+                a = result1["top1_match_rate_per_run"]
+
             for j in range(i + 1, num_results, 1):
                 result2 = rows[j]
 
@@ -226,13 +247,9 @@ def run_significance_test(rows, output_csv_path):
                 if not all_matched:
                     continue
 
-                if isinstance(result1["top1_match_rate_per_run"], str):
-                    import json
-
-                    a = json.loads(result1["top1_match_rate_per_run"])
+                if isinstance(result2["top1_match_rate_per_run"], str):
                     b = json.loads(result2["top1_match_rate_per_run"])
                 else:
-                    a = result1["top1_match_rate_per_run"]
                     b = result2["top1_match_rate_per_run"]
 
                 try:
@@ -244,7 +261,7 @@ def run_significance_test(rows, output_csv_path):
                     utest_pvalue = None
                 ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(a, b, axis=None, equal_var=True)
 
-                if utest_pvalue < 0.05:
+                if utest_pvalue is not None and utest_pvalue < 0.05:
                     if float(result1["top1_match_rate"]) > float(result2["top1_match_rate"]):
                         utest_wins[result1["run_id"]] += 1
                     else:
@@ -317,11 +334,16 @@ def run_candidate(
 ):
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
     op_block_list_str = ",".join(sorted(op_block_list))
-    name_suffix = " (Half2 Disabled)" if os.getenv("ORT_CUDA_GEMM_OPTIONS") == "4" else ""
+
     if op_block_list:
-        name = f"Mixed precision baseline + {op_block_list_str} in FP32{name_suffix}"
+        name = f"Mixed precision baseline + {op_block_list_str} in FP32"
     else:
-        name = f"Mixed precision baseline (logits output and last MatMul node {last_matmul_node_name} in FP32){name_suffix}"
+        name = f"Mixed precision baseline (logits output and last MatMul node {last_matmul_node_name} in FP32)"
+
+    env_vars = get_ort_environment_variables()
+    if env_vars:
+        name = name + f" ({env_vars})"
+
     task.run(parameters, name)
 
 
@@ -340,12 +362,7 @@ def get_baselines(args):
     return fp32_baseline, fp16_baseline
 
 
-def get_all_operators():
-    """All operators in the optimized model"""
-    return "Attention Gather Add LayerNormalization FastGelu MatMul".split()
-
-
-def run_tuning_step0(task, fp16_baseline):
+def run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops):
     """Step 0 is to check which operator in FP16 causes most loss"""
     fp32_logits = ["--io_block_list", "logits"]
     task.run(fp16_baseline + fp32_logits, "FP16 except logits")
@@ -353,23 +370,28 @@ def run_tuning_step0(task, fp16_baseline):
     fp32_io = ["--keep_io_types"]
     task.run(fp16_baseline + fp32_io, "Graph I/O FP32, Other FP16")
 
-    op_list = get_all_operators()
-    # task.run(fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list], "Everthing in FP32")
-
     # Only weights in FP16
     task.run(
-        fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list] + ["--force_fp16_initializers"],
+        fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in all_ops] + ["--force_fp16_initializers"],
         "FP32 except weights in FP16",
     )
 
+    optimized_ops_results = []
+    op_list = optimized_ops
     for op in op_list:
         op_block_list = ["--op_block_list"] + [o for o in op_list if o != op]
-        task.run(fp16_baseline + fp32_io + op_block_list, f"FP32 except {op} in FP16")
+        result = task.run(fp16_baseline + fp32_io + op_block_list, f"FP32 except {op} in FP16")
+        if result:
+            optimized_ops_results.append(result)
+
+    # Check which optimized operator causes the most loss in precision
+    min_result = min(optimized_ops_results, key=lambda y: y["top1_match_rate"])
+    print("step 0: optimized operator causes the most loss in precision", min_result)
 
 
-def run_tuning_step1(task, mixed_precision_baseline):
-    """Step 1 is to figure out which operator in FP32 could benefit most"""
-    for op in get_all_operators():
+def run_tuning_step1(task, mixed_precision_baseline, optimized_ops):
+    """Step 1 is to figure out which optimized operator in FP32 could benefit most"""
+    for op in optimized_ops:
         op_block_list = ["--op_block_list", op]
         task.run(
             mixed_precision_baseline + op_block_list,
@@ -377,30 +399,19 @@ def run_tuning_step1(task, mixed_precision_baseline):
         )
 
 
-def run_tuning_step2(task, mixed_precision_baseline):
-    """Assumed that you have run step 1 to figure out that Logits FP32 and Add FP32 is important,
-    Step 2 is to figure out a combination of two operators (one is Add from step one) to get better result
+def run_tuning_step2(task, mixed_precision_baseline, optimized_ops):
+    """Assumed that you have run step 0 and 1 to figure out that Logits FP32 and some operators shall be in FP32,
+    This step will try add one more operator.
     """
-    for op in get_all_operators():
-        if op not in ["Add"]:
-            op_block_list = ["--op_block_list", "Add", op]
+    candidate_fp32_ops = ["FastGelu", "LayerNormalization", "SkipLayerNormalization"]
+    fp32_ops = [x for x in candidate_fp32_ops if x in optimized_ops]
+    for op in optimized_ops:
+        if op not in fp32_ops:
+            op_block_list = fp32_ops + [op]
             task.run(
-                mixed_precision_baseline + op_block_list,
-                f"Mixed precision baseline + Add,{op} in FP32",
+                mixed_precision_baseline + ["--op_block_list"] + op_block_list,
+                "Mixed precision baseline + {},{} in FP32".format(",".join(fp32_ops), op),
             )
-
-
-def run_parity_disable_half2(task: ParityTask, args):
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(
-        "onnx_models",
-        args.model_name_or_path,
-        new_folder=args.use_external_data_format,
-        remove_existing=[],
-    )
-    last_matmul_node_name = get_last_matmul_node_name(onnx_model_paths["raw"])
-    run_candidate(task, args, last_matmul_node_name, op_block_list=[])
-    run_candidate(task, args, last_matmul_node_name, op_block_list=["Add"])
-    run_candidate(task, args, last_matmul_node_name, op_block_list=["LayerNormalization", "Add"])
 
 
 def run_parity(task: ParityTask, args):
@@ -413,7 +424,19 @@ def run_parity(task: ParityTask, args):
 
     fp32_baseline, fp16_baseline = get_baselines(args)
 
-    task.run(fp32_baseline, "FP32 baseline")
+    result = task.run(fp32_baseline, "FP32 baseline")
+
+    optimized_ops = []
+    if result and ("optimized_operators" in result) and result["optimized_operators"]:
+        optimized_ops = result["optimized_operators"].split(",")
+    else:
+        raise RuntimeError("Failed to get optimized operators")
+
+    all_ops = []
+    if result and ("operators" in result) and result["operators"]:
+        all_ops = result["operators"].split(",")
+    else:
+        raise RuntimeError("Failed to get operators")
 
     # The following tests for fp16 requires GPU
     if not args.use_gpu:
@@ -427,41 +450,36 @@ def run_parity(task: ParityTask, args):
     # Mixed precision baseline
     run_candidate(task, args, last_matmul_node_name, op_block_list=[])
 
-    # Result from tuning step 1
-    run_candidate(task, args, last_matmul_node_name, op_block_list=["Add"])
+    get_fp32_ops = lambda x: [op for op in x if op in all_ops]
 
     if args.all:
-        run_tuning_step0(task, fp16_baseline)
+        run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops)
         mixed_precision_baseline = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list=[])
-        run_tuning_step1(task, mixed_precision_baseline)
-        run_tuning_step2(task, mixed_precision_baseline)
+        run_tuning_step1(task, mixed_precision_baseline, optimized_ops)
+        run_tuning_step2(task, mixed_precision_baseline, optimized_ops)
     else:
         run_candidate(
             task,
             args,
             last_matmul_node_name,
-            op_block_list=["LayerNormalization", "Add"],
+            op_block_list=get_fp32_ops(["SkipLayerNormalization", "LayerNormalization", "Add"]),
         )
-        run_candidate(task, args, last_matmul_node_name, op_block_list=["FastGelu", "Add"])
+        run_candidate(task, args, last_matmul_node_name, op_block_list=["FastGelu"])
 
     # Run a few good candidates
     run_candidate(
         task,
         args,
         last_matmul_node_name,
-        op_block_list=["FastGelu", "LayerNormalization", "Add"],
+        op_block_list=get_fp32_ops(["FastGelu", "SkipLayerNormalization", "LayerNormalization", "Add"]),
     )
     run_candidate(
         task,
         args,
         last_matmul_node_name,
-        op_block_list=["FastGelu", "LayerNormalization", "Add", "Gather"],
-    )
-    run_candidate(
-        task,
-        args,
-        last_matmul_node_name,
-        op_block_list=["FastGelu", "LayerNormalization", "Add", "Gather", "MatMul"],
+        op_block_list=get_fp32_ops(
+            ["FastGelu", "EmbedLayerNormalization", "SkipLayerNormalization", "LayerNormalization", "Add"]
+        ),
     )
 
 
@@ -471,19 +489,23 @@ if __name__ == "__main__":
 
     if args.test_cases < 100 or args.runs < 20 or args.test_cases * args.runs < 10000:
         logger.warning(
-            "Not enough test cases or runs to get stable results or test significance. Recommend test_cases >= 100, runs >= 20, test_cases * runs >= 10000."
+            "Not enough test cases or runs to get stable results or test significance. "
+            "Recommend test_cases >= 100, runs >= 20, test_cases * runs >= 10000."
         )
+
+    if os.path.exists(args.csv) and not args.skip_test:
+        if not args.overwrite:
+            raise RuntimeError(
+                f"Output file {args.csv} existed. Please remove the file, or use either --skip_test or --overwrite."
+            )
+        else:
+            logger.info("Remove existing file %s since --overwrite is specified", args.csv)
+            os.remove(args.csv)
 
     task = ParityTask(args.test_cases, args.runs, args.csv)
 
     if not args.skip_test:
-        if os.getenv("ORT_CUDA_GEMM_OPTIONS") == "4" and args.use_gpu:
-            assert (
-                torch.cuda.get_device_capability()[0] >= 7
-            ), "half2 kernel is not avaiable in current GPU device. Please set environment variable ORT_CUDA_GEMM_OPTIONS=0 or use supported GPU like V100 or T4"
-            run_parity_disable_half2(task, args)
-        else:
-            run_parity(task, args)
+        run_parity(task, args)
 
     try:
         rows = load_results_from_csv(task.csv_path)

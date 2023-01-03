@@ -51,6 +51,12 @@ static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
 }
 
+size_t AlignSize(size_t bytes) {
+  constexpr size_t alignment = 256;
+  const size_t bytesAligned = AlignTo(bytes, alignment);
+  return bytesAligned;
+}
+
 size_t GetAttentionScratchSize(
     size_t element_size,
     size_t batch_size,
@@ -58,10 +64,14 @@ size_t GetAttentionScratchSize(
     size_t sequence_length,
     size_t total_sequence_length) {
   const size_t bytes = element_size * batch_size * num_heads * sequence_length * total_sequence_length;
+  return AlignSize(bytes);
+}
 
-  constexpr size_t alignment = 256;
-  const size_t bytesAligned = AlignTo(bytes, alignment);
-  return bytesAligned;
+size_t GetSequenceOffsetSize(int batch_size, bool has_padding) {
+  // There are batch_size + 1 offsets Without padding (or padding removed), and 2 * batch_size + 1 with padding.
+  size_t bytes = sizeof(int) * ((has_padding ? 2 * batch_size : batch_size) + 1);
+  return AlignSize(bytes);
+  ;
 }
 
 size_t GetAttentionWorkspaceSize(
@@ -74,17 +84,16 @@ size_t GetAttentionWorkspaceSize(
     size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner) {
-  const size_t qkv_size = element_size * batch_size * num_heads *
-                          ((sequence_length * kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
+  const size_t qkv_bytes = element_size * batch_size * num_heads *
+                           ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
   if (fused_runner != nullptr) {
-    // There are batch_size + 1 offsets Without padding (or padding removed), and 2 * batch_size + 1 with padding.
-    size_t sequenceOffsetBytes = sizeof(int) * (2 * batch_size + 1);
-    return qkv_size + reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner)->getWorkspaceSize() + sequenceOffsetBytes;
+    size_t sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), true);
+    return qkv_bytes + sequence_offset_bytes;
   }
 
-  return qkv_size + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
-                                                total_sequence_length);
+  return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
+                                                 total_sequence_length);
 }
 
 template <typename T>
@@ -245,30 +254,33 @@ Status QkvToContext(
   const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
   const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
 
-  // Q, K and V pointers when fused attention if not used
+  // Q, K and V pointers when fused attention is not used
   T* q = qkv;
   T* k = q + elements_q;
   T* v = k + elements_k;
 
-  // For fused TRT attention, qkv need transpose to BxSxNx3xH
-  bool use_fused_kernel = (nullptr != fused_runner && data.bias != nullptr);
+  bool use_fused_kernel = (nullptr != fused_runner && data.bias != nullptr && !parameters.is_unidirectional);
+  bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
+      // For quantized attention, bias has been added so only need transpose here.
       // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
       ORT_ENFORCE(qk_head_size == v_head_size);
       int matrix_to_trans = (past_present_share_buffer ? 1 : 3);
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, matrix_to_trans, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.gemm_buffer, qkv, 3));
     } else {
+      // For fused TRT attention, transpose qkv to BxSxNx3xH. For fused causal kernel, transpose to 3xBxNxSxH.
       const int format = (use_fused_kernel ? 2 : 1);
+      T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
       int matrix_to_transpose = ((!use_fused_kernel && past_present_share_buffer) ? 1 : 3);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
       LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.gemm_buffer, data.bias, qkv,
-                             true, v_head_size, 3);
+                             true, v_head_size, qkv_add_bias, 3);
       CUDA_RETURN_IF_ERROR(cudaGetLastError());
     }
   } else {  // gemm_buffer == nullptr
@@ -277,62 +289,59 @@ Status QkvToContext(
     if (use_fused_kernel) {
       ORT_ENFORCE(sequence_length == kv_sequence_length && qk_head_size == v_head_size);
 
-      // Q(BxSxNxH), K (BxSxNxH), V(BxSxNxH) => BxSxNx(H + H + H)
+      // Q (BxSxNxH), K (BxSxNxH), V (BxSxNxH) => BxSxNx(H + H + H)
       LaunchAddBiasTransposeTrt(
           stream, max_threads_per_block,
           batch_size, sequence_length,
           num_heads, qk_head_size,
           data.bias, data.query, data.key, data.value, qkv);
     } else {
-      // Query(BxSxNxH) => Q (BxNxSxH)
+      // Query (BxSxNxH) => Q (BxNxSxH)
       constexpr int format = 0;
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, sequence_length, num_heads, qk_head_size,
                                 data.query, data.bias, q,
-                                true, -1);
+                                true, -1, nullptr);
 
       // Key (BxLxNxH) => K (BxNxLxH)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, qk_head_size,
                                 data.key, data.bias + num_heads * qk_head_size, k,
-                                true, -1);
+                                true, -1, nullptr);
 
       // Value (BxLxNxH_v) => K (BxNxLxH_v)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, v_head_size,
                                 data.value, data.bias + 2 * num_heads * qk_head_size, v,
-                                true, -1);
+                                true, -1, nullptr);
     }
 
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
-  T* scratch1;
-  scratch1 = qkv + elements_q + elements_k + elements_v;
+  T* scratch1 = qkv + elements_q + elements_k + elements_v;
 
-  T* temp_output = scratch1;
-  if (use_fused_kernel) {
-    int* sequence_offset = reinterpret_cast<int*>(qkv + elements_q + elements_k + elements_v);
+  if (use_fused_kernel || use_fused_causal) {
+    int* sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
 
-    const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+    const int S = use_fused_causal ? sequence_length : fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+
     // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
-    const int B = 2 * batch_size;
+    const int B = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
+
     fused_fp16_runner->setup(S, B);
 
-    fused_fp16_runner->run(qkv, nullptr, sequence_offset, data.output, nullptr, stream);
-
-    return Status::OK();
+    if (use_fused_kernel) {
+      fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
+      return Status::OK();
+    } else {
+      fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
+    }
   }
-
-  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                               sequence_length, total_sequence_length);
-  T* scratch2 = scratch1 + (bytes / element_size);
-
-  cublasSetStream(cublas, stream);
 
   int present_size_per_batch_k = 0;
   int present_size_per_batch_v = 0;
@@ -372,6 +381,10 @@ Status QkvToContext(
     v = data.present + batches * present_size_per_batch_k;
   }
 
+  if (use_fused_causal) {
+    return Status::OK();
+  }
+
   const int* mask_index = data.mask_index;
   gsl::span<const int64_t>& mask_index_dims = data.mask_index_dims;
 
@@ -380,13 +393,15 @@ Status QkvToContext(
 
   // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxT
   // Q: BxNxSxH, K (present_k): BxNxTxH, Q*K': BxNxSxT
-  const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(qk_head_size));
   const int temp_matrix_size = sequence_length * total_sequence_length;
   float one = 1.0f;
   float zero = 0.f;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
+  const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(qk_head_size));
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
+
+  cublasSetStream(cublas, stream);
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N,
@@ -394,6 +409,10 @@ Status QkvToContext(
       &alpha, k, qk_head_size, present_size_per_batch_k,
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, temp_matrix_size, batches, prop));
+
+  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
+                                               sequence_length, total_sequence_length);
+  T* scratch2 = scratch1 + (bytes / element_size);
 
   // Apply softmax and store result R to scratch2: BxNxSxT
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
@@ -424,7 +443,7 @@ Status QkvToContext(
   }
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
-  temp_output = qkv;
+  T* temp_output = qkv;
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
       v_head_size, sequence_length, total_sequence_length,

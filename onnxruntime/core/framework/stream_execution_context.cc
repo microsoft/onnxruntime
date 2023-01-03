@@ -166,7 +166,8 @@ void StreamExecutionContext ::RecycleNodeInputs(onnxruntime::NodeIndex node_inde
   }
 }
 
-void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag, size_t since) {
+void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag,
+              size_t since, bool is_downstream) {
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
@@ -191,7 +192,10 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   // counter otherwise later in backward the downstream won't execute correctly.
   // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
   // by Torch Dynamo.
-  if (since >= end && since < logic_stream->steps_.size() && logic_stream->steps_[since]->IsBarrier()) {
+  // We only need to do this on a triggered downstream. For example if the barrier is the first step of whole CPU plan,
+  // and the forward part is empty, the normal run of the forward part will not do this extra barrier handling.
+  if (is_downstream && since >= end && since < logic_stream->steps_.size() &&
+      logic_stream->steps_[since]->IsBarrier()) {
     if (!ctx.TaskStatus().IsOK()) {
       ctx.CompleteTask();
       return;
@@ -224,6 +228,8 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     ctx.CompleteTask();
     return;
   }
+#else
+  ORT_UNUSED_PARAMETER(is_downstream);
 #endif
 
   while (since < end) {
@@ -265,11 +271,8 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   return;
 }
 
-void ScheduleDownstream(StreamExecutionContext& ctx,
-                        size_t trigger,
-                        bool single_thread_mode,
-                        const bool& terminate_flag,
-                        SessionScope& session_scope) {
+void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode,
+                        const bool& terminate_flag, SessionScope& session_scope) {
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
@@ -278,10 +281,9 @@ void ScheduleDownstream(StreamExecutionContext& ctx,
     for (auto downstream : it->second) {
       // increase the task count before schedule down-stream
       ctx.AddTask();
-      concurrency::ThreadPool::Schedule(tp,
-                                        [&ctx, downstream, &terminate_flag, &session_scope]() {
-                                          RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second);
-                                        });
+      concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, &terminate_flag, &session_scope]() {
+        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second, true);
+      });
     }
   }
 }

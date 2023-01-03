@@ -6,6 +6,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/path_string.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
 
@@ -49,7 +50,8 @@ bool GetDyanmicExecutionProviderHash(
     size_t& hash,
     const std::string& entry_symbol_name = "ProviderHashFunc") {
   void* handle;
-  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
+  const auto path_str = ToPathString(ep_shared_lib_path);
+  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
   if (!error.IsOK()) {
     throw std::runtime_error(error.ErrorMessage());
   }

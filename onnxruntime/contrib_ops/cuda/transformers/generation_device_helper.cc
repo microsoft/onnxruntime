@@ -4,19 +4,25 @@
 #include <utility>
 #include <memory>
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/math/topk_impl.h"
 #include "core/providers/cuda/math/softmax.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include <cuda_runtime.h>
-#include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
+#include "sampling_cuda_helper.h"
+
+#ifdef DEBUG_GENERATION
+#include <iostream>
+#endif
 
 namespace onnxruntime {
 namespace concurrency {
@@ -128,7 +134,6 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, total_bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
-
   // Copy tensors to one pinned memory buffer (so that we only need copy to GPU once)
   char* destination = pinned_data;
   for (auto& input : inputs) {
@@ -145,16 +150,13 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
                                "AddToFeeds: An implementation for the input type ",
                                dataType, " is not supported yet");
       }
-
       // Do not need alignment because GPT has int32 inputs (past is empty) and T5 encoder has int64 inputs.
       destination += bytes;
     }
   }
-
   if (!buffer) {
     buffer = provider->GetScratchBuffer<char>(total_bytes, ort_stream, WaitCudaNotificationOnDevice);
   }
-
   char* gpu_data = buffer.get();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_data, pinned_data, total_bytes, cudaMemcpyHostToDevice, stream));
 
@@ -164,7 +166,6 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
-
   // TODO(tianleiwu): allocate a buffer for subgraph inputs so that we can reuse the buffer in each subgraph call.
   const OrtMemoryInfo& location = provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   for (auto& input : inputs) {
@@ -253,7 +254,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                      transformers::ILogitsProcessorList* logits_processors,  // logits processors
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* ort_stream,                                     // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
@@ -363,6 +364,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       next_token_scores.data(),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
+      nullptr,                                                    // parameters->presence_mask.data(),
+      parameters->presence_penalty,
+      parameters->temperature,
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
@@ -504,11 +508,13 @@ template <typename T>
 Status GreedySearchProcessLogits(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISamplingState<T>* sampling_state,    // buffers
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
     transformers::ILogitsProcessorList* logits_processors,  // logits processors
-    const transformers::IBeamSearchParameters* parameters,  // parameters
+    const transformers::IGenerationParameters* parameters,  // parameters
+    bool do_sampling,                                       // whether to do sampling
     int step,                                               // iteration counter
     Stream* stream,                                         // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper) {           // tensor dumper
@@ -519,7 +525,6 @@ Status GreedySearchProcessLogits(
 #endif
 
   ORT_UNUSED_PARAMETER(logits_processors);
-
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -596,6 +601,13 @@ Status GreedySearchProcessLogits(
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
 
+  // Copy parameters->presence_mask to sampling_state->presence_mask
+  gsl::span<int>& presence_mask = sampling_state->d_presence_mask;
+  if (step == 1 && parameters->presence_mask.data() != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(presence_mask.data(), parameters->presence_mask.data(),
+                         sizeof(int) * batch_size * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
+  }
+
   // TODO(hasesh): Can we avoid the const_cast by changing the interface of
   // GreedySearchProcessLogits() to take in a non-const OrtValue for logits
   // as this is the only place we will ever use the logits and it may be reasonable
@@ -605,11 +617,15 @@ Status GreedySearchProcessLogits(
                              : reinterpret_cast<CudaT*>(next_token_scores.data()),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
+      parameters->presence_mask.data() ? presence_mask.data() : nullptr,
+      parameters->presence_penalty,
+      parameters->temperature,
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
       is_reuse_logits_buffer ? padded_vocab_size : parameters->vocab_size,
-      (parameters->min_length > 0 && current_sequence_length < parameters->min_length) ? parameters->eos_token_id : -1,
+      (parameters->min_length > 0 && current_sequence_length < parameters->sequence_length + parameters->min_length)
+      ? parameters->eos_token_id : -1,
       reinterpret_cast<int32_t*>(sequences_buffer.get()),
       parameters->max_length,
       current_sequence_length,
@@ -628,6 +644,19 @@ Status GreedySearchProcessLogits(
 
   // TODO(wy): support output_scores in greedy search
   ORT_UNUSED_PARAMETER(output_scores);
+
+  if (do_sampling) {
+    ORT_RETURN_IF_ERROR(SamplingCudaHelper::Sample(allocator,
+                                                   cuda_stream,
+                                                   next_token_scores,
+                                                   sampling_state,
+                                                   greedy_state,
+                                                   parameters,
+                                                   step,
+                                                   dumper));
+
+    return Status::OK();
+  }
 
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size),
@@ -657,8 +686,8 @@ Status GreedySearchProcessLogits(
                            *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", *(topk_scores.get()));
-  dumper->Print("topk_indices", *(topk_indices.get()));
+    dumper->Print("topk_scores", *(topk_scores.get()));
+    dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
   const int64_t* next_token_indices = topk_indices->Data<int64_t>();
@@ -996,7 +1025,7 @@ template Status ProcessLogits<float>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     transformers::IBeamScorer* beam_scorer,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     Stream* ort_stream,
     const transformers::IConsoleDumper* dumper);
@@ -1004,11 +1033,13 @@ template Status ProcessLogits<float>(
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
+    transformers::ISamplingState<float>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
     Stream* ort_stream,
     const transformers::IConsoleDumper* dumper);
@@ -1063,7 +1094,7 @@ template Status ProcessLogits<MLFloat16>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     transformers::IBeamScorer* beam_scorer,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     Stream* ort_stream,
     const transformers::IConsoleDumper* dumper);
@@ -1071,11 +1102,13 @@ template Status ProcessLogits<MLFloat16>(
 template Status GreedySearchProcessLogits<MLFloat16>(
     const OrtValue& logits,
     transformers::IGreedySearchState<MLFloat16>* greedy_state,
+    transformers::ISamplingState<MLFloat16>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
     Stream* ort_stream,
     const transformers::IConsoleDumper* dumper);

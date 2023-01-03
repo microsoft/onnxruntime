@@ -20,7 +20,7 @@ class FusionGptAttentionNoPast(Fusion):
     """
 
     def __init__(self, model: OnnxModel, num_heads: int):
-        super().__init__(model, "Attention", "LayerNormalization", "without past")
+        super().__init__(model, "Attention", ["LayerNormalization", "SkipLayerNormalization"], "without past")
         # TODO: detect num_heads from graph like FusionAttention
         self.num_heads = num_heads
 
@@ -60,27 +60,56 @@ class FusionGptAttentionNoPast(Fusion):
         self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        # (TODO) hasesh/tlwu: Investigate what fixes the following logic needs in order
+        # to fuse the Attention sub-graph. With some changes to other fusions, this stopped
+        # working.
         return_indice = []
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node,
-            ["Add", "Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
-            [0, None, 0, 0, 0, 0, 0],
-            output_name_to_node=output_name_to_node,
-            return_indice=return_indice,
-        )  # yapf: disable
+
+        is_normalize_node_skiplayernorm = normalize_node.op_type == "SkipLayerNormalization"
+        qkv_nodes = None
+
+        if not is_normalize_node_skiplayernorm:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Add", "Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
+                [0, None, 0, 0, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )  # yapf: disable
+        else:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
+                [None, 0, 0, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )  # yapf: disable
+
         if qkv_nodes is None:
             return
-        (
-            add_qkv,
-            reshape_qkv,
-            gemm_qkv,
-            reshape_1,
-            reshape_2,
-            transpose_qkv,
-            matmul_qkv,
-        ) = qkv_nodes
 
-        another_input = add_qkv.input[1 - return_indice[0]]
+        another_input = None
+        if not is_normalize_node_skiplayernorm:
+            (
+                add_qkv,
+                reshape_qkv,
+                gemm_qkv,
+                reshape_1,
+                reshape_2,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
+
+            another_input = add_qkv.input[1 - return_indice[0]]
+        else:
+            (
+                reshape_qkv,
+                gemm_qkv,
+                reshape_1,
+                reshape_2,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -100,16 +129,25 @@ class FusionGptAttentionNoPast(Fusion):
         ) = v_nodes
 
         layernorm_before_attention = self.model.get_parent(reshape_before_gemm, 0, output_name_to_node)
-        if layernorm_before_attention is None or layernorm_before_attention.op_type != "LayerNormalization":
+        if layernorm_before_attention is None or (
+            layernorm_before_attention.op_type != "LayerNormalization"
+            and layernorm_before_attention.op_type != "SkipLayerNormalization"
+        ):
             if layernorm_before_attention.op_type != "Add":
-                logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
+                logger.debug(f"failed to get (skip)layernorm before gemm. Got {layernorm_before_attention.op_type}")
                 return
 
-        if not another_input in layernorm_before_attention.input:
-            # match openai-gpt
-            if not another_input in layernorm_before_attention.output:
-                logger.debug("Add and LayerNormalization shall have one same input")
-                return
+        # `another_input` will be non-None only if
+        # (1) SkipLayerNorm fusion wasn't turned ON
+        # (2) SkipLayerNorm fusion was turned ON but upstream layer's LayerNorm + Add was not
+        # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
+        # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
+        if another_input is not None:
+            if not another_input in layernorm_before_attention.input:
+                # match openai-gpt
+                if not another_input in layernorm_before_attention.output:
+                    logger.debug("Add and (Skip)LayerNormalization shall have one same input")
+                    return
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Sub", "Mul", "Div", "MatMul"], [0, 0, 0, 0, 0])
         if qk_nodes is not None:

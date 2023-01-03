@@ -2411,7 +2411,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
             have_diff = False
 
             def diff_file(path, regenerate_qualifiers=""):
-                diff = subprocess.check_output(["git", "diff", path], cwd=source_dir)
+                diff = subprocess.check_output(["git", "diff", path], cwd=source_dir).decode("utf-8")
                 if diff:
                     nonlocal have_diff
                     have_diff = True
@@ -2420,7 +2420,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                         "Please regenerate the file{}, or copy the updated version from the "
                         "CI build's published artifacts if applicable.".format(path, regenerate_qualifiers)
                     )
-                    log.debug("diff:\n" + str(diff))
+                    log.debug("diff:\n" + diff)
 
             diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
