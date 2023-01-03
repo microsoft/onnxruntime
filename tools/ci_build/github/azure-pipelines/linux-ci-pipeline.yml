@@ -49,7 +49,13 @@ jobs:
     displayName: Docker restore
     condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
-  - ${{ if eq(variables.IMAGE_CACHE_RESTORED, 'false') }}:
+  - script: |
+      echo ${{ variables.IMAGE_CACHE_RESTORED }}
+      echo "----"
+      echo $(variables.IMAGE_CACHE_RESTORED)
+    displayName: test step
+
+  - ${{ if ne(variables.IMAGE_CACHE_RESTORED, 'true') }}:
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
