@@ -23,5 +23,13 @@ struct AttentionParameters {
   bool past_present_share_buffer;
 };
 
+namespace attention {
+// Environment variable to enable or disable fused attention kernel. Default is 0 (enabled).
+constexpr const char* kDisableFusedAttention = "ORT_DISABLE_FUSED_ATTENTION";
+
+// Environment variable to enable or disable flash attention. Default is 1 (enabled). Set it to 0 to disable.
+constexpr const char* kEnableFlashAttention = "ORT_ENABLE_FLASH_ATTENTION";
+}  // namespace attention
+
 }  // namespace contrib
 }  // namespace onnxruntime

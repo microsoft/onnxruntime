@@ -178,12 +178,14 @@ def parse_arguments():
     # Training options
     parser.add_argument("--enable_nvtx_profile", action="store_true", help="Enable NVTX profile in ORT.")
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profile in ORT.")
-    parser.add_argument("--enable_training", action="store_true", help="Enable training in ORT.")
-    parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
     parser.add_argument(
-        "--enable_training_torch_interop", action="store_true", help="Enable training kernels interop with torch."
+        "--enable_training",
+        action="store_true",
+        help="Enable full training functionality in ORT. Includes ORTModule and ORT Training APIs.",
     )
-    parser.add_argument("--enable_training_on_device", action="store_true", help="Enable on device training in ORT.")
+    parser.add_argument("--enable_training_apis", action="store_true", help="Enable ort training apis.")
+    parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
+
     parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
@@ -674,6 +676,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
+    parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
@@ -931,8 +934,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING_ON_DEVICE=" + ("ON" if args.enable_training_on_device else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
@@ -1264,6 +1266,9 @@ def generate_build_tree(
 
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
+
+    if args.use_cloud:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1909,13 +1914,14 @@ def build_python_wheel(
     use_armnn,
     use_dml,
     use_cann,
+    use_cloud,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
     default_training_package_device=False,
     use_ninja=False,
     build_eager_mode=False,
-    enable_training_on_device=False,
+    enable_training_apis=False,
     enable_rocm_profiling=False,
 ):
     for config in configs:
@@ -1934,8 +1940,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix={}".format(wheel_name_suffix))
         if enable_training:
             args.append("--enable_training")
-        if enable_training_on_device:
-            args.append("--enable_training_on_device")
+        if enable_training_apis:
+            args.append("--enable_training_apis")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
         if enable_rocm_profiling:
@@ -1967,6 +1973,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
+        elif use_cloud:
+            args.append("--use_cloud")
 
         run_subprocess(args, cwd=cwd)
 
@@ -1989,7 +1997,7 @@ def build_nuget_package(
     use_tvm,
     use_winml,
     use_snpe,
-    enable_training_on_device,
+    enable_training_apis,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2008,7 +2016,7 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = '/p:ExecutionProvider="None"'
     package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
-    if enable_training_on_device:
+    if enable_training_apis:
         if use_cuda:
             package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
         else:
@@ -2100,7 +2108,7 @@ def build_nuget_package(
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
-def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_on_device):
+def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_apis):
     # Currently only running tests on windows.
     if not is_windows():
         return
@@ -2116,7 +2124,7 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
         macros += "USE_DNNL;"
     if use_cuda:
         macros += "USE_CUDA;"
-    if enable_training_on_device:
+    if enable_training_apis:
         macros += "__TRAINING_ENABLED_NATIVE_BUILD__;"
 
     define_constants = ""
@@ -2653,13 +2661,14 @@ def main():
                 args.use_armnn,
                 args.use_dml,
                 args.use_cann,
+                args.use_cloud,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
-                enable_training_on_device=args.enable_training_on_device,
+                enable_training_apis=args.enable_training_apis,
                 enable_rocm_profiling=args.enable_rocm_profiling,
             )
         if args.build_nuget:
@@ -2674,7 +2683,7 @@ def main():
                 args.use_tvm,
                 args.use_winml,
                 args.use_snpe,
-                args.enable_training_on_device,
+                args.enable_training_apis,
             )
 
     if args.test and args.build_nuget:
@@ -2685,7 +2694,7 @@ def main():
             args.use_openvino,
             args.use_tensorrt,
             args.use_dnnl,
-            args.enable_training_on_device,
+            args.enable_training_apis,
         )
 
     if args.gen_doc:

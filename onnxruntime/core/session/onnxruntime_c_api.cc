@@ -47,7 +47,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
 #include "orttraining/training_api/include/ort_training_apis.h"
 #endif
@@ -600,7 +600,8 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, _Outptr_ void** library_handle) {
   API_IMPL_BEGIN
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, library_handle));
+  auto path_str = ToPathString(library_path);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(path_str, false, library_handle));
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
@@ -2277,14 +2278,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
   return OrtTrainingApis::GetTrainingApi(version);
 #else
 
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training and enable_training_on_device to "
+          "from source with the build flags enable_training and enable_training_apis to "
           "retrieve the training APIs.\n");
 
   return nullptr;

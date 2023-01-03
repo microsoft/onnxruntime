@@ -81,6 +81,10 @@ void BuildMatMulIntegerToFloatGraph(ModelTestBuilder& helper,
   helper.SetGraphOutputs();
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6262)
+#endif
 TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 12;
@@ -169,6 +173,9 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 template <typename WeightType>
 void BuildDynamicQuantizeMatMulGraph(
