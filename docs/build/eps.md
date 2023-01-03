@@ -635,7 +635,7 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 {: .no_toc }
 
 * Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install)
-  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM5.4
+  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCm5.4
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
 
