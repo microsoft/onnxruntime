@@ -198,9 +198,9 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
       ort_input_shape.CopyDims(dims.data(), ort_input_shape.NumDimensions());
 
       err = tc::InferInput::Create(&triton_input, *iter, dims, MapDataType(input_tensor.GetElementType()));
+      triton_input_vec.emplace_back(triton_input);
       CHECK_TRITON_ERR(err, (std::string{"Failed to create triton input for "} + *iter).c_str());
 
-      triton_input_vec.emplace_back(triton_input);
       triton_inputs.push_back(triton_input);
       triton_input->AppendRaw(static_cast<const uint8_t*>(input_tensor.DataRaw()), input_tensor.SizeInBytes());
       ++iter;
@@ -210,13 +210,13 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     while (iter != output_names.end()) {
       tc::InferRequestedOutput* triton_output;
       err = tc::InferRequestedOutput::Create(&triton_output, *iter);
-      CHECK_TRITON_ERR(err, (std::string{"Failed to create triton output for "} + *iter).c_str());
-
       triton_output_vec.emplace_back(triton_output);
+      CHECK_TRITON_ERR(err, (std::string{"Failed to create triton output for "} + *iter).c_str());
       triton_outputs.push_back(triton_output);
       ++iter;
     }
 
+    std::unique_ptr<tc::InferResult> results_ptr;
     tc::InferResult* results = {};
     tc::InferOptions options(model_name_);
     options.model_version_ = model_ver_;
@@ -229,6 +229,7 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
                                 http_headers, tc::Parameters(),
                                 tc::InferenceServerHttpClient::CompressionType::NONE,  //support compression in config?
                                 tc::InferenceServerHttpClient::CompressionType::NONE);
+    results_ptr.reset(results);
     CHECK_TRITON_ERR(err, "Triton client failed to do inference");
 
     if (ort_outputs.empty()) {
@@ -236,8 +237,6 @@ onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
     }
 
     int output_index = 0;
-    std::unique_ptr<tc::InferResult> results_ptr;
-    results_ptr.reset(results);
     iter = output_names.begin();
 
     while (iter != output_names.end()) {
