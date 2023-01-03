@@ -180,3 +180,23 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         MachinePool: 'onnxruntime-Win2019-CPU-training'
+
+- stage: x64_release_cloud
+  dependsOn: []
+  jobs:
+    - template: templates/win-ci-vs-2019.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cloud.bat
+        buildArch: x64
+        additionalBuildFlags: --use_cloud
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release_cloud
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        RunStaticCodeAnalysis: false
+        EnablePython: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        MachinePool: 'Win-CPU-2019'

@@ -56,7 +56,7 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return LaunchGemmFastGeluKernel<HipT>(
       IsTunableOpEnabled(),
-      Stream(), RocblasHandle(),
+      Stream(ctx), GetRocblasHandle(ctx),
       transa, transb,
       static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.N()), static_cast<int64_t>(helper.K()),
       alpha,

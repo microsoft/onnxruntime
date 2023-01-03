@@ -13,6 +13,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/common/optional.h"
+#include "core/common/path_string.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
@@ -77,7 +78,8 @@ static Env& platform_env = Env::Default();
 
 CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
   {
-    OrtPybindThrowIfError(platform_env.LoadDynamicLibrary(library_path, false, &library_handle_));
+    const auto path_str = ToPathString(library_path);
+    OrtPybindThrowIfError(platform_env.LoadDynamicLibrary(path_str, false, &library_handle_));
 
     OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
@@ -220,7 +222,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
       py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
     } else {
       auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.DenseShape(), GetAllocator());
-      auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
+      auto status = src_sparse_tensor.Copy(*data_transfer_manager, *dst_sparse_tensor);
       OrtPybindThrowIfError(status);
       py_sparse_tensor = std::make_unique<PySparseTensor>(std::move(dst_sparse_tensor));
     }
@@ -311,7 +313,8 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
     const ProviderOptions& provider_options = {},
     const std::string& entry_symbol_name = "GetProvider") {
   void* handle;
-  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
+  const auto path_str = ToPathString(ep_shared_lib_path);
+  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
   if (!error.IsOK()) {
     throw std::runtime_error(error.ErrorMessage());
   }
@@ -786,6 +789,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     } else {
       ORT_THROW("create CANN ExecutionProvider fail");
     }
+#endif
+  } else if (type == kCloudExecutionProvider) {
+#ifdef USE_CLOUD
+    return onnxruntime::CloudProviderFactoryCreator::Create({})->CreateProvider();
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -1325,7 +1332,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-
+      
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,

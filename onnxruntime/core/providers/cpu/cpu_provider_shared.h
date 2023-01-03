@@ -9,6 +9,7 @@ class AttentionBase;
 namespace transformers {
 class BeamSearch;
 class GreedySearch;
+class Sampling;
 }
 }  // namespace contrib
 
@@ -147,7 +148,8 @@ struct ProviderHostCPU {
                                             const Tensor* key,
                                             const Tensor* value,
                                             void* parameters,
-                                            const int max_threads_per_block) = 0;
+                                            const int max_threads_per_block,
+                                            const Tensor* past_seq_len) = 0;
 
   virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,
                                             OpKernelContext* context,
@@ -172,6 +174,10 @@ struct ProviderHostCPU {
                                                           const SessionState& session_state,
                                                           const std::string& attribute_name,
                                                           const SessionState& subgraph_session_state) = 0;
+
+  virtual void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) = 0;
+  virtual Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) = 0;
+  virtual Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
 
 #ifdef ENABLE_ATEN
   virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;

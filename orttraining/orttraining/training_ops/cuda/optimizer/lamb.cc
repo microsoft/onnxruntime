@@ -284,6 +284,7 @@ Status launch_lamb_compute_direction(
 template <typename CudaTNorm, typename CudaTIn1, typename CudaTIn2>
 Status launch_lamb_reduction(
     const CudaKernel& kernel,
+    OpKernelContext* ctx,
     const int group_count,
     std::vector<int>& tensor_sizes,
     std::vector<CudaTNorm*>& p_w_norms,
@@ -302,7 +303,7 @@ Status launch_lamb_reduction(
 
   constexpr int tensor_count_per_group = 4;
 
-  cudaStream_t stream = kernel.Stream();
+  cudaStream_t stream = kernel.Stream(ctx);
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
@@ -356,7 +357,8 @@ Status launch_lamb_reduction(
         reducer,
         kernel,
         reduction_buffer,
-        reduction_buffer_size);
+        reduction_buffer_size,
+        ctx->GetComputeStream());
   }
 
   return Status::OK();
@@ -513,7 +515,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
       return copy_inputs_to_outputs<T2, T3, T4, T_MIXED_PRECISION_FP>(
-          Stream(),
+          Stream(ctx),
           ctx,
           non_grouped_input_count,
           non_grouped_output_count,
@@ -548,16 +550,16 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // The i-th update direction's norm is stored at the i-th element.
   // We reduce type T3 tensor to type T2 scalar. An example is that T3=float16
   // and T2=float.
-  IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count);
+  IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count, ctx->GetComputeStream());
   CudaT2* d_norm_data = reinterpret_cast<CudaT2*>(d_norm_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_norm_data, 0, group_count * sizeof(T2), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_norm_data, 0, group_count * sizeof(T2), Stream(ctx)));
 
   // Allocate buffer for reduction computation of weight tensor.
   // The i-th weight's norm is stored at the i-th element.
   // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
-  IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count);
+  IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count, ctx->GetComputeStream());
   CudaT2* w_norm_data = reinterpret_cast<CudaT2*>(w_norm_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(w_norm_data, 0, group_count * sizeof(T2), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(w_norm_data, 0, group_count * sizeof(T2), Stream(ctx)));
 
   // Find the max size of updated weight tensors.
   int max_tensor_size = 0;
@@ -582,7 +584,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   }();
 
   // Allocate reduction buffer whose size is reduction_buffer_size bytes.
-  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size, ctx->GetComputeStream());
 
   // Input tensors' pointers.
   std::vector<const CudaT2*> p_ws(group_count);
@@ -663,7 +665,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   }
 
   ORT_RETURN_IF_ERROR(launch_lamb_compute_direction(
-      Stream(),
+      Stream(ctx),
       step_data ? *step_data : 0,
       group_count,
       loss_scale_data,
@@ -677,6 +679,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
 
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(
       *this,
+      ctx,
       group_count,
       tensor_sizes,
       p_w_norms,
@@ -687,7 +690,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       reduction_buffer_size));
 
   ORT_RETURN_IF_ERROR(launch_lamb_update(
-      Stream(),
+      Stream(ctx),
       group_count,
       eta_data,
       ratio_min_,

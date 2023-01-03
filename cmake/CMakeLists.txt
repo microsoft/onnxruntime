@@ -197,9 +197,72 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
+option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
+
+if (onnxruntime_USE_ROCM)
+  if (WIN32)
+    message(FATAL_ERROR "ROCM does not support build in Windows!")
+  endif()
+  if (onnxruntime_USE_CUDA)
+    message(FATAL_ERROR "ROCM does not support build with CUDA!")
+  endif()
+
+  if (NOT CMAKE_HIP_COMPILER)
+    set(CMAKE_HIP_COMPILER "${onnxruntime_ROCM_HOME}/llvm/bin/clang++")
+  endif()
+
+  if (NOT CMAKE_HIP_ARCHITECTURES)
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
+  endif()
+
+  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
+  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+
+  enable_language(HIP)
+  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
+  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
+  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
+  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
+  # example, the CMAKE_PREFIX_PATH might be improperly configured.
+  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
+    message(FATAL_ERROR "HIP Language is not properly configured.")
+  endif()
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
+
+  if (NOT onnxruntime_HIPIFY_PERL)
+    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+  endif()
+
+  # replicate strategy used by pytorch to get ROCM_VERSION
+  # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
+  file(READ "${onnxruntime_ROCM_HOME}/.info/version-dev" ROCM_VERSION_DEV_RAW)
+  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
+  if (ROCM_VERSION_DEV_MATCH)
+    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
+    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
+    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
+    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
+    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
+  endif()
+  message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/.info/version-dev ****\n")
+  message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
+  message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
+  message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
+  message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
+  message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
+  message("\n***** HIP LANGUAGE CONFIG INFO ****\n")
+  message("CMAKE_HIP_COMPILER:      ${CMAKE_HIP_COMPILER}")
+  message("CMAKE_HIP_ARCHITECTURES: ${CMAKE_HIP_ARCHITECTURES}")
+  message("CMAKE_HIP_FLAGS:         ${CMAKE_HIP_FLAGS}")
+  string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
+  message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
+  add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
+endif()
+
 
 if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
   if (NOT onnxruntime_ENABLE_TRAINING)
@@ -584,6 +647,11 @@ if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
+if (onnxruntime_USE_CLOUD)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CLOUD=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CLOUD=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cloud)
+endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
@@ -726,6 +794,11 @@ function(onnxruntime_set_compile_flags target_name)
       # some #pragma unroll will fail, do not treat them as error
       # #warning must not be treated as error
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-error=pass-failed "-Wno-error=#warnings")
+
+      # otherwise error: builtin __has_trivial_assign is deprecated; use __is_trivially_assignable instead
+      if (ROCM_VERSION_DEV VERSION_GREATER_EQUAL "5.4")
+        list(APPEND ORT_HIP_WARNING_FLAGS "-Wno-deprecated-builtins")
+      endif()
 
       foreach(FLAG ${ORT_HIP_WARNING_FLAGS})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:HIP>:SHELL:${FLAG}>")
@@ -1174,71 +1247,6 @@ if (onnxruntime_USE_MIGRAPHX)
     message(FATAL_ERROR "MIGraphX does not support build in Windows!")
   endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
-endif()
-
-if (onnxruntime_USE_ROCM)
-  if (WIN32)
-    message(FATAL_ERROR "ROCM does not support build in Windows!")
-  endif()
-  if (onnxruntime_USE_CUDA)
-    message(FATAL_ERROR "ROCM does not support build with CUDA!")
-  endif()
-
-  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
-  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
-
-  set(ROCM_PATH ${onnxruntime_ROCM_HOME})
-
-  if (NOT CMAKE_HIP_COMPILER)
-    set(CMAKE_HIP_COMPILER "${ROCM_PATH}/llvm/bin/clang++")
-  endif()
-
-  if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
-  endif()
-
-  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
-  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
-
-  enable_language(HIP)
-  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
-  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
-  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
-  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
-  # example, the CMAKE_PREFIX_PATH might be improperly configured.
-  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
-    message(FATAL_ERROR "HIP Language is not properly configured.")
-  endif()
-  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
-
-  if (NOT onnxruntime_HIPIFY_PERL)
-    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
-  endif()
-
-  # replicate strategy used by pytorch to get ROCM_VERSION
-  # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
-  file(READ "${ROCM_PATH}/.info/version-dev" ROCM_VERSION_DEV_RAW)
-  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
-  if (ROCM_VERSION_DEV_MATCH)
-    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
-    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
-    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
-    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
-    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
-  endif()
-  message("\n***** ROCm version from ${ROCM_PATH}/.info/version-dev ****\n")
-  message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
-  message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
-  message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
-  message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
-  message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
-  message("\n***** HIP LANGUAGE CONFIG INFO ****\n")
-  message("CMAKE_HIP_COMPILER:      ${CMAKE_HIP_COMPILER}")
-  message("CMAKE_HIP_ARCHITECTURES: ${CMAKE_HIP_ARCHITECTURES}")
-  message("CMAKE_HIP_FLAGS:         ${CMAKE_HIP_FLAGS}")
-  string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
-  message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
-  add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

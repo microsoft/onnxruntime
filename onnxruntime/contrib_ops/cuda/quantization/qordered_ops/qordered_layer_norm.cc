@@ -83,16 +83,15 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const float* scale_y = ctx->Input<Tensor>(4)->Data<float>();
 
   if (scale->IsDataType<MLFloat16>()) {
-    return QOrderedLayerNorm(Stream(), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
+    return QOrderedLayerNorm(Stream(ctx), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
                              X_data, *scale_x, Y_data, *scale_y, static_cast<const __half*>(scale_data),
                              static_cast<const __half*>(bias_data),
                              static_cast<float>(epsilon_), batch, rows, cols);
-  } else {
-    return QOrderedLayerNorm(Stream(), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
-                             X_data, *scale_x, Y_data, *scale_y, static_cast<const float*>(scale_data),
-                             static_cast<const float*>(bias_data),
-                             static_cast<float>(epsilon_), batch, rows, cols);
-  }
+  } 
+  return QOrderedLayerNorm(Stream(ctx), GetDeviceProp(), static_cast<cublasLtOrder_t>(order_X_),
+                           X_data, *scale_x, Y_data, *scale_y, static_cast<const float*>(scale_data),
+                           static_cast<const float*>(bias_data),
+                           static_cast<float>(epsilon_), batch, rows, cols);
 }
 
 }  // namespace cuda
