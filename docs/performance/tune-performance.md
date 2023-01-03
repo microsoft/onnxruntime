@@ -169,7 +169,24 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 ### Thread management
 
+* Set thread affinity to desired cores.
 * Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
+
+#### Set intra thread affinity
+
+Sometimes, it may be beneficial to customize intra-op thread affinities, for example:
+* There are multiple sessions run in parallel, customer might prefer their intra-op thread pools run on separate cores to reduce contention.
+* The machine has severel NUMA nodes, customer want to limit a intra-op thread pool to run on only one node to reduce overhead of cache miss.
+For session intra-op thread pool, please read the [configuration](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L180) and consume it like:
+
+```python
+sess_op = SessionOptions()
+sess_op.intra_op_num_threads = 3
+sess_op.add_session_config_entry('session.intra_op_thread_affinities', '1;2')
+sess = ort.InferenceSession('model.onnx', sess_op, ...)
+```
+
+For global thread pool, please read the [API](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_c_api.h#L3636) and [usage](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
 
 #### Custom threading callbacks
 
