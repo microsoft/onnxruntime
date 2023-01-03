@@ -42,12 +42,12 @@ jobs:
     inputs:
       key: 'docker | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(Pipeline.Workspace)/docker
-      cacheHitVar: CACHE_RESTORED
+      cacheHitVar: IMAGE_CACHE_RESTORED
 
   - script: |
       docker load -i $(Pipeline.Workspace)/docker/cache.tar
     displayName: Docker restore
-    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+    condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
   - task: Docker@2
     displayName: 'Build Docker'
@@ -58,18 +58,20 @@ jobs:
       tags: |
         '$(tag)'
 
+  - ${{ if and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true')) }}:
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$(tag)"
+        Repository: '$(repository)'
+        UseImageCacheContainerRegistry: false
+
   - script: |
       mkdir -p $(Pipeline.Workspace)/docker
       docker save -o $(Pipeline.Workspace)/docker/cache.tar $(repository):$(tag)
     displayName: Docker save
-    condition: and(not(canceled()), or(failed(), ne(variables.CACHE_RESTORED, 'true')))
-
-  #- template: templates/get-docker-image-steps.yml
-  #  parameters:
-  #    Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-  #    Context: tools/ci_build/github/linux/docker
-  #    DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-  #    Repository: onnxruntimecpubuild
+    condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
 
   - task: Cache@2
     inputs:
