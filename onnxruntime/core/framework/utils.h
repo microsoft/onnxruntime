@@ -89,6 +89,10 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             bool only_execute_path_to_fetches = false,
                             Stream* parent_stream = nullptr);
 
+common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                            ExecutionMode execution_mode, const RunOptions& run_options, const logging::Logger& logger);
+
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
