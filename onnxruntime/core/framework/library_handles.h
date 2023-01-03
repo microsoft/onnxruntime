@@ -8,7 +8,7 @@
 #include <utility>
 #include "core/platform/env.h"
 #include "core/common/path_string.h"
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 
 namespace onnxruntime {
 
@@ -26,6 +26,8 @@ struct LibraryHandles {
   LibraryHandles() = default;
   ~LibraryHandles() noexcept;
 
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(LibraryHandles);
+
   // Move-only.
   LibraryHandles(LibraryHandles&& other) noexcept;
   LibraryHandles& operator=(LibraryHandles&& other) noexcept;
@@ -35,8 +37,6 @@ struct LibraryHandles {
   void Add(PathString library_name, void* library_handle);
 
  private:
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(LibraryHandles);
-
   void UnloadLibraries() noexcept;
 
   InlinedVector<std::pair<PathString, void*>> libraries_;
