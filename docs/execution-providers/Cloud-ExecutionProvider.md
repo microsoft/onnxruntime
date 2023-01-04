@@ -9,9 +9,10 @@ redirect_from: /docs/reference/execution-providers/Cloud-ExecutionProvider
 # Cloud Execution Provider
 
 The Cloud Execution Provider enables ONNX Runtime to invoke a cloud endpoint for inferenece, the endpoint must be deployed beforehand.
-By far, Cloud Execution Provider only:
-* only accept [trito](https://github.com/triton-inference-server) as server side.
-* only runs on Windows and Linux.
+To consume the endpoint, ONNX Runtime must load the same model locally, customer could then use configured run options to choose to go remote.
+By far, Cloud Execution Provider is limited to:
+* only support [triton](https://github.com/triton-inference-server) as server side.
+* only build and run on Windows and Linux.
 
 ## Contents
 {:toc}
@@ -48,11 +49,11 @@ import os
 sess_opt = SessionOptions()
 sess_opt.add_session_config_entry('cloud.endpoint_type', 'triton'); # only support triton server for now
 sess_opt.add_session_config_entry('cloud.uri', 'https://...')
-sess_opt.add_session_config_entry('cloud.model_name', 'model_name');
+sess_opt.add_session_config_entry('cloud.model_name', 'my_model');
 sess_opt.add_session_config_entry('cloud.model_version', '1'); # optional, default 1
 sess_opt.add_session_config_entry('cloud.verbose', 'true'); # optional, default false
 
-sess = InferenceSession('addf.onnx', sess_opt, providers=['CPUExecutionProvider','CloudExecutionProvider'])
+sess = InferenceSession('my_model.onnx', sess_opt, providers=['CPUExecutionProvider','CloudExecutionProvider'])
 
 run_opt = RunOptions()
 run_opt.add_run_config_entry('use_cloud', '1') # optional, default '0' to run inference locally.
