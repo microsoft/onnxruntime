@@ -499,7 +499,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
                                    const DeviceStreamCollection& device_streams,
 #endif
                                    const bool& terminate_flag,
@@ -514,7 +514,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   }
 
   // prepare the execution context, notifications got initialized.
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   StreamExecutionContext ctx(session_state,
                              valid_streams,
                              execution_plan->notification_owners,
