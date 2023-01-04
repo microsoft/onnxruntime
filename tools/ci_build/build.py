@@ -961,14 +961,15 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
-        "-DMSVC_Z7_OVERRIDE=" + ("ON" if is_windows() and args.use_cache else "OFF"),
     ]
     if args.use_cache:
         if not (is_windows() and args.cmake_generator != "Ninja"):
             cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
             if args.use_cuda:
-                cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+        if is_windows():
+            cmake_args.append("-DMSVC_Z7_OVERRIDE=ON")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -1004,7 +1005,6 @@ def generate_build_tree(
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
-        # cmake_args.append("-DCMAKE_CXX_FLAGS_RELWITHDEBINFO='/MD /Z7 /O2 /Ob1 /DNDEBUG'")
         if args.enable_msvc_static_runtime:
             add_default_definition(
                 cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded$<$<CONFIG:Debug>:Debug>"
