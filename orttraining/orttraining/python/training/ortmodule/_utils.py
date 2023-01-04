@@ -13,7 +13,7 @@ import traceback
 import types
 import warnings
 from typing import List
-from packaging.version import Version as StrictVersion
+from packaging.version import Version as LooseVersion
 
 import numpy as np
 import torch
