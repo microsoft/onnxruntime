@@ -9,13 +9,25 @@
 
 /*
  * Class:     ai_onnxruntime_OnnxRuntime
- * Method:    initialiseAPIBase
- * Signature: (I)J
+ * Method:    getApiBase
+ * Signature: ()J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseAPIBase(JNIEnv* jniEnv, jclass clazz,
-                                                                          jint apiVersion) {
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_getApiBase(JNIEnv* jniEnv, jclass clazz) {
   (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
-  const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t)apiVersion);
+  const OrtApiBase* ortApiBasePtr = OrtGetApiBase();
+  return (jlong)ortApiBasePtr;
+}
+
+/*
+ * Class:     ai_onnxruntime_OnnxRuntime
+ * Method:    initialiseApi
+ * Signature: (JI)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseApi(JNIEnv* jniEnv, jclass clazz,
+                                                                      jlong apiBaseHandle, jint apiVersion) {
+  (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
+  const OrtApiBase* apiBase = (const OrtApiBase*)apiBaseHandle;
+  const OrtApi* ortPtr = apiBase->GetApi((uint32_t)apiVersion);
   return (jlong)ortPtr;
 }
 

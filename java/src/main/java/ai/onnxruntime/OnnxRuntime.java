@@ -78,6 +78,9 @@ final class OnnxRuntime {
   /** Tracks if the shared providers have been extracted */
   private static final Set<String> extractedSharedProviders = new HashSet<>();
 
+  /** The OrtBaseApi handle. Only needed for direct registration of custom ops. */
+  static long ortBaseHandle;
+
   /** The API handle. */
   static long ortApiHandle;
 
@@ -138,7 +141,8 @@ final class OnnxRuntime {
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_11);
+      ortBaseHandle = getApiBase();
+      ortApiHandle = initialiseApi(ortBaseHandle, ORT_API_VERSION_11);
       providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {
@@ -419,12 +423,20 @@ final class OnnxRuntime {
   }
 
   /**
+   * Get a reference to the OrtApiBase struct.
+   *
+   * @return A pointer to the OrtApiBase struct.
+   */
+  private static native long getApiBase();
+
+  /**
    * Get a reference to the API struct.
    *
+   * @param ortApiBaseHandle The OrtApiBase struct handle obtained from getApiBase.
    * @param apiVersionNumber The API version to use.
    * @return A pointer to the API struct.
    */
-  private static native long initialiseAPIBase(int apiVersionNumber);
+  private static native long initialiseApi(long ortApiBaseHandle, int apiVersionNumber);
 
   /**
    * Gets the array of available providers.
