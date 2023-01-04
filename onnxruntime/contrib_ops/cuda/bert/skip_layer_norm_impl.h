@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
+template <typename T, bool Simplified>
 Status LaunchSkipLayerNormKernel(
     cudaStream_t stream,
     T* output,                 // normalized output tensor
