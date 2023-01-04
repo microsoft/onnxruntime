@@ -50,7 +50,7 @@ parameters:
   type: boolean
   default: false
 
-- name: USE_CACHE
+- name: WITH_CACHE
   displayName: Use Cache to acclerate compilation
   type: boolean
   default: false
@@ -66,6 +66,7 @@ jobs:
     DocUpdateNeeded: false  # Set to true during document generation if there are diffs
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}
@@ -136,16 +137,18 @@ jobs:
         ccache --version
       }
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
+    condition: eq(${{ parameters.WITH_CACHE }}, true)
 
   - task: Cache@2
     inputs:
-      key: 'ccache | "$(System.StageName)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)" '
+      key: '"$(TODAY)" | ccache | "$(System.StageName)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)" '
       path: $(CCACHE_DIR)
       restoreKeys: |
-        ccache | "$(System.StageName)" | "$(Build.SourceBranch)"
-        ccache | "$(System.StageName)"
-        ccache |
+        "$(TODAY)" | ccache | "$(System.StageName)" | "$(Build.SourceBranch)"
+        "$(TODAY)" | ccache | "$(System.StageName)"
+        "$(TODAY)" | ccache |
     displayName: Cache Task
+    condition: eq(${{ parameters.WITH_CACHE }}, true)
 
   - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
       - task: PowerShell@2
@@ -153,7 +156,10 @@ jobs:
         inputs:
           filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
           workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} -use_cache
+          ${{ if eq(parameters.WITH_CACHE, true) }}:
+            arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} -use_cache
+          ${{ else }}:
+            arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }}
 
       #Build.py disables running training python frontend tests on Windows, so here we don't install pytorch.
       - ${{ if eq(parameters.isTraining, true) }}:
@@ -166,6 +172,7 @@ jobs:
           ccache -sv
           ccache -z
         displayName: cache stat
+        condition: eq(${{ parameters.WITH_CACHE }}, true)
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -185,7 +192,10 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --use_cache --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      ${{ if eq(parameters.WITH_CACHE, true) }}:
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --use_cache --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      ${{ eles }}:
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -205,6 +215,8 @@ jobs:
       ccache -sv
       ccache -z
     displayName: cache stat
+    condition: eq(${{ parameters.WITH_CACHE }}, true)
+
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - task: PythonScript@0
@@ -289,11 +301,6 @@ jobs:
           customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
           publishXML: true
 
-      - powershell: |
-          ccache -sv
-          ccache -z
-        displayName: cache stat
-
       - task: SdtReport@2
         displayName: 'Create Security Analysis Report'
         inputs:
@@ -324,7 +331,10 @@ jobs:
       displayName: 'Generate documentation'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate --use_cache'
+        ${{ if eq(parameters.WITH_CACHE, true)}}:
+          arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate --use_cache'
+        ${{ else }}:
+          arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate'
         workingDirectory: '$(Build.BinariesDirectory)'
 
   # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
