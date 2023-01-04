@@ -1188,12 +1188,12 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "intra_op_num_threads",
           [](const PySessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; },
           [](PySessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; },
-          R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+          R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. If not set, defaults to half of the number of threads supported or 1 if there is only one thread.))pbdoc")
       .def_property(
           "inter_op_num_threads",
           [](const PySessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; },
           [](PySessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; },
-          R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+          R"pbdoc(Sets the number of threads used to parallelize the execution of the graph across nodes. If not set, defaults to half of the number of threads supported or 1 if there is only one thread.)pbdoc")
       .def_readwrite("execution_mode", &PySessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_readwrite("execution_order", &PySessionOptions::execution_order,
@@ -1332,7 +1332,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-      
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
