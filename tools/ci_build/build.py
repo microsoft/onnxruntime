@@ -13,7 +13,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from packaging.version import Version as LooseVersion
+try:
+    from packaging.version import Version as LooseVersion
+except ImportError:
+    # This is deprecated and will be removed in Python 3.12.
+    # See https://docs.python.org/3/library/distutils.html.
+    from distutils.version import LooseVersion
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))

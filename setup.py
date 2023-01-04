@@ -173,6 +173,8 @@ try:
 
         def run(self):
             if is_manylinux:
+                from distutils import log as logger
+
                 source = "onnxruntime/capi/onnxruntime_pybind11_state.so"
                 dest = "onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so"
                 logger.info("copying %s -> %s", source, dest)
@@ -295,6 +297,8 @@ try:
                 self._rewrite_ld_preload(to_preload_cann)
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+                from distutils import log as logger
+
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
