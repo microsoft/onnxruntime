@@ -4458,8 +4458,8 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
     auto* data_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
     auto* pow_initializer = builder.MakeInitializer<float>({}, {2.0f});
     auto* add_initializer = builder.MakeInitializer<float>({}, {1e-5f});
-    auto* weight_initializer = builder.MakeInitializer<MLFloat16>({3, 3}, std::vector<MLFloat16>(9, MLFloat16(1.0f)));
-    auto* bias_initializer = builder.MakeInitializer<MLFloat16>({3, 3}, std::vector<MLFloat16>(9, MLFloat16(0.0f)));
+    auto* weight_initializer = builder.MakeInitializer<MLFloat16>({3}, std::vector<MLFloat16>(3, MLFloat16(1.0f)));
+    auto* bias_initializer = builder.MakeInitializer<MLFloat16>({3}, std::vector<MLFloat16>(3, MLFloat16(0.0f)));
     auto* reduce_mean_out_1 = builder.MakeIntermediate();
     auto* sub_out = builder.MakeIntermediate();
     auto* cast_out_1 = builder.MakeIntermediate();
@@ -4472,12 +4472,12 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
     auto* mul_out = builder.MakeIntermediate();
     auto* add_out_2 = builder.MakeOutput();
 
-    builder.AddNode("ReduceMean", {data_arg}, {reduce_mean_out_1}).AddAttribute("axes", std::vector<int64_t>{-2, -1});
+    builder.AddNode("ReduceMean", {data_arg}, {reduce_mean_out_1}).AddAttribute("axes", std::vector<int64_t>{-1});
     builder.AddNode("Sub", {data_arg, reduce_mean_out_1}, {sub_out});
     builder.AddNode("Cast", {sub_out}, {cast_out_1})
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
     builder.AddNode("Pow", {cast_out_1, pow_initializer}, {pow_out});
-    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", std::vector<int64_t>{-2, -1});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", std::vector<int64_t>{-1});
     builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
     builder.AddNode("Sqrt", {add_out_1}, {sqrt_out});
     builder.AddNode("Div", {cast_out_1, sqrt_out}, {div_out});
