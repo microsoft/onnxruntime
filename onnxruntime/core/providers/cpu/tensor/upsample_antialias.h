@@ -22,7 +22,6 @@ constexpr int32_t mag_factor = 1 << (22 - 1);
 template <typename T>
 struct FilterParamsBaseAntiAlias {
   std::vector<int64_t> bound;
-  std::vector<float> original;
   std::vector<int64_t> out_of_bound_idx;
   int64_t window_size = 2;
   IAllocatorUniquePtr<T> weight_coefficients;
@@ -159,7 +158,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
                                                                                                FilterParamsBaseAntiAlias<T>& param_base,
                                                                                                const float rscale) -> int64_t {
     param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
-    param_base.original.reserve(static_cast<size_t>(output_size));
     param_base.out_of_bound_idx.reserve(static_cast<size_t>(output_size));
 
     float scale = 1.0f / rscale;
@@ -184,8 +182,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
                                                                      static_cast<float>(output_size),
                                                                      static_cast<float>(input_size),
                                                                      roi[roi_start], roi[roi_end]));
-      param_base.original.emplace_back(center - 0.5f);
-      if (center - 0.5f < 0) {
+      if (center - 0.5f < 0 || center - 0.5f > narrow<float>(input_size - 1)) {
         param_base.out_of_bound_idx.emplace_back(i);
       }
       float total_weight = 0.0;
@@ -253,10 +250,10 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
   p.clip8_lookups_table = clip8_lookups_table;
 
   p.init_clip_lookup();
-  p.dim_y.window_size = compute_weight_coefficients(p, input_h_w_c[0], output_h_w_c[0], height_rindex,
-                                                    p.dim_y, scale_h_w_c[0]);
   p.dim_x.window_size = compute_weight_coefficients(p, input_h_w_c[1], output_h_w_c[1], width_rindex,
                                                     p.dim_x, scale_h_w_c[1]);
+  p.dim_y.window_size = compute_weight_coefficients(p, input_h_w_c[0], output_h_w_c[0], height_rindex,
+                                                    p.dim_y, scale_h_w_c[0]);
   if (input_h_w_c.size() == 3) {
     p.dim_z.window_size = compute_weight_coefficients(p, input_h_w_c[2], output_h_w_c[2], channel_rindex,
                                                       p.dim_z, scale_h_w_c[2]);
@@ -434,7 +431,7 @@ void HandleExtrapolation(int64_t num_channels,
       [&](std::ptrdiff_t nc) {
         InputType* Ydata_base_nc = Ydata_span.data() + (nc) * (output_depth * output_height * output_width);
 
-        for (int64_t z = 0; z < output_depth; ++z) {
+        for (int64_t z = 0; z < output_depth && p.dim_x.out_of_bound_idx.size() > 0; ++z) {
           for (int64_t y = 0; y < output_height; ++y) {
             InputType* Ydata_offset = Ydata_base_nc + (z * output_height + y) * output_width;
             for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
@@ -443,7 +440,7 @@ void HandleExtrapolation(int64_t num_channels,
           }
         }
 
-        for (int64_t z = 0; z < output_depth; ++z) {
+        for (int64_t z = 0; z < output_depth && p.dim_y.out_of_bound_idx.size() > 0; ++z) {
           for (int64_t y : p.dim_y.out_of_bound_idx) {
             InputType* Ydata_offset = Ydata_base_nc + (z * output_height + y) * output_width;
             std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <exception>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -1808,13 +1809,21 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
     } else if (k == "output_shape") {
       int64_t type = 0;
       output_shape = parse_attr(v, type);
+    } else if (k == "coordinate_transformation_mode") {
+      test.AddAttribute("coordinate_transformation_mode", v);
     } else if (k == "policy") {
       test.AddAttribute("keep_aspect_ratio_policy", v);
+    } else if (k == "extrapolation_value") {
+      test.AddAttribute<float>("extrapolation_value", std::stof(v));
+    } else if (k == "roi") {
+      roi = parse_attr(v, 0.0f);
+    } else {
+      throw std::invalid_argument("Unknown attribute");
     }
   }
 
   test.AddInput<T>("X", input_shape, input_data);
-  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
 
   if constexpr (std::is_same_v<T1, float>) {
     test.AddInput<float>("scales", {int64_t(output_shape_or_scale.size())}, output_shape_or_scale, true);
@@ -2085,6 +2094,26 @@ TEST(ResizeOpTest, Antialias_Axes_and_PolicyNoSmaller) {
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"policy", "not_smaller"}},
                    {1, 1, 4, 4, 4}, X,
                    {1, 2, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {4.5555553f, 5.4385967f, 6.1666665f, 9.888889f, 10.77193f,
+                          11.5f, 15.222222f, 16.105263f, 16.833334f, 16.20468f,
+                          17.08772f, 17.81579f, 21.538012f, 22.421053f, 23.149124f,
+                          26.871346f, 27.754387f, 28.482456f, 30.333334f, 31.216375f,
+                          31.944447f, 35.666668f, 36.54971f, 37.27778f, 41.,
+                          41.88304f, 42.61111f};
+  TestAntialiasing(
+      {{"mode", "linear"}, {"exclude_outside", "0"}, {"extrapolation_value", "1.1f"},
+
+       {"coordinate_transformation_mode", "tf_crop_and_resize"},
+       {"roi", "{0, 0, 0.4, 0.6, 1, 1}"},
+       {"axes", "{0,1,2}"}
+
+      },
+      {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
 }  // namespace test
