@@ -7,6 +7,8 @@
 
 #ifdef _WIN32
 #define OV_WRAPPER_EXPORT __declspec(dllexport)
+#elif __APPLE__
+#define OV_WRAPPER_EXPORT __attribute__((visibility("default")))
 #else
 #define OV_WRAPPER_EXPORT
 #endif
