@@ -11,8 +11,9 @@ import shlex
 import shutil
 import subprocess
 import sys
-from distutils.version import LooseVersion
 from pathlib import Path
+
+from packaging.version import Version as LooseVersion
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
