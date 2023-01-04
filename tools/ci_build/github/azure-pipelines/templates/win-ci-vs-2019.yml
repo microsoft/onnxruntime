@@ -50,6 +50,11 @@ parameters:
   type: boolean
   default: false
 
+- name: USE_CACHE
+  displayName: Use Cache to acclerate compilation
+  type: boolean
+  default: false
+
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
   variables:
