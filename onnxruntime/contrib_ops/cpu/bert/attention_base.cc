@@ -345,7 +345,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0);
-    output_parameters->is_packed_kv = is_packed_kv;
+    // output_parameters->is_packed_kv = is_packed_kv;
   }
 
   return Status::OK();

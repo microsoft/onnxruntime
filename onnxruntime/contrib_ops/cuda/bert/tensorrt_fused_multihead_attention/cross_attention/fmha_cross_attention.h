@@ -290,7 +290,6 @@ inline void run_fused_cross_attention(
     void* cuSeqlensQ,                                   // cumulated sequence length of Q in device
     void* cuSeqlensKV,                                  // cumulated sequence length of KV in device
     void* devOutput,                                    // output in device
-    int32_t sm,                                         // SM of device
     FusedMultiHeadCrossAttentionKernel const* kernels,  // kernels
     int32_t b = 2,                                      // batch size
     int32_t h = 8,                                      // number of heads
