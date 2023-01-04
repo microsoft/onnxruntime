@@ -158,13 +158,6 @@ public:
         TensorDesc scalarTensorDesc(indicesDataType, std::vector<uint32_t>(m_inputTensorDescs[0].GetDimensionCount(), 1));
         DML_TENSOR_DESC scalarDmlTensorDesc = scalarTensorDesc.GetDmlDesc();
 
-        // Create a tensor full of zeros
-        DML_FILL_VALUE_CONSTANT_OPERATOR_DESC zerosDesc = {};
-        zerosDesc.Value.Int32 = 0;
-        zerosDesc.ValueDataType = indicesDataType;
-        zerosDesc.OutputTensor = &scalarDmlTensorDesc;
-        DML_OPERATOR_DESC zerosOpDesc = { DML_OPERATOR_FILL_VALUE_CONSTANT, &zerosDesc };
-
         // Create a tensor full of ones
         DML_FILL_VALUE_CONSTANT_OPERATOR_DESC onesDesc = {};
         onesDesc.Value.Int32 = 1;
@@ -216,14 +209,6 @@ public:
         outputEdges.reserve(3);
 
         uint32_t currentNodeIndex = 0;
-
-        // Insert the zeros operation into the graph
-        const uint32_t zerosNodeIndex = currentNodeIndex;
-        if (!maskDesc.Desc)
-        {
-            opDescs.push_back(&zerosOpDesc);
-            currentNodeIndex++;
-        }
 
         // Insert the sequence operation into the graph
         const uint32_t sequenceIdsNodeIndex = currentNodeIndex;
@@ -462,11 +447,7 @@ public:
         else
         {
             // Insert the edge feeding into the MaskIndex output
-            DML_OUTPUT_GRAPH_EDGE_DESC maskIndexOutputEdge = {};
-            maskIndexOutputEdge.GraphOutputIndex = 1;
-            maskIndexOutputEdge.FromNodeIndex = zerosNodeIndex;
-            maskIndexOutputEdge.FromNodeOutputIndex = 0;
-            outputEdges.push_back(std::move(maskIndexOutputEdge));
+            m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[1].GetBufferSizeInBytes());
         }
 
         // Insert the edge feeding into the values output
@@ -488,6 +469,26 @@ public:
 
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
+
+    void Compute(const MLOperatorKernelContext& kernelContext) override
+    {
+        std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
+        std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
+
+        if (m_zeroOperator)
+        {
+            ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[1]);
+        }
+
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            m_compiledOperator.Get(),
+            m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+            gsl::make_span(inputTensors),
+            gsl::make_span(outputTensors)));
+    }
+
+private:
+    ComPtr<IDMLCompiledOperator> m_zeroOperator;
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(EmbedLayerNormalization, DmlOperatorEmbedLayerNormalization);
