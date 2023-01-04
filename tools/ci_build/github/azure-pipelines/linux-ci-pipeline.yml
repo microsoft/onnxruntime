@@ -47,7 +47,8 @@ jobs:
       path: $(CCACHE_DIR)
       cacheHitVar: CACHE_RESTORED
       restoreKeys: |
-        "$(TODAY)"" | "ccache" | "$(Build.SourceBranch)"
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
     displayName: Cach Task
 
   - script: |
