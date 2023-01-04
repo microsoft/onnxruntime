@@ -815,7 +815,7 @@ See the [Cloud Execution Provider](../execution-providers/Cloud-ExecutionProvide
 #### Windows
 
 ```dos
-build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --use_cloud
+build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --use_cloud
 ```
 
 #### Linux
@@ -823,8 +823,8 @@ build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --use_cloud
 Before building, please:
 
 * Install openssl dev package into the system, which is openssl-dev for redhat and libssl-dev for ubuntu.
-* If got multiple openssl dev versions installed in the system, please set environment variable "OPENSSL_ROOT_DIR" to correct version.
+* If got multiple openssl dev versions installed in the system, please set environment variable "OPENSSL_ROOT_DIR" to the desired version.
 
 ```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --parallel --use_cloud
+./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --parallel --use_cloud
 ```

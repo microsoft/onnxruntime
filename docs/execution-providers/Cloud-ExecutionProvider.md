@@ -21,9 +21,15 @@ By far, Cloud Execution Provider only:
 {:toc}
 
 ## Requirements
-For Windows, please install [zlib](https://zlib.net/) and [re2](https://github.com/google/re2), and add their binareis into system path;
-If building from source, zlib and re2 binaries could be simply found under build output folder, which can be located with "dir /s zlib1.dll re2.dll".
-For Linux, please make openssl is installed.
+For Windows, please install [zlib](https://zlib.net/) and [re2](https://github.com/google/re2), and add their binareis into system path.
+If building from source, zlib and re2 binaries could be simply found under build output folder, which can be located with:
+
+```dos
+cd <build_output>
+dir /s zlib1.dll re2.dll
+```
+
+For Linux, please make sure openssl is installed.
 
 ## Known issues
 For certain ubuntu versions, https call made by CloudEP might report error like - "error setting certificate verify location ...",
@@ -42,17 +48,17 @@ import numpy as np
 import os
 
 sess_opt = SessionOptions()
-sess_opt.add_session_config_entry('cloud.endpoint_type', 'triton');
+sess_opt.add_session_config_entry('cloud.endpoint_type', 'triton'); # only support triton server for now
 sess_opt.add_session_config_entry('cloud.uri', 'https://...')
 sess_opt.add_session_config_entry('cloud.model_name', 'model_name');
-sess_opt.add_session_config_entry('cloud.model_version', '1'); #optional, default 1
-sess_opt.add_session_config_entry('cloud.verbose', 'true'); #optional, default false
+sess_opt.add_session_config_entry('cloud.model_version', '1'); # optional, default 1
+sess_opt.add_session_config_entry('cloud.verbose', 'true'); # optional, default false
 
 sess = InferenceSession('addf.onnx', sess_opt, providers=['CPUExecutionProvider','CloudExecutionProvider'])
 
 run_opt = RunOptions()
-run_opt.add_run_config_entry('use_cloud', '1')
-run_opt.add_run_config_entry('cloud.auth_key', '...')
+run_opt.add_run_config_entry('use_cloud', '1') # optional, default '0' to run inference locally.
+run_opt.add_run_config_entry('cloud.auth_key', '...') # optional, required only when use_cloud set to 1
 
 x = np.array([1,2,3,4]).astype(np.float32)
 y = np.array([4,3,2,1]).astype(np.float32)
