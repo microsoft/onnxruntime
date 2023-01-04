@@ -568,7 +568,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 struct DeviceStreamCollectionHolder {
   DeviceStreamCollectionHolder(
       const SessionState& session_state) : session_state_(session_state),
-                                           p_(session_state.HasDeviceStreamEnabledEp() ? session_state.AcquireDeviceStreamCollection() : nullptr) {
+                                           p_(session_state.AcquireDeviceStreamCollection()) {
   }
 
   ~DeviceStreamCollectionHolder() {

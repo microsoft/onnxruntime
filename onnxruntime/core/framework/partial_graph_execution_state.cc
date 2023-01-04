@@ -45,9 +45,6 @@ PartialGraphExecutionState::~PartialGraphExecutionState() {
 }
 
 DeviceStreamCollection* PartialGraphExecutionState::GetDeviceStreamCollection(const SessionState& session_state) {
-  if (session_state.HasDeviceStreamEnabledEp()) {
-    return nullptr;
-  }
   if (device_stream_collection_ == nullptr) {
     device_stream_collection_ = session_state.AcquireDeviceStreamCollection();
     // the life-time of partial graph execution state is in-consistant with session,

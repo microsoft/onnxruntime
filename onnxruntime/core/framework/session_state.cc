@@ -1555,10 +1555,8 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
       return device_stream;
     }
   } else {
-    // no reusing of device stream is needed, just return a new instance.
-    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
-    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
-    return device_stream;
+    // no reusing of device stream is needed, just return nullptr, the caller will handle it
+    return nullptr;
   }
 }
 
