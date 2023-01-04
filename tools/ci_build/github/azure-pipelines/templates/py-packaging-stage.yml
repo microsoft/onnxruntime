@@ -95,6 +95,7 @@ stages:
         EnvSetupScript: setup_env.bat
         setVcvars: true
         BuildConfig: 'RelWithDebInfo'
+        ExtraParam: ${{ parameters.build_py_parameters }}
       timeoutInMinutes: 120
       workspace:
         clean: all
@@ -220,20 +221,14 @@ stages:
           AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
         continueOnError: true
 
-      - task: DeleteFiles@1
-        displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-          Contents: |
-            **/*.obj
-            **/*.pdb
-            **/*.dll
-
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
+         if ("$(ExtraParam)" -contains "--use_cloud") {
+           $env:path="$(Build.BinariesDirectory)\$(BuildConfig)\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+           python onnxruntime_test_python_cloud.py
+         }
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
         displayName: 'Run Python Tests'
@@ -478,6 +473,8 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-10/root
           ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+            device: '-d CLOUD'
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
       - template: py-linux.yml
@@ -488,6 +485,8 @@ stages:
           devtoolset_rootpath: /opt/rh/devtoolset-11/root
           ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
           prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
+          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+            device: '-d CLOUD'
 
   - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
       - template: py-linux-ubuntu.yml
@@ -495,6 +494,8 @@ stages:
           arch: 'aarch64'
           machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
           base_image: 'arm64v8/ubuntu:18.04'
+          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+            device: '-d CLOUD'
 
   - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
       - template: py-linux-ubuntu.yml
@@ -502,9 +503,13 @@ stages:
           arch: 'x86_64'
           machine_pool: 'Linux-CPU'
           base_image: 'ubuntu:18.04'
+          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+            device: '-d CLOUD'
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
       - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
           machine_pool: 'Linux-CPU'
+          ${{ if contains(parameters.build_py_parameters, '--use_cloud') }}:
+            device: '-d CLOUD'

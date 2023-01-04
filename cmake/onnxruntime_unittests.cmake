@@ -253,8 +253,8 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  file(GLOB onnxruntime_test_training_on_device_src
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  file(GLOB onnxruntime_test_training_api_src
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
@@ -467,6 +467,10 @@ if(onnxruntime_USE_DML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
 endif()
 
+if(onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
+endif()
+
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
@@ -510,6 +514,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -586,6 +591,13 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
+if(onnxruntime_USE_CLOUD)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
+endif()
+
 if(WIN32)
   if (onnxruntime_USE_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
@@ -596,8 +608,8 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
-#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common). 
-#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same 
+#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
+#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
 #process and you won't know which one you are testing.
 onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
@@ -672,8 +684,8 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND all_tests ${onnxruntime_test_training_api_src})
   endif()
 endif()
 
@@ -709,7 +721,7 @@ endif()
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
     if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
-       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock. 
+       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock.
        # Therefore we only run filtered TRT EP tests.
       list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
       #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
@@ -1009,7 +1021,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_optimizer
           onnxruntime_providers
           onnxruntime_util
-          onnxruntime_framework          
+          onnxruntime_framework
           onnxruntime_graph
           ${ONNXRUNTIME_MLAS_LIBS}
           onnxruntime_common
@@ -1079,7 +1091,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   if (onnxruntime_BUILD_SHARED_LIB)
     #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
-    #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless. 
+    #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
     set(onnxruntime_perf_test_libs
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
@@ -1253,8 +1265,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
-  endif()  
-  
+  endif()
+
   if(WIN32)
     target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
   endif()

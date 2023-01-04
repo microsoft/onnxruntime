@@ -127,8 +127,8 @@ struct OrtTrainingApi {
    *
    */
   ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                  size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
-                  size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+                  _In_ size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
+                  _In_ size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
   /** \brief Computes the outputs for the eval model for the given inputs
    *
@@ -146,8 +146,8 @@ struct OrtTrainingApi {
    *
    */
   ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                  size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
-                  size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+                  _In_ size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
+                  _In_ size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
   /** \brief Sets the learning rate for this training session.
    *

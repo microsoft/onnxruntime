@@ -127,14 +127,6 @@ jobs:
           workingDirectory: '$(Build.BinariesDirectory)'
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }}
 
-
-      #Build.py disables running training python frontend tests on Windows, so here we don't install pytorch.
-      - ${{ if eq(parameters.isTraining, true) }}:
-          - script: |
-             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
-            workingDirectory: '$(Build.BinariesDirectory)'
-            displayName: 'Install python modules'
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:

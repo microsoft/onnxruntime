@@ -8,7 +8,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #endif
 
@@ -34,7 +34,7 @@
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/checkpoint.h"
 #include "orttraining/training_api/include/lr_scheduler.h"
 
@@ -77,7 +77,7 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
     j += 1;
   }
 }
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 namespace {
 // This function is used to create an execution provider to be passed to Module and Optimizer.
 std::vector<std::shared_ptr<IExecutionProvider>>
@@ -164,7 +164,7 @@ struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
 };
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 // Thin wrapper over internal C++ Optimizer
 struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri,
@@ -866,7 +866,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
       .def(py::init([](const std::string& model_uri,

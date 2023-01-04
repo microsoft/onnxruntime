@@ -47,7 +47,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
 #include "orttraining/training_api/include/ort_training_apis.h"
 #endif
@@ -2292,14 +2292,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
   return OrtTrainingApis::GetTrainingApi(version);
 #else
 
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training and enable_training_on_device to "
+          "from source with the build flags enable_training and enable_training_apis to "
           "retrieve the training APIs.\n");
 
   return nullptr;

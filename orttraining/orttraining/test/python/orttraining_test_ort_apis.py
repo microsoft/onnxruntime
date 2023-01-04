@@ -2,10 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file contains calls to the tests for on device training offline tooling
-# and training apis. The tests are run in a separate process to avoid
-# testing the entire ort suite of tests yet again (since they are covered in
-# other pipelines) using the gtest filter.
+# This file contains calls to the tests for ONNXBlock (front end tooling for ort training apis) and training apis.
+# The tests are run in a separate process to avoid testing the entire ort suite of tests yet again (since they
+# are covered in other pipelines) using the gtest filter.
 
 import argparse
 import logging
@@ -15,7 +14,7 @@ import sys
 from _test_commons import run_subprocess
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
-log = logging.getLogger("OnDeviceTrainingTests")
+log = logging.getLogger("TrainingAPIsTests")
 
 
 def parse_arguments():
@@ -24,10 +23,10 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def run_on_device_training_python_api_tests(cwd, log):
-    """Runs the tests for on-device training api."""
+def run_training_apis_python_api_tests(cwd, log):
+    """Runs the tests for ort training apis."""
 
-    log.debug("Running: on device training api tests")
+    log.debug("Running: ort training api tests")
 
     command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_python_bindings.py"]
 
@@ -35,7 +34,7 @@ def run_on_device_training_python_api_tests(cwd, log):
 
 
 def run_onnxblock_tests(cwd, log):
-    """Runs the offline tooling tests for on-device training."""
+    """Runs the offline tooling tests for ort training apis."""
 
     log.debug("Running: onnxblock tests")
 

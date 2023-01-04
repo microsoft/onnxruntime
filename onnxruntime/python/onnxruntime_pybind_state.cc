@@ -739,6 +739,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       ORT_THROW("create CANN ExecutionProvider fail");
     }
 #endif
+  } else if (type == kCloudExecutionProvider) {
+#ifdef USE_CLOUD
+    return onnxruntime::CloudProviderFactoryCreator::Create({})->CreateProvider();
+#endif
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);

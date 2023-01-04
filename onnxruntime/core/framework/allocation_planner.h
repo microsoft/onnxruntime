@@ -72,7 +72,7 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   bool enable_memory_reuse_ = true;
 };
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 // Given a graph with node placement information, partition the nodes into multiple sequence.
 // Each sequence can be executed in-dependently. The nodes in each sequence are executed in order,
 // but we can't assume any execution order between sequences, unless there is a data dependency.
@@ -121,7 +121,7 @@ class SequentialPlanner {
       const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
       const std::string& partition_config_file,
