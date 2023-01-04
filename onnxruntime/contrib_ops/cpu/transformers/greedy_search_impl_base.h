@@ -74,7 +74,7 @@ class GreedySearchBase : public GenerateBase {
   GreedySearchBase(OpKernelContextInternal& context,
                    const SessionState& decoder_session_state,
                    concurrency::ThreadPool* thread_pool,
-                   void* cuda_stream,
+                   Stream* ort_stream,
                    IConsoleDumper* cuda_dumper,
                    GreedySearchParameters& params,
                    const GenerationDeviceHelper::TopkFunc& topk_func,
@@ -83,7 +83,7 @@ class GreedySearchBase : public GenerateBase {
     : GenerateBase(context,
                    decoder_session_state,
                    thread_pool,
-                   cuda_stream,
+                   ort_stream,
                    cuda_dumper,
                    topk_func,
                    device_copy_func),
@@ -163,7 +163,7 @@ Status GreedySearchBase<T>::ProcessLogits(
     int counter) {
   return process_logits_func_(logits, &greedy_state, &(greedy_state.sequences), allocator,
                               this->thread_pool_, &this->logits_processors_,
-                              parameters_, counter, this->cuda_stream_, this->GetConsoleDumper());
+                              parameters_, counter, this->ort_stream_, this->GetConsoleDumper());
 }
 
 template <typename T>

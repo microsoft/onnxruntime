@@ -148,9 +148,13 @@ set(provider_excluded_files
   "cuda_profiler.h"
   "cuda_provider_factory.cc"
   "cuda_provider_factory.h"
+  "cuda_stream_handle.cc",
+  "cuda_stream_handle.h",
   "cuda_utils.cu"
   "cudnn_common.cc"
   "cudnn_common.h"
+  "cupti_manager.cc"
+  "cupti_manager.h"
   "fpgeneric.cu"
   "gpu_data_transfer.cc"
   "gpu_data_transfer.h"

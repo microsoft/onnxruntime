@@ -89,10 +89,10 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
 
   /** \brief Lazily resets the gradients of the trainable parameters.
    *
-   * Wraps OrtTrainingApi::ResetGrad
+   * Wraps OrtTrainingApi::LazyResetGrad
    *
    */
-  void ResetGrad();
+  void LazyResetGrad();
 
   /** \brief Run the evaluation step returning results in an Ort allocated vector.
    *
@@ -152,6 +152,8 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
   void ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path,
                                  const std::vector<std::string>& graph_output_names);
 };
+
+void SetSeed(const int64_t seed);
 
 }  // namespace Ort
 
