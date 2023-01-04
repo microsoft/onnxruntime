@@ -170,6 +170,7 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 ### Thread management
 
 * Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
+* By default, both of these values are set to half of the number of threads supported by the current implementation.
 
 #### Custom threading callbacks
 
