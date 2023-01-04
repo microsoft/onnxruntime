@@ -1361,6 +1361,9 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
              "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
     endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.def")
   endif()
 
   set_property(TARGET custom_op_invalid_library APPEND_STRING PROPERTY LINK_FLAGS
