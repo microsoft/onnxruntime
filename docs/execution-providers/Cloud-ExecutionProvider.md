@@ -7,7 +7,6 @@ redirect_from: /docs/reference/execution-providers/Cloud-ExecutionProvider
 ---
 
 # Cloud Execution Provider
-{: .no_toc }
 
 The Cloud Execution Provider enables ONNX Runtime to invoke a cloud endpoint for inferenece, the endpoint must be deployed beforehand.
 By far, Cloud Execution Provider only:
