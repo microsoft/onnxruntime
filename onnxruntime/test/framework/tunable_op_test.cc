@@ -206,7 +206,6 @@ TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
   ASSERT_EQ(c, 7500042);
 }
 
-
 class VecAddWithIsSupportedMethod {
  public:
   VecAddWithIsSupportedMethod(VecAddWithIsSupportedMethod&&) = default;

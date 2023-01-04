@@ -136,7 +136,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   *final_output_shape->add_dim() =
       ctx.getInputType(1)->tensor_type().shape().dim(1) *
       group;  // channels should be the second dim of second input multiply
-              // group.
+  // group.
 
   int size_of_output;
   if (output_shape_presented) {
@@ -510,6 +510,13 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   sequences_shape.add_dim()->set_dim_value(batch_size);
   sequences_shape.add_dim()->set_dim_value(max_length_value);
   updateOutputShape(ctx, 0, sequences_shape);
+
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::TensorShapeProto logits_to_debug_shape;
+    logits_to_debug_shape.add_dim()->set_dim_value(batch_size);
+    logits_to_debug_shape.add_dim();
+    updateOutputShape(ctx, 1, logits_to_debug_shape);
+  }
 }
 
 constexpr const char* Gelu_ver1_doc =
@@ -1044,6 +1051,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Attr("vocab_size",
                                       "Size of the vocabulary. "
@@ -1085,7 +1096,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before `decoder` subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Attr("vocab_size",
                                       "Size of the vocabulary. "
@@ -1100,6 +1115,48 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
                                 // TODO(wy): support scores if needed.
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  GreedySearchShapeInference(ctx);
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
+                            OpSchema()
+                                .SetDoc("Greedy Sampling for text generation.")
+                                .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+                                .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("temperature", "The value used to module the next token probabilities.", AttributeProto::FLOAT, 1.0f)
+                                .Attr("top_p",
+                                      "If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to `top_p` or higher are kept for generation.",
+                                      AttributeProto::FLOAT, 0.0f)
+                                .Attr("filter_value", "All filtered values will be set to this float value.", AttributeProto::FLOAT, -1e20f)
+                                .Attr("min_tokens_to_keep", "Minimumber of tokens we keep per batch example in the output.", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("presence_penalty", "Presence penalty for custom sampling", AttributeProto::FLOAT, 0.0f)
+                                .Attr("custom", "If 1 custom sampling logic", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("model_type", "Model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+                                .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(3, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(4, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "I", OpSchema::Optional)
+                                .Input(5, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
+                                .Input(7, "presence_mask", "Presence penalty mask. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
+                                .Output(1, "filtered_logits", "Filtered logits as input to the mutinomial function for debug purpose. Shape is (batch_size, vocab_size)", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

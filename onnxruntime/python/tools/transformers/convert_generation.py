@@ -25,6 +25,9 @@ Example 4: convert MT5 model with external data file like mt5-base-beamsearch.on
 
 Example 5: convert gpt2 model with greedy search:
     python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
+
+Example 6: convert gpt2 model with sampling:
+    python convert_generation.py -m gpt2 --output gpt2_sampling.onnx --num_beams 1 --num_return_sequences 1 --top_p 0.6
 """
 
 import argparse
@@ -72,6 +75,7 @@ logger = logging.getLogger("")
 class GenerationType(Enum):
     BEAMSEARCH = "beam_search"
     GREEDYSEARCH = "greedy_search"
+    SAMPLING = "sampling"
 
     def __str__(self):
         return self.value
@@ -183,11 +187,20 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(pad_vocab_size=True)
 
     output_group.add_argument(
+        "-sgd",
+        "--separate_gpt2_decoder_for_init_run",
+        required=False,
+        action="store_true",
+        help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
+    )
+    output_group.set_defaults(separate_gpt2_decoder_for_init_run=True)
+
+    output_group.add_argument(
         "-i",
         "--disable_shared_initializers",
         required=False,
         action="store_true",
-        help="do not share initializers in encoder and decoder. It will increase memory usage of t5/mt5 models.",
+        help="do not share initializers in encoder and decoder for T5 or in the init decoder and decoder for GPT2. It will increase memory usage of t5/mt5/gpt2 models.",
     )
     output_group.set_defaults(disable_shared_initializers=False)
 
@@ -229,6 +242,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(vocab_mask=False)
 
     model_group.add_argument(
+        "--past_present_share_buffer",
+        required=False,
+        action="store_true",
+        help="Use shared buffer for past and present, currently work for gpt2 greedy search.",
+    )
+    model_group.set_defaults(past_present_share_buffer=False)
+
+    model_group.add_argument(
         "--prefix_vocab_mask",
         required=False,
         action="store_true",
@@ -243,6 +264,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Enable custom_attention_mask. This mask can be used to replace default encoder attention mask",
     )
     model_group.set_defaults(custom_attention_mask=False)
+
+    model_group.add_argument(
+        "--presence_mask",
+        required=False,
+        action="store_true",
+        help="Presence mask for custom sampling",
+    )
+    model_group.set_defaults(presence_mask=False)
 
     beam_parameters_group = parser.add_argument_group(
         "Beam search parameters not stored in the output model, for testing parity and performance"
@@ -276,6 +305,54 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         required=False,
         default=1,
         help="Positive. >1 to penalize and <1 to encourage.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--temperature",
+        type=float,
+        required=False,
+        default=1.0,
+        help="The value used to module the next token probabilities.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--top_p",
+        type=float,
+        required=False,
+        default=1.0,
+        help="Top P for sampling",
+    )
+
+    beam_parameters_group.add_argument(
+        "--filter_value",
+        type=float,
+        required=False,
+        default=-float("Inf"),
+        help="Filter value for Top P sampling",
+    )
+
+    beam_parameters_group.add_argument(
+        "--min_tokens_to_keep",
+        type=int,
+        required=False,
+        default=1,
+        help="Minimumber of tokens we keep per batch example in the output.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--presence_penalty",
+        type=float,
+        required=False,
+        default=0.0,
+        help="presence penalty for custom sampling.",
+    )
+
+    beam_parameters_group.add_argument(
+        "--custom",
+        type=int,
+        required=False,
+        default=0,
+        help="If 1 customized top P logic is applied",
     )
 
     beam_parameters_group.add_argument(
@@ -350,7 +427,6 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "1",
         "--test_cases",
         "10",
-        "--use_int32_inputs",  # BeamSearch requires to use int32 for input_ids, position_ids and attention_mask
         "--overwrite",  # Overwrite onnx file if existed
     ]
     if args.use_gpu:
@@ -867,6 +943,317 @@ def move_initializers(
     return moved_initializers
 
 
+def _attribute_to_pair(attribute):
+    """
+    Convert attribute to kwarg format for use with onnx.helper.make_node.
+        :parameter attribute: attribute in AttributeProto format.
+        :return: attribute in {key: value} format.
+    """
+    if attribute.type == 0:
+        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
+
+    # Based on attribute type definitions from AttributeProto
+    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    if attribute.type == 1:
+        value = attribute.f
+    elif attribute.type == 2:
+        value = attribute.i
+    elif attribute.type == 3:
+        value = attribute.s
+    elif attribute.type == 4:
+        value = attribute.t
+    elif attribute.type == 5:
+        value = attribute.g
+    elif attribute.type == 6:
+        value = attribute.floats
+    elif attribute.type == 7:
+        value = attribute.ints
+    elif attribute.type == 8:
+        value = attribute.strings
+    elif attribute.type == 9:
+        value = attribute.tensors
+    elif attribute.type == 10:
+        value = attribute.graphs
+    else:
+        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
+
+    return (attribute.name, value)
+
+
+def kwargs_of(node):
+    kwargs = {}
+    for attr in node.attribute:
+        (key, value) = _attribute_to_pair(attr)
+        kwargs.update({key: value})
+    if node.domain:
+        kwargs.update({"domain": node.domain})
+    return kwargs
+
+
+def shape_of(vi):
+    return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
+
+
+def update_decoder_subgraph_past_present_share_buffer(subg):
+    input_past_0 = 3
+    output_past_0 = 1
+    new_inputs = []
+    for i, vi in enumerate(subg.input):
+        if i >= input_past_0:
+            shape = shape_of(vi)
+            vi = onnx.helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
+            )
+        new_inputs.extend([vi])
+    new_inputs.extend([onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])])
+    subg.ClearField("input")
+    subg.input.extend(new_inputs)
+
+    new_outputs = []
+    for i, vi in enumerate(subg.output):
+        if i >= output_past_0:
+            shape = shape_of(vi)
+            vi = onnx.helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
+            )
+        new_outputs.extend([vi])
+    subg.ClearField("output")
+    subg.output.extend(new_outputs)
+
+    new_nodes = []
+    for node in subg.node:
+        if node.op_type == "Attention":
+            kwargs = kwargs_of(node)
+            kwargs.update({"past_present_share_buffer": 1})
+            nis = []
+            nis.extend(node.input)
+            while len(nis) < 8:
+                nis.extend([""])
+            if len(nis) < 9:
+                nis.extend(["past_sequence_length"])
+            node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
+        new_nodes.extend([node])
+    subg.ClearField("node")
+    subg.node.extend(new_nodes)
+    return subg
+
+
+def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
+    """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
+       The decoder model will be over-written.
+
+    Args:
+        decoder_onnx_path (str): Path of GPT-2 decoder onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+
+    decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
+    for i in range(len(decoder_model_proto.graph.input)):
+        if (
+            decoder_model_proto.graph.input[i].name == "input_ids"
+            or decoder_model_proto.graph.input[i].name == "position_ids"
+        ):
+            shape_dim_proto = decoder_model_proto.graph.input[i].type.tensor_type.shape.dim[1]
+
+            # Clear any existing dim_param first
+            if shape_dim_proto.HasField("dim_param"):
+                shape_dim_proto.Clear()
+
+            # Update dim_value to be 1
+            shape_dim_proto.dim_value = 1
+
+    OnnxModel.save(decoder_model_proto, decoder_onnx_path, save_as_external_data=use_external_data_format)
+    return True
+
+
+def generate_gpt2_init_decoder(
+    decoder_onnx_path: str, init_decoder_onnx_path: str, use_external_data_format: bool = True
+) -> bool:
+    """Generates the initial decoder GPT2 subgraph and saves it for downstream use.
+       The initial decoder model will be saved to init_decoder_onnx_path.
+
+    Args:
+        decoder_onnx_path (str): Path of GPT-2 decoder onnx model
+        init_decoder_onnx_path (str): Path of GPT-2 init decoder onnx model
+        use_external_data_format(bool): output tensors to external data or not.
+    """
+    init_decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
+
+    logits_output_name = init_decoder_model_proto.graph.output[0].name
+
+    gpt2_init_decoder_model = OnnxModel(init_decoder_model_proto)
+
+    output_name_to_node = gpt2_init_decoder_model.output_name_to_node()
+    assert logits_output_name in output_name_to_node
+
+    logits_matmul_node = output_name_to_node[logits_output_name]
+
+    # Sanity check - the logits need to be produced by a MatMul node
+    if logits_matmul_node.op_type != "MatMul":
+        return False
+
+    # Try to find the last residual Add
+    # For fp16, there are Casts along the way
+    logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+        logits_matmul_node,
+        [
+            "Cast",
+            "LayerNormalization",
+            "Add",
+            "Add",
+            "Cast",
+            "MatMul",
+            "Cast",
+            "FastGelu",
+            "Cast",
+            "MatMul",
+            "Cast",
+            "LayerNormalization",
+            "Add",
+        ],
+        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    )
+
+    # Try without the Casts before and after the MatMuls
+    if logits_matmul_to_residual_add_path is None:
+        logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+            logits_matmul_node,
+            ["LayerNormalization", "Add", "Add", "MatMul", "FastGelu", "MatMul", "LayerNormalization", "Add"],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+        )
+
+    # TODO(hasesh): Are there more permutations to try before returning ?
+    if logits_matmul_to_residual_add_path is None:
+        return False
+
+    residual_add_node = logits_matmul_to_residual_add_path[-1]
+
+    residual_add_to_attention_parent_index = 0
+    residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+        residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
+    )
+
+    # Try other parent index of the residual Add node
+    if residual_add_to_attention_path is None:
+        residual_add_to_attention_parent_index = 1
+        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+            residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
+        )
+
+    # Try without the Casts before and after the MatMuls
+    if residual_add_to_attention_path is None:
+        residual_add_to_attention_parent_index = 0
+        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+            residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+        )
+
+    # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
+    if residual_add_to_attention_path is None:
+        residual_add_to_attention_parent_index = 1
+        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+            residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+        )
+
+    # TODO(hasesh): Are there more permutations to try before returning ?
+    if residual_add_to_attention_path is None:
+        return False
+
+    residual_add_to_add_parent_index = 0 if residual_add_to_attention_parent_index == 1 else 1
+    add_before_residual_add = gpt2_init_decoder_model.match_parent(
+        residual_add_node, "Add", residual_add_to_add_parent_index
+    )
+
+    if add_before_residual_add is None:
+        return False
+
+    attention = residual_add_to_attention_path[-1]
+    matmul_after_attention = residual_add_to_attention_path[-2]
+
+    slice_starts = onnx.helper.make_tensor(
+        name="SliceLastTokenStarts",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[-1],
+    )
+
+    slice_ends = onnx.helper.make_tensor(
+        name="SliceLastTokenEnds",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[-2],
+    )
+
+    slice_axes = onnx.helper.make_tensor(
+        name="SliceLastTokenAxes",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[1],
+    )
+
+    slice_steps = onnx.helper.make_tensor(
+        name="SliceLastTokenSteps",
+        data_type=TensorProto.INT32,
+        dims=[1],
+        vals=[-1],
+    )
+
+    gpt2_init_decoder_model.add_initializer(slice_starts)
+    gpt2_init_decoder_model.add_initializer(slice_ends)
+    gpt2_init_decoder_model.add_initializer(slice_axes)
+    gpt2_init_decoder_model.add_initializer(slice_steps)
+
+    # Add Slice node to the graph such that it consumes the output of Attention
+    slice_0_output_name = "edge_modified_" + attention.output[0]
+    slice_node_0 = onnx.helper.make_node(
+        "Slice",
+        inputs=[
+            attention.output[0],
+            "SliceLastTokenStarts",
+            "SliceLastTokenEnds",
+            "SliceLastTokenAxes",
+            "SliceLastTokenSteps",
+        ],
+        outputs=[slice_0_output_name],
+        name=gpt2_init_decoder_model.create_node_name("Slice", "GatherLastToken_0_"),
+    )
+
+    # Add Slice node to the graph such that it consumes the output of Add before the residual Add
+    slice_1_output_name = "edge_modified_" + add_before_residual_add.output[0]
+    slice_node_1 = onnx.helper.make_node(
+        "Slice",
+        inputs=[
+            add_before_residual_add.output[0],
+            "SliceLastTokenStarts",
+            "SliceLastTokenEnds",
+            "SliceLastTokenAxes",
+            "SliceLastTokenSteps",
+        ],
+        outputs=[slice_1_output_name],
+        name=gpt2_init_decoder_model.create_node_name("Slice", "GatherLastToken_1_"),
+    )
+
+    # Add the 2 Slice nodes
+    gpt2_init_decoder_model.add_node(slice_node_0)
+    gpt2_init_decoder_model.add_node(slice_node_1)
+
+    # Adjust the input(s) to the nodes consuming the outputs of the added Slice nodes
+    gpt2_init_decoder_model.replace_node_input(matmul_after_attention, attention.output[0], slice_0_output_name)
+    gpt2_init_decoder_model.replace_node_input(
+        residual_add_node, add_before_residual_add.output[0], slice_1_output_name
+    )
+
+    # Topologically sort the updated graph
+    gpt2_init_decoder_model.topological_sort()
+
+    # Save the init decoder model
+    OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
+    return True
+
+
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
 
@@ -874,15 +1261,20 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         args (argparse.Namespace): arguments parsed from command line
     """
     is_gpt2: bool = args.model_type == "gpt2"
+    is_beamsearch: bool = generation_type == GenerationType.BEAMSEARCH
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
+    is_sampling: bool = generation_type == GenerationType.SAMPLING
+    past_present_share_buffer: bool = args.past_present_share_buffer and is_greedysearch
 
-    if is_greedysearch:
+    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}, is_greedysearch={is_greedysearch}")
+
+    if is_greedysearch or is_sampling:
         if not is_gpt2:
-            raise NotImplementedError("Currently only gpt2 with greedy search is supported")
+            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is supported")
         if args.output_sequences_scores:
-            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search")
+            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search/sampling")
         if args.output_token_scores:
-            raise NotImplementedError("output_token_scores currently is not supported in greedy search")
+            raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
 
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
@@ -913,7 +1305,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         args.pad_vocab_size
         and args.precision == Precision.FLOAT16
         and is_gpt2
-        and (generation_type == GenerationType.BEAMSEARCH or generation_type == GenerationType.GREEDYSEARCH)
+        and (is_beamsearch or is_greedysearch or is_sampling)
     ):
         logger.info(
             f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
@@ -925,12 +1317,44 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
             )
 
+    gpt2_init_decoder_generated = False
+    gpt2_init_decoder_onnx_path = None
+    if args.separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
+        logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
+
+        gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
+            "fp16" if args.precision == Precision.FLOAT16 else "fp32"
+        )
+
+        gpt2_init_decoder_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
+
+        gpt2_init_decoder_generated = generate_gpt2_init_decoder(
+            args.decoder_onnx, gpt2_init_decoder_onnx_path, args.use_external_data_format
+        )
+
+        if not gpt2_init_decoder_generated:
+            logger.warning(
+                "Tried and failed to generate the init decoder GPT2 model. "
+                "Performance may be sub-optimal for the initial decoding run"
+            )
+
+        # Update the graph input shapes for the non-initial decoder model to account
+        # for the fact that the sequence length will always be 1
+        if gpt2_init_decoder_generated and not update_input_shapes_for_gpt2_decoder_model(
+            args.decoder_onnx, args.use_external_data_format
+        ):
+            # Can't proceed further - better to raise an exception
+            raise ValueError(f"Could not update the input shapes for the non-initial decoder subgraph.")
+
     # If the user explicitly requests running shape inference or if we padded/mutated
-    # weight(s) in the decoder, we want to run shape inference to capture the new
+    # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new
     # shapes
-    if logits_matmul_weight_padded or args.run_shape_inference:
+    if logits_matmul_weight_padded or args.run_shape_inference or gpt2_init_decoder_generated:
         logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
+        if gpt2_init_decoder_generated:
+            logger.info(f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten.")
+            shape_inference(gpt2_init_decoder_onnx_path, args.use_external_data_format)
 
     if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -953,13 +1377,21 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     decoder_model = onnx.load_model(args.decoder_onnx, load_external_data=True)
     decoder_model.graph.name = f"{args.model_type} decoder"
 
+    gpt2_init_decoder_model = None
     if args.model_type == "gpt2":
         verify_gpt2_subgraph(decoder_model.graph, args.precision)
+
+        # If we generated the init decoder model, verify that as well
+        if gpt2_init_decoder_generated:
+            gpt2_init_decoder_model = onnx.load_model(gpt2_init_decoder_onnx_path, load_external_data=True)
+            gpt2_init_decoder_model.graph.name = f"{args.model_type} init decoder"
+            verify_gpt2_subgraph(gpt2_init_decoder_model.graph, args.precision)
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
-    inputs = (
-        [
+    inputs = None
+    if is_beamsearch:
+        inputs = [
             "input_ids",
             "max_length",
             "min_length",
@@ -968,14 +1400,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             "length_penalty",
             "repetition_penalty",
         ]
-        if not is_greedysearch
-        else [
+    elif is_greedysearch or is_sampling:
+        inputs = [
             "input_ids",
             "max_length",
             "min_length",
             "repetition_penalty",
         ]
-    )
 
     if args.vocab_mask:
         inputs.append("vocab_mask")
@@ -992,6 +1423,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     else:
         inputs.append("")
 
+    if is_sampling and args.custom and args.presence_mask:
+        inputs.append("presence_mask")
+
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
@@ -1000,40 +1434,60 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = (
-        onnx.helper.make_node(
+    node = None
+    if is_beamsearch:
+        node = onnx.helper.make_node(
             "BeamSearch",
             inputs=inputs,
             outputs=outputs,
             name=f"BeamSearch_{args.model_type}",
         )
-        if not is_greedysearch
-        else onnx.helper.make_node(
+    elif is_greedysearch:
+        node = onnx.helper.make_node(
             "GreedySearch",
             inputs=inputs,
             outputs=outputs,
             name=f"GreedySearch_{args.model_type}",
         )
-    )
+    elif is_sampling:
+        node = onnx.helper.make_node(
+            "Sampling",
+            inputs=inputs,
+            outputs=outputs,
+            name=f"Sampling_{args.model_type}",
+        )
 
     node.domain = "com.microsoft"
 
-    attr_to_extend = (
-        [
+    attr_to_extend = None
+    if is_beamsearch:
+        attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
         ]
-        if not is_greedysearch
-        else [
+    elif is_greedysearch:
+        attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         ]
-    )
+    elif is_sampling:
+        attr_to_extend = [
+            onnx.helper.make_attribute("eos_token_id", eos_token_id),
+            onnx.helper.make_attribute("pad_token_id", pad_token_id),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
+            onnx.helper.make_attribute("temperature", args.temperature),
+            onnx.helper.make_attribute("top_p", args.top_p),
+            onnx.helper.make_attribute("filter_value", args.filter_value),
+            onnx.helper.make_attribute("min_tokens_to_keep", args.min_tokens_to_keep),
+            onnx.helper.make_attribute("custom", args.custom),
+            onnx.helper.make_attribute("presence_penalty", args.presence_penalty),
+        ]
 
     # Explicitly pass in the vocab size via an attribute
     if logits_matmul_weight_padded:
@@ -1054,7 +1508,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
             initializers = get_shared_initializers(encoder_model, decoder_model)
             logger.info(
-                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in subgraphs are moved to the main graph"
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
             )
 
             # TODO(tianleiwu): investigate the following which causes error in inference
@@ -1076,10 +1530,27 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             ]
         )
     else:
-        # Move initializer from subgraph to main graph could reduce memory usage in inference.
-        initializers = move_initializers(decoder_model.graph)
-        logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+        if gpt2_init_decoder_generated:
+            # Move shared initializers (shared between init decoder and decoder models) to the main
+            # graph and remove them from these models
+            if not args.disable_shared_initializers:
+                # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
+                initializers = get_shared_initializers(gpt2_init_decoder_model, decoder_model)
+                logger.info(
+                    f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
+                )
+            if past_present_share_buffer:
+                logger.info("*****update init decoder subgraph to make past and present share buffer******************")
+                update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
+            node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
+        else:
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            initializers = move_initializers(decoder_model.graph)
+            logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
+        if past_present_share_buffer:
+            logger.info("*****update decoder subgraph to make past and present share buffer******************")
+            update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
@@ -1091,8 +1562,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
 
-    graph_inputs = (
-        [
+    graph_inputs = None
+    if is_beamsearch:
+        graph_inputs = [
             input_ids,
             max_length,
             min_length,
@@ -1101,14 +1573,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             length_penalty,
             repetition_penalty,
         ]
-        if not is_greedysearch
-        else [
+    elif is_greedysearch or is_sampling:
+        graph_inputs = [
             input_ids,
             max_length,
             min_length,
             repetition_penalty,
         ]
-    )
 
     if args.vocab_mask:
         vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
@@ -1126,37 +1597,41 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         )
         graph_inputs.append(attention_mask)
 
+    if args.custom and args.presence_mask:
+        presence_mask = onnx.helper.make_tensor_value_info(
+            "presence_mask", TensorProto.INT32, ["batch_size", vocab_size]
+        )
+        graph_inputs.append(presence_mask)
+
     # graph outputs
-    sequences = (
-        onnx.helper.make_tensor_value_info(
+    sequences = None
+    if is_beamsearch:
+        sequences = onnx.helper.make_tensor_value_info(
             "sequences",
             TensorProto.INT32,
             ["batch_size", "num_return_sequences", "max_length"],
         )
-        if not is_greedysearch
-        else onnx.helper.make_tensor_value_info(
+    elif is_greedysearch or is_sampling:
+        sequences = onnx.helper.make_tensor_value_info(
             "sequences",
             TensorProto.INT32,
             ["batch_size", "max_length"],
         )
-    )
-
-    sequences_scores = onnx.helper.make_tensor_value_info(
-        "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
-    )
-
-    scores = onnx.helper.make_tensor_value_info(
-        "scores",
-        TensorProto.FLOAT,
-        ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
-    )
 
     graph_outputs = [sequences]
 
     if args.output_sequences_scores:
+        sequences_scores = onnx.helper.make_tensor_value_info(
+            "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
+        )
         graph_outputs.append(sequences_scores)
 
     if args.output_token_scores:
+        scores = onnx.helper.make_tensor_value_info(
+            "scores",
+            TensorProto.FLOAT,
+            ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
+        )
         graph_outputs.append(scores)
 
     new_graph = onnx.helper.make_graph(
@@ -1695,6 +2170,10 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
     if args.model_type == "gpt2" and is_greedy:
+        if args.top_p > 0.0 and args.top_p < 1.0:
+            convert_generation_model(args, GenerationType.SAMPLING)
+            logger.info("The test for gpt2_sampling onnx model is not implemented yet")
+            return
         convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)

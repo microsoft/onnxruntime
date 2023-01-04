@@ -38,7 +38,7 @@ class GenerateBase {
   GenerateBase(OpKernelContextInternal& context,
                const SessionState& decoder_session_state,
                concurrency::ThreadPool* thread_pool,
-               void* cuda_stream,
+               Stream* ort_stream,
                IConsoleDumper* cuda_dumper,
                const GenerationDeviceHelper::TopkFunc& topk_func,
                const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
@@ -46,7 +46,7 @@ class GenerateBase {
         decoder_session_state_(decoder_session_state),
         thread_pool_(thread_pool),
         implicit_inputs_(context_.GetImplicitInputs()),
-        cuda_stream_(cuda_stream),
+        ort_stream_(ort_stream),
         cuda_dumper_(cuda_dumper),
         cpu_allocator_(nullptr),
         temp_space_allocator_(nullptr),
@@ -87,7 +87,8 @@ class GenerateBase {
                          const Tensor* input_ids,
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
-                         const Tensor* attention_mask) const {
+                         const Tensor* attention_mask,
+                         const Tensor* presence_mask) const {
     const auto& dims = input_ids->Shape().GetDims();
     if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -149,12 +150,34 @@ class GenerateBase {
       }
     }
 
+    if (presence_mask != nullptr) {
+      const auto& dims_presence = presence_mask->Shape().GetDims();
+      if (dims_presence.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'presence_mask' is expected to have 2 dimensions, got ", dims_presence.size());
+      }
+
+      // presence_mask first dimension should be same as the first dimension of input_ids
+      if (static_cast<int>(dims_presence[0]) != static_cast<int>(dims[0])) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "input_ids and presence_mask must have the same batch_size");
+      }
+
+      if (static_cast<int>(dims_presence[1]) != parameters->vocab_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'presence_mask' shape[1] shall be vocab_size, got ", dims_presence[1]);
+      }
+
+      // store prefix vocab mask in parameters.
+      parameters->presence_mask = presence_mask->DataAsSpan<int32_t>();
+    }
+
     return Status::OK();
   }
 
 
  protected:
-  bool IsCuda() const { return cuda_stream_ != nullptr; }
+  bool IsCuda() const { return ort_stream_ != nullptr; }
 
   const IConsoleDumper* GetConsoleDumper() const { return IsCuda() ? cuda_dumper_ : &(cpu_dumper_); }
 
@@ -166,7 +189,7 @@ class GenerateBase {
 
   const std::vector<const OrtValue*>& implicit_inputs_;
 
-  void* cuda_stream_;
+  Stream* ort_stream_;
 
   IConsoleDumper* cuda_dumper_;
   CpuTensorConsoleDumper cpu_dumper_;
