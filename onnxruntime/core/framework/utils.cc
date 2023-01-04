@@ -82,18 +82,25 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
     if (allocator->Info().alloc_type == OrtArenaAllocator) {
+      void* p_data = nullptr;
+#ifdef ORT_ENABLE_STREAM
       BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
       auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
       if (stream_aware_alloc && target_stream) {
         size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-        void* p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+        p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+      }
+#else
+      ORT_UNUSED_PARAMETER(target_stream);
+#endif  // ORT_ENABLE_STREAM
+      if (p_data == nullptr) {
         Tensor::InitOrtValue(source_tensor.DataType(),
                              source_tensor.Shape(),
-                             p_data,
                              allocator, target_mlvalue);
       } else {
         Tensor::InitOrtValue(source_tensor.DataType(),
                              source_tensor.Shape(),
+                             p_data,
                              allocator, target_mlvalue);
       }
     } else {
@@ -557,7 +564,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   return Status::OK();
 }
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 struct DeviceStreamCollectionHolder {
   DeviceStreamCollectionHolder(const SessionState& session_state) : session_state_(session_state),
                                                                     p_(session_state.AcquireDeviceStreamCollection()) {
@@ -603,14 +610,14 @@ ExecuteGraphImpl(const SessionState& session_state,
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  ExecutionMode execution_mode, const bool& terminate_flag,
                  const logging::Logger& logger,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
                  DeviceStreamCollection& device_stream_collection,
 #endif
                  const bool only_execute_path_to_fetches = false,
                  Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   auto* execution_plan = session_state.GetExecutionPlan();
   UpdateWithParentStream(device_stream_collection, parent_stream);
 #else
@@ -635,7 +642,7 @@ ExecuteGraphImpl(const SessionState& session_state,
                                        feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                        feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                        logger,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
                                        device_stream_collection,
 #endif
                                        terminate_flag,
@@ -654,7 +661,7 @@ ExecuteGraphImpl(const SessionState& session_state,
       InlinedVector<Stream*> feed_streams;
       feed_streams.reserve(feed_copy_info.size());
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       for (auto& copy_info : feed_copy_info) {
 
         auto& device = copy_info.target_device;
@@ -703,7 +710,7 @@ ExecuteGraphImpl(const SessionState& session_state,
                                        feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
                                        feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                        logger,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
                                        device_stream_collection,
 #endif
                                        terminate_flag,
@@ -712,7 +719,7 @@ ExecuteGraphImpl(const SessionState& session_state,
     ORT_RETURN_IF_ERROR(status);
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
       auto it = value_to_stream_map.find(fetch_idx);
@@ -749,7 +756,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
   DeviceStreamCollection& device_stream_collection = *device_stream_collection_holder.p_;
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
@@ -929,7 +936,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream,
                                bool sync_subgraph_fetches) {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
   DeviceStreamCollection& device_stream_collection = *device_stream_collection_holder.p_;
 

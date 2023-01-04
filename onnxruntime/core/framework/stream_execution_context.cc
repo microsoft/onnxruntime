@@ -8,7 +8,7 @@
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                 int32_t num_streams,
                                                 gsl::span<const size_t> notification_owners,
