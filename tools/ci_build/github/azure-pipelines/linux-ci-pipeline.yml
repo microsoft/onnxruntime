@@ -42,12 +42,13 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      key: '"$((Get-Date).ToString("ddMMyy"))" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(CCACHE_DIR)
       cacheHitVar: CACHE_RESTORED
+      # only get 2 days ccache
       restoreKeys: |
-        "ccache" | "$(Build.SourceBranch)"
-        "ccache"
+        $((Get-Date).ToString("ddMMyy")) | "ccache" | "$(Build.SourceBranch)"
+        $((Get-Date).AddDays(-1).ToString("ddMMyy")) | "ccache" | "$(Build.SourceBranch)"
     displayName: Cach Task
 
   - script: |
