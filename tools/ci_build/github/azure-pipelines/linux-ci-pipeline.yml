@@ -171,3 +171,7 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
+
+  - script: |
+      rm -rf '$(Build.BinariesDirectory)'
+    displayName: remove build files
