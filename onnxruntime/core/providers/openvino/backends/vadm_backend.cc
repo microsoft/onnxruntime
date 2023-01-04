@@ -43,7 +43,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
     }
   #endif
-  ie_cnn_network_ = CreateOVModel(model_proto, global_context_);
+  ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
 
 
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())

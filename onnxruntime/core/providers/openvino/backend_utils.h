@@ -68,7 +68,8 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context);
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, 
+              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);
