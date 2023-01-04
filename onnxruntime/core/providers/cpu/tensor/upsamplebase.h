@@ -375,7 +375,7 @@ class UpsampleBase {
     // scales_size == axes_.size() should be guaranteed if axes is not empty
     if (rank > 0 && (scales_size != rank || axes_.size())) {
       std::vector<float> new_scales(size_t(rank), 1.0f);
-      ORT_ENFORCE(*std::max_element(axes_.begin(), axes_.end()) < rank,
+      ORT_ENFORCE(*std::max_element(axes_.begin(), axes_.end()) < rank && (int64_t(axes_.size()) == scales_size),
                   "all values in axes should be less than rank of the data");
       for (size_t i = 0; i < axes_.size(); i++) {
         new_scales[static_cast<size_t>(axes_[i])] = scales[i];
