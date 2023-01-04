@@ -14,6 +14,8 @@ jobs:
   variables:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    today: $(Get-Date -Format yyyyMMdd)
+    yesterday: $( (Get-Date).AddDays(-1) -Format yyyyMMdd)
   pool: Linux-CPU-2019
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -42,13 +44,13 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: '"$((Get-Date).ToString("ddMMyy"))" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      key: '$(today) | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(CCACHE_DIR)
       cacheHitVar: CACHE_RESTORED
       # only get 2 days ccache
       restoreKeys: |
-        $((Get-Date).ToString("ddMMyy")) | "ccache" | "$(Build.SourceBranch)"
-        $((Get-Date).AddDays(-1).ToString("ddMMyy")) | "ccache" | "$(Build.SourceBranch)"
+        $(today) | "ccache" | "$(Build.SourceBranch)"
+        $(yesterday) | "ccache" | "$(Build.SourceBranch)"
     displayName: Cach Task
 
   - script: |
