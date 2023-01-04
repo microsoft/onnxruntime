@@ -70,8 +70,7 @@ template <typename T>
 class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
-    this->ops_.emplace_back(GemmFastGeluUnfused<T>);
-
+    this->RegisterOp(GemmFastGeluUnfused<T>);
     this->SetDefaultId(0);
   }
 };

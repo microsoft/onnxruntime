@@ -144,7 +144,7 @@ class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
  public:
   RocBlasGemmTunableOp() {
     // Ensure that the default implementation is always present
-    this->ops_.emplace_back(IndexedRocBlasGemmOp<T>{0});
+    this->RegisterOp(IndexedRocBlasGemmOp<T>{0});
   }
 
   Status IsSupported(const GemmParams<T>* params) {
@@ -162,7 +162,7 @@ class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
 
     auto id = this->FindFastestImpl(params, candidates);
     // memoize the result
-    this->ops_.emplace_back(std::move(candidates[id]));
+    this->RegisterOp(std::move(candidates[id]));
     return this->ops_.size() - 1;
   }
 
