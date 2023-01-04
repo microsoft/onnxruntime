@@ -174,15 +174,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(0))
         .Input(0,
                "input",
-               "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, "
-               "or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
-               "T",
-               OpSchema::Optional)
+               "Input tensor with shape (batch_size, sequence_length, input_hidden_size)",
+               "T")
         .Input(1,
                "weights",
                "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Input(2,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
@@ -191,13 +188,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask_index",
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "
                "(batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), "
-               "or index with shape (batch_size) or (2 * batch_size).",
+               "or index with shape (batch_size) or (2 * batch_size)",
                "M",
                OpSchema::Optional)
         .Input(4,
                "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
-               "When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
+               "When past_present_share_buffer is set, "
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -206,21 +204,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(6,
-               "key",
-               "Input for key with shape (batch_size, kv_sequence_length, hidden_size). "
-               "Required when weights is not available.",
-               "T",
-               OpSchema::Optional)
-        .Input(7,
-               "value",
-               "Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). "
-               "Required when weights is not available.",
-               "T",
-               OpSchema::Optional)
-        .Input(8,
                "past_sequence_length",
-               "When past_present_share_buffer, specify past_sequence_length for effective past sequence lenght (could be 0)."
-               "Needed when past_present_share_buffer is not zero.",
+               "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0)."
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -229,10 +214,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present",
-                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)"
-                "If past_present_share_buffer, it should be exactly same as past tensor, of shape "
-                "(2, batch_size, num_heads, max_sequence_length, head_size),"
-                "while effective_seq_length = (past_sequence_length + kv_sequence_length)",
+                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). "
+                "If past_present_share_buffer is set, "
+                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -244,6 +229,47 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           constexpr int past_input_index = 4;
           AttentionTypeAndShapeInference(ctx, past_input_index);
+        }));
+
+constexpr const char* Attention_ver1_doc = R"DOC(
+Multi-Head Attention without input and output projects. It has optional bias from input projection.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    QkvToContext, 1,
+    OpSchema()
+        .SetDoc(Attention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Input(0,
+               "query",
+               "Query query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
+               "T")
+        .Input(1,
+               "key",
+               "Input for key with shape (batch_size, kv_sequence_length, hidden_size)"
+               "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed."
+               "Required when weights is not available.",
+               "T")
+        .Input(2,
+               "value",
+               "Input for value with shape (batch_size, kv_sequence_length, v_hidden_size), "
+               "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed. "
+               "Required when weights is not available.",
+               "T")
+        .Input(3,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          QkvToContextTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(

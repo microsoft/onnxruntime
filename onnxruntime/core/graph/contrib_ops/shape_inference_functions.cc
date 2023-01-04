@@ -107,22 +107,65 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
+void QkvToContextTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+  //     When key and value are packed, they have shape (batch_size, kv_sequence_length, hidden_size + v_hidden_size)
+  // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  if (hasInputShape(ctx, 0) and hasInputShape(ctx, 2)) {
+    auto& query_shape = getInputShape(ctx, 0);
+    auto& query_dims = query_shape.dim();
+    if (query_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
+    }
+
+    auto& key_shape = getInputShape(ctx, 1);
+    auto& key_dims = key_shape.dim();
+    if (key_dims.size() != 3) {
+      fail_shape_inference("Inputs 1 (key) shall be 3 dimensions");
+    }
+
+    auto& value_shape = getInputShape(ctx, 2);
+    auto& value_dims = value_shape.dim();
+    if (value_dims.size() != 3) {
+      fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    *output_shape.add_dim() = query_dims[0];
+    *output_shape.add_dim() = query_dims[1];
+    if (query_dims[2] == key_dims[2]) {
+      *output_shape.add_dim() = value_dims[2];
+    } else {  // packed key and value
+      if (key_dims[2] != value_dims[2]) {
+        fail_shape_inference("Inputs 1 (key) and 2 (value) shall have same shape when key and value are packed");
+      }
+      output_shape.add_dim();
+      if (query_dims[2].has_dim_value() && key_dims[2].has_dim_value()) {
+        int64_t v_hidden_size = key_dims[2].dim_value() - query_dims[2].dim_value();
+        output_shape.mutable_dim(2)->set_dim_value(v_hidden_size);
+      }
+    }
+
+    updateOutputShape(ctx, 0, output_shape);
+  }
+}
 // Shape inference for Attention and QAttention
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Input 0, 1, 2 are input, weights (optional) and bias.
   // The other inputs may vary in Attention and QAttention. For example, past_input_index is 4 for Attention,
   // and 8 for QAttention.
   //
-  // When weights is avaiable:
-  //    Input 0 has 3D shape (batch_size, sequence_length, input_hidden_size)
-  //    INput 1 has 2D shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
-  //    Input 2 has 1D shape (hidden_size + hidden_size + v_hidden_size)
-  // When weights is not avaiable (supported by Attention but not in QAttention):
-  //    Input 0 (query) has 3D shape (batch_size, sequence_length, hidden_size)
-  //    Input 2 (bias) has 1D shape (hidden_size + hidden_size + v_hidden_size)
-  //    Input 4 (past) has shape (2, batch_size, num_heads, past_sequence_length, head_size)
-  //    Input 6 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
-  //
+  // Input 0 has 3D shape (batch_size, sequence_length, input_hidden_size)
+  // INput 1 has 2D shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
+  // Input 2 has 1D shape (hidden_size + hidden_size + v_hidden_size)
+  // Input 4 or 8 (past) has shape (2, batch_size, num_heads, past_sequence_length, head_size)
   // Output 0 and 1 are output and present
 
   // Type inference
@@ -178,22 +221,8 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
         if (past_present_share_buffer) {
           propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
         } else {
-          int64_t total_sequence_length = -1;
-          if (!hasInputShape(ctx, 1)) {  // no weights
-            if (hasInputShape(ctx, 6)) {
-              auto& key_shape = getInputShape(ctx, 6);
-              auto& key_dims = key_shape.dim();
-              if (key_dims.size() == 3 && key_dims[1].has_dim_value()) {
-                total_sequence_length = key_dims[1].dim_value();  // kv_sequence_length
-              }
-            }
-          } else {
-            if (input_dims[1].has_dim_value()) {
-              total_sequence_length = input_dims[1].dim_value();
-            }
-          }
-
-          if (total_sequence_length >= 0 && past_dims[3].has_dim_value()) {
+          if (input_dims[1].has_dim_value() && past_dims[3].has_dim_value()) {
+            int64_t total_sequence_length = input_dims[1].dim_value();
             total_sequence_length += past_shape.dim(3).dim_value();
 
             ONNX_NAMESPACE::TensorShapeProto present_shape;
