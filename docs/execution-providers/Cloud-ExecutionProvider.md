@@ -22,18 +22,18 @@ By far, Cloud Execution Provider only:
 
 ## Requirements
 For Windows, please install [zlib](https://zlib.net/) and [re2](https://github.com/google/re2), and add their binareis into system path.
-If building from source, zlib and re2 binaries could be simply found under build output folder, which can be located with:
+If built from source, zlib and re2 binaries could be easily located with:
 
 ```dos
-cd <build_output>
+cd <build_output_folder>
 dir /s zlib1.dll re2.dll
 ```
 
 For Linux, please make sure openssl is installed.
 
-## Known issues
+## Known Issue
 For certain ubuntu versions, https call made by CloudEP might report error like - "error setting certificate verify location ...",
-please create the link file "/etc/pki/tls/certs/ca-bundles.crt" points to "/etc/ssl/certs/ca-certificates.crt" to silence it.
+please create a "/etc/pki/tls/certs/ca-bundles.crt" links to "/etc/ssl/certs/ca-certificates.crt" to silence it.
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#Cloud).
@@ -41,7 +41,6 @@ For build instructions, please see the [BUILD page](../build/eps.md#Cloud).
 ## Usage
 
 ### Python
-
 ```python
 from onnxruntime import *
 import numpy as np
