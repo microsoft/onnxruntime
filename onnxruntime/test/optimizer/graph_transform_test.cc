@@ -4453,6 +4453,70 @@ TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+    auto* pow_initializer = builder.MakeInitializer<float>({}, {2.0f});
+    auto* add_initializer = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* weight_initializer = builder.MakeInitializer<MLFloat16>({3}, std::vector<MLFloat16>(3, MLFloat16(1.0f)));
+    auto* bias_initializer = builder.MakeInitializer<MLFloat16>({3}, std::vector<MLFloat16>(3, MLFloat16(0.0f)));
+    auto* reduce_mean_out_1 = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* cast_out_1 = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out_2 = builder.MakeIntermediate();
+    auto* add_out_1 = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* cast_out_2 = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* add_out_2 = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {data_arg}, {reduce_mean_out_1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {data_arg, reduce_mean_out_1}, {sub_out});
+    builder.AddNode("Cast", {sub_out}, {cast_out_1})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Pow", {cast_out_1, pow_initializer}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
+    builder.AddNode("Sqrt", {add_out_1}, {sqrt_out});
+    builder.AddNode("Div", {cast_out_1, sqrt_out}, {div_out});
+    builder.AddNode("Cast", {div_out}, {cast_out_2})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    builder.AddNode("Mul", {cast_out_2, weight_initializer}, {mul_out});
+    builder.AddNode("Add", {mul_out, bias_initializer}, {add_out_2});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ReduceMean"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sub"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Pow"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sqrt"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Div"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ReduceMean"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sub"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Pow"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sqrt"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Div"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["LayerNormalization"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<LayerNormFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_t5.onnx";
   std::shared_ptr<Model> p_model;

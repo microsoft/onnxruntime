@@ -8,3 +8,4 @@ wget
 pytorch-lightning==1.6.0
 deepspeed==0.3.15
 fairscale==0.4.6
+parameterized>=0.8.1
