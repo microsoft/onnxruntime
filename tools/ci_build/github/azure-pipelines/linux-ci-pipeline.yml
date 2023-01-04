@@ -40,16 +40,6 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
-  - task: Cache@2
-    inputs:
-      key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_DIR)
-      cacheHitVar: CACHE_RESTORED
-      restoreKeys: |
-        "ccache" | "$(Build.SourceBranch)"
-        "ccache"
-    displayName: Cach Task
-
   - script: |
       sudo mkdir -p $(Pipeline.Workspace)/ccache
     condition: ne(variables.CACHE_RESTORED, 'true')
@@ -83,7 +73,6 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_transformers_tool_test \
-              --use_cache \
               --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
             ccache -s"
       workingDirectory: $(Build.SourcesDirectory)
