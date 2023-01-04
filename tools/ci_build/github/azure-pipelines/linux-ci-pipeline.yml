@@ -47,7 +47,7 @@ jobs:
       cacheHitVar: CACHE_RESTORED
       restoreKeys: |
         "ccache" | "$(Build.SourceBranch)"
-        "ccache"
+        "ccache" | "refs/heads/main"
     displayName: Cach Task
 
   - script: |
@@ -173,5 +173,7 @@ jobs:
     condition: succeededOrFailed()
 
   - script: |
+      rm -rf '$(Build.SourcesDirectory)'
       rm -rf '$(Build.BinariesDirectory)'
+      df -h
     displayName: remove build files
