@@ -1,20 +1,20 @@
 ---
 title: Cloud
-description: Instructions to execute ONNX Runtime with a Cloud endpoint
+description: Instructions to infer an ONNX model remotely with a cloud endpoint
 parent: Execution Providers
 nav_order: 12
 redirect_from: /docs/reference/execution-providers/Cloud-ExecutionProvider
 ---
 
-# ROCm Execution Provider
+# Cloud Execution Provider
 {: .no_toc }
 
-The Cloud Execution Provider enables ONNX Runtime to invoke a cloud endpoint for inferenece.
+The Cloud Execution Provider enables ONNX Runtime to invoke a cloud endpoint for inferenece, the endpoint must be deployed beforehand.
+By far, Cloud Execution Provider only:
+* only accept [trito](https://github.com/triton-inference-server) as server side.
+* only runs on Windows and Linux.
 
 ## Contents
-By far Cloud Execution Provider only support Windows and Linux.
-
-* TOC placeholder
 {:toc}
 
 ## Install
