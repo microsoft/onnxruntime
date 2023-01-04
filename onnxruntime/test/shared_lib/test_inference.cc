@@ -1237,7 +1237,12 @@ TEST(CApiTest, test_custom_op_library) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_library_registration_error) {
+#else
 TEST(CApiTest, test_custom_op_library_registration_error) {
+#endif  // defined(__ANDROID__)
   // Loads a custom op library with a RegisterCustomOps function that returns an error status.
   // This test tries to register the library with the session options and expects an error.
   const ORTCHAR_T* lib_name;
@@ -1258,7 +1263,7 @@ TEST(CApiTest, test_custom_op_library_registration_error) {
     ASSERT_THAT(exception.what(), testing::HasSubstr("Failure from custom op library's RegisterCustomOps()"));
   }
 }
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
 std::once_flag my_module_flag;
