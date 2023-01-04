@@ -1412,7 +1412,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
 #ifdef ORT_ENABLE_STREAM
   // set the has_device_stream_enabled_ep_ flag
-  has_device_stream_enabled_ep_ = true;
+  has_device_stream_enabled_ep_ = false;
   if (p_seq_exec_plan_.has_value()) {
     auto& execution_plan = (*p_seq_exec_plan_).execution_plan;
     for (size_t i = 0; i < execution_plan.size(); ++i) {

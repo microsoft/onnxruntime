@@ -345,6 +345,9 @@ class SessionState {
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
+#ifdef ORT_ENABLE_STREAM
+  bool HasDeviceStreamEnabledEp() const { return has_device_stream_enabled_ep_; }
+#endif
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
