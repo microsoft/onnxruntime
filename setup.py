@@ -109,6 +109,7 @@ is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 class build_ext(_build_ext):
     def build_extension(self, ext):
         from distutils import log as logger
+
         dest_file = self.get_ext_fullpath(ext.name)
         logger.info("copying %s -> %s", ext.sources[0], dest_file)
         copyfile(ext.sources[0], dest_file)
