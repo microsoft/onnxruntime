@@ -7,6 +7,7 @@
 #include <sstream>
 #include <ctime>
 #include <iomanip>
+#include <queue>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
