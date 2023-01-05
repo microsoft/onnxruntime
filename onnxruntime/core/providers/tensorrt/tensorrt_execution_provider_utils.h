@@ -222,7 +222,25 @@ class TRTModelIdGenerator {
     if (!model_path.IsEmpty()) {
       // Get model name
       PathString path_string = model_path.GetComponents().back();
-      std::string model_name = PathToUTF8String(path_string);
+
+#ifdef _WIN32
+      std::string model_name;
+
+      {
+        // Query the required buffer size (including '\0') by passing nullptr for the destination.
+        size_t total_bytes = 0;
+        wcstombs_s(&total_bytes, nullptr, 0, path_string.c_str(), _TRUNCATE);
+
+        // Resize the destination buffer and convert.
+        model_name.resize(total_bytes);
+        wcstombs_s(&total_bytes, &model_name[0], total_bytes, path_string.c_str(), _TRUNCATE);
+
+        model_name.resize(total_bytes - 1);  // Remove the terminating '\0'
+      }
+#else
+      std::string model_name(path_string);
+#endif
+
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
       // Ensure enough characters are hashed in case model names are too short
       int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
