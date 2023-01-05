@@ -54,14 +54,14 @@ template <typename T, typename ALayout, typename BLayout>
 class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
-    this->ops_.emplace_back(GemmFastGeluUnfused<T>);
+    this->RegisterOp(GemmFastGeluUnfused<T>);
     for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
-      this->ops_.emplace_back(std::move(op));
+      this->RegisterOp(std::move(op));
     }
     for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
-      this->ops_.emplace_back(std::move(op));
+      this->RegisterOp(std::move(op));
     }
   }
 };
