@@ -2201,7 +2201,7 @@ TEST(AttentionTest, AttentionBatch1_No_Weights) {
                    kv_sequence_length, &key_data, &value_data);
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
 TEST(AttentionTest, SharedPrepackedWeights) {
   int batch_size = 2;
   int sequence_length = 2;

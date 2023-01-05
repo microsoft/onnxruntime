@@ -617,11 +617,11 @@ ExecuteGraphImpl(const SessionState& session_state,
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
   // 1. execution mode is sequential.
-  // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel.
+  // 2. execute a subgraph. Because in current implementation, the execute of subgraph is launched through parent kernel.
   //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
   //    deadlock when we reach the limitation of thread pool.
   bool single_thread_mode = execution_mode == ExecutionMode::ORT_SEQUENTIAL || is_subgraph;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   single_thread_mode = true;
 #endif
 
@@ -958,7 +958,7 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onn
   }
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
   const Tensor* prev_input = context->Input<Tensor>(0);
   for (int i = 1; i < context->InputCount(); i++) {

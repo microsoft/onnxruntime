@@ -441,10 +441,12 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   } else {
     KernelScope kernel_scope(session_scope, kernel_ctx, *p_kernel);
     ORT_TRY {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
         ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&kernel_ctx));
       }
+#endif
+#ifdef ENABLE_TRAINING
       // Cache lookup. Currently we only cache single-output nodes,
       // to keep memory overhead impact in check. Hence we only look in cache
       // if the current node has one output.

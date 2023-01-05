@@ -12,11 +12,9 @@
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {
-#ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
 typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
-#endif
 
 namespace training {
 

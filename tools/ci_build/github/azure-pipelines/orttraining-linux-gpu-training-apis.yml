@@ -18,7 +18,6 @@ jobs:
         -t onnxruntime_training_apis_tests_image \
         -x " \
           --config RelWithDebInfo \
-          --enable_training \
           --enable_training_apis \
           --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
           --build_wheel \

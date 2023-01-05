@@ -84,7 +84,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -4270,7 +4270,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
                                      const int add_count, const int dropout_count, const int bitmask_dropout_count,
                                      const int bias_dropout_count, const int bitmask_bias_dropout_count,
@@ -4361,7 +4361,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   ASSERT_TRUE(op_to_count["Cast"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
 #else
@@ -4603,7 +4603,7 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
 
       // check outputs
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
 #else
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
@@ -5451,7 +5451,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   }
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
   {

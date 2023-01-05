@@ -117,7 +117,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
 #ifdef ENABLE_TRAINING
-    // the partial execution mode for training need special handle for barrier
+    // the partial execution mode for training needs special handling for barrier
     virtual bool IsBarrier() const { return false; }
 #endif
   };
@@ -126,7 +126,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     std::vector<NodeIndex> step_pc;
 #endif
    public:
@@ -166,7 +166,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   size_t num_barriers{0};
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   InlinedVector<NodeIndex> node_execution_order_in_training;
 #endif
 

@@ -14,7 +14,7 @@ OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& executio
   }
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx,
                                                        const AllocPlanPerValue::ProgramCounter& counter,
                                                        size_t size) {

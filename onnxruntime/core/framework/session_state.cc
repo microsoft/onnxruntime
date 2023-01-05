@@ -296,7 +296,7 @@ bool SessionState::IsSparseInitializer(int ort_value_index) const {
 }
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 Status SessionState::GetInitializedTensors(
     const std::unordered_set<std::string>& interested_weights,
     bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
@@ -507,7 +507,7 @@ static int64_t CalculateMemoryPatternsKey(const gsl::span<const OrtValue>& tenso
   return key;
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 namespace {
 Status ResolveDimParams(const GraphViewer& graph,
                         const InlinedHashMap<std::string, TensorShape>& feeds,
@@ -752,7 +752,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     MemoryPatternGroup mem_patterns;
     InlinedHashMap<int, TensorShape> inferred_shapes;
     if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
@@ -960,7 +960,7 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
@@ -1344,7 +1344,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   for (auto& ep : eps) {
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
-#endif 
+#endif
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
@@ -1390,7 +1390,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   //  out of memory error in some training tests. Need to create kernel first,
   //  and let the kernel tells us whether the initalizer needs to be traced.
   //
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING_CORE)
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
 #else
@@ -1442,7 +1442,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-#ifndef ENABLE_TRAINING
+#ifndef ENABLE_TRAINING_CORE
   const auto disable_prepacking =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 

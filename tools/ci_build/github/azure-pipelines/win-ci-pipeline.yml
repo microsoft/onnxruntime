@@ -169,7 +169,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_training --enable_training_apis
+        additionalBuildFlags: --enable_training_apis
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: ort_training_apis_x64_release

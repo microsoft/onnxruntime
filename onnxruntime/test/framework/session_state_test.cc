@@ -287,7 +287,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 
-#ifndef ENABLE_TRAINING
+#ifndef ENABLE_TRAINING_CORE
 class PrePackingTestOpKernel : public OpKernel {
  public:
   PrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
