@@ -481,6 +481,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(SkipSimplifiedLayerNormalization, 1,
+                            OpSchema()
+                                .SetDoc("Skip and Root Mean Square Layer Normalization")
+                                .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+                                .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
+                                .Input(3, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
+                                .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+                                .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+                                .Output(3, "input_skip_sum", "Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+                                .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 constexpr const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
 )DOC";

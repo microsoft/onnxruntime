@@ -199,6 +199,7 @@ class SymbolicShapeInference:
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
+            "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -2049,6 +2050,13 @@ class SymbolicShapeInference:
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
+        if len(node.output) > 3:
+            self._propagate_shape_and_type(node, 0, 3)
+
+        # If the SkipLayerNormalization node contains the optional
+        # output for inference, infer the shape and type for it too
+        if len(node.output) > 3:
+            self._propagate_shape_and_type(node, 0, 3)
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")
@@ -2232,6 +2240,11 @@ class SymbolicShapeInference:
                         self._check_merged_dims(in_dims, allow_broadcast=True)
 
             for i_o in range(len(node.output)):
+                # Special case: We do not care about the training related
+                # outputs of SkipLayerNormalization
+                if node.op_type == "SkipLayerNormalization" and i_o in [1, 2]:
+                    continue
+
                 vi = self.known_vi_[node.output[i_o]]
                 out_type = vi.type
                 out_type_kind = out_type.WhichOneof("value")

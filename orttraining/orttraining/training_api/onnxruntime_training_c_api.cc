@@ -111,8 +111,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::LazyResetGrad, _Inout_ OrtTrainingSession* 
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options, size_t inputs_len,
-                    _In_reads_(inputs_len) const OrtValue* const* inputs, size_t outputs_len,
+                    _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len,
+                    _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len,
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
@@ -144,7 +144,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
@@ -152,8 +152,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options, size_t inputs_len,
-                    _In_reads_(inputs_len) const OrtValue* const* inputs, size_t outputs_len,
+                    _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len,
+                    _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len,
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
@@ -185,7 +185,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
