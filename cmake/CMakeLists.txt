@@ -196,8 +196,9 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
+option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 # https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
-cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "MSVC" OFF)
+cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
 option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
 

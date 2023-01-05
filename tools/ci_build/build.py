@@ -965,13 +965,12 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.use_cache:
+        cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
         if not (is_windows() and args.cmake_generator != "Ninja"):
             cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
             if args.use_cuda:
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
-        if is_windows():
-            cmake_args.append("-DMSVC_Z7_OVERRIDE=ON")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")

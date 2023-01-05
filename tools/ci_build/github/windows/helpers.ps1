@@ -392,8 +392,7 @@ function Install-Protobuf {
         exit $exitCode
     }
     $cmake_args = "--build", ".",  "--parallel", "--config", $build_config, "--target", "INSTALL"
-    if ($use_cache)
-    {
+    if ($use_cache) {
       $cmake_args += "--", "/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true"
     }
     $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
