@@ -808,7 +808,15 @@ See more information on the CANN Execution Provider [here](../execution-provider
 See the [Cloud Execution Provider](../execution-providers/Cloud-ExecutionProvider.md) documentation for more details.
 
 ### Prerequisites
-{: .no_toc }
+
+For Linux, before bulding please:
+
+* install openssl dev package into the system, which is openssl-dev for redhat and libssl-dev for ubuntu.
+* if got multiple openssl dev versions installed in the system, please set environment variable "OPENSSL_ROOT_DIR" to the desired version, for example:
+
+```base
+set OPENSSL_ROOT_DIR=/usr/local/ssl3.x/
+```
 
 ### Build Instructions
 
@@ -819,11 +827,6 @@ build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_whe
 ```
 
 #### Linux
-
-Before building, please:
-
-* Install openssl dev package into the system, which is openssl-dev for redhat and libssl-dev for ubuntu.
-* If got multiple openssl dev versions installed in the system, please set environment variable "OPENSSL_ROOT_DIR" to the desired version.
 
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --parallel --use_cloud
