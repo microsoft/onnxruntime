@@ -48,14 +48,16 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, {1, num_heads, seq_len, seq_len});
 
-  return LaunchRelPosAttnBiasKernel<T>(Stream(context),
-                                       output->template MutableData<T>(),
-                                       bias_table->template Data<T>(),
-                                       static_cast<int>(num_heads),
-                                       static_cast<int>(seq_len),
-                                       static_cast<int>(num_buckets),
-                                       max_distance_,
-                                       is_bidirectional_);
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  return LaunchRelPosAttnBiasKernel<CudaT>(Stream(context),
+                                           reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+                                           reinterpret_cast<const CudaT*>(bias_table->template Data<T>()),
+                                           static_cast<int>(num_heads),
+                                           static_cast<int>(seq_len),
+                                           static_cast<int>(num_buckets),
+                                           max_distance_,
+                                           is_bidirectional_);
 }
 
 }  // namespace cuda
