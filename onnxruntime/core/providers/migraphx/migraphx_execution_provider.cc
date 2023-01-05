@@ -1173,7 +1173,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
         #ifdef MIGRAPHX_STREAM_SYNC
         void* rocm_stream;
-        api->KernelContext_GetGPUComputeStream(context, &rocm_stream);
+        Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
         auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
         #else
         auto prog_outputs = prog.eval(m);
