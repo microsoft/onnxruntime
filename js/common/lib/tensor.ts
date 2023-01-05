@@ -234,9 +234,7 @@ export interface TensorConstructor {
   // #endregion
 }
 
-/// merge the two intefaces to one - make sure to keep the relevant prop for Image and Tensor
-
-export interface ImageFromTensorOptions {
+export interface ImageFromTensorOptions extends Tensor {
   format?: 'RGB'|'RGBA'|'BGR'|'RBG';
   tensorLayout?: 'NHWC'|'NCHW';
   height?: number;
@@ -244,7 +242,7 @@ export interface ImageFromTensorOptions {
   norm?: {normBias?: number,  // Todo add support - |[number,number,number]|[number,number,number,number];
           normMean?: number}  // Todo add support - |[number,number,number]|[number,number,number,number];
 }
-export interface TensorFromImageOptions {
+export interface TensorFromImageOptions extends Tensor {
   bitmapFormat?: 'RGB'|'RGBA'|'BGR'|'RBG';  // used only in the case of image bitmap is used for
   tensorFormat?: 'RGB'|'RGBA'|'BGR'|'RBG';
   dataType?: 'float32'|'uint8';

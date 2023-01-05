@@ -183,7 +183,6 @@ export class Tensor implements TensorInterface {
     }
 
     const {height, width} = options;
-    console.log('bufferToTensor - image.height: ' + height + ', image.width: ' + width);
 
     let norm = options.norm;
     let normMean :number;
@@ -275,9 +274,9 @@ export class Tensor implements TensorInterface {
         let height: number;
         let width: number;
 
-        if (Options !== undefined && Options.width !== undefined && Options.height !== undefined) {
-          height = Options.height;
-          width = Options.width;
+        if (Options !== undefined && Options.tensorWidth !== undefined && Options.tensorHeight !== undefined) {
+          height = Options.tensorHeight;
+          width = Options.tensorWidth;
         } else {
           height = (image as HTMLImageElement).height;
           width = (image as HTMLImageElement).width;
@@ -432,7 +431,7 @@ export class Tensor implements TensorInterface {
     }
   }
 
-  toImage(tensorFormat?: TensorFromImageOptions): ImageData {
+  toImage(tensorFormat?: ImageFromTensorOptions): ImageData {
     const pixels2DContext = document.createElement('canvas').getContext('2d');
     let image: ImageData;
     if (pixels2DContext != null) {
@@ -442,7 +441,7 @@ export class Tensor implements TensorInterface {
       const channels = this.dims[1];
 
       const inputformat =
-          tensorFormat !== undefined ? (tensorFormat.tensorFormat !== undefined ? tensorFormat.tensorFormat : 'RGB') : 'RGB';
+          tensorFormat !== undefined ? (tensorFormat.format !== undefined ? tensorFormat.format : 'RGB') : 'RGB';
       const normMean =
           tensorFormat !== undefined ? (tensorFormat.norm?.normMean !== undefined ? tensorFormat.norm.normMean : 255) : 255;
       const normBias =
@@ -456,8 +455,8 @@ export class Tensor implements TensorInterface {
         if (tensorFormat.width !== undefined && tensorFormat.width !== width) {
           throw new Error('Image output config width doesn\'t match tensor width');
         }
-        if (tensorFormat.tensorFormat !== undefined && (channels === 4 && tensorFormat.tensorFormat !== 'RGBA') ||
-            (channels === 3 && (tensorFormat.tensorFormat !== 'RGB' && tensorFormat.tensorFormat !== 'BGR'))) {
+        if (tensorFormat.format !== undefined && (channels === 4 && tensorFormat.format !== 'RGBA') ||
+            (channels === 3 && (tensorFormat.format !== 'RGB' && tensorFormat.format !== 'BGR'))) {
           throw new Error('Tensor format doesn\'t match input tensor dims');
         }
       }
