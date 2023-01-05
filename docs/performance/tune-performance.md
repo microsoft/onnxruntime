@@ -169,6 +169,23 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 ### Thread management
 
+#### Set number of intra-op threads
+
+Onnxruntime utilizes multi-threading to parallelize computation inside each operator, each session has its own intra-op thread pool for the job.
+Customer could configure the number of threads like:
+
+```python
+sess_op = SessionOptions()
+sess_op.intra_op_num_threads = 3
+sess = ort.InferenceSession('model.onnx', sess_op, ...)
+```
+
+With above example, 2 threads will be created in the pool, so along with the main calling thread, there will be 3 threads in total to participate in intra-op computation.
+By default, Onnxruntime will create one thread each phyical core (except the 1st core) and attach the thread to that core.
+However, if customer explicitly set the number of threads like indicated above, Onnxruntime will not set affinity to any of created threads.
+
+In addition, Onnxruntime also allows customer to create a global intra-op thread pool to prevent overheated contentions among session thread pools, pls see usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+
 #### Set intra-op thread affinity
 
 Sometimes, it may be beneficial to customize intra-op thread affinities, for example:

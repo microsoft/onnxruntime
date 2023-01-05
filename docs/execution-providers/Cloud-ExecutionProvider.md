@@ -11,7 +11,7 @@ redirect_from: /docs/reference/execution-providers/Cloud-ExecutionProvider
 The Cloud Execution Provider enables ONNX Runtime to invoke a cloud endpoint for inferenece, the endpoint must be deployed beforehand.
 To consume the endpoint, ONNX Runtime must load the same model locally, customer could then use configured run options to choose to go remote.
 By far, Cloud Execution Provider is limited to:
-* only support [triton](https://github.com/triton-inference-server) as server side.
+* only support [triton](https://github.com/triton-inference-server) server on [AML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-with-triton?tabs=python%2Cendpoint).
 * only build and run on Windows and Linux.
 
 ## Contents
