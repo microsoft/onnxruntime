@@ -82,24 +82,63 @@ struct static_cast_int64 {
 };
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context) {
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
+              const SubGraphContext& subgraph_context, 
+              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
   const std::string model = model_proto.SerializeAsString();
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model);
+    if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
+        (global_context.device_type.find("MYRIAD") == std::string::npos)) {
+      //FP16 transformations
+      ov::pass::ConvertFP32ToFP16 pass_obj;
+      pass_obj.run_on_model(cnn_network);
+      cnn_network->validate_nodes_and_infer_types();
 
-    #ifndef NDEBUG
-    #if defined OPENVINO_2022_3
+      auto proc = ov::preprocess::PrePostProcessor(cnn_network);
+      for (size_t i=0; i < cnn_network->inputs().size(); i++) {
+        if(cnn_network->inputs()[i].get_element_type() == ov::element::f16) {
+          proc.input(i).tensor().set_element_type(ov::element::f32);
+          proc.input(i).preprocess().convert_element_type(ov::element::f16);
+        }
+      }
+
+      for (size_t i=0; i < cnn_network->outputs().size(); i++) {
+        if(cnn_network->outputs()[i].get_element_type() == ov::element::f16) {
+          proc.output(i).postprocess().convert_element_type(ov::element::f32);
+        }
+      }
+      cnn_network = proc.build();
+    }
+
+    //Check for Constant Folding
+    if (!global_context.is_wholly_supported_graph) {
+      ov::pass::ConstantFolding pass_const_obj;
+      pass_const_obj.run_on_model(cnn_network);
+      auto& results = const_cast<ov::ResultVector&>(cnn_network.get()->get_results());
+      size_t index = results.size() - 1;
+
+      for (auto it = results.rbegin(); it != results.rend(); ++it) {
+        if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+          const_outputs_map[(*it)->get_friendly_name()] = const_node;
+          results.erase(results.begin() + index);
+        }
+        --index;
+      }
+    }
+#ifndef NDEBUG
+#if defined OPENVINO_2022_3
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
       serializer.run_on_model(cnn_network);
       ngraph::plot_graph(cnn_network, name+"_executable" + ".dot");
     }
-    #endif
-    #endif
+#endif
+#endif
     return cnn_network;
   }catch (std::string const & msg) {
       throw msg;

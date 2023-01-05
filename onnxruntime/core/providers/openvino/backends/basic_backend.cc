@@ -33,7 +33,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
       }
     #endif
-    ie_cnn_network_ = CreateOVModel(model_proto, global_context_);
+    ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   } catch (std::string const & msg) {
       throw msg;
   }
@@ -104,9 +104,10 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph
 
 void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_config) {
   // Set inference precision if device_type != AUTO
-  if (global_context_.device_type.find("GPU_FP16")!= std::string::npos){
-    device_config.emplace(ov::hint::inference_precision(global_context_.precision_str));
-  }
+  // if (global_context_.device_type.find("GPU_FP16")!= std::string::npos){
+  //   device_config.emplace(ov::hint::inference_precision(global_context_.precision_str));
+  // }
+  device_config = {};
   #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       device_config.emplace(ov::enable_profiling(true));
