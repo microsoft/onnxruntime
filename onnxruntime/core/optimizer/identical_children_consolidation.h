@@ -10,6 +10,7 @@ namespace onnxruntime {
 using std::string_view;
 using std::unordered_map;
 using std::unordered_set;
+using ONNX_NAMESPACE::TensorProto;
 
 /**
  * @Class IdenticalChildrenConsolidation
@@ -48,6 +49,7 @@ class IdenticalChildrenConsolidation : public GraphTransformer {
   unordered_map<string_view, unordered_set<string_view> > supported_ops = {
       {"DequantizeLinear", {"QuantizeLinear"}},
       {"QuantizeLinear", {"DequantizeLinear"}}};
-  std::string_view constant_prefix = "ItIsSpecialConstantPrefix_";
+  string_view constant_prefix = "ItIsSpecialConstantPrefix_";
+  string_view ignore_identity = "IgNoReD_IdEnTiTy";
 };
 }  // namespace onnxruntime

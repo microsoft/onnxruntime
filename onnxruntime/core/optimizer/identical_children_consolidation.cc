@@ -4,6 +4,9 @@
 #include "core/optimizer/identical_children_consolidation.h"
 
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
+
 
 namespace onnxruntime {
 Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
@@ -23,6 +26,9 @@ Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, i
         for (size_t i = 1; i < twin_group.size(); i++) {
           Node* other_twin = graph.GetNode(twin_group[i]);
           // Replace all outputs of other_twin with first_twin
+          // If A = parent_node, B1, B2 are twins, C1, C2 are grandchild from each twin
+          // We want 2 edges B1 -> C1 and  B2->C2 to become => B1->C1, B1->C2
+          // So ReplaceDownstreamNodeInput(graph, B2,j, B1,j) is called
           for (size_t j = 0; j < other_twin->GetOutputEdgesCount(); j++) {
             graph_utils::ReplaceDownstreamNodeInput(graph, *other_twin, static_cast<int>(j), *first_twin, static_cast<int>(j));
           }
@@ -39,7 +45,10 @@ bool IdenticalChildrenConsolidation::IsSupportedParentNode(const Node* node) con
   return node != nullptr && supported_ops.count(node->OpType()) != 0 && node->GetOutputEdgesCount() > 1;
 }
 
-std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenticalChildrenIntoGroups(const Graph& graph, Node* node, const string_view& op) const {
+std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenticalChildrenIntoGroups(
+    const Graph& graph,
+    Node* node,
+    const string_view& op) const {
   unordered_map<string_view, std::vector<NodeIndex>> identical_children_map;
   for (auto i = node->OutputEdgesBegin(); i != node->OutputEdgesEnd(); ++i) {
     if (i->GetNode().OpType() == op) {
@@ -48,7 +57,9 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
   }
   std::vector<std::vector<NodeIndex>> groups;
   for (auto& identical_children : identical_children_map) {
-    groups.push_back(identical_children.second);
+    if (identical_children.first != ignore_identity) {
+      groups.push_back(identical_children.second);
+    }
   }
   return groups;
 }
@@ -59,12 +70,59 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
     if (input_def->Exists() && !input_def->Name().empty()) {
       auto name = input_def->Name();
       if (graph_utils::NodeArgIsConstant(graph, *input_def)) {
-        identity.append(constant_prefix).append(graph_utils::GetConstantInitializer(graph, name)->raw_data());
+        if (optimizer_utils::IsScalar(*input_def)) {
+          const auto* data = graph_utils::GetConstantInitializer(graph, name);
+          identity.append(constant_prefix);
+          Initializer value{*data, graph.ModelPath()};
+          switch (static_cast<TensorProto::DataType>(data->data_type())) {
+            case TensorProto::DataType::TensorProto_DataType_INT8:
+              identity.append(std::to_string(value.data<int8_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_INT16:
+              identity.append(std::to_string(value.data<int16_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_INT32:
+              identity.append(std::to_string(value.data<int32_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_UINT8:
+              identity.append(std::to_string(value.data<uint8_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_UINT16:
+              identity.append(std::to_string(value.data<uint16_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_BOOL:
+              identity.append(std::to_string(value.data<bool>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_INT64:
+              identity.append(std::to_string(value.data<int64_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_UINT32:
+              identity.append(std::to_string(value.data<uint32_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_UINT64:
+              identity.append(std::to_string(value.data<uint64_t>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_FLOAT:
+              identity.append(std::to_string(value.data<float>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_DOUBLE:
+              identity.append(std::to_string(value.data<double>()[0]));
+              break;
+            case TensorProto::DataType::TensorProto_DataType_STRING:
+              identity.append(value.data<std::string>()[0]);
+              break;
+            default:
+              break;
+          }
+        } else {
+          // TODO: handle non-scalar constant inputs, using checksum or something else
+          return ignore_identity;
+        }
       } else {
-        identity.append(name.substr(name.find_last_of('/') + 1));
+        identity.append(name);
       }
     }
   }
-  return {identity};
+  return {identity.append("_")};
 }
 }  // namespace onnxruntime
