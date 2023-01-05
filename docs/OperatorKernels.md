@@ -6,6 +6,7 @@ Do not modify directly.*
 
 - [CPUExecutionProvider](#cpuexecutionprovider)
 - [CUDAExecutionProvider](#cudaexecutionprovider)
+- [DmlExecutionProvider](#dmlexecutionprovider)
 
 ---------------
 
