@@ -43,21 +43,24 @@ __global__ void buildRelativeAttentionBias(T* relative_attention_bias,
     int relative_position = col_id - row_id;
 
     int relative_buckets = 0;
-    int tmp_num_bucket   = num_bucket;
+    int tmp_num_bucket = num_bucket;
+
     if (is_bidirectional) {
         tmp_num_bucket /= 2;
         if (relative_position > 0) {
             relative_buckets += tmp_num_bucket;
+        } else {
+            relative_position *= -1;
         }
-        else {
+    } else {
+        if (relative_position > 0) {
+            relative_position = 0;
+        } else {
             relative_position *= -1;
         }
     }
-    else {
-        relative_position = abs(relative_position);
-    }
 
-    int  max_exact = tmp_num_bucket / 2;
+    int max_exact = tmp_num_bucket / 2;
     bool is_small  = relative_position < max_exact;
 
     int relative_position_if_large =

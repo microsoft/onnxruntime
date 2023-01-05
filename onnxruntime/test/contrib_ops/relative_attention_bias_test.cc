@@ -17,7 +17,7 @@ static void RunRelAttnBiasTest(
     int num_buckets,
     int num_heads,
     int seq_len,
-    bool is_bidirectional,
+    int is_bidirectional,
     bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
@@ -57,16 +57,18 @@ static void RunRelAttnBiasTest(
 }
 
 TEST(RelationalAttentionBiasTest, RelationalAttentionBiasTest_FP32) {
-  int max_distance = 8;
-  int num_buckets = 2;
+  int max_distance = 128;
+  int num_buckets = 4;
   int num_heads = 2;
   int seq_len = 2;
-  bool is_bidirectional = true;
+  int is_bidirectional = 1;
 
-  std::vector<float> bias_table = {3.5f, 0.453125f, 3.1875f, 0.97265625f};
-  std::vector<int64_t> sequence_length = {2};
+  // Huggingface bias_table = [[1, 2], [3, 4], [5, 6], [7, 8]].
+  // Save in col-major order in ORT
+  std::vector<float> bias_table = {1.f, 3.f, 5.f, 7.f, 2.f, 4.f, 6.f, 8.f};
+  std::vector<int64_t> sequence_length = {seq_len};
 
-  std::vector<float> output_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> output_data = {1.f, 7.f, 3.f, 1.f, 2.f, 8.f, 4.f, 2.f};
 
   RunRelAttnBiasTest(bias_table,
                      sequence_length,
@@ -78,6 +80,78 @@ TEST(RelationalAttentionBiasTest, RelationalAttentionBiasTest_FP32) {
                      is_bidirectional);
 }
 
+TEST(RelationalAttentionBiasTest, RelationalAttentionBiasTest_FP16) {
+  int max_distance = 128;
+  int num_buckets = 4;
+  int num_heads = 2;
+  int seq_len = 2;
+  int is_bidirectional = 1;
+
+  // Huggingface bias_table = [[1, 2], [3, 4], [5, 6], [7, 8]].
+  // Save in col-major order in ORT
+  std::vector<float> bias_table = {1.f, 3.f, 5.f, 7.f, 2.f, 4.f, 6.f, 8.f};
+  std::vector<int64_t> sequence_length = {seq_len};
+
+  std::vector<float> output_data = {1.f, 7.f, 3.f, 1.f, 2.f, 8.f, 4.f, 2.f};
+
+  RunRelAttnBiasTest(bias_table,
+                     sequence_length,
+                     output_data,
+                     max_distance,
+                     num_buckets,
+                     num_heads,
+                     seq_len,
+                     is_bidirectional,
+                     true);
+}
+
+TEST(RelationalAttentionBiasTest, RelationalAttentionBiasTest2_FP16) {
+  int max_distance = 128;
+  int num_buckets = 4;
+  int num_heads = 3;
+  int seq_len = 2;
+  int is_bidirectional = 1;
+
+  // Huggingface bias_table = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]].
+  // Save in col-major order in ORT
+  std::vector<float> bias_table = {1.f, 4.f, 7.f, 10.f, 2.f, 5.f, 8.f, 11.f, 3.f, 6.f, 9.f, 12.f};
+  std::vector<int64_t> sequence_length = {seq_len};
+
+  std::vector<float> output_data = {1.f, 10.f, 4.f, 1.f, 2.f, 11.f, 5.f, 2.f, 3.f, 12.f, 6.f, 3.f};
+
+  RunRelAttnBiasTest(bias_table,
+                     sequence_length,
+                     output_data,
+                     max_distance,
+                     num_buckets,
+                     num_heads,
+                     seq_len,
+                     is_bidirectional,
+                     true);
+}
+
+TEST(RelationalAttentionBiasTest, RelationalAttentionBiasTest_FP16_No_Bidirectional) {
+  int max_distance = 128;
+  int num_buckets = 4;
+  int num_heads = 3;
+  int seq_len = 2;
+  int is_bidirectional = 0;
+
+  std::vector<float> bias_table = {1.f, 4.f, 7.f, 10.f, 2.f, 5.f, 8.f, 11.f, 3.f, 6.f, 9.f, 12.f};
+  std::vector<int64_t> sequence_length = {seq_len};
+
+  std::vector<float> output_data = {1.f, 1.f, 4.f, 1.f, 2.f, 2.f, 5.f, 2.f, 3.f, 3.f, 6.f, 3.f};
+
+  RunRelAttnBiasTest(bias_table,
+                     sequence_length,
+                     output_data,
+                     max_distance,
+                     num_buckets,
+                     num_heads,
+                     seq_len,
+                     is_bidirectional,
+                     true);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

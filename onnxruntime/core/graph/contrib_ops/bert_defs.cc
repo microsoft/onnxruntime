@@ -382,9 +382,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(RelPosAttnBiasGen, 1,
                                 .SetDoc("Compute binned relative position bias")
                                 .Attr("max_distance", "Max distance", AttributeProto::INT)
                                 .Attr("is_bidirectional", "Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Input(0, "bias_table", "2D input tensor with shape (num_buckets, num_heads)", "T")
+                                .Input(0, "bias_table", "2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)", "T")
                                 .Input(1, "sequence_length", "Real sequence length from last dimension of hidden states", "U")
-                                .Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
+                                .Output(0, "output", "3D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
                                 .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
