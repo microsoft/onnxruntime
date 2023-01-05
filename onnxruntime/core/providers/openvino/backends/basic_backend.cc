@@ -135,6 +135,9 @@ void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_conf
 
 void BasicBackend::EnableCaching() {
   if (global_context_.use_compiled_network == true) {
+    #if defined (OPENVINO_2022_3)
+      setenv("OV_GPU_CACHE_MODEL", "1", 1);
+    #endif
     std::string cache_dir_path;
     if (global_context_.blob_dump_path.empty()) {
       cache_dir_path = "ov_compiled_blobs";
