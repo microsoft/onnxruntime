@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <sstream>
 #include <ctime>
+#include <deque>
 #include <iomanip>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
