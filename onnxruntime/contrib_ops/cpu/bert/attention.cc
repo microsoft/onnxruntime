@@ -59,7 +59,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     Attention<float>);
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false, true) {
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false) {
 }
 
 template <typename T>

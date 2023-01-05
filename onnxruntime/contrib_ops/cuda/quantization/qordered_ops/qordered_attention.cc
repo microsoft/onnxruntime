@@ -157,7 +157,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
 
 #endif
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true, true) {
+QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   input_hidden_size_ = 0;
   int cuda_runtime_version = 0;
@@ -209,12 +209,10 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), &merged_weights_shape, merged_bias_shape,
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
                                   mask_index,
                                   nullptr,  // past
                                   nullptr,  // extra_add_qk
-                                  nullptr,  // key
-                                  nullptr,  // value
                                   nullptr,  // parameters
                                   device_prop.maxThreadsPerBlock));
 

@@ -6,6 +6,7 @@ namespace onnxruntime {
 namespace contrib {
 class LongformerAttentionBase;
 class AttentionBase;
+class CrossAttentionBase;
 namespace transformers {
 class BeamSearch;
 class GreedySearch;
@@ -140,13 +141,11 @@ struct ProviderHostCPU {
 
   virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
                                             const TensorShape& input_shape,
-                                            const TensorShape* weights_shape,
+                                            const TensorShape& weights_shape,
                                             const TensorShape& bias_shape,
                                             const Tensor*& mask_index,
                                             const Tensor* past,
                                             const Tensor* extra_add_qk,
-                                            const Tensor* key,
-                                            const Tensor* value,
                                             void* parameters,
                                             const int max_threads_per_block,
                                             const Tensor* past_seq_len) = 0;
@@ -159,6 +158,12 @@ struct ProviderHostCPU {
                                             int sequence_length,
                                             int& past_sequence_length) = 0;
 
+  virtual Status CrossAttentionBase__CheckInputs(const Tensor* query,
+                                                 const Tensor* key,
+                                                 const Tensor* value,
+                                                 const Tensor* bias,
+                                                 void* parameters,
+                                                 const int max_threads_per_block) = 0;
   // BeamSearch
   virtual void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) = 0;
   virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) = 0;

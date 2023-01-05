@@ -141,10 +141,6 @@ shape (2 * batch_size), where the values are the exclusive end positions followe
 When unidirectional is 1, each token only attends to previous tokens.
 
 Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
-
-When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
-and input is the query after projection. The bias is included for performance consideration.
-
 The qkv_hidden_sizes is required only when K and V have different hidden sizes.
 
 When there is past state, hidden dimension for Q, K and V shall be the same.
@@ -176,13 +172,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, "
                "or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Input(1,
                "weights",
                "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Input(2,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
@@ -206,18 +200,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(6,
-               "key",
-               "Input for key with shape (batch_size, kv_sequence_length, hidden_size). "
-               "Required when weights is not available.",
-               "T",
-               OpSchema::Optional)
-        .Input(7,
-               "value",
-               "Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). "
-               "Required when weights is not available.",
-               "T",
-               OpSchema::Optional)
-        .Input(8,
                "past_sequence_length",
                "When past_present_share_buffer, specify past_sequence_length for effective past sequence lenght (could be 0)."
                "Needed when past_present_share_buffer is not zero.",
@@ -244,6 +226,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           constexpr int past_input_index = 4;
           AttentionTypeAndShapeInference(ctx, past_input_index);
+        }));
+
+constexpr const char* CrossAttention_ver1_doc = R"DOC(
+Multi-Head Cross Attention. Bias from input projection is included.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    CrossAttention, 1,
+    OpSchema()
+        .SetDoc(CrossAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size, kv_sequence_length, hidden_size)"
+               "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed."
+               "Required when weights is not available.",
+               "T")
+        .Input(2,
+               "value",
+               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), "
+               "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed. "
+               "Required when weights is not available.",
+               "T")
+        .Input(3,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
+               "T")
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          QkvToContextTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
