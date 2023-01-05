@@ -1356,16 +1356,20 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Hailo, _In_ OrtSessionOptions* options, int use_arena) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Hailo, _In_ OrtSessionOptions* options, int use_arena) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::CreateExecutionProviderFactory_Hailo(use_arena);
   if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Hailo: Failed to load shared library");
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Hailo: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Hailo, _In_ OrtSessionOptions* options, int use_arena) {
+  return OrtApis::SessionOptionsAppendExecutionProvider_Hailo(options, use_arena);
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {

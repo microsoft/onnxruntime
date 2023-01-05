@@ -1318,7 +1318,7 @@ if (onnxruntime_USE_HAILO)
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
-  find_package(HailoRT 4.10.0 EXACT REQUIRED)
+  find_package(HailoRT 4.12.0 EXACT REQUIRED)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_hailo_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_hailo ${onnxruntime_providers_hailo_cc_srcs})
