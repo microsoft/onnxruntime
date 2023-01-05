@@ -196,7 +196,7 @@ jobs:
       solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
       platform: ${{ parameters.msbuildPlatform }}
       configuration: ${{ parameters.BuildConfig }}
-      msbuildArgs: '-maxcpucount ${{ variables['MSBUILD_CACHE_ARG'] }}'
+      msbuildArgs: '-maxcpucount ${{ variables.MSBUILD_CACHE_ARG }}'
       msbuildArchitecture: ${{ parameters.buildArch }}
       maximumCpuCount: true
       logProjectEvents: false
@@ -323,7 +323,7 @@ jobs:
       displayName: 'Generate documentation'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate ${{ variables['PY_CACHE_ARG'] }}'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate ${{ variables.PY_CACHE_ARG }}'
         workingDirectory: '$(Build.BinariesDirectory)'
 
   # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
