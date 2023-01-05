@@ -58,7 +58,7 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
   std::vector<std::vector<NodeIndex>> groups;
   for (auto& identical_children : identical_children_map) {
     if (identical_children.first != ignore_identity) {
-      groups.push_back(identical_children.second);
+      groups.push_back(std::move(identical_children.second));
     }
   }
   return groups;
