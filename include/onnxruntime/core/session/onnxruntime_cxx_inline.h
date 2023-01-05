@@ -709,6 +709,11 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
   return *this;
 }
 
+template <typename T>
+inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
+  ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
+}
+
 /// Session
 template <typename T>
 inline size_t ConstSessionImpl<T>::GetInputCount() const {
