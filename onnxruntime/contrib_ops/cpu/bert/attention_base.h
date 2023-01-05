@@ -20,7 +20,7 @@ class AttentionBase {
                      const Tensor* past,
                      const Tensor* extra_add_qk,
                      void* parameters,
-                     const int max_threads_per_block, // for CUDA
+                     const int max_threads_per_block,  // for CUDA
                      const Tensor* past_seq_len = nullptr) const;
 
   Tensor* GetPresent(OpKernelContext* context,

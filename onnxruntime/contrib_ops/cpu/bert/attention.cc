@@ -10,8 +10,8 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
-using onnxruntime::concurrency::ThreadPool;
 using onnxruntime::narrow;
+using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
@@ -200,20 +200,15 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* past = context->Input<Tensor>(4);
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
 
-  const Tensor* key = context->Input<Tensor>(6);
-  const Tensor* value = context->Input<Tensor>(7);
-
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  (nullptr != weights || is_prepack_) ? &weights_shape : nullptr,
+                                  weights_shape,
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   extra_add_qk,
-                                  key,
-                                  value,
                                   &parameters));
 
   const int batch_size = parameters.batch_size;

@@ -1,18 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/bert/cross_attention_base.h"
+#pragma once
+
+#include "core/common/common.h"
 #include "core/providers/common.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {
+namespace cross_attention_helper {
 
-Status CrossAttentionBase::CheckInputs(const Tensor* query,
-                                       const Tensor* key,
-                                       const Tensor* value,
-                                       const Tensor* bias,
-                                       void* parameters,
-                                       const int max_threads_per_block) const {
+template <typename T>
+Status CheckInputs(const T* query,
+                   const T* key,
+                   const T* value,
+                   const T* bias,
+                   const T* key_padding_mask,
+                   void* parameters,
+                   int num_heads,
+                   int max_threads_per_block) {
   //   query         (Q)       : (B, S, D)
   //   key           (K)       : (B, L, D)    or (B, L, D + D_v) packed
   //   value         (V)       : (B, L, D_v)  or (B, L, D + D_v) packed
@@ -34,6 +41,10 @@ Status CrossAttentionBase::CheckInputs(const Tensor* query,
   if (value_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
                            value_dims.size());
+  }
+
+  if (bias == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Optional 'bias' is not implemented yet");
   }
 
   const auto& bias_dims = bias->Shape().GetDims();
@@ -87,19 +98,20 @@ Status CrossAttentionBase::CheckInputs(const Tensor* query,
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = static_cast<int>(q_hidden_size);
     output_parameters->v_hidden_size = static_cast<int>(v_hidden_size);
-    output_parameters->head_size = static_cast<int>(q_hidden_size) / num_heads_;
-    output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
-    output_parameters->num_heads = num_heads_;
+    output_parameters->head_size = static_cast<int>(q_hidden_size) / num_heads;
+    output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads;
+    output_parameters->num_heads = num_heads;
     output_parameters->is_unidirectional = false;
     output_parameters->past_present_share_buffer = false;
   }
 
-  if (max_threads_per_block > 0 && num_heads_ > max_threads_per_block) {
+  if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
   return Status::OK();
 }
 
+}  // namespace cross_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -190,6 +190,7 @@ class SymbolicShapeInference:
             # contrib ops:
             "Attention": self._infer_Attention,
             "BiasGelu": self._infer_BiasGelu,
+            "CrossAttention": self._infer_CrossAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
@@ -1991,6 +1992,25 @@ class SymbolicShapeInference:
 
     def _infer_BiasGelu(self, node):
         self._propagate_shape_and_type(node)
+
+    def _infer_CrossAttention(self, node):
+        query_shape = self._get_shape(node, 0)  # (B, S, D)
+        key_shape = self._get_shape(node, 1)  # (B, L, D), or (B, L, D + D_v) for packed kv
+        value_shape = self._get_shape(node, 2)  # (B, L, D_v), or (B, L, D + D_v) for packed kv
+
+        assert len(query_shape) == 3 and len(key_shape) == 3 and len(value_shape) == 3 and len(bias_shape) == 1
+
+        is_packed_kv = key_shape[2] != query_shape[2]
+
+        output_shape = query_shape
+        if is_packed_kv:
+            output_shape[2] = int(key_shape[2]) - int(query_shape[2])
+        else:
+            output_shape[2] = int(value_shape[2])
+
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)

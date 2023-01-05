@@ -5,7 +5,6 @@
 
 #include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
-#include "contrib_ops/cpu/bert/cross_attention_base.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 
 namespace onnxruntime {
@@ -15,12 +14,13 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class CrossAttention final : public CudaKernel, public CrossAttentionBase {
+class CrossAttention final : public CudaKernel {
  public:
   CrossAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
+  int num_heads_;  // number of attention heads
   bool disable_fused_runner_;
   bool enable_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;

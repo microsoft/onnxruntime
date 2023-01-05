@@ -70,20 +70,20 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                            bias_dims.size());
   }
 
-    const auto& weights_dims = weights_shape.GetDims();
-    if (weights_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
-                             weights_dims.size());
-    }
-    if (weights_dims[0] != input_hidden_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 1 dimension 0 should have same length as dimension 2 of input 0");
-    }
+  const auto& weights_dims = weights_shape.GetDims();
+  if (weights_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
+                           weights_dims.size());
+  }
+  if (weights_dims[0] != input_hidden_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 1 dimension 0 should have same length as dimension 2 of input 0");
+  }
 
-    if (bias_dims[0] != weights_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
-    }
+  if (bias_dims[0] != weights_dims[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
+  }
 
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
@@ -312,8 +312,6 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
                                   const Tensor* extra_add_qk,
-                                  const Tensor* key,
-                                  const Tensor* value,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
@@ -321,7 +319,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, key, value, parameters, past_seq_len);
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, parameters, past_seq_len);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,

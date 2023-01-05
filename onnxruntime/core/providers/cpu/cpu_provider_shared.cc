@@ -215,16 +215,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                  sequence_length, past_sequence_length);
   }
 
-  Status CrossAttentionBase__CheckInputs(const contrib::AttentionBase* p,
-                                         const Tensor* query,
-                                         const Tensor* key,
-                                         const Tensor* value,
-                                         const Tensor* bias,
-                                         void* parameters,
-                                         const int max_threads_per_block) override {
-    return p->contrib::CrossAttentionBase::CheckInputs(query, key, value, bias, parameters, max_threads_per_block);
-  }
-
   void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
     p->contrib::transformers::BeamSearch::Init(info);
   }
@@ -260,7 +250,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
   Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
   Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
-
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

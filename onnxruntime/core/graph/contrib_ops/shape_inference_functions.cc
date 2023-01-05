@@ -107,56 +107,6 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
-void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-  //                      or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when K and V are packed
-  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or
-  //                        or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when K and V are packed
-  // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
-
-  // Type inference
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-  // Shape inference
-  if (hasInputShape(ctx, 0) and hasInputShape(ctx, 2)) {
-    auto& query_shape = getInputShape(ctx, 0);
-    auto& query_dims = query_shape.dim();
-    if (query_dims.size() != 3) {
-      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
-    }
-
-    auto& key_shape = getInputShape(ctx, 1);
-    auto& key_dims = key_shape.dim();
-    if (key_dims.size() != 3) {
-      fail_shape_inference("Inputs 1 (key) shall be 3 dimensions");
-    }
-
-    auto& value_shape = getInputShape(ctx, 2);
-    auto& value_dims = value_shape.dim();
-    if (value_dims.size() != 3) {
-      fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
-    }
-
-    ONNX_NAMESPACE::TensorShapeProto output_shape;
-    *output_shape.add_dim() = query_dims[0];
-    *output_shape.add_dim() = query_dims[1];
-    if (query_dims[2] == key_dims[2]) {
-      *output_shape.add_dim() = value_dims[2];
-    } else {  // packed key and value
-      if (key_dims[2] != value_dims[2]) {
-        fail_shape_inference("Inputs 1 (key) and 2 (value) shall have same shape when key and value are packed");
-      }
-      output_shape.add_dim();
-      if (query_dims[2].has_dim_value() && key_dims[2].has_dim_value()) {
-        int64_t v_hidden_size = key_dims[2].dim_value() - query_dims[2].dim_value();
-        output_shape.mutable_dim(2)->set_dim_value(v_hidden_size);
-      }
-    }
-
-    updateOutputShape(ctx, 0, output_shape);
-  }
-}
 // Shape inference for Attention and QAttention
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Input 0, 1, 2 are input, weights (optional) and bias.
