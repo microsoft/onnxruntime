@@ -22,7 +22,8 @@ class BenchmarkLayerNorm(BenchmarkOp):
     def __init__(self, args):
         super().__init__(args)
 
-    def create_inputs_outputs(self, op_param):
+    @classmethod
+    def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.feature).astype(op_param.data_type)
         scale = np.random.rand(op_param.feature).astype(op_param.data_type)
@@ -41,7 +42,8 @@ class BenchmarkLayerNorm(BenchmarkOp):
         op_param = OpParam(1, 384, 1024, data_type)
         self.add_case(op_param, model)
 
-    def case_profile(self, op_param, time):
+    @classmethod
+    def case_profile(cls, op_param, time):
         profile = (
             f"(batch seq_len feature) = ({op_param.batch_size} {op_param.seq_len} {op_param.feature}), {time:7.4f} ms"
         )

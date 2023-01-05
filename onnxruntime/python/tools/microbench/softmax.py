@@ -23,6 +23,7 @@ class BenchmarkSoftmax(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
+    @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         a = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
@@ -39,6 +40,7 @@ class BenchmarkSoftmax(BenchmarkOp):
         # change here to test your data shape
         self.add_case(OpParam(1, 32, 32, data_type), model)
 
+    @classmethod
     def case_profile(cls, op_param, time):
         profile = f"(dim1 dim2 dim3) = ({op_param.dim1} {op_param.dim2} {op_param.dim3}), {time * 1000:7.4f} us"
         return profile
