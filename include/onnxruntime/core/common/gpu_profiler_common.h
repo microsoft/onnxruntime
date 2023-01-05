@@ -227,7 +227,7 @@ class GPUTracerManager {
     gpu_ts1 = this_as_derived->GetGPUTimestampInNanoseconds();
     cpu_ts = this->GetCPUTimestampInNanoseconds();
 
-    // actual measurement of skew
+    // Estimate the skew/offset between the CPU and GPU timestamps.
     gpu_ts1 = this_as_derived->GetGPUTimestampInNanoseconds();
     cpu_ts = this->GetCPUTimestampInNanoseconds();
     gpu_ts2 = this_as_derived->GetGPUTimestampInNanoseconds();
@@ -282,7 +282,7 @@ protected:
     events_pending_client_mapping_.erase(pending_it);
   }
 
-  uint64_t NormalizeGPUTimestampNanoseconds(uint64_t gpu_timestamp_in_nanoseconds) {
+  uint64_t NormalizeGPUTimestampToCPUEpoch(uint64_t gpu_timestamp_in_nanoseconds) {
     return gpu_timestamp_in_nanoseconds + this->offset_to_add_to_gpu_timestamps_;
   }
 

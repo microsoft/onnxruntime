@@ -141,7 +141,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
               /* pid = */ -1,
               /* tid = */ -1,
               /* name = */ std::move(name),
-              /* ts = */ (int64_t)(this->NormalizeGPUTimestampNanoseconds(mmcpy->start) - start_time_ns) / 1000,
+              /* ts = */ (int64_t)(this->NormalizeGPUTimestampToCPUEpoch(mmcpy->start) - start_time_ns) / 1000,
               /* dur = */ (int64_t)(mmcpy->end - mmcpy->start) / 1000,
               /* args = */ std::move(args)};
           MapEventToClient(mmcpy->correlationId, std::move(event));
