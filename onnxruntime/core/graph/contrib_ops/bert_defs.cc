@@ -323,6 +323,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           CrossAttentionTypeAndShapeInference(ctx);
         }));
