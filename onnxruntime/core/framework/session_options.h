@@ -12,6 +12,10 @@
 #include "core/util/thread_utils.h"
 #include "core/framework/config_options.h"
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#include "core/framework/library_handles.h"
+#endif
+
 namespace onnxruntime {
 
 enum class ExecutionOrder {
@@ -136,6 +140,13 @@ struct SessionOptions {
 
   // custom function callback to join a thread
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Store handles to custom op libraries so that their lifetimes extend the lifetime of the session options object.
+  // Lazily initialized by the first call to SessionOptions::AddCustomOpLibraryHandle().
+  std::shared_ptr<LibraryHandles> custom_op_libs;
+  void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
+#endif
 };
 
 }  // namespace onnxruntime

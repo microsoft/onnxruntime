@@ -39,12 +39,20 @@ inline PathChar ToLowerPathChar(PathChar c) {
   return std::towlower(c);
 }
 
+inline std::string PathToUTF8String(const PathString& s) {
+  return ToUTF8String(s);
+}
+
 #else
 
 static_assert(std::is_same<PathString, std::string>::value, "PathString is not std::string!");
 
 inline PathChar ToLowerPathChar(PathChar c) {
   return std::tolower(c);
+}
+
+inline std::string PathToUTF8String(const PathString& s) {
+  return s;
 }
 
 #endif
