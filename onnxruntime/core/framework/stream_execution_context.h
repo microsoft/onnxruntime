@@ -58,7 +58,7 @@ class StreamExecutionContext {
 
   StreamExecutionContext(const SessionState& sess_state,
                          int32_t num_streams,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
                          gsl::span<const size_t> notification_owners,
                          size_t num_barriers,
                          const DeviceStreamCollection& device_stream_map,
@@ -169,7 +169,7 @@ class StreamExecutionContext {
 #endif
   const bool single_thread_mode_;
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   InlinedVector<std::unique_ptr<synchronize::Notification>> notifications_;
   const DeviceStreamCollection& device_stream_map_;
 
@@ -184,7 +184,8 @@ void RunSince(size_t stream_idx,
               StreamExecutionContext& ctx,
               SessionScope& session_scope,
               const bool& terminate_flag,
-              size_t since);
+              size_t since,
+              bool is_downstream = false);
 
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,
