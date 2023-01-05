@@ -147,7 +147,7 @@ class PlannerImpl {
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan(
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
       const std::string& partition_config_file,
@@ -995,7 +995,7 @@ class PlannerImpl {
     return true;
   }
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   // assume we already have a baseline reuse plan (no memory reuse at all)
   // this funciton will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
@@ -1335,7 +1335,7 @@ class PlannerImpl {
     // restore context
     context_ = backup_context;
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
 #endif
 
@@ -1713,7 +1713,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-#ifndef ENABLE_STREAM
+#ifndef ORT_ENABLE_STREAM
   void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
                             const std::string& /*partition_config_file*/) {
     stream_nodes_.push_back({});
@@ -2105,7 +2105,7 @@ class PlannerImpl {
 };
 
 Status PlannerImpl::CreatePlan(
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
     const std::string& partition_config_file,
@@ -2123,7 +2123,7 @@ Status PlannerImpl::CreatePlan(
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
 #else
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
@@ -2181,7 +2181,7 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
     const std::string& partition_config_file,
@@ -2196,7 +2196,7 @@ Status SequentialPlanner::CreatePlan(
                       ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan(
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       stream_handle_registry,
 #endif
       partition_config_file,
@@ -2205,7 +2205,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 
 InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy>
     IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};

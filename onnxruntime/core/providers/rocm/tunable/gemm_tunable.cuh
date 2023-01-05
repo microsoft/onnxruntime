@@ -35,7 +35,7 @@ template <typename T, typename ALayout, typename BLayout>
 class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
-    this->ops_.emplace_back(RocBlasGemmOp<T>);
+    this->RegisterOp(RocBlasGemmOp<T>);
 
 #ifdef USE_ROCBLAS_EXTENSION_API
     this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
@@ -43,7 +43,7 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
 
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
-      this->ops_.emplace_back(std::move(op));
+      this->RegisterOp(std::move(op));
     }
   }
 

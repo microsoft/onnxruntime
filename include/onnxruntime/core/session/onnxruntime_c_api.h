@@ -3638,6 +3638,42 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 
+  /** \brief Register custom ops from a shared library.
+  *
+  * Loads a shared library (.dll on windows, .so on linux, etc) named 'library_name' and looks for this entry point:
+  *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+  * It then passes in the provided session options to this function along with the api base.
+  *
+  * The handle to the loaded library is automatically released by ORT when the last OrtSession that references the
+  * library handle is released. If no OrtSession is created, then the library handle is released when the provided
+  * OrtSessionOptions is released.
+  *
+  * \param[in] options The session options.
+  * \param[in] library_name The name of the shared library to load and register. Refer to OS-specific dynamic library
+  *                         loading utilities (e.g., LoadLibraryEx on Windows or dlopen on Linux/MacOS) for information
+  *                         on the format of library names and search paths.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
+
+  /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
+  *
+  * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
+  * are logged.
+  *
+  * \param[in] log_severity_level The message's severity level.
+  * \param[in] message The message to log.
+  * \param[in] file_path The filepath of the file in which this message is logged. Usually the value of __FILE__.
+  * \param[in] line_number The file line number in which this message is logged. Usually the value of __LINE__.
+  * \param[in] func_name The name of the function in which this message is logged. Usually the value of __FUNCTION__.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
+                  int line_number, _In_z_ const char* func_name);
+
   /// @}
   /// \name OrtKernelInfo
   /// @{
@@ -3815,42 +3851,6 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                   _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
-
-  /** \brief Register custom ops from a shared library.
-  *
-  * Loads a shared library (.dll on windows, .so on linux, etc) named 'library_name' and looks for this entry point:
-  *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
-  * It then passes in the provided session options to this function along with the api base.
-  *
-  * The handle to the loaded library is automatically released by ORT when the last OrtSession that references the
-  * library handle is released. If no OrtSession is created, then the library handle is released when the provided
-  * OrtSessionOptions is released.
-  *
-  * \param[in] options The session options.
-  * \param[in] library_name The name of the shared library to load and register. Refer to OS-specific dynamic library
-  *                         loading utilities (e.g., LoadLibraryEx on Windows or dlopen on Linux/MacOS) for information
-  *                         on the format of library names and search paths.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  */
-  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
-
-  /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
-  *
-  * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
-  * are logged.
-  *
-  * \param[in] log_severity_level The message's severity level.
-  * \param[in] message The message to log.
-  * \param[in] file_path The filepath of the file in which this message is logged. Usually the value of __FILE__.
-  * \param[in] line_number The file line number in which this message is logged. Usually the value of __LINE__.
-  * \param[in] func_name The name of the function in which this message is logged. Usually the value of __FUNCTION__.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.14
-  */
-  ORT_API2_STATUS(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
-                  int line_number, _In_z_ const char* func_name);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

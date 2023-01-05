@@ -20,8 +20,8 @@ ORT_API(void, ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo*);
 ORT_API(void, ReleaseSequenceTypeInfo, _Frees_ptr_opt_ OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseModelMetadata, _Frees_ptr_opt_ OrtModelMetadata*);
 
-_Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
-    NO_EXCEPTION ORT_MUST_USE_RESULT;
+_Check_return_ _Ret_notnull_ [[nodiscard]] OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
+    NO_EXCEPTION;
 
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 const char* ORT_API_CALL GetErrorMessage(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -407,6 +407,12 @@ ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggin
 
 ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 
+ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
+                    _In_ const ORTCHAR_T* library_name);
+
+ORT_API_STATUS_IMPL(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
+                    int line_number, _In_z_ const char* func_name);
+
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
@@ -424,10 +430,5 @@ ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options
                     _In_z_ const char* config_key, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
-ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
-                    _In_ const ORTCHAR_T* library_name);
-
-ORT_API_STATUS_IMPL(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
-                    int line_number, _In_z_ const char* func_name);
 }  // namespace OrtApis
 

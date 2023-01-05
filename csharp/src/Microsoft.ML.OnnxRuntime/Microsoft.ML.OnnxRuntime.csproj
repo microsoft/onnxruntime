@@ -76,8 +76,8 @@
     Bindings for training are included by default. If user tries to call training apis when the native package installed
     on their device is not built for training, an exception will be thrown with the following message -
     "Training is disabled in the current build. Please build onnxruntime from source with the build flags
-    enable_training and enable_training_on_device. "-->
-   <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">true</OnDeviceTraining>
+    enable_training_apis. "-->
+   <EnableTrainingApis Condition="'$(EnableTrainingApis)' == ''">true</EnableTrainingApis>
 
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->
@@ -131,10 +131,10 @@
 
   <!-- Enable training APIs for the build. The native package must be
        a training build with build flags 'enable_training' and
-       'enable_training_on_device' set.
+       'enable_training_apis' set.
   -->
-  <PropertyGroup Condition="'$(OnDeviceTraining)'=='true'">
-    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
+  <PropertyGroup Condition="'$(EnableTrainingApis)'=='true'">
+    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_APIS__</OrtConstants>
   </PropertyGroup>
 
   <!--

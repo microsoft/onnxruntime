@@ -739,6 +739,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       ORT_THROW("create CANN ExecutionProvider fail");
     }
 #endif
+  } else if (type == kCloudExecutionProvider) {
+#ifdef USE_CLOUD
+    return onnxruntime::CloudProviderFactoryCreator::Create({})->CreateProvider();
+#endif
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);
@@ -1602,7 +1606,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           py::return_value_policy::reference_internal)
       .def_property_readonly(
-          "session_options", [](const PyInferenceSession* sess) -> const PySessionOptions* {
+          "session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
             return session_options.release();

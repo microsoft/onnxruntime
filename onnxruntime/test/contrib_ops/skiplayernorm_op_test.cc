@@ -23,7 +23,8 @@ static void RunTest(
     int sequence_length,
     int hidden_size,
     bool use_float16 = false,
-    bool no_beta = false) {
+    bool no_beta = false,
+    bool simplified = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size)
   //   Input 1 - skip : (batch_size, sequence_length, hidden_size)
@@ -37,17 +38,21 @@ static void RunTest(
   std::vector<int64_t> bias_dims = gamma_dims;
   std::vector<int64_t> output_dims = input_dims;
 
+  std::string op_type = simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization";
+
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
   if (!use_float16) {
-    OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<float>("input", input_dims, input_data);
     test.AddInput<float>("skip", skip_dims, skip_data);
     test.AddInput<float>("gamma", gamma_dims, gamma_data);
-    if (!no_beta) {
-      test.AddInput<float>("beta", beta_dims, beta_data);
-    } else {
-      test.AddOptionalInputEdge<float>();
+    if (!simplified) {
+      if (!no_beta) {
+        test.AddInput<float>("beta", beta_dims, beta_data);
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -70,14 +75,16 @@ static void RunTest(
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
              rocm_ep != nullptr) {
-    OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
     test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
-    if (!no_beta) {
-      test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
-    } else {
-      test.AddOptionalInputEdge<float>();
+    if (!simplified) {
+      if (!no_beta) {
+        test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -477,6 +484,42 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
           batch_size,
           sequence_length,
           hidden_size);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> skip_data = {
+      0.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 0.0f};
+
+  std::vector<float> gamma_data = {
+      0.3f, 0.2f, 4.0f, 2.2f};
+
+  std::vector<float> output_data = {
+      0.3491f, -0.1455f,  0.0000f,  3.2005f,
+      0.3487f,  0.0930f,  2.7899f, -3.0689f};
+
+  RunTest(input_data,
+          skip_data,
+          gamma_data,
+          std::vector<float>(),
+          std::vector<float>(),
+          output_data,
+          {},
+          epsilon_,
+          batch_size,
+          sequence_length,
+          hidden_size,
+          true,
+          true,
+          true);
 }
 #endif
 
