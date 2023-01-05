@@ -429,7 +429,7 @@ if(onnxruntime_ENABLE_ATEN)
   FetchContent_Populate(dlpack)
 endif()
 
-if(onnxruntime_ENABLE_TRAINING)
+if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
   FetchContent_Declare(
     cxxopts
     URL ${DEP_URL_cxxopts}
@@ -470,4 +470,3 @@ FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
 if (onnxruntime_USE_CLOUD)
     include(triton)
 endif()
-
