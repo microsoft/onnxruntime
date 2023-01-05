@@ -123,6 +123,6 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
       }
     }
   }
-  return {identity.append("_")};
+  return {identity.append("####")};
 }
 }  // namespace onnxruntime
