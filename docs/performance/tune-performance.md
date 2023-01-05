@@ -171,7 +171,7 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 #### Set number of intra-op threads
 
-Onnxruntime sessions utilizes multi-threading to parallelize computation inside each operator.
+Onnxruntime sessions utilize multi-threading to parallelize computation inside each operator.
 Customer could configure the number of threads like:
 
 ```python
@@ -180,11 +180,11 @@ sess_opt.intra_op_num_threads = 3
 sess = ort.InferenceSession('model.onnx', sess_opt, ...)
 ```
 
-With above example, 2 threads will be created in the pool, so along with the main calling thread, there will be 3 threads in total to participate in intra-op computation.
+With above example, two threads will be created in the pool, so along with the main calling thread, there will be three threads in total to participate in intra-op computation.
 By default, a session will create one thread per phyical core (except the 1st core) and attach the thread to that core.
 However, if customer explicitly set the number of threads like showcased above, there will be no affinity set to any of the created thread.
 
-In addition, Onnxruntime also allow customers to create a global intra-op thread pool to prevent overheated contentions among session thread pools, please find usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+In addition, Onnxruntime also allow customers to create a global intra-op thread pool to prevent overheated contentions among session thread pools, please find its usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
 
 #### Set intra-op thread affinity
 
