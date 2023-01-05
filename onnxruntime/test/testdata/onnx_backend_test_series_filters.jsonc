@@ -141,7 +141,7 @@
         "^test_edge_pad_cuda",
         "^test_reflect_pad_cuda",
         "^test_softplus_example_expanded_cuda",
-        "^test_softplus_expanded_cuda",
+        "^test_softplus_expanded_cuda"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -224,7 +224,7 @@
         "^test_layer_normalization_4d_axis_negative_1_expanded_ver18_cpu",
         "^test_layer_normalization_4d_axis_negative_2_expanded_ver18_cpu",
         "^test_layer_normalization_4d_axis_negative_3_expanded_ver18_cpu",
-        "^test_layer_normalization_default_axis_expanded_ver18_cpu",
+        "^test_layer_normalization_default_axis_expanded_ver18_cpu"
     ],
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",
