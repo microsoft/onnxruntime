@@ -220,9 +220,9 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 |Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](../install/index.md#install-on-ios)|
 |iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../install/index.md#install-on-ios)|
 |Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../install/index.md#install-on-ios)|
-|React Native|[**onnxruntime-react-native**](https://www.npmjs.com/package/onnxruntime-react-native)||[View](../api/js)|
-|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js)|
-|Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||[View](../api/js)|
+|React Native|[**onnxruntime-react-native** (latest)](https://www.npmjs.com/package/onnxruntime-react-native)|[onnxruntime-react-native (dev)](https://www.npmjs.com/package/onnxruntime-react-native?activeTab=versions)|[View](../api/js)|
+|Node.js|[**onnxruntime-node** (latest)](https://www.npmjs.com/package/onnxruntime-node)|[onnxruntime-node (dev)](https://www.npmjs.com/package/onnxruntime-node?activeTab=versions)|[View](../api/js)|
+|Web|[**onnxruntime-web** (latest)](https://www.npmjs.com/package/onnxruntime-web)|[onnxruntime-web (dev)](https://www.npmjs.com/package/onnxruntime-web?activeTab=versions)|[View](../api/js)|
 
 
 
