@@ -68,7 +68,9 @@ jobs:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ${{ if eq(parameters.WITH_CACHE, true) }}:
-      PS_CACHE_PARAMTER: -use_cache
+      PS_CACHE_ARG: '-use_cache'
+      PY_CACHE_ARG: '--use_cache'
+      MSBUILD_CACHE_ARG: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}
@@ -158,7 +160,7 @@ jobs:
         inputs:
           filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
           workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ variables['PS_CACHE_PARAMTER'] }}
+          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ variables['PS_CACHE_ARG'] }}
 
       - powershell: |
           ccache -sv
@@ -185,10 +187,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      ${{ if eq(parameters.WITH_CACHE, true) }}:
-        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --use_cache --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
-      ${{ else }}:
-        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ variables.PY_CACHE_ARG }} ${{ parameters.additionalBuildFlags }}'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -197,10 +196,7 @@ jobs:
       solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
       platform: ${{ parameters.msbuildPlatform }}
       configuration: ${{ parameters.BuildConfig }}
-      ${{ if eq(parameters.WITH_CACHE, true) }}:
-        msbuildArgs: '-maxcpucount /p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
-      ${{ else }}:
-        msbuildArgs: '-maxcpucount'
+      msbuildArgs: '-maxcpucount ${{ variables['MSBUILD_CACHE_ARG'] }}'
       msbuildArchitecture: ${{ parameters.buildArch }}
       maximumCpuCount: true
       logProjectEvents: false
@@ -327,10 +323,7 @@ jobs:
       displayName: 'Generate documentation'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        ${{ if eq(parameters.WITH_CACHE, true)}}:
-          arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate --use_cache'
-        ${{ else }}:
-          arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate ${{ variables['PY_CACHE_ARG'] }}'
         workingDirectory: '$(Build.BinariesDirectory)'
 
   # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
