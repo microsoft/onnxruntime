@@ -171,20 +171,20 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 #### Set number of intra-op threads
 
-Onnxruntime utilizes multi-threading to parallelize computation inside each operator, each session has its own intra-op thread pool for the job.
+Onnxruntime sessions utilizes multi-threading to parallelize computation inside each operator.
 Customer could configure the number of threads like:
 
 ```python
-sess_op = SessionOptions()
-sess_op.intra_op_num_threads = 3
-sess = ort.InferenceSession('model.onnx', sess_op, ...)
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 3
+sess = ort.InferenceSession('model.onnx', sess_opt, ...)
 ```
 
 With above example, 2 threads will be created in the pool, so along with the main calling thread, there will be 3 threads in total to participate in intra-op computation.
-By default, Onnxruntime will create one thread each phyical core (except the 1st core) and attach the thread to that core.
-However, if customer explicitly set the number of threads like indicated above, Onnxruntime will not set affinity to any of created threads.
+By default, a session will create one thread per phyical core (except the 1st core) and attach the thread to that core.
+However, if customer explicitly set the number of threads like showcased above, there will be no affinity setting at all.
 
-In addition, Onnxruntime also allows customer to create a global intra-op thread pool to prevent overheated contentions among session thread pools, pls see usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+In addition, Onnxruntime also allow customers to create a global intra-op thread pool to prevent overheated contentions among session thread pools, pls see usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
 
 #### Set intra-op thread affinity
 
@@ -195,10 +195,10 @@ Sometimes, it may be beneficial to customize intra-op thread affinities, for exa
 For session intra-op thread pool, please read the [configuration](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L180) and consume it like:
 
 ```python
-sess_op = SessionOptions()
-sess_op.intra_op_num_threads = 3
-sess_op.add_session_config_entry('session.intra_op_thread_affinities', '1;2')
-sess = ort.InferenceSession('model.onnx', sess_op, ...)
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 3
+sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '1;2')
+sess = ort.InferenceSession('model.onnx', sess_opt, ...)
 ```
 
 For global thread pool, please read the [API](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_c_api.h#L3636) and [usage](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
