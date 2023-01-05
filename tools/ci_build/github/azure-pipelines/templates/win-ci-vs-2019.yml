@@ -198,7 +198,10 @@ jobs:
       solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
       platform: ${{ parameters.msbuildPlatform }}
       configuration: ${{ parameters.BuildConfig }}
-      msbuildArgs: '-maxcpucount /p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
+      ${{ if eq(parameters.WITH_CACHE, true) }}:
+        msbuildArgs: '-maxcpucount /p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
+      ${{ else }}:
+        msbuildArgs: '-maxcpucount'
       msbuildArchitecture: ${{ parameters.buildArch }}
       maximumCpuCount: true
       logProjectEvents: false
