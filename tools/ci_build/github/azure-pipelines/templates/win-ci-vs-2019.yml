@@ -67,6 +67,8 @@ jobs:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    ${{ if eq(parameters.WITH_CACHE, true) }}:
+      PS_CACHE_PARAMTER: -use_cache
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}
@@ -156,7 +158,7 @@ jobs:
         inputs:
           filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
           workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ coalesce('', '-use_cache') }}
+          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} $(PS_CACHE_PARAMTER)
 
       - powershell: |
           ccache -sv
