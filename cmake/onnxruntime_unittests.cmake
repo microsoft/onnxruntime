@@ -1376,7 +1376,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnx
                                         ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.cc
                                         ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/openvino_wrapper.cc)
   target_include_directories(custom_op_openvino_wrapper_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(custom_op_openvino_wrapper_library PRIVATE openvino::runtime ${GSL_TARGET})
+  target_link_libraries(custom_op_openvino_wrapper_library PRIVATE openvino::runtime)
 
   if(UNIX)
     if (APPLE)

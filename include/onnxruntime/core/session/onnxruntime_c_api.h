@@ -3795,9 +3795,8 @@ struct OrtApi {
   * \param[in] info ::OrtKernelInfo instance.
   * \param[in] name UTF-8 null-terminated string representing the attribute's name.
   * \param[in] allocator Allocator used to allocate the internal tensor state.
-  * \param[out] out Returns newly created ::OrtValue backed by the provided buffer.
-  *                 Must be freed with OrtApi::ReleaseValue, which will also free internal
-  *                 tensor state allocated with the provided allocator.
+  * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue,
+  *                 which will also free internal tensor state allocated with the provided allocator.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
