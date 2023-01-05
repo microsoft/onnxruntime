@@ -83,7 +83,7 @@ template <typename T, typename ALayout, typename BLayout>
 class BatchedGemmTunableOp : public tunable::TunableOp<BatchedGemmParams<T>> {
  public:
   BatchedGemmTunableOp() {
-    this->ops_.emplace_back(RocBlasBatchedGemmOp<T>);
+    this->RegisterOp(RocBlasBatchedGemmOp<T>);
   }
 
   const BatchedGemmParams<T>* PreTuning(const BatchedGemmParams<T>* params) override {
@@ -126,10 +126,10 @@ template <typename T, typename ALayout, typename BLayout>
 class StridedBatchedGemmTunableOp : public tunable::TunableOp<StridedBatchedGemmParams<T>> {
  public:
   StridedBatchedGemmTunableOp() {
-    this->ops_.emplace_back(RocBlasStridedBatchedGemmOp<T>);
+    this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
     for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
-      this->ops_.emplace_back(std::move(op));
+      this->RegisterOp(std::move(op));
     }
   }
 
