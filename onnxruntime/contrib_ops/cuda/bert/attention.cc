@@ -16,26 +16,28 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define PastSequenceLength 8
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Attention,                                                  \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .MayInplace(4, 1)                                       \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .InputMemoryType(OrtMemTypeCPUInput, PastSequenceLength)\
-      ,                                                           \
+constexpr int kPastSequenceLengthInputIndex = 6;
+constexpr int kPastInputIndex = 4;
+constexpr int kPresentOutputIndex = 1;
+
+#define REGISTER_KERNEL_TYPED(T)                                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      Attention,                                                               \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex), \
       Attention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, false) {
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
@@ -49,22 +51,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* past = context->Input<Tensor>(4);
+  const Tensor* past = context->Input<Tensor>(kPastInputIndex);
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
-  const Tensor* key = context->Input<Tensor>(6);
-  const Tensor* value = context->Input<Tensor>(7);
-  const Tensor* past_seq_len = context->Input<Tensor>(8);
+  const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  nullptr == weights ? nullptr : &(weights->Shape()),
+                                  weights->Shape(),
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   extra_add_qk,
-                                  key,
-                                  value,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
@@ -83,7 +81,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
     parameters.head_size};
   TensorShape present_shape(present_dims);
-  Tensor* present = context->Output(1, present_shape);
+  Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
   MHARunner* fused_runner = nullptr;
 
@@ -145,23 +143,21 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   IAllocatorUniquePtr<T> gemm_buffer;
-  if (weights != nullptr) {
-    int m = batch_size * sequence_length;
-    int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
-    int k = parameters.input_hidden_size;
-    gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  int m = batch_size * sequence_length;
+  int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
+  int k = parameters.input_hidden_size;
+  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-    CudaT one = ToCudaType<T>::FromFloat(1.0f);
-    CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  CudaT one = ToCudaType<T>::FromFloat(1.0f);
+  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-    // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
-    // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-        reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
-  }
+  // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
+  // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
+  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
+      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
@@ -177,11 +173,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
-  data.gemm_buffer = (nullptr == weights) ? nullptr : reinterpret_cast<CudaT*>(gemm_buffer.get());
+  data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.query = (nullptr != weights) ? nullptr : reinterpret_cast<const CudaT*>(input->Data<T>());
-  data.key = (nullptr == key) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = (nullptr == value) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.query = nullptr;
+  data.key = nullptr;
+  data.value = nullptr;
   data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
   data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
   data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());

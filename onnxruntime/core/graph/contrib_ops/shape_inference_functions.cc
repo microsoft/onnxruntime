@@ -107,11 +107,12 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
-void QkvToContextTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
   // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
-  //     When key and value are packed, they have shape (batch_size, kv_sequence_length, hidden_size + v_hidden_size)
+  //                      or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when K and V are packed
+  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or
+  //                        or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when K and V are packed
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
   // Type inference

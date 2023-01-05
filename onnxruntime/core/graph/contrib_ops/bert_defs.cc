@@ -141,10 +141,6 @@ shape (2 * batch_size), where the values are the exclusive end positions followe
 When unidirectional is 1, each token only attends to previous tokens.
 
 Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
-
-When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
-and input is the query after projection. The bias is included for performance consideration.
-
 The qkv_hidden_sizes is required only when K and V have different hidden sizes.
 
 When there is past state, hidden dimension for Q, K and V shall be the same.
@@ -231,36 +227,35 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
-constexpr const char* Attention_ver1_doc = R"DOC(
-Multi-Head Attention without input and output projects. It has optional bias from input projection.
+constexpr const char* CrossAttention_ver1_doc = R"DOC(
+Multi-Head Cross Attention. Bias from input projection is included.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    QkvToContext, 1,
+    CrossAttention, 1,
     OpSchema()
-        .SetDoc(Attention_ver1_doc)
+        .SetDoc(CrossAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Input(0,
                "query",
-               "Query query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
+               "Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
                "T")
         .Input(1,
                "key",
-               "Input for key with shape (batch_size, kv_sequence_length, hidden_size)"
+               "Key with shape (batch_size, kv_sequence_length, hidden_size)"
                "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed."
                "Required when weights is not available.",
                "T")
         .Input(2,
                "value",
-               "Input for value with shape (batch_size, kv_sequence_length, v_hidden_size), "
+               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), "
                "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed. "
                "Required when weights is not available.",
                "T")
         .Input(3,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",

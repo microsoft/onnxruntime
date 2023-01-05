@@ -8,13 +8,11 @@ namespace onnxruntime {
 namespace contrib {
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
-                                  const TensorShape* weights_shape,
+                                  const TensorShape& weights_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
                                   const Tensor* extra_add_qk,
-                                  const Tensor* key,
-                                  const Tensor* value,
                                   void* parameters,
                                   const Tensor* past_seq_len) const {
   // Abbreviation and Meanings:
@@ -33,25 +31,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   // When past state is used, Q, K and V should have same hidden size (unless we split it into past_key and past_value).
 
-  // Input shapes with weights:
+  // Input shapes:
   //   input        (Q/K/V)    : (B, S, D_i)
   //   weights      (Q/K/V)    : (D_i, D + D + D_v)
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
   //   extra_add_qk            : (B, N, S, T) or NULL
-  //   key                     : NULL
-  //   value                   : NULL
-
-  // Input shapes without weights (only bias is provided):
-  //   input         (Q)       : (B, S, D)
-  //   weights                 : NULL
-  //   bias          (Q/K/V)   : (D + D + D_v)
-  //   mask_index              : see below
-  //   past          (K/V)     : (2, B, N, P, H) or NULL
-  //   extra_add_qk            : (B, N, S, T) or NULL
-  //   key           (K)       : (B, L, D)
-  //   value         (V)       : (B, L, D_v)
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
@@ -84,8 +70,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                            bias_dims.size());
   }
 
-  if (weights_shape != nullptr) {
-    const auto& weights_dims = weights_shape->GetDims();
+    const auto& weights_dims = weights_shape.GetDims();
     if (weights_dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
                              weights_dims.size());
@@ -99,7 +84,6 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
     }
-  }
 
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
@@ -123,60 +107,6 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   int64_t kv_sequence_length = sequence_length;
-  if (weights_shape == nullptr) {  // no weights
-    if (this->require_weights_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "This operator requires weights");
-    }
-
-    if (key == nullptr || value == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "When weights is not provided, key and value are required");
-    }
-
-    const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
-                             key_dims.size());
-    }
-    if (key_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' dimension 0 should have same length as dimension 0 of input 0");
-    }
-
-    const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                             value_dims.size());
-    }
-    if (value_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'value' dimension 0 should have same length as dimension 0 of input 0");
-    }
-
-    if (value_dims[1] != key_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' dimension 1 should have same length");
-    }
-
-    q_hidden_size = dims[2];
-    k_hidden_size = key_dims[2];
-    v_hidden_size = value_dims[2];
-    kv_sequence_length = key_dims[1];
-
-    if (qkv_hidden_sizes_.size() != 0 &&
-        (q_hidden_size != qkv_hidden_sizes_[0] ||
-         k_hidden_size != qkv_hidden_sizes_[1] ||
-         v_hidden_size != qkv_hidden_sizes_[2])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "qkv_hidden_sizes does not match with query, key and value input shape",
-                             " q_hidden_size=", q_hidden_size,
-                             " k_hidden_size=", k_hidden_size,
-                             " v_hidden_size=", v_hidden_size,
-                             "qkv_hidden_sizes[0]=", qkv_hidden_sizes_[0],
-                             "qkv_hidden_sizes[1]=", qkv_hidden_sizes_[1],
-                             "qkv_hidden_sizes[2]=", qkv_hidden_sizes_[2]);
-    }
-  }
 
   if (q_hidden_size != k_hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -377,7 +307,7 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
 }
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
-                                  const TensorShape* weights_shape,
+                                  const TensorShape& weights_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
