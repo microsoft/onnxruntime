@@ -226,16 +226,19 @@ class TRTModelIdGenerator {
 #ifdef _WIN32
       std::string model_name;
 
+      // Convert wide model name to multibyte characters.
       {
         // Query the required buffer size (including '\0') by passing nullptr for the destination.
         size_t total_bytes = 0;
-        wcstombs_s(&total_bytes, nullptr, 0, path_string.c_str(), _TRUNCATE);
+        ORT_IGNORE_RETURN_VALUE(wcstombs_s(&total_bytes, nullptr, 0, path_string.c_str(), _TRUNCATE));
 
         // Resize the destination buffer and convert.
         model_name.resize(total_bytes);
-        wcstombs_s(&total_bytes, &model_name[0], total_bytes, path_string.c_str(), _TRUNCATE);
+        auto err = wcstombs_s(&total_bytes, &model_name[0], total_bytes, path_string.c_str(), _TRUNCATE);
+        ORT_ENFORCE(err == 0, MakeString(
+            "TRTGenerateId: Failed to convert wide model name to bytes. wcstombs_s returned ", err));
 
-        model_name.resize(total_bytes - 1);  // Remove the terminating '\0'
+        model_name.resize(total_bytes - 1);  // Remove the duplicate terminating '\0'
       }
 #else
       std::string model_name(path_string);
