@@ -70,7 +70,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
-  * <a href="#com.microsoft.RelPosAttnBiasGen">com.microsoft.RelPosAttnBiasGen</a>
+  * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
@@ -3661,9 +3661,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.RelPosAttnBiasGen"></a><a name="com.microsoft.relposattnbiasgen">**com.microsoft.RelPosAttnBiasGen**</a>
+### <a name="com.microsoft.RelativePositionBias"></a><a name="com.microsoft.relativepositionbias">**com.microsoft.RelativePositionBias**</a>
 
-  Compute binned relative position bias
+  Compute binned relative position bias for T5 model. ref: https://arxiv.org/abs/1803.02155v2
 
 #### Version
 
@@ -3683,8 +3683,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>bias_table</tt> : T</dt>
 <dd>2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)</dd>
-<dt><tt>sequence_length</tt> : U</dt>
-<dd>Real sequence length from last dimension of hidden states</dd>
+<dt><tt>query_length</tt> : U</dt>
+<dd>The length of query. Self Attention requires query_length = key_length</dd>
+<dt><tt>key_length</tt> : U</dt>
+<dd>The length of key.</dd>
 </dl>
 
 #### Outputs
