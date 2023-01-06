@@ -45,7 +45,7 @@ In this tutorial we are using VNC Viewer to remote in. If you are going to use V
 
 - [Download the source](https://github.com/cassiebreviu/onnxruntime-raspberrypi) to your Raspberry Pi. The source code includes everything you need to run inference including a `mobilenet` ONNX model from the [model zoo](https://github.com/onnx/models) and `imagenet_classes.txt` classes.
 
-```bash
+    ```bash
 git clone https://github.com/cassiebreviu/onnxruntime-raspberrypi.git
 ```
 
