@@ -500,7 +500,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
 #ifdef ORT_ENABLE_STREAM
-                                   const DeviceStreamCollection& device_streams,
+                                   const DeviceStreamCollection* device_streams,
 #endif
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
@@ -592,7 +592,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
-                                          const DeviceStreamCollection& device_streams,
+                                          const DeviceStreamCollection* device_streams,
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,

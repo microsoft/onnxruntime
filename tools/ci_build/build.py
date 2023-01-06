@@ -965,10 +965,12 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.use_cache:
-        cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-        cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-        if args.use_cuda:
+        cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
+        if not (is_windows() and args.cmake_generator != "Ninja"):
+            cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            if args.use_cuda:
+                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -1369,9 +1371,10 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 build_tool_args += [
-                    "/maxcpucount:{}".format(num_parallel_jobs),
+                    f"/maxcpucount:{num_parallel_jobs}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
+                    f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif is_macOS() and args.use_xcode:
                 # CMake will generate correct build tool args for Xcode

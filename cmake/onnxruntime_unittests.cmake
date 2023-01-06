@@ -1346,6 +1346,30 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 endif()
+
+# Build custom op library that returns an error OrtStatus when the exported RegisterCustomOps function is called.
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+  onnxruntime_add_shared_library_module(custom_op_invalid_library
+                                        ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.cc)
+  target_include_directories(custom_op_invalid_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.def")
+  endif()
+
+  set_property(TARGET custom_op_invalid_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
+endif()
+
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
