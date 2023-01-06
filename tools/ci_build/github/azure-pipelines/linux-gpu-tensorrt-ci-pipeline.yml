@@ -14,23 +14,23 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   workspace:
     clean: all
-  pool: Linux-CPU-2019
+  pool: onnxruntime-tensorrt-linuxbuild-T4 
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimetensorrt84gpubuild
+      Repository: onnxruntimetensorrt85gpubuild
 
   - task: CmdLine@2
     inputs:
       script: |
-        docker run -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+        docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
@@ -39,10 +39,10 @@ jobs:
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            onnxruntimetensorrt84gpubuild \
+            onnxruntimetensorrt85gpubuild \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Release --update --build \
+              --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
@@ -53,19 +53,6 @@ jobs:
               --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: CmdLine@2
-    inputs:
-      script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
-        cd $(Build.BinariesDirectory)/Release
-        find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
-
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact'
-    inputs:
-      artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/Release'
-
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
@@ -73,54 +60,5 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
-
-  - template: templates/clean-agent-build-directory-step.yml
-
-- job: Linux_Test
-  timeoutInMinutes: 120
-  variables:
-    skipComponentGovernanceDetection: true
-  workspace:
-    clean: all
-  pool: onnxruntime-tensorrt-linuxbuild-T4
-  dependsOn:
-  - Linux_Build
-  steps:
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      buildType: 'current'
-      artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/Release'
-
-  - task: CmdLine@2
-    inputs:
-      script: |
-         set -e -x
-         # We assume the machine doesn't have gcc and python development header files
-         sudo rm -f /build /onnxruntime_src
-         sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-         # Test ORT with the latest ONNX release.
-         sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-         ln -s /data/models $(Build.BinariesDirectory)
-         cd $(Build.BinariesDirectory)/Release
-         # Restore file permissions
-         xargs -a $(Build.BinariesDirectory)/Release/perms.txt chmod a+x
-         cd /tmp
-         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-              --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
-              --config Release --test \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
-              --enable_pybind --build_java \
-              --use_tensorrt --tensorrt_placeholder_builder --tensorrt_home /usr --ctest_path '' \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75 
 
   - template: templates/clean-agent-build-directory-step.yml

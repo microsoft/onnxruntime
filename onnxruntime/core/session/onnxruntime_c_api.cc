@@ -47,7 +47,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
 #include "orttraining/training_api/include/ort_training_apis.h"
 #endif
@@ -80,11 +80,11 @@ using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
 using onnxruntime::MLFloat16;
+using onnxruntime::narrow;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
 using onnxruntime::ToOrtStatus;
 using onnxruntime::common::Status;
-using onnxruntime::narrow;
 
 using namespace onnxruntime;
 
@@ -286,7 +286,7 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
 #ifdef USE_CUDA
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
-      return provider_info->CreateGPUDataTransfer(nullptr);
+      return provider_info->CreateGPUDataTransfer();
     }
   }
 #endif
@@ -600,7 +600,8 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, _Outptr_ void** library_handle) {
   API_IMPL_BEGIN
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, library_handle));
+  auto path_str = ToPathString(library_path);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(path_str, false, library_handle));
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
@@ -612,6 +613,20 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
   return RegisterCustomOps(options, OrtGetApiBase());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
+                    _In_ const ORTCHAR_T* library_name) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->RegisterCustomOpsLibrary(library_name));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(library_name);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Custom operator libraries are not supported in this build");
+#endif
   API_IMPL_END
 }
 
@@ -775,7 +790,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<std::string> feed_names(input_len);
   std::vector<OrtValue> feeds(input_len);
@@ -792,9 +806,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     }
 
     feed_names[i] = input_names[i];
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
-
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
   }
 
   // Create output feed
@@ -810,8 +822,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] != nullptr) {
       ::OrtValue& value = *(output[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -827,9 +837,8 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     return ToOrtStatus(status);
   for (size_t i = 0; i != output_names_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (output[i] == nullptr) {
+      GSL_SUPPRESS(r .11)
       output[i] = new OrtValue(value);
     }
   }
@@ -870,6 +879,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
+  GSL_SUPPRESS(r .11)
   *out = new OrtIoBinding(std::move(binding));
   return nullptr;
   API_IMPL_END
@@ -985,6 +995,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
 
   OrtValue** out_ptr = ortvalues_alloc.get();
   for (const auto& out_value : outputs) {
+    GSL_SUPPRESS(r .11)
     *out_ptr = new OrtValue(out_value);
     ++out_ptr;
     ++created;
@@ -1325,6 +1336,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* ses
   auto p = session->GetModelMetadata();
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
+  GSL_SUPPRESS(r .11)
   *out = reinterpret_cast<OrtModelMetadata*>(new ModelMetadata(*p.second));
   return nullptr;
   API_IMPL_END
@@ -1985,7 +1997,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, _In_z_ const char* domain_name, 
               "Specified domain and type names combination does not refer to a registered opaque type");
   const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
-  std::unique_ptr<OrtValue> ort_val(new OrtValue);
+  std::unique_ptr<OrtValue> ort_val = std::make_unique<OrtValue>();
   non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
   *out = ort_val.release();
   API_IMPL_END
@@ -2007,6 +2019,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
+GSL_SUPPRESS(r .11)
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
@@ -2016,9 +2029,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = narrow<int>(available_providers.size());
+  GSL_SUPPRESS(r .11)
   char** const out = new char*[available_count];
   if (out) {
     for (int i = 0; i < available_count; i++) {
+      GSL_SUPPRESS(r .11)
       out[i] = new char[MAX_LEN + 1];
 #ifdef _MSC_VER
       strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
@@ -2043,8 +2058,10 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   API_IMPL_BEGIN
   if (ptr) {
     for (int i = 0; i < providers_length; i++) {
+      GSL_SUPPRESS(r .11)
       delete[] ptr[i];
     }
+    GSL_SUPPRESS(r .11)
     delete[] ptr;
   }
   API_IMPL_END
@@ -2139,6 +2156,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
+  GSL_SUPPRESS(r .11)
   *out = new OrtArenaCfg();
   (*out)->max_mem = max_mem;
   (*out)->arena_extend_strategy = arena_extend_strategy;
@@ -2185,7 +2203,7 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
 
 ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out) {
   API_IMPL_BEGIN
-  std::unique_ptr<PrepackedWeightsContainer> container(new PrepackedWeightsContainer());
+  std::unique_ptr<PrepackedWeightsContainer> container = std::make_unique<PrepackedWeightsContainer>();
   *out = reinterpret_cast<OrtPrepackedWeightsContainer*>(container.release());
   return nullptr;
   API_IMPL_END
@@ -2274,14 +2292,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
   return OrtTrainingApis::GetTrainingApi(version);
 #else
 
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training and enable_training_on_device to "
+          "from source with the build flags enable_training and enable_training_apis to "
           "retrieve the training APIs.\n");
 
   return nullptr;
@@ -2332,7 +2350,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_12 = {
+static constexpr OrtApi ort_api_1_to_14 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2606,41 +2624,39 @@ static constexpr OrtApi ort_api_1_to_12 = {
     // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
+    &OrtApis::SetGlobalIntraOpThreadAffinity,
+    &OrtApis::RegisterCustomOpsLibrary_V2,
 };
-
-
-
-
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
-static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void *) == 101, "Size of version 1 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void *) == 118, "Size of version 2 API cannot change");
-static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void *) == 124,
+static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void*) == 118, "Size of version 2 API cannot change");
+static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void*) == 124,
               "Size of version 3 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void *) == 126,
+static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void*) == 126,
               "Size of version 4 API cannot change");
-static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void *) == 149, "Size of version 5 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void *) == 157, "Size of version 6 API cannot change");
+static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Size of version 5 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
 static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void *) == 218, "Size of version 12 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void *) == 224, "Size of version 13 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.14.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_13 above:
+// 2. If there were any APIs added to ort_api_1_to_14 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_12;
+    return &ort_api_1_to_14;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

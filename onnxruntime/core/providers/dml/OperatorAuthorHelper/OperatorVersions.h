@@ -157,7 +157,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Compress = 9;
         static const int sc_sinceVer_EyeLike = 9;
         static const int sc_sinceVer_Scatter = 9;
-        static const int sc_sinceVer_Nonzero = 9;
+        static const int sc_sinceVer_NonZero = 9;
         static const int sc_sinceVer_Shrink = 9;
         static const int sc_sinceVer_Greater = 9;
         static const int sc_sinceVer_Less = 9;
@@ -303,6 +303,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Mod = 13;
         static const int sc_sinceVer_Mul = 13;
         static const int sc_sinceVer_Neg = 13;
+        static const int sc_sinceVer_NonZero = 13;
         static const int sc_sinceVer_Pad = 13;
         static const int sc_sinceVer_Pow = 13;
         static const int sc_sinceVer_QuantizeLinear = 13;
@@ -369,6 +370,15 @@ namespace OperatorHelper
         static const int sc_sinceVer_Shape = 15;
     } // namespace OnnxOperatorSet15
 
+    namespace OnnxOperatorSet16
+    {
+        static const int sc_sinceVer_LeakyRelu = 16;
+        static const int sc_sinceVer_PRelu = 16;
+        static const int sc_sinceVer_Where = 16;
+        static const int sc_sinceVer_GreaterOrEqual = 16;
+        static const int sc_sinceVer_LessOrEqual = 16;
+    } // namespace OnnxOperatorSet16
+
     namespace OnnxOperatorSet17
     {
         static const int sc_sinceVer_LayerNormalization = 17;
@@ -390,9 +400,12 @@ namespace OperatorHelper
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
         static const int sc_sinceVer_QLinearAdd = 1;
         static const int sc_sinceVer_Gelu = 1;
+        static const int sc_sinceVer_BiasGelu = 1;
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_SkipLayerNormalization = 1;
+        static const int sc_sinceVer_EmbedLayerNormalization = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

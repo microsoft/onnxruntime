@@ -194,10 +194,16 @@ def get_device_from_inputs(args, kwargs):
 def _create_iobinding(io_binding, inputs, model, device):
     """Creates IO binding for a `model` inputs and output"""
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_ortvalue_input(value_info.name, OrtValue(_ortvalue_from_torch_tensor(inputs[idx])))
+        io_binding.bind_ortvalue_input(
+            value_info.name,
+            OrtValue(
+                _ortvalue_from_torch_tensor(inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous())
+            ),
+        )
 
+    device_id = get_device_index(device)
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+        io_binding.bind_output(value_info.name, device.type, device_id=device_id)
 
 
 def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.Module, user_module: torch.nn.Module):

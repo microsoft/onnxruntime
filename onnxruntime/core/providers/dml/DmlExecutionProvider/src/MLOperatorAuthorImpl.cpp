@@ -705,18 +705,20 @@ namespace Windows::AI::MachineLearning::Adapter
 
             *tensor = nullptr;
 
-            // Read the tensor if present, and wrap it in a IMLOperatorTensor.
-            const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
-            if (attributeProto)
+          // Read the tensor if present, and wrap it in a IMLOperatorTensor.
+          const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
+          if (attributeProto)
+          {
+            if (attributeProto->has_t())
             {
-                if (attributeProto->has_t())
-                {
-                    const onnx::TensorProto* tensorProto = &attributeProto->t();
-                    Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto));
-                    *tensor = tensorWrapper.Detach();
-                    return S_OK;
-                }
+              const onnx::TensorProto* tensorProto = &attributeProto->t();
+
+              // An empty path is used as external weights are not currently supported in this case
+              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), onnxruntime::Path());
+              *tensor = tensorWrapper.Detach();
+              return S_OK;
             }
+          }
 
             return E_INVALIDARG;  // The argument has no valid matching attribute.
         }
@@ -1186,7 +1188,7 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
-    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl) : m_impl(impl)
+    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
         if (impl->has_raw_data())
@@ -1196,7 +1198,7 @@ namespace Windows::AI::MachineLearning::Adapter
         }
         else
         {
-            std::tie(m_unpackedTensor, m_tensorByteSize) = UnpackTensor(*impl);
+            std::tie(m_unpackedTensor, m_tensorByteSize) = UnpackTensor(*impl, modelPath);
             m_dataPtr = m_unpackedTensor.get();
         }
     }
@@ -2111,8 +2113,9 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorTensorGetter mlOperatorTensorGetter = MLOperatorTensorGetter(
             [ctx](uint32_t index)
             {
+                // An empty path is used as external weights are not currently supported in this case
                 Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
-                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)));
+                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)), onnxruntime::Path());
                 return tensorWrapper;
             }
         );
@@ -2303,25 +2306,25 @@ namespace Windows::AI::MachineLearning::Adapter
         return false;
     }
 
-    std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer)
+    std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
+        const onnx::TensorProto& initializer, 
+        const onnxruntime::Path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;
 
-#define CASE_PROTO(X, Y, Z)                                                                            \
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                               \
-    {                                                                                                  \
-        size_t elementCount = initializer.##Z();                                                       \
-        tensorByteSize = elementCount * sizeof(Y);                                                     \
-        unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
-        ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
-                                 initializer,                                                          \
-                                 initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
-                                 initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
-                                 reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \
-                                 .IsOK());                                                             \
-        break;                                                                                         \
-    }
+#define CASE_PROTO(X, Y, Z)                                                                        \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X: {                           \
+    size_t elementCount = initializer.##Z();                                                       \
+    tensorByteSize = elementCount * sizeof(Y);                                                     \
+    unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
+    ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
+                             initializer,                                                          \
+                             modelPath,                                                            \
+                             reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \
+                             .IsOK());                                                             \
+    break;                                                                                         \
+  }
         switch (initializer.data_type())
         {
         CASE_PROTO(FLOAT, float, float_data_size);

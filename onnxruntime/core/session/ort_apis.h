@@ -20,8 +20,8 @@ ORT_API(void, ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo*);
 ORT_API(void, ReleaseSequenceTypeInfo, _Frees_ptr_opt_ OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseModelMetadata, _Frees_ptr_opt_ OrtModelMetadata*);
 
-_Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
-    NO_EXCEPTION ORT_MUST_USE_RESULT;
+_Check_return_ _Ret_notnull_ [[nodiscard]] OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
+    NO_EXCEPTION;
 
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 const char* ORT_API_CALL GetErrorMessage(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -404,4 +404,8 @@ ORT_API(void, ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions
 ORT_API(void, MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
 ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
+
+ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
 }  // namespace OrtApis

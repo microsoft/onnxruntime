@@ -299,12 +299,14 @@ struct IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const = 0;
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept = 0;
     virtual MLOperatorAttributes const& GetAttributes() const noexcept = 0;
+    virtual ~IKernelInformationAdapter() {}
 };
 
 struct IShapeInformationAdapter
 {
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const = 0;
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const = 0;
+    virtual ~IShapeInformationAdapter() {}
 };
 
 // To avoid duplicating dozens of templated functions that vary only on the source of the kernel
@@ -323,6 +325,7 @@ struct KernelInformationAdapter : IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const { return m_informationSource.GetConstantInputTensor(inputIndex); }
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept { return m_informationSource.HasAttribute(name, type); }
     virtual MLOperatorAttributes const& GetAttributes() const noexcept { return m_informationSource; }
+    virtual ~KernelInformationAdapter() {}
 
     InformationSourceType& m_informationSource;
 };
@@ -338,6 +341,7 @@ struct ShapeInformationAdapter : IShapeInformationAdapter
 
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const { return m_informationSource.GetInputTensorDimensionCount(inputIndex); }
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const { return m_informationSource.GetInputTensorShape(inputIndex); }
+    virtual ~ShapeInformationAdapter() {}
 
     InformationSourceType& m_informationSource;
 };
@@ -1379,6 +1383,19 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class EmbedLayerNormalizationHelper
+{
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+
+public:
+    template <typename Info_t, typename Shape_t>
+    EmbedLayerNormalizationHelper(const Info_t& info, const Shape_t& shapeInfo) { }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1401,6 +1418,8 @@ using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_SkipLayerNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_EmbedLayerNormalization = EmbedLayerNormalizationHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
@@ -1553,6 +1572,7 @@ using ShapeInferenceHelper_ParametricSoftplus = GetOutputShapeAsInputShapeHelper
 using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BiasGelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;

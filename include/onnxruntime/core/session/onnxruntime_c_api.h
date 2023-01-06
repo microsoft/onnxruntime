@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 13
+#define ORT_API_VERSION 14
 
 #ifdef __cplusplus
 extern "C" {
@@ -982,7 +982,9 @@ struct OrtApi {
   */
   ORT_API2_STATUS(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
 
-  /** \brief Register custom ops from a shared library
+  /** \deprecated Use OrtApi::RegisterCustomOpsLibrary_V2.
+  *
+  * Registers custom ops from a shared library.
   *
   * Loads a shared library (dll on windows, so on linux, etc) named 'library_path' and looks for this entry point:
   *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
@@ -3500,6 +3502,7 @@ struct OrtApi {
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
+   *      default value is 0, which means to use the session thread-pool size.
    *
    * \since Version 1.12.
    */
@@ -3613,6 +3616,46 @@ struct OrtApi {
    */
   ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
 
+ /*  \brief Set affinities for intra op threads
+  *
+  * Affinity string follows format:
+  * logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id
+  * Semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.
+  * e.g. 1,2,3;4,5
+  * specifies affinities for two threads, with the 1st thread attach to the 1st, 2nd, and 3rd processor, and 2nd thread to the 4th and 5th.
+  * To ease the configuration, an "interval" is also allowed:
+  * e.g. 1-8;8-16;17-24
+  * orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
+  * Note:
+  * 1. Once set, the number of thread affinities must equal to intra_op_num_threads - 1,
+  *    ort does not set affinity on the main thread which is started and managed by the calling app;
+  * 2. For windows, ort will infer the group id from a logical processor id, for example, assuming there are two groups with each has 64 logical processors,
+  *    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
+  *    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
+  * 
+  *  \since Version 1.14
+  */
+  ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
+
+  /** \brief Register custom ops from a shared library.
+  *
+  * Loads a shared library (.dll on windows, .so on linux, etc) named 'library_name' and looks for this entry point:
+  *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+  * It then passes in the provided session options to this function along with the api base.
+  *
+  * The handle to the loaded library is automatically released by ORT when the last OrtSession that references the
+  * library handle is released. If no OrtSession is created, then the library handle is released when the provided
+  * OrtSessionOptions is released.
+  *
+  * \param[in] options The session options.
+  * \param[in] library_name The name of the shared library to load and register. Refer to OS-specific dynamic library
+  *                         loading utilities (e.g., LoadLibraryEx on Windows or dlopen on Linux/MacOS) for information
+  *                         on the format of library names and search paths.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif
@@ -3629,10 +3672,14 @@ struct OrtApi {
 // Specify if the inputs/outputs are one of:
 // 1) Non-optional (input/output must be present in the node)
 // 2) Optional (input/output may be absent in the node)
+// 3) Variadic: A variadic input or output specifies N (i.e., the minimum arity) or more operands.
+//              Only the last input or output of a custom op may be marked as variadic.
+//              The homogeneity of the variadic input or output determines whether all operands must be of the same
+//              tensor element type.
 typedef enum OrtCustomOpInputOutputCharacteristic {
-  // TODO: Support 'Variadic' inputs/outputs
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
+  INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
 
 /*
@@ -3670,8 +3717,26 @@ struct OrtCustomOp {
   // to place the inputs on specific devices. By default, it returns
   // OrtMemTypeDefault, which means the input is placed on the default device for
   // the execution provider. If the inputs need to be with different memory tyeps,
-  // this function can be overriden to return the specific memory types.
+  // this function can be overridden to return the specific memory types.
   OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the minimum number of input arguments expected for the variadic input.
+  // Applicable only for custom ops that have a variadic input.
+  int(ORT_API_CALL* GetVariadicInputMinArity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns true (non-zero) if all arguments of a variadic input have to be of the same type (homogeneous),
+  // and false (zero) otherwise.
+  // Applicable only for custom ops that have a variadic input.
+  int(ORT_API_CALL* GetVariadicInputHomogeneity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns the minimum number of output values expected for the variadic output.
+  // Applicable only for custom ops that have a variadic output.
+  int(ORT_API_CALL* GetVariadicOutputMinArity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns true (non-zero) if all outputs values of a variadic output have to be of the same type (homogeneous),
+  // and false (zero) otherwise.
+  // Applicable only for custom ops that have a variadic output.
+  int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
 };
 
 /*

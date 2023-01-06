@@ -219,7 +219,7 @@ class FusionEmbedLayerNoMask(Fusion):
     def match_position_embedding_bert(self, position_embedding_gather, input_ids, output_name_to_node):
         """  Match position embedding path from input_ids to Gather for BERT.
 
-        BERT Embedding Layer Pattern:       
+        BERT Embedding Layer Pattern:
                                     (input_ids)
                                    /         \
                                  /          Shape
@@ -232,7 +232,7 @@ class FusionEmbedLayerNoMask(Fusion):
                            \        |           |
                             \     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
                               \    /            |
-                                Add          Gather 
+                                Add          Gather
                                    \       /
                                       Add
                                        |
@@ -537,8 +537,6 @@ class FusionEmbedLayerNoMask(Fusion):
         if two_gather is None:
             return False
 
-        add_output = add_before_layernorm.output[0]
-
         word_embedding_gather, position_embedding_gather = two_gather
         input_ids = word_embedding_gather.input[1]
         position_ids = position_embedding_gather.input[1]
@@ -549,9 +547,22 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
+        # output of this node.
+
+        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # is the (optional) fourth index output of this node.
+        add_output = None
         optional_embedding_sum_output = False
-        if self.is_embedding_sum_needed(add_before_layernorm):
+        if (add_before_layernorm.op_type == "Add" and self.is_embedding_sum_needed(add_before_layernorm)) or (
+            add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4
+        ):
             optional_embedding_sum_output = True
+            add_output = (
+                add_before_layernorm.output[0]
+                if add_before_layernorm.op_type == "Add"
+                else add_before_layernorm.output[3]
+            )
 
         # make the fused node
         embed_node = self.create_fused_node(
@@ -682,8 +693,27 @@ class FusionEmbedLayerNoMask(Fusion):
 
 
 class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
-    def __init__(self, model: OnnxModel):
+    def __init__(self, model: OnnxModel, use_mask_index=False):
         super().__init__(model, "with mask")
+        self.use_mask_index = use_mask_index
+
+    def replace_mask(self, mask_int32, attention_nodes):
+        # Inputs of EmbedLayerNorm: input_ids, segment_ids (optional), word_embedding, position_embedding,
+        #           segment_embedding (optional), gamma, beta, mask (optional), position_ids (optional)
+        embed_node = self.embed_node
+        if len(embed_node.input) == 7:
+            embed_node.input.append(mask_int32)
+            logger.debug("append mask to %s", embed_node.name)
+        elif len(embed_node.input) > 7 and embed_node.input[7] == "":
+            embed_node.input[7] = mask_int32
+            logger.debug("replace mask in %s", embed_node.name)
+        else:
+            logger.debug("skip mask in %s", embed_node.name)
+            return
+
+        for attention_node in attention_nodes:
+            logger.debug("update mask_index in %s", attention_node.name)
+            attention_node.input[3] = embed_node.output[1]
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # Reset attention and embed_node so that we know fusion is successful when they are not None.
@@ -691,13 +721,38 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
         self.embed_node = None
         super().fuse(node, input_name_to_nodes, output_name_to_node)
 
-        if self.attention and self.embed_node:
-            mask_index = self.attention.input[3]
-            if mask_index in output_name_to_node:
-                node = output_name_to_node[mask_index]
-                if node.op_type == "ReduceSum":
-                    embed_node = self.embed_node
-                    mask_input_name = node.input[0]
-                    self.nodes_to_remove.extend([node])
-                    embed_node.input.append(mask_input_name)
-                    embed_node.output[1] = mask_index
+        if self.embed_node is None:
+            return
+
+        if not self.use_mask_index:
+            logger.debug("--use_mask_index is not set: EmbedLayerNormalization will not have mask")
+            self.increase_counter("EmbedLayerNormalization(no mask)")
+            return
+
+        if self.attention is None:
+            logger.debug("EmbedLayerNormalization will not have mask since attention node is not found")
+            self.increase_counter("EmbedLayerNormalization(no mask)")
+            return
+
+        mask_int32 = self.attention.input[3]
+        children_nodes = input_name_to_nodes[mask_int32]
+        if self.model.find_graph_input(mask_int32):
+            attention_nodes = [node for node in children_nodes if node.op_type == "Attention"]
+            self.replace_mask(mask_int32, attention_nodes)
+            self.increase_counter("EmbedLayerNormalization(with mask)")
+            return
+
+        if mask_int32 not in output_name_to_node:
+            logger.debug("EmbedLayerNormalization will not have mask since %s is not a node output", mask_int32)
+            self.increase_counter("EmbedLayerNormalization(no mask)")
+            return
+
+        node = output_name_to_node[mask_int32]
+        if node.op_type in ["ReduceSum", "Cast"]:
+            attention_nodes = [node for node in children_nodes if node.op_type == "Attention"]
+            if node.op_type == "ReduceSum":
+                mask_int32 = node.input[0]
+                if len(children_nodes) == len(attention_nodes):
+                    self.nodes_to_remove.append(node)
+            self.replace_mask(mask_int32, attention_nodes)
+            self.increase_counter("EmbedLayerNormalization(with mask)")

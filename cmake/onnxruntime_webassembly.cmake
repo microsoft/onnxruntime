@@ -114,7 +114,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       re2::re2
     )
 
-    if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    if (onnxruntime_ENABLE_TRAINING)
       bundle_static_library(onnxruntime_webassembly tensorboard)
     endif()
 
@@ -160,6 +160,17 @@ else()
     ${onnxruntime_webassembly_src}
   )
 
+  if (onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING)
+    # we catch exceptions at the api level
+    file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/wasm/api.cc"
+      "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+    )
+    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
+    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
+    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+  endif()
+
   target_link_libraries(onnxruntime_webassembly PRIVATE
     nsync_cpp
     ${PROTOBUF_LIB}
@@ -181,25 +192,25 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  if (onnxruntime_ENABLE_TRAINING)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
-  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
+  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS " \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
-                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\"                     \
-                        -s MAXIMUM_MEMORY=4294967296                                \
-                        -s WASM=1                                                   \
-                        -s NO_EXIT_RUNTIME=0                                        \
-                        -s ALLOW_MEMORY_GROWTH=1                                    \
-                        -s MODULARIZE=1                                             \
-                        -s EXPORT_ALL=0                                             \
-                        -s LLD_REPORT_UNDEFINED                                     \
-                        -s VERBOSE=0                                                \
-                        -s NO_FILESYSTEM=1                                          \
-                        --closure 1                                                 \
+                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\" \
+                        -s MAXIMUM_MEMORY=4294967296 \
+                        -s WASM=1 \
+                        -s NO_EXIT_RUNTIME=0 \
+                        -s ALLOW_MEMORY_GROWTH=1 \
+                        -s MODULARIZE=1 \
+                        -s EXPORT_ALL=0 \
+                        -s LLD_REPORT_UNDEFINED \
+                        -s VERBOSE=0 \
+                        -s NO_FILESYSTEM=1 \
+                        ${WASM_API_EXCEPTION_CATCHING} \
                         --no-entry")
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -212,13 +223,11 @@ else()
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=1 -s DEMANGLE_SUPPORT=1")
   else()
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0")
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0 --closure 1")
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING)
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s DISABLE_EXCEPTION_THROWING=0")
-  endif()
+  set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s DISABLE_EXCEPTION_THROWING=0")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --profiling --profiling-funcs")

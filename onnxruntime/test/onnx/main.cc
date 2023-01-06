@@ -66,7 +66,7 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
-    const double absolute = 1e-3;
+    constexpr double absolute = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
     const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
@@ -591,7 +591,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    auto tp = TestEnv::CreateThreadPool(Env::Default());
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());

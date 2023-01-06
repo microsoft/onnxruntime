@@ -90,7 +90,9 @@ namespace Dml::GraphDescBuilder
             reuseCommandList = true;
         }
 
-        auto constantCpuGraphInputGetter = [&isInitializerTransferable](const std::string& argName)
+        auto modelPath = graph.ModelPath();
+
+        auto constantCpuGraphInputGetter = [&isInitializerTransferable, &modelPath](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;
 
@@ -98,7 +100,7 @@ namespace Dml::GraphDescBuilder
             if (iter != isInitializerTransferable.end())
             {
                 // Using const_cast here is simpler than making surrounding code const correct.
-                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first));
+                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first), modelPath);
             }
 
             return tensorWrapper;

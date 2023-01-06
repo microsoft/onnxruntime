@@ -89,8 +89,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return std::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
+    return std::make_unique<GPUDataTransfer>();
   }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
@@ -195,6 +195,10 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     }
 
     if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
+      return false;
+    }
+
+    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
       return false;
     }
 

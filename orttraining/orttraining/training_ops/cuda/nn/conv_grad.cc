@@ -134,8 +134,8 @@ struct AlgoSearch<T_BwdDataPerf> {
   static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider,
                                std::vector<T_BwdDataPerf>& perf_results) {
     static const T_BwdDataAlgo algos[] = {
-        CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,        CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
-        CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+        CUDNN_CONVOLUTION_BWD_DATA_ALGO_0, CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+        CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT, CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD, CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED};
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward data algorithms.");
@@ -220,7 +220,7 @@ class AlgoIterator {
     return Status::OK();
   }
 
-  Status TryAll(const CUDAExecutionProvider* provider, std::function<Status(const T_Perf& perf)> f) {
+  Status TryAll(const CUDAExecutionProvider* provider, cudaStream_t /*stream*/, std::function<Status(const T_Perf& perf)> f) {
     auto& cache = AlgoSearch<T_Perf>::Cache();
 
     if (T_Perf algo_perf; cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
@@ -247,7 +247,7 @@ class AlgoIterator {
 
 template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
-                                Tensor* dW) const {
+                                Tensor* dW, cudnnHandle_t cudnn_handle) const {
   const TensorShape& x_shape = x.Shape();
   auto x_dims = x_shape.AsShapeVector();
   args_.x_data = reinterpret_cast<const CudaT*>(x.template Data<T>());
@@ -338,7 +338,7 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
                 "Algo mode should be EXHAUSTIVE (0), HEURISTIC (1) or DEFAULT (2), but got ", algo_mode);
     args_.params.algo_mode = algo_mode;
 
-    args_.handle = CudnnHandle();
+    args_.handle = cudnn_handle;
     ORT_RETURN_IF_ERROR(args_.w_desc.Set(w_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.x_tensor.Set(x_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.y_tensor.Set(dy_dims, args_.params.data_type));
@@ -366,21 +366,23 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, X->Shape());
   Tensor* dW = context->Output(1, W->Shape());
   Tensor* dB = context->Output(2, {W->Shape()[0]});
-  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW));
-  if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient());
-  if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient());
+  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW, GetCudnnHandle(context)));
+  if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient(context->GetComputeStream()));
+  if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient(context->GetComputeStream()));
   if (dB) ORT_RETURN_IF_ERROR(ComputeBiasGradient());
   return Status::OK();
 }
 
 template <typename T>
-Status ConvGrad<T>::ComputeInputGradient() const {
+Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   return AlgoIterator<T_BwdDataPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
+      cuda_stream,
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
-        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory);
+        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType));
         CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardData(
             args_.handle, &one, args_.w_desc, args_.w_data, args_.y_tensor, args_.dy_data, args_.conv_desc,
@@ -390,13 +392,15 @@ Status ConvGrad<T>::ComputeInputGradient() const {
 }
 
 template <typename T>
-Status ConvGrad<T>::ComputeWeightGradient() const {
+Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   return AlgoIterator<T_BwdFilterPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
+      cuda_stream,
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
-        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory);
+        IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType));
         CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardFilter(
             args_.handle, &one, args_.x_tensor, args_.x_data, args_.y_tensor, args_.dy_data, args_.conv_desc,

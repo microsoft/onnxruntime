@@ -138,7 +138,7 @@ endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_ATEN)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -211,6 +211,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -401,7 +402,7 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
     file(GLOB onnxruntime_python_onnxblock_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/*"
     )
@@ -736,7 +737,7 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
   )
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock

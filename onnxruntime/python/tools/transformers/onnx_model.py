@@ -917,6 +917,16 @@ class OnnxModel:
     ):
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
+        # Add ms domain if needed
+        ms_opset = [opset for opset in model.opset_import if opset.domain == "com.microsoft"]
+        # Check whether there is custom op in top level graph (our fusion is on top level right now).
+        # May need to extend to subgraph if our fusion are extended to subgraphs.
+        ms_node = [node for node in model.graph.node if node.domain == "com.microsoft"]
+        if ms_node and not ms_opset:
+            opset = model.opset_import.add()
+            opset.version = 1
+            opset.domain = "com.microsoft"
+
         if save_as_external_data:
             # Save model to external data, which is needed for model size > 2GB
             output_dir = Path(output_path).parent
@@ -1041,7 +1051,8 @@ class OnnxModel:
             logger.warning("add_prefix_to_names does not process subgraphs.")
 
         # Exclude the names of inputs and outputs of main graph (but not subgraphs)
-        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output]
+        # and empty names ("") as they have special meaning to denote missing optional inputs
+        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output] + [""]
 
         for initializer in self.model.graph.initializer:
             if initializer.name not in excluded:

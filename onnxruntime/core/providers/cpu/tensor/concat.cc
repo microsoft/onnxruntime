@@ -110,7 +110,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                                                : reference_rank + 1)));
 
   // Ensure all of the non concatenated axes match each other
-  for (size_t index = reference_tensor_index + 1; index < input_count; index++) {
+  for (size_t index = static_cast<size_t>(reference_tensor_index) + 1; index < input_count; index++) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
     const auto& input_shape = input->Shape();
@@ -266,10 +266,11 @@ Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
     // parallel copy the data across
     auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
                                                         *p.output_tensor,
-                                                        onnxruntime::narrow<size_t>(initial_output_offset),
+                                                        onnxruntime::narrow<ptrdiff_t>(initial_output_offset),
                                                         output_strides_for_copy,
                                                         prep.tensor->Shape(),
                                                         *prep.tensor,
+                                                        0,  // src_offset
                                                         StridesForTensor(*prep.tensor));
     ORT_RETURN_IF_ERROR(status);
 

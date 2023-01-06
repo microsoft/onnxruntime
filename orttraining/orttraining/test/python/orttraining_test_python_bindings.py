@@ -7,7 +7,7 @@ import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.training.api import CheckpointState, Module, Optimizer
+from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module, Optimizer
 
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
@@ -142,6 +142,67 @@ def test_optimizer_step():
         # TODO : Check if parameters changed from before and after optimizer step.
 
 
+def test_get_and_set_lr():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
+        )
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, state)
+        optimizer = Optimizer(optimizer_file_path, model)
+
+        # Test get and set learning rate.
+        lr = optimizer.get_learning_rate()
+        assert round(lr, 3) == 0.001
+
+        optimizer.set_learning_rate(0.5)
+        new_lr = optimizer.get_learning_rate()
+
+        assert np.isclose(new_lr, 0.5)
+        assert lr != new_lr
+
+
+def test_scheduler_step():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
+
+    # Generating random data for testing.
+    inputs = torch.randn(64, 784).numpy()
+    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
+    forward_inputs = [inputs, labels]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
+        )
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, state)
+        optimizer = Optimizer(optimizer_file_path, model)
+        scheduler = LinearLRScheduler(optimizer, 1, 2, 0.2)
+
+        # Test get and set learning rate.
+        lr = optimizer.get_learning_rate()
+        assert np.allclose(lr, 0.0)
+
+        model.train()
+        model(forward_inputs)
+        optimizer.step()
+        scheduler.step()
+
+        # Get new learning rate.
+        new_lr = optimizer.get_learning_rate()
+        assert new_lr != lr
+
+
 def test_training_module_checkpoint():
     # Initialize Models
     simple_model, onnx_model, _, _, _ = _create_training_models()
@@ -233,3 +294,20 @@ def test_export_model_for_inferencing():
         inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
         model.export_model_for_inferencing(inference_model_file_path, ["output-0"])
         assert os.path.exists(inference_model_file_path)
+
+
+def test_cuda_execution_provider():
+    # Initialize Models
+    simple_model, onnx_model, _, _, pt_model = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path = _get_test_models_path(temp_dir, simple_model, onnx_model)
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module.
+        model = Module(model_file_path, state, device="cuda")
+        params = model.get_contiguous_parameters()
+
+        # Check if parameters are moved to cuda.
+        assert params.device_name() == "Cuda"

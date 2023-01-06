@@ -11,13 +11,18 @@ jobs:
   timeoutInMinutes: 120
   variables:
     skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
   workspace:
     clean: all
   pool: Linux-CPU-2019
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -25,6 +30,21 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvidia/cuda:11.6.2-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecuda11build
+
+  - task: Cache@2
+    inputs:
+      key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      restoreKeys: |
+        "ccache" | "$(Build.SourceBranch)"
+        "ccache"
+      cacheHitVar: CACHE_RESTORED
+    displayName: Cach Task
+
+  - script: |
+      sudo mkdir -p $(Pipeline.Workspace)/ccache
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
 
   - task: CmdLine@2
     inputs:
@@ -36,10 +56,16 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume $(Pipeline.Workspace)/ccache:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
+          -e CCACHE_DIR=/cache \
           onnxruntimecuda11build \
+          /bin/bash -c "
+            set -ex; \
+            env; \
+            ccache -s; \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release --update --build \
@@ -50,13 +76,15 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
               --enable_cuda_profiling \
               --enable_pybind --build_java \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=75
+              --use_cache \
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=75; \
+            ccache -s"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/_deps
         rm -f $(Build.BinariesDirectory)/Release/models
         rm -rf $(Build.BinariesDirectory)/Release/_deps
         cd $(Build.BinariesDirectory)/Release
@@ -68,15 +96,7 @@ jobs:
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/Release'
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
-
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/explicitly-defined-final-tasks.yml
 
 - job: Linux_Test
   timeoutInMinutes: 180

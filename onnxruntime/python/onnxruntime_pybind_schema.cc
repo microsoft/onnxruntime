@@ -74,7 +74,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::CoreMLProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_XNNPACK
-            onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}),
+            onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}, nullptr),
 #endif
 #ifdef USE_CANN
             []() {
@@ -84,7 +84,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #endif
         };
 
-      for (const auto& f : factories) {
+        for (const auto& f : factories) {
           auto kernel_registry = f->CreateProvider()->GetKernelRegistry();
           for (const auto& m : kernel_registry->GetKernelCreateMap()) {
             result.emplace_back(*(m.second.kernel_def));

@@ -157,15 +157,12 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
-      - powershell: |
-          $Env:USE_MSVC_STATIC_RUNTIME=1
-          $Env:ONNX_ML=1
-          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
-          python setup.py bdist_wheel
-          python -m pip uninstall -y onnx -qq
-          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --force-reinstall --upgrade $_.fullname}
-        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      - task: PowerShell@2
         displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config $(BuildConfig)
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
@@ -304,10 +301,10 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecuda116xtrt84build
+          Repository: onnxruntimecuda116xtrt85build
 
       - task: CmdLine@2
         displayName: 'Build Python Wheel'
@@ -321,7 +318,7 @@ stages:
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecuda116xtrt84build \
+              onnxruntimecuda116xtrt85build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release --update --build \
@@ -389,7 +386,7 @@ stages:
       variables:
         CUDA_VERSION: '11.6'
         buildArch: x64
-        EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
       strategy:
@@ -420,15 +417,12 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
-      - powershell: |
-          $Env:USE_MSVC_STATIC_RUNTIME=1
-          $Env:ONNX_ML=1
-          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-          python setup.py bdist_wheel
-          python -m pip uninstall -y onnx -qq
-          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      - task: PowerShell@2
         displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'

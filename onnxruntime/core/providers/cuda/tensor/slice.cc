@@ -103,40 +103,24 @@ static Status SliceImpCore(cudaStream_t stream,
 
 namespace SliceCuda {
 
-static Status ComputeSliceStrides(const TensorShape& input_shape,
-                                  TArray<int64_t>& input_strides,
+static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t>& input_strides,
                                   TArray<fast_divmod>& output_strides,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata) {
+  // If we were able to coalesce the input and output shapes, use the new shapes to compute the strides.
   const auto input_dimensions = input_shape.GetDims();
-  size_t dimension_count = input_dimensions.size();
-  // if we are able to flatten the output dims we updated 'starts' and 'steps' to match the smaller number of dims.
-  // update dimension_count to match.
-  if (compute_metadata.p_flattened_output_dims_) {
-    dimension_count = compute_metadata.p_flattened_output_dims_->size();
-  }
-
-  input_strides.SetSize(gsl::narrow_cast<int32_t>(dimension_count));
+  size_t rank = compute_metadata.p_flattened_input_dims_ ? compute_metadata.p_flattened_input_dims_->size()
+                                                         : input_dimensions.size();
+  input_strides.SetSize(gsl::narrow_cast<int32_t>(rank));
   const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.Data(), input_strides.Size());
-  if (compute_metadata.p_flattened_output_dims_ != nullptr) {
-    // we were able to flatten the innermost dimensions as they're being copied in full to the output.
-    // do the same flattening to the innermost input dimensions in order to calculate pitches that match
-    // the flattened output dimensions.
-    int64_t aggregated_last_dim = 1;
-    for (size_t i = dimension_count - 1, end = input_dimensions.size(); i < end; ++i) {
-      aggregated_last_dim *= input_dimensions[i];
-    }
-
-    TensorShapeVector flattened_input_dims(input_dimensions.begin(), input_dimensions.end());
-    flattened_input_dims.resize(dimension_count);
-    flattened_input_dims.back() = aggregated_last_dim;
-    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, flattened_input_dims));
+  if (compute_metadata.p_flattened_input_dims_) {
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, compute_metadata.flattened_input_dims_));
   } else {
     ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, input_dimensions));
   }
 
-  const auto output_dims = gsl::make_span(compute_metadata.p_flattened_output_dims_ != nullptr
-                                              ? compute_metadata.flattened_output_dims_
-                                              : compute_metadata.output_dims_);
+  const auto output_dims =
+      gsl::make_span(compute_metadata.p_flattened_output_dims_ != nullptr ? compute_metadata.flattened_output_dims_
+                                                                          : compute_metadata.output_dims_);
   TensorPitches original_output_strides(output_dims);
   output_strides.SetSize(gsl::narrow_cast<int32_t>(original_output_strides.size()));
   for (int32_t i = 0, limit = static_cast<int32_t>(original_output_strides.size()); i < limit; ++i) {
@@ -239,7 +223,7 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
 
-  return SliceImpCore(Stream(),
+  return SliceImpCore(Stream(ctx),
                       input_tensor->DataRaw(),
                       output_tensor->MutableDataRaw(),
                       element_size,

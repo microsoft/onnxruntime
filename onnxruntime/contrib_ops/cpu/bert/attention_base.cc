@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -14,7 +15,8 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* extra_add_qk,
                                   const Tensor* key,
                                   const Tensor* value,
-                                  void* parameters) const {
+                                  void* parameters,
+                                  const Tensor* past_seq_len) const {
   // Abbreviation and Meanings:
   //   B:    batch_size
   //   S:    sequence_length (input sequence length of query)
@@ -223,10 +225,26 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              "Inputs 'past' dimension 2 shall have length of ", k_hidden_size / num_heads_);
     }
 
-    past_sequence_length = past_dims[3];
+    if (!past_present_share_buffer_) {
+      past_sequence_length = past_dims[3];
+    } else {
+      if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+      }
+      past_sequence_length = *past_seq_len->Data<int32_t>();
+    }
   }
 
   int64_t total_sequence_length = kv_sequence_length + past_sequence_length;
+  if (past != nullptr && past_present_share_buffer_) {
+    const auto& past_dims = past->Shape().GetDims();
+    if (past_dims[3] < total_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "when past_present_share_buffer, past tensor sequence must not smaller than total_sequqnce_length ");
+    }
+  }
+
   int64_t max_sequence_length = -1;
   if (mask_index != nullptr) {  // mask_index is optional
     bool is_dummy = false;
@@ -271,6 +289,16 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
+  if (past != nullptr && past_present_share_buffer_) {
+    if (max_sequence_length <= 0) {
+      max_sequence_length = past->Shape().GetDims()[3];
+    }
+    if (max_sequence_length != past->Shape().GetDims()[3]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "max_sequence_length not matching from mask and past when past_present_share_buffer_ is set");
+    }
+  }
+
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = static_cast<int>(batch_size);
@@ -286,6 +314,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
+    output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0);
   }
 
   return Status::OK();
@@ -356,12 +385,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* key,
                                   const Tensor* value,
                                   void* parameters,
-                                  const int max_threads_per_block) const {
+                                  const int max_threads_per_block,
+                                  const Tensor* past_seq_len) const {
   if (num_heads_ > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, key, value, parameters);
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, key, value, parameters, past_seq_len);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,
@@ -375,7 +405,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
   //   present     : (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size)
 
   past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
-  std::vector<int64_t> present_dims{2, batch_size, num_heads_, kv_sequence_length + past_sequence_length, head_size};
+  std::array<int64_t, 5> present_dims{2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, head_size};
 
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
