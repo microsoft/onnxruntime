@@ -2,8 +2,8 @@ resources:
   pipelines:
   - pipeline: build
     source: 'Python packaging pipeline'
-    trigger: true 
-    
+    trigger: true
+
 jobs:
 - template: templates/py-packaging-linux-test.yml
   parameters:
@@ -20,7 +20,7 @@ jobs:
 - template: templates/py-packaging-linux-test.yml
   parameters:
     arch: 'x86_64'
-    machine_pool: 'Onnxruntime-Linux-GPU'
+    machine_pool: 'Onnxruntime-Linux-GPU-beta'
     device: 'GPU'
     python_wheel_suffix: '_gpu'
 
@@ -39,7 +39,7 @@ jobs:
   pool: Azure-Pipelines-EO-Windows2022-aiinfra
   steps:
   - task: PowerShell@2
-    displayName: 'Add Build Tag'    
+    displayName: 'Add Build Tag'
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
     inputs:
