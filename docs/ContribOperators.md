@@ -70,12 +70,14 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.RelPosAttnBiasGen">com.microsoft.RelPosAttnBiasGen</a>
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
@@ -3659,6 +3661,49 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.RelPosAttnBiasGen"></a><a name="com.microsoft.relposattnbiasgen">**com.microsoft.RelPosAttnBiasGen**</a>
+
+  Compute binned relative position bias
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>is_bidirectional</tt> : int</dt>
+<dd>Default value is 0.</dd>
+<dt><tt>max_distance</tt> : int (required)</dt>
+<dd>Max distance</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>bias_table</tt> : T</dt>
+<dd>2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)</dd>
+<dt><tt>sequence_length</tt> : U</dt>
+<dd>Real sequence length from last dimension of hidden states</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>4D output tensor with shape (1, num_heads, sequence_length, sequence_length)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>U</tt> : tensor(int64)</dt>
+<dd>Constrain sequence_length to int tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
 
   Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
@@ -3920,6 +3965,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1D input tensor with shape (hidden_size)</dd>
 <dt><tt>beta</tt> (optional) : T</dt>
 <dd>1D skip tensor with shape (hidden_size</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>1D bias tensor with shape (hidden_size</dd>
+</dl>
+
+#### Outputs (1 - 4)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>mean</tt> (optional) : U</dt>
+<dd>Saved mean used during training to speed up gradient computation</dd>
+<dt><tt>inv_std_var</tt> (optional) : U</dt>
+<dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
+<dt><tt>input_skip_sum</tt> (optional) : T</dt>
+<dd>Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>U</tt> : tensor(float)</dt>
+<dd>Constrain mean and inv_std_var to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SkipSimplifiedLayerNormalization"></a><a name="com.microsoft.skipsimplifiedlayernormalization">**com.microsoft.SkipSimplifiedLayerNormalization**</a>
+
+  Skip and Root Mean Square Layer Normalization
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>skip</tt> : T</dt>
+<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>gamma</tt> : T</dt>
+<dd>1D input tensor with shape (hidden_size)</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>1D bias tensor with shape (hidden_size</dd>
 </dl>
