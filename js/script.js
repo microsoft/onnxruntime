@@ -1201,22 +1201,22 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
     "linux,Python,ARM64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "pip install onnxruntime-cann <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C-API,ARM64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
     "linux,C++,ARM64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
     "linux,Python,X64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "pip install onnxruntime-cann <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C-API,X64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
     "linux,C++,X64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 };
 
 function commandMessage(key) {

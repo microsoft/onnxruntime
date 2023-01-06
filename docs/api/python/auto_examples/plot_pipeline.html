@@ -6,7 +6,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-    <title>Draw a pipeline &#8212; ONNX Runtime 1.13.0 documentation</title>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-156955408-1');
+    </script>
+    
+    <title>Draw a pipeline &#8212; ONNX Runtime 1.14.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
@@ -19,6 +28,7 @@
     <script src="../static/underscore.js"></script>
     <script src="../static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../static/doctools.js"></script>
+    <script src="../static/sphinx_highlight.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Load and predict with ONNX Runtime and a very simple model" href="plot_load_and_predict.html" />
@@ -60,7 +70,7 @@ format.</p>
 <section id="retrieve-a-model-in-json-format">
 <h2><a class="toc-backref" href="#id1">Retrieve a model in JSON format</a><a class="headerlink" href="#retrieve-a-model-in-json-format" title="Permalink to this heading">¶</a></h2>
 <p>That’s the most simple way.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="k">import</span> <span class="n">get_example</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
 
 <span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;mul_1.onnx&quot;</span><span class="p">)</span>
 
@@ -136,11 +146,11 @@ opset_import {
 </section>
 <section id="draw-a-model-with-onnx">
 <h2><a class="toc-backref" href="#id2">Draw a model with ONNX</a><a class="headerlink" href="#draw-a-model-with-onnx" title="Permalink to this heading">¶</a></h2>
-<p>We use <a class="reference external" href="https://github.com/onnx/onnx/blob/master/onnx/tools/net_drawer.py">net_drawer.py</a>
+<p>We use <a class="reference external" href="https://github.com/onnx/onnx/blob/main/onnx/tools/net_drawer.py">net_drawer.py</a>
 included in <em>onnx</em> package.
 We use <em>onnx</em> to load the model
 in a different way than before.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx</span> <span class="k">import</span> <span class="n">ModelProto</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">ModelProto</span>
 
 <span class="n">model</span> <span class="o">=</span> <span class="n">ModelProto</span><span class="p">()</span>
 <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">example1</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fid</span><span class="p">:</span>
@@ -149,7 +159,7 @@ in a different way than before.</p>
 </pre></div>
 </div>
 <p>We convert it into a graph.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx.tools.net_drawer</span> <span class="k">import</span> <span class="n">GetOpNodeProducer</span><span class="p">,</span> <span class="n">GetPydotGraph</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx.tools.net_drawer</span> <span class="kn">import</span> <span class="n">GetOpNodeProducer</span><span class="p">,</span> <span class="n">GetPydotGraph</span>
 
 <span class="n">pydot_graph</span> <span class="o">=</span> <span class="n">GetPydotGraph</span><span class="p">(</span>
     <span class="n">model</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">rankdir</span><span class="o">=</span><span class="s2">&quot;LR&quot;</span><span class="p">,</span> <span class="n">node_producer</span><span class="o">=</span><span class="n">GetOpNodeProducer</span><span class="p">(</span><span class="s2">&quot;docstring&quot;</span><span class="p">)</span>
@@ -173,10 +183,10 @@ in a different way than before.</p>
 <span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
 </pre></div>
 </div>
-<img src="../images/sphx_glr_plot_pipeline_001.png" srcset="../images/sphx_glr_plot_pipeline_001.png" alt="plot pipeline" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.image.AxesImage object at 0x7f10facab340&gt;
+<img src="../images/sphx_glr_plot_pipeline_001.png" srcset="../images/sphx_glr_plot_pipeline_001.png" alt="plot pipeline" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.image.AxesImage object at 0x7f3f51301840&gt;
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.191 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.322 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-pipeline-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/d436e9922b51a71358604ec00f09e7e4/plot_pipeline.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_pipeline.py</span></code></a></p>
@@ -252,7 +262,7 @@ in a different way than before.</p>
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.3.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

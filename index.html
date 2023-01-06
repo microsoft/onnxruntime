@@ -27,41 +27,9 @@
     <div class="main-wrapper">
         <div class="top-banner-bg">
 
-            <header class="fixed-top header-content">
-                <nav class="navbar navbar-expand-md navbar-custom" aria-label="Main menu">
-                    <a id="ONNXLogo" class="navbar-brand" href="./index.html">
-                        <img src="images/svg/ONNX-Runtime-logo.svg" class="d-inline-block align-top onnx-logo" alt="ONNX Runtime Home" />
-                    </a>
-                    <button class="navbar-toggler p-0" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse border-md-top mt-md-0 mt-2" id="navbarNav">
-                        <div class="mr-auto"></div>
-                        <div class="my-md-2 mb-0 mt-2 my-lg-0 pl-3 pl-md-0">
-                            <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3 btn-getStarted" href="JavaScript:void(0);">Get Started</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3 btn-getStarted" href="./docs">Docs</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3" target="_blank" href="./news.html">News</a>
-                                </li>
-								<li class="nav-item">
-                                    <a class="nav-link pr-3" href="./community.html">Community</a>
-                                </li>
-								<li class="nav-item">
-                                    <a class="nav-link pr-3" href="./about.html">About</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" target="_blank" href="http://github.com/microsoft/onnxruntime">GitHub</a>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </nav>
-            </header>
+            <!-- Partial header.html Start-->
+            <div w3-include-html="header.html"></div>
+            <!-- Partial header.html End-->
 
 			<div role="main" id="skipMain">
 			
@@ -487,6 +455,11 @@
 							<div class="row equalHeight-3 blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
+										<a href="community.html#redis"><img src="./images/logos/redis-logo.png" alt="Redis logo"></a>
+									</div>
+								</div>
+								<div class="col-4 col-md-2 mb-4 mb-md-0">
+									<div class="customer-logo text-center">
 										<a href="community.html#rockchip"><img src="./images/logos/Rockchip-logo.png" alt="Rockchip logo"></a>
 									</div>
 								</div>
@@ -510,15 +483,16 @@
 										<a href="community.html#topaz-labs"><img src="./images/logos/topazlabs-logo.png" alt="Topaz Labs logo"></a>
 									</div>
 								</div>
+								
+														
+							</div>
+
+							<div class="row equalHeight-3 blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
 										<a href="community.html#unrealengine"><img src="./images/logos/ue-logo.png" alt="Unreal Engine logo"></a>
 									</div>
 								</div>
-														
-							</div>
-
-							<div class="row equalHeight-3 blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
 										<a href="community.html#usda"><img src="./images/logos/usda-logo.png" alt="USDA logo"></a>
@@ -558,56 +532,31 @@
 							<div class="row blue-title-columns">
 								
 								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<button class="resources-img text-center p-0 border-0" data-src="WDww8ce12Mc" aria-label="Faster and Lighter Model Inference with ONNX Runtime from Cloud to Client">
-										<img class="btn-trigger" src="./images/video-model-inference-cloud-to-client.jpg" alt="Tech Community" />
-									</button>
+									<a class="resources-img text-center p-0 border-0" target="_blank" href="https://www.youtube.com/playlist?list=PLqPV7GJuaUV9a_ikjn4QqWMKHjGKdjPjb" aria-label="Review the most recent ONNX Runtime Release!">
+										<img src="./images/youtube-release.png" alt="Open Source" />
+									</a>
 
 								</div>
 								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<button class="resources-img text-center p-0 border-0" data-src="pmb6cjngbcA" aria-label="ONNX Runtime speeds up Image Embedding model in Bing Semantic Precise Image Search">
-										<img class="btn-trigger" src="./images/video-bing-semantic-precise.jpg" alt="Tech Community" />
-									</button>
-
+									<a class="resources-img text-center p-0 border-0" href="https://youtu.be/lRBsmnBE9ZA" target="_blank" aria-label="Converting Models to ONNX Format">
+										<img src="./images/youtube-convert.png" alt="Open Source" />
+									</a>
 								</div>
 								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<button class="resources-img text-center p-0 border-0" data-src="nRlnSy4Vbnc" aria-label="Scalable ML acceleration with ONNX Runtime">
-										<img class="btn-trigger" src="./images/video-scalable-ml.jpg" alt="Tech Community" />
-									</button>
+									<a class="resources-img text-center p-0 border-0" href="https://youtu.be/imjqRdsm2Qw" target="_blank" aria-label="Inference with C++">
+										<img src="./images/youtube-cpp.png" alt="Open Source" />
+									</a>
 								</div>
 
 								<div class="col-12 col-md-3">
-									<button class="resources-img text-center p-0 border-0" data-src="Ij5MoUnLQ0E" aria-label="ONNX and ONNX Runtime">
-										<img class="btn-trigger" src="./images/video-research-prod.png" alt="Open Source" />
-									</button>
-								
+									<a class="resources-img text-center p-0 border-0" href="https://youtu.be/oWYphpV6A40" target="_blank" aria-label="Inference in Unreal Engine">
+										<img src="./images/youtube-ue5.png" alt="Open Source" />
+									</a>
 								</div>
 							</div>
 						</div>
 					</section>
-					
-					
-
-	            </div>
-			
-			</div>
-			<button type="button" class="btn btn-primary btn-modal d-none" data-toggle="modal" data-target="#myModal">
-				Open modal
-			  </button>
-			<!-- The Modal -->
-			<div class="modal" id="myModal" tabindex="-1" role="dialog" aria-labelledby="decriptionModal" aria-hidden="true">
-				<p id="decriptionModal" class="sr-only">Resource popup modal</p>
-				<div class="modal-dialog modal-lg">
-				<div class="modal-content">
-					<!-- Modal Header -->
-					<div class="modal-header p-0 border-0">
-						<button type="button" class="close" data-dismiss="modal" aria-label="close popup">&times;</button>
-					</div>
-					<!-- Modal body -->
-					<div class="modal-body pt-4 pb-2 px-2">
-
-					</div>
-				</div>
-				</div>
+	            </div>	
 			</div>
         </div>
     </div>

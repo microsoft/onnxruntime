@@ -809,7 +809,7 @@ See more information on the CANN Execution Provider [here](../execution-provider
 #### Linux
 
 ```bash
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_cann --build_wheel
+./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --parallel --use_cann
 ```
 
 ### Notes
