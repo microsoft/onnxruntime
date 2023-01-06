@@ -555,6 +555,8 @@ class SessionState {
   // lock for the device stream pool
   mutable OrtMutex device_stream_pool_mutex_;
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+  // flag to indicate whether current session using any EP that create device stream dynamically.
+  bool has_device_stream_enabled_ep_ = false;
 #endif
 };
 

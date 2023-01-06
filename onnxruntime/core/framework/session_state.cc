@@ -1350,17 +1350,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
   auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_create_info_map_,
-                                                    subgraphs_kernel_create_info_maps,
-                                                    outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context,
+                                              execution_providers_, kernel_create_info_map_,
+                                              subgraphs_kernel_create_info_maps,
+                                              outer_scope_node_arg_to_location_map,
+                                              ort_value_name_idx_map_, context,
 #ifdef ORT_ENABLE_STREAM
-                                                    GetStreamHandleRegistryInstance(),
+                                              GetStreamHandleRegistryInstance(),
 #endif
-                                                    session_options.config_options.GetConfigOrDefault(
-                                                        kNodePartitionConfigFile, ""),
-                                                    Logger(),
-                                                    p_seq_exec_plan_);
+                                              session_options.config_options.GetConfigOrDefault(
+                                                  kNodePartitionConfigFile, ""),
+                                              Logger(),
+                                              p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
 // Record the allocation plan
@@ -1408,6 +1408,23 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
   };
 
+#endif
+
+#ifdef ORT_ENABLE_STREAM
+  // set the has_device_stream_enabled_ep_ flag
+  has_device_stream_enabled_ep_ = false;
+  if (p_seq_exec_plan_.has_value()) {
+    auto& execution_plan = (*p_seq_exec_plan_).execution_plan;
+    for (size_t i = 0; i < execution_plan.size(); ++i) {
+      auto& logic_stream = execution_plan[i];
+      if (logic_stream->steps_.size() > 0) {
+        auto create_stream_fn = GetStreamHandleRegistryInstance().GetCreateStreamFn(logic_stream->device_.Type());
+        if (create_stream_fn) {
+          has_device_stream_enabled_ep_ = true;
+        }
+      }
+    }
+  }
 #endif
 
   ORT_RETURN_IF_ERROR(
@@ -1526,21 +1543,31 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 }
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
-  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
-  if (!device_stream_pool_.empty()) {
-    auto device_stream = std::move(device_stream_pool_.back());
-    device_stream_pool_.pop_back();
-    return device_stream;
+  if (has_device_stream_enabled_ep_) {
+    std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+    if (!device_stream_pool_.empty()) {
+      auto device_stream = std::move(device_stream_pool_.back());
+      device_stream_pool_.pop_back();
+      return device_stream;
+    } else {
+      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
+      BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+      return device_stream;
+    }
   } else {
-    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
-    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
-    return device_stream;
+    // no reusing of device stream is needed, just return nullptr, the caller will handle it
+    return nullptr;
   }
 }
 
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
-  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
-  device_stream_pool_.push_back(std::move(device_stream_collection));
+  // if no need to reuse the device stream, don't perform the recycle
+  if (has_device_stream_enabled_ep_) {
+    std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+    device_stream_pool_.push_back(std::move(device_stream_collection));
+  } else {
+    device_stream_collection.reset(nullptr);
+  }
 }
 #endif
 

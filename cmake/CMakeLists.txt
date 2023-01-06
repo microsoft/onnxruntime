@@ -195,6 +195,10 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
+option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
+# https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
+cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
+
 option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
 
 # ENABLE_TRAINING includes all training functionality
@@ -703,6 +707,18 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   # cleaner.
 endif()
 
+if(MSVC)
+  # Replace /Zi and /ZI with /Z7
+  if(MSVC_Z7_OVERRIDE)
+    foreach(flag_var
+      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
+      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      if(${flag_var} MATCHES "/Z[iI]")
+        string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
+      endif(${flag_var} MATCHES "/Z[iI]")
+    endforeach(flag_var)
+  endif(MSVC_Z7_OVERRIDE)
+endif()
 
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
@@ -873,6 +889,7 @@ function(onnxruntime_configure_target target_name)
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
   endif()
+
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
