@@ -1,8 +1,6 @@
 # build, distribute, and bins (+ python proto bindings)
 build
-build_host_protoc
-build_android
-build_ios
+build_*/
 .build_debug/*
 .build_release/*
 distribute/*
@@ -56,3 +54,6 @@ onnxruntime/python/version_info.py
 .envrc
 .psenvrc
 *.csproj.user
+# clangd
+.cache/
+compile_commands.json
