@@ -10,4 +10,4 @@ scipy
 sentencepiece
 
 # please follow https://pytorch.org/ to install PyTorch for your OS
-torch >= 1.8
+torch >= 1.13.1

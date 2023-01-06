@@ -90,8 +90,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::vector<OutT>& expected_values_y,
                           int provider_type,
                           OrtCustomOpDomain* custom_op_domain_ptr,
-                          const char* custom_op_library_filename,
-                          void** library_handle = nullptr,
+                          const ORTCHAR_T* custom_op_library_filename,
                           bool test_session_creation_only = false,
                           void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
@@ -120,8 +119,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 
   if (custom_op_library_filename) {
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options,
-                                                             custom_op_library_filename, library_handle));
+    session_options.RegisterCustomOpsLibrary(custom_op_library_filename);
   }
 
   // if session creation passes, model loads fine
@@ -173,6 +171,9 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/Var
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
+static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/custom_op_variadic_io.onnx");
+static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR(
+    "testdata/custom_op_variadic_undef_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
@@ -396,7 +397,7 @@ TEST(CApiTest, custom_op_handler) {
 
 #ifdef USE_CUDA
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+                       custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 #else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
@@ -431,7 +432,7 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+                       custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 
 }
@@ -650,6 +651,388 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 #endif
 }
 
+TEST(CApiTest, variadic_input_output_custom_op) {
+  // Create a custom op with 1 variadic input and 1 variadic output.
+  // The model passes in 3 string inputs and expects 3 int64_t outputs.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+  Ort::AllocatorWithDefaultOptions allocator;
+  std::vector<std::vector<int64_t>> expected_dims;
+  std::vector<std::vector<int64_t>> expected_lens;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+
+  // Create inputs.
+  AddInputForCustomStringLengthsKernel("hello", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("123", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+
+  // Create arrays of c-strings for input and output names.
+  auto get_c_str = [](const std::string& str) { return str.c_str(); };
+  std::vector<const char*> input_name_cstrs(input_names.size());
+  std::transform(input_names.begin(), input_names.end(), input_name_cstrs.begin(), get_c_str);
+  std::vector<const char*> output_name_cstrs(output_names.size());
+  std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
+
+  Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_name_cstrs.data(), output_name_cstrs.size());
+  ASSERT_EQ(ort_outputs.size(), 3u);
+
+  // Validate outputs.
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
+    auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), expected_dims[i]);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+
+    int64_t* lens_data = ort_outputs[i].GetTensorMutableData<int64_t>();
+    ASSERT_EQ(lens_data[0], expected_lens[i][0]);
+  }
+}
+
+TEST(CApiTest, mixed_variadic_input_output_custom_op) {
+  // Create a custom op with 2 inputs (required, variadic) and 2 outputs (required, variadic).
+  // The model passes in 3 string inputs and expects 3 int64_t outputs.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+  Ort::AllocatorWithDefaultOptions allocator;
+  std::vector<std::vector<int64_t>> expected_dims;
+  std::vector<std::vector<int64_t>> expected_lens;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+
+  // Create inputs.
+  AddInputForCustomStringLengthsKernel("mixed variadic", allocator, ort_inputs, input_names, output_names,
+                                       expected_dims, expected_lens);
+  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("abcd", allocator, ort_inputs, input_names, output_names, expected_dims,
+                                       expected_lens);
+
+  // Create arrays of c-strings for input and output names.
+  auto get_c_str = [](const std::string& str) { return str.c_str(); };
+  std::vector<const char*> input_name_cstrs(input_names.size());
+  std::transform(input_names.begin(), input_names.end(), input_name_cstrs.begin(), get_c_str);
+  std::vector<const char*> output_name_cstrs(output_names.size());
+  std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
+
+  Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_name_cstrs.data(), output_name_cstrs.size());
+  ASSERT_EQ(ort_outputs.size(), 3u);
+
+  // Validate outputs.
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
+    auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), expected_dims[i]);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+
+    int64_t* lens_data = ort_outputs[i].GetTensorMutableData<int64_t>();
+    ASSERT_EQ(lens_data[0], expected_lens[i][0]);
+  }
+}
+
+TEST(CApiTest, variadic_undef_input_output_custom_op) {
+  // Create a custom op with 1 variadic input and 1 variadic output.
+  // Both the input and output are of undefined element type and allowed to differ in type (hetergeneous).
+  // The model passes in inputs (string, int64_t, and float) which are then echoed in
+  // reversed order (float, int64_t, string).
+  TemplatedCustomOp<MyCustomEchoReversedArgsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::ConstMemoryInfo mem_info = allocator.GetInfo();
+  std::vector<int64_t> input_dims = {1};
+
+  // Set string input.
+  std::string str_input("hello_ort");
+  Ort::Value& str_input_val = ort_inputs.emplace_back(
+      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
+                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+  str_input_val.FillStringTensorElement(str_input.c_str(), 0);
+
+  // Set int64_t input.
+  std::array<int64_t, 1> int_inps = {23};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<int64_t>(mem_info, int_inps.data(), int_inps.size(),
+                                                            input_dims.data(), input_dims.size()));
+
+  // Set float input.
+  std::array<float, 1> float_inps = {10.0f};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(mem_info, float_inps.data(), float_inps.size(),
+                                                          input_dims.data(), input_dims.size()));
+
+  constexpr std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
+  constexpr std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
+
+  Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_names.data(), output_names.size());
+  ASSERT_EQ(ort_outputs.size(), 3u);
+
+  // Validate outputs.
+
+  // First output should be a float.
+  {
+    auto& ort_output = ort_outputs[0];
+    auto type_info = ort_output.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), input_dims);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+    ASSERT_EQ(type_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+    const float* out_ptr = ort_output.GetTensorData<float>();
+    ASSERT_EQ(out_ptr[0], float_inps[0]);
+  }
+
+  // Second output should be a int64_t.
+  {
+    auto& ort_output = ort_outputs[1];
+    auto type_info = ort_output.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), input_dims);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+    ASSERT_EQ(type_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+
+    const int64_t* out_ptr = ort_output.GetTensorData<int64_t>();
+    ASSERT_EQ(out_ptr[0], int_inps[0]);
+  }
+
+  // Last output should be a string.
+  {
+    auto& ort_output = ort_outputs[2];
+    auto type_info = ort_output.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), input_dims);
+    ASSERT_EQ(type_info.GetElementCount(), 1u);
+    ASSERT_EQ(type_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+    const size_t str_len = ort_output.GetStringTensorElementLength(0);
+    ASSERT_EQ(str_len, str_input.size());
+
+    std::string str;
+    str.resize(str_len);
+
+    ort_output.GetStringTensorElement(str_len, 0, str.data());
+    ASSERT_EQ(str, str_input);
+  }
+}
+
+TEST(CApiTest, invalid_variadic_input_not_last_custom_op) {
+  // Create an invalid custom op with 2 inputs. The first input is variadic and the last is not.
+  // Expect an error because only the last input may be marked as variadic.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Only the last input to a custom op may be marked variadic."));
+  }
+}
+
+TEST(CApiTest, invalid_variadic_output_not_last_custom_op) {
+  // Create an invalid custom op with 2 outputs. The first output is variadic and the last is not.
+  // Expect an error because only the last output may be marked as variadic.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC,
+       OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED},
+      1,
+      true);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Only the last output to a custom op may be marked variadic."));
+  }
+}
+
+TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
+  // Create a custom op with a variadic input with a minimum arity of 4.
+  // Expect an error because the model passes in less than 4 inputs to the op.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      4,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has input size 3 not in range [min=4"));
+  }
+}
+
+TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
+  // Create a custom op with a variadic output with a minimum arity of 4.
+  // Expect an error because the model instantiates the op with less than 4 outputs.
+  TemplatedCustomOp<MyCustomStringLengthsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      4,
+      true);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has output size 3 not in range [min=4"));
+  }
+}
+
+TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
+  // Create a custom op with a homogeneous variadic input. The model has heterogeneous inputs,
+  // so we expect an error.
+  TemplatedCustomOp<MyCustomEchoReversedArgsKernel> custom_op(
+      "VariadicNode",
+      // Input config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      true,  // Input homogeneity requirement will cause error!
+      // Output config
+      {ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED},
+      {OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC},
+      1,
+      false);
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  try {
+    Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    FAIL();
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Type Error: Type parameter (T0) of Optype (VariadicNode) bound "
+                                                 "to different types"));
+  }
+}
+
 TEST(CApiTest, optional_input_output_custom_op_handler) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
 
@@ -801,7 +1184,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cuda);
 
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                       expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+                       expected_values_y, 1, custom_op_domain, nullptr, true);
 }
 #endif
 
@@ -835,32 +1218,52 @@ TEST(CApiTest, test_custom_op_library) {
        17, 18, 18, 18, 17,
        17, 17, 17, 17, 17};
 
-  std::string lib_name;
+  onnxruntime::PathString lib_name;
 #if defined(_WIN32)
-  lib_name = "custom_op_library.dll";
+  lib_name = ORT_TSTR("custom_op_library.dll");
 #elif defined(__APPLE__)
-  lib_name = "libcustom_op_library.dylib";
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
 #else
-  lib_name = "./libcustom_op_library.so";
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
 #endif
 
-  void* library_handle = nullptr;
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 1, nullptr, lib_name.c_str(), &library_handle);
+                         expected_values_y, 1, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
-#endif
-
-#ifdef _WIN32
-  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
-  ORT_ENFORCE(success, "Error while closing custom op shared library");
-#else
-  int retval = dlclose(library_handle);
-  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+                         expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_library_registration_error) {
+#else
+TEST(CApiTest, test_custom_op_library_registration_error) {
+#endif  // defined(__ANDROID__)
+  // Loads a custom op library with a RegisterCustomOps function that returns an error status.
+  // This test tries to register the library with the session options and expects an error.
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_invalid_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_invalid_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
+#endif
+
+  Ort::SessionOptions session_options;
+
+  try {
+    session_options.RegisterCustomOpsLibrary(lib_name);
+    FAIL();
+  } catch (const Ort::Exception& exception) {
+    ASSERT_THAT(exception.what(), testing::HasSubstr("Failure from custom op library's RegisterCustomOps()"));
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
 std::once_flag my_module_flag;
@@ -957,7 +1360,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   try {
     // only test model loading, exception expected
     TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                         nullptr, nullptr, nullptr, true);
+                         nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
