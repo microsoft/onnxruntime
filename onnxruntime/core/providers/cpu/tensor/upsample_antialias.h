@@ -263,8 +263,23 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
 template <class T>
 inline constexpr bool is_8bit_v = std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value;
 
-// It's quite simpler when compared with ComputeInterpolationAtLevel2.
-// This function always compute interpolation along with the last axis.
+/**
+ * @brief To compute interpolation along with the last axis.
+ * For brief,we assume the input tensor has 3 dimensions and we all it CHW for each character represent a dim.
+ * But it doesn't mean the input tensor has semantic meaning of CHW in traditional.
+ * we can treat a tensor with rank 4 NCHW as (NC)HW or CHW with a for loop in N dimension.
+ * @param num_channels The number of C in CHW.
+ * @param input_height The number of H in CHW.
+ * @param input_width The number of W in CHW.
+ * @param output_height The number of H in CHW.
+ * @param output_width The number of W in CHW.
+ * @param Xdata_span The input tensor data.
+ * @param Ydata_span The output tensor data.
+ * @param p The filter params.
+ * @param p_dim The filter params for each dim.
+ * @param tp The thread pool.
+ *
+ */
 template <typename InputType, typename AccumulateType>
 void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, int64_t input_width,
                                   int64_t output_height, int64_t output_width,
@@ -315,11 +330,23 @@ void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, in
       });
 }
 
-// This function always calculate interpolation along with penultimate axis.
-// It can work with layout of nchw,chw, nhwc,hwc,nchwc..etc
-// Take NCHW as example, if you want to do computation in axis "H", you can split it as (NC)HW or [for (CHW) i in N].
-// If in axis C, you can split it as NC(HW) or N1C(HW), C is the penultimate axis.
-// Layout NHWC is the same.
+/**
+ * @brief To calculate interpolation along with penultimate axis.
+ * For brief, we assume the input tensor has 3 dimensions and we all it CHW for each character represent a dim.
+ * But it doesn't mean the input tensor has semantic meaning of CHW in traditional.
+ * we can transform a tensor in formats like NCHW,NHWC,NcHWD,CHW,HWC..etc to a rank-3 tensor,
+ * then this function can be applied.
+ * @param num_channels The number of C in CHW.
+ * @param input_height The number of H in CHW.
+ * @param input_width The number of W in CHW.
+ * @param output_height The number of H in CHW.
+ * @param output_width The number of W in CHW.
+ * @param Xdata_span The input tensor data.
+ * @param Ydata_span The output tensor data.
+ * @param p The filter params.
+ * @param p_dim The filter params for each dim.
+ * @param tp The thread pool.
+ */
 template <typename InputType, typename AccumulateType>
 void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, int64_t input_width,
                                   int64_t output_height, int64_t output_width,
@@ -329,9 +356,9 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
                                   concurrency::ThreadPool* tp) {
   const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
   // This condition is set for higher performance.
-  // I find TrySimpleParallelFor in dim num_channels is always have higher efficency, so I would rather
+  // Observed that TrySimpleParallelFor in dim num_channels is always have higher efficiency, so I would rather
   // choose the first path as long as num_channels is 3 or bigger.
-  if (num_channels > 2) {
+  if (num_channels > 2 && num_channels >= tp->DegreeOfParallelism(tp)) {
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {

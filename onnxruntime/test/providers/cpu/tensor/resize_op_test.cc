@@ -1978,8 +1978,10 @@ TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
 TEST(ResizeOpTest, Antialias_Trilinear_Scale_Is_11s_and_1s1) {
   std::vector<float> X(16 * 4 * 4);
   std::iota(X.begin(), X.end(), 0.f);
-  std::vector<float> Y = X;
-  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {4, 1, 4, 4, 4}, X, {4, 1, 4, 4, 4}, Y);
+  {
+    std::vector<float> Y = X;
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {4, 1, 4, 4, 4}, X, {4, 1, 4, 4, 4}, Y);
+  }
   {
     std::vector<float> Y = {0.625f, 2.375f, 4.625f, 6.375f, 8.625f, 10.375f, 12.625f,
                             14.375f, 16.625f, 18.375f, 20.625f, 22.375f, 24.625f, 26.375f,
