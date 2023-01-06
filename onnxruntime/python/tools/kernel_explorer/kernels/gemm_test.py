@@ -28,7 +28,7 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     else:
         ref_c = alpha * intermediate_c + beta * np.ones_like(intermediate_c)
 
-    bound = get_gemm_bound(dtype, a, b, ref_c, transa, transb)
+    bound = get_gemm_bound(dtype, a, b, ref_c, transa, transb, a_b_positive=True)
 
     a = a.astype(dtype)
     b = b.astype(dtype)

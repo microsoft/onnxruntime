@@ -37,7 +37,7 @@ def _test_strided_batched_gemm(
     else:
         ref_c = alpha * intermediate_c + beta * np.ones_like(intermediate_c)
 
-    bounds = [get_gemm_bound(dtype, a[i], b[i], ref_c[i], transa, transb) for i in range(batch)]
+    bounds = [get_gemm_bound(dtype, a[i], b[i], ref_c[i], transa, transb, a_b_positive=True) for i in range(batch)]
 
     a = a.astype(dtype)
     b = b.astype(dtype)

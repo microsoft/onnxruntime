@@ -37,7 +37,7 @@ def _test_batched_gemm(
     else:
         ref_cs = [alpha * cs + beta * np.ones_like(cs) for cs in intermediate_cs]
 
-    bounds = [get_gemm_bound(dtype, as_[i], bs[i], ref_cs[i], transa, transb) for i in range(batch)]
+    bounds = [get_gemm_bound(dtype, as_[i], bs[i], ref_cs[i], transa, transb, a_b_positive=True) for i in range(batch)]
 
     as_ = [a.astype(dtype) for a in as_]
     bs = [b.astype(dtype) for b in bs]
