@@ -312,6 +312,7 @@ def run_pytorch(
     sequence_lengths,
     repeat_times,
     torchscript,
+    torch2,
     cache_dir,
     verbose,
 ):
@@ -366,13 +367,13 @@ def run_pytorch(
                     device=device,
                 )
                 try:
-                    inference = torch.jit.trace(model, input_ids) if torchscript else model
+                    inference = torch.jit.trace(model, input_ids) if torchscript else torch.compile(model) if torch2 else model
                     inference(input_ids)
 
                     runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
 
                     result = {
-                        "engine": "torchscript" if torchscript else "torch",
+                        "engine": "torchscript" if torchscript else "torch2" if torch2 else "torch",
                         "version": torch.__version__,
                         "providers": "NA",
                         "device": "cuda" if use_gpu else "cpu",
@@ -597,7 +598,7 @@ def parse_arguments():
         nargs="+",
         type=str,
         default=["onnxruntime"],
-        choices=["onnxruntime", "torch", "torchscript", "tensorflow"],
+        choices=["onnxruntime", "torch", "torch2", "torchscript", "tensorflow"],
         help="Engines to benchmark",
     )
 
@@ -773,6 +774,7 @@ def main():
             logger.error("Creation of the directory %s failed" % args.cache_dir)
 
     enable_torch = "torch" in args.engines
+    enable_torch2 = "torch2" in args.engines
     enable_torchscript = "torchscript" in args.engines
     enable_onnxruntime = "onnxruntime" in args.engines
     enable_tensorflow = "tensorflow" in args.engines
@@ -784,7 +786,7 @@ def main():
     for num_threads in args.num_threads:
         torch.set_num_threads(num_threads)
         logger.debug(torch.__config__.parallel_info())
-        if enable_torch or enable_torchscript:
+        if enable_torch or enable_torch2 or enable_torchscript:
             if args.input_counts != [1]:
                 logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
@@ -800,6 +802,7 @@ def main():
                     args.sequence_lengths,
                     args.test_times,
                     True,
+                    False,
                     args.cache_dir,
                     args.verbose,
                 )
@@ -816,6 +819,24 @@ def main():
                     args.sequence_lengths,
                     args.test_times,
                     False,
+                    False,
+                    args.cache_dir,
+                    args.verbose,
+                )
+
+            if enable_torch2:
+                results += run_pytorch(
+                    args.use_gpu,
+                    args.models,
+                    args.model_class,
+                    config_modifier,
+                    args.precision,
+                    num_threads,
+                    args.batch_sizes,
+                    args.sequence_lengths,
+                    args.test_times,
+                    False,
+                    True,
                     args.cache_dir,
                     args.verbose,
                 )
