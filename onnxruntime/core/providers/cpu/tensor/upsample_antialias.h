@@ -377,6 +377,12 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
         tp, static_cast<std::ptrdiff_t>(output_height * num_channels),
         static_cast<double>(output_height * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+          if (output_height == input_height) {
+            std::copy_n(Xdata_span.begin() + narrow<size_t>(first * input_width), narrow<size_t>((last - first) * output_width),
+                        Ydata_span.begin() + narrow<size_t>(first * output_width));
+            return;
+          }
+
           for (auto start = first; start != last; start++) {
             auto c = start / output_height;
             auto y = start % output_height;
@@ -386,12 +392,6 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
 
             const InputType* Xdata = Xdata_span.data() + x_start;
             InputType* Ydata = Ydata_span.data() + y_start;
-
-            if (output_height == input_height) {
-              std::copy_n(Xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>((last - first) * output_height * output_width),
-                          Ydata_span.begin() + narrow<size_t>(y_start));
-              return;
-            }
 
             const auto* y_bound = p_dim.bound.data();
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * y;
