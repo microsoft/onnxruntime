@@ -21,8 +21,8 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    int max_threads_per_block) {
   //   query            (Q)       : (B, S, D)
-  //   key              (K)       : (B, L, D) or (B, L, D + D_v) when K and V are packed
-  //   value            (V)       : (B, L, D_v) or nullptr when K and V are packed
+  //   key              (K)       : (B, L, D)
+  //   value            (V)       : (B, L, D_v)
   //   bias             (Q/K/V)   : (D + D + D_v)
   //   key_padding_mask (K/V)     : (B, L) or (L)
 
@@ -36,10 +36,6 @@ Status CheckInputs(const T* query,
   if (key_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
                            key_dims.size());
-  }
-
-  if (bias == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Optional 'bias' is not implemented yet");
   }
 
   const auto& bias_dims = bias->Shape().GetDims();
@@ -74,30 +70,23 @@ Status CheckInputs(const T* query,
   int64_t kv_sequence_length = key_dims[1];
   int64_t q_hidden_size = query_dims[2];
   int64_t v_hidden_size = 0;
-  if (value == nullptr) {  // packed K and V
-    if (bias_dims[0] != query_dims[2] + key_dims[2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query', 'key' and 'bias' dim 2 not matched for packed key/value format");
-    }
-    v_hidden_size = key_dims[2] - query_dims[2];
-  } else {
-    const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                             value_dims.size());
-    }
 
-    if (query_dims[0] != value_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same dim 0 (batch_size)");
-    }
-
-    if (key_dims[1] != value_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall have same same dim 1 (sequence_length)");
-    }
-    v_hidden_size = value_dims[2];
+  const auto& value_dims = value->Shape().GetDims();
+  if (value_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+                           value_dims.size());
   }
+
+  if (query_dims[0] != value_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+  }
+
+  if (key_dims[1] != value_dims[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key' and 'value' shall have same same dim 1 (sequence_length)");
+  }
+  v_hidden_size = value_dims[2];
 
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);

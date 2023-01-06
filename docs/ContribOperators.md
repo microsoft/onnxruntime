@@ -978,16 +978,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs (2 - 5)
+#### Inputs (4 - 5)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
 <dt><tt>key</tt> : T</dt>
-<dd>Key with shape (batch_size, kv_sequence_length, hidden_size) or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed.</dd>
-<dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size), or empty when key and value are packed.</dd>
-<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
 <dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
@@ -1004,7 +1004,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output to float or half tensors.</dd>
+<dd>Constrain input and output to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to integer types</dd>
 </dl>

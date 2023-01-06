@@ -128,18 +128,14 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
   // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-  //                      or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when K and V are packed
-  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or empty when K and V are packed
+  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   // Shape inference
-  // The following can be replaced by is_packed_kv = !ctx.hasInput(2) with newer version of onnx
-  bool is_packed_kv = !((static_cast<size_t>(2) < ctx.getNumInputs()) && (ctx.getInputType(2) != nullptr));
-
-  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1) && (is_packed_kv || hasInputShape(ctx, 2))) {
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
     if (query_dims.size() != 3) {
@@ -156,26 +152,13 @@ void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     *output_shape.add_dim() = query_dims[0];
     *output_shape.add_dim() = query_dims[1];
 
-    if (!is_packed_kv) {
-      auto& value_shape = getInputShape(ctx, 2);
-      auto& value_dims = value_shape.dim();
-      if (value_dims.size() != 3) {
-        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
-      }
-
-      *output_shape.add_dim() = value_dims[2];
-    } else {  // packed key and value
-      output_shape.add_dim();
-
-      if (query_dims[2].has_dim_value() && key_dims[2].has_dim_value()) {
-        int64_t v_hidden_size = key_dims[2].dim_value() - query_dims[2].dim_value();
-        if (v_hidden_size <= 0) {
-          fail_shape_inference("v_hidden_size <= 0: invalid packed kv");
-        }
-
-        output_shape.mutable_dim(2)->set_dim_value(v_hidden_size);
-      }
+    auto& value_shape = getInputShape(ctx, 2);
+    auto& value_dims = value_shape.dim();
+    if (value_dims.size() != 3) {
+      fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
     }
+
+    *output_shape.add_dim() = value_dims[2];
 
     updateOutputShape(ctx, 0, output_shape);
   }
@@ -306,20 +289,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size) "
-               "or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed.",
+               "Key with shape (batch_size, kv_sequence_length, hidden_size)",
                "T")
         .Input(2,
                "value",
-               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), "
-               "or empty when key and value are packed.",
-               "T",
-               OpSchema::Optional)
+               "Value with shape (batch_size, kv_sequence_length, v_hidden_size)",
+               "T")
         .Input(3,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
-               "T",
-               OpSchema::Optional)
+               "T")
         .Input(4,
                "key_padding_mask",
                "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
@@ -329,7 +308,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float or half tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           CrossAttentionTypeAndShapeInference(ctx);
