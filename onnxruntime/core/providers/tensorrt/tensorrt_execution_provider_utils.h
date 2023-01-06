@@ -221,7 +221,7 @@ class TRTModelIdGenerator {
     const auto& model_path = main_graph.ModelPath();
     if (!model_path.IsEmpty()) {
       // Get model name
-      PathString path_string = model_path.GetComponents().back();
+      const PathString& path_string = model_path.GetComponents().back();
 
 #ifdef _WIN32
       std::string model_name;
@@ -235,8 +235,7 @@ class TRTModelIdGenerator {
         // Resize the destination buffer and convert.
         model_name.resize(total_bytes);
         auto err = wcstombs_s(&total_bytes, &model_name[0], total_bytes, path_string.c_str(), _TRUNCATE);
-        ORT_ENFORCE(err == 0, MakeString(
-            "TRTGenerateId: Failed to convert wide model name to bytes. wcstombs_s returned ", err));
+        ORT_ENFORCE(err == 0, "TRTGenerateId: Failed to convert wide model name to bytes. wcstombs_s returned ", err);
 
         model_name.resize(total_bytes - 1);  // Remove the duplicate terminating '\0'
       }
@@ -246,10 +245,10 @@ class TRTModelIdGenerator {
 
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
       // Ensure enough characters are hashed in case model names are too short
-      int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
-      constexpr int32_t hash_string_length = 500;
+      const size_t model_name_length = model_name.size();
+      constexpr size_t hash_string_length = 500;
       std::string repeat_model_name = model_name;
-      for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+      for (size_t i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
         repeat_model_name += model_name;
       }
       hash_str(repeat_model_name);
