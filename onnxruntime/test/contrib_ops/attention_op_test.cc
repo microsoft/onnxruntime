@@ -10,15 +10,8 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
+using contrib::AttentionMaskType;
 namespace test {
-enum MaskIndexType {
-  kMaskIndexEnd = 0,      // [batch_size]
-  kMaskIndexEndAndStart,  // [2 * batch_size]
-  kMaskRaw,               // [batch_size, total_sequence_length]
-  kMask3D,                // [batch_size, sequence_length, total_sequence_length]
-  kMaskDummy,             // Dummy mask with shape [1, 1] or [batch_size, 1]
-  kMask4D                 // Megatron causal mask with shape [batch_size, 1, max_sequence_length, max_sequence_length]
-};
 
 template <typename T>
 std::vector<T> ReorderToKvCache(
@@ -58,7 +51,7 @@ static void RunAttentionTest(
     int past_sequence_length = 0,
     const std::vector<float>* past_data = nullptr,
     const std::vector<float>* present_data = nullptr,
-    MaskIndexType mask_index_type = kMaskIndexEnd,
+    AttentionMaskType mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN,
     int input_hidden_size = 0,
     int max_sequence_length = 0,
     const bool disable_cpu = false,
@@ -129,23 +122,23 @@ static void RunAttentionTest(
     std::vector<int64_t> mask_index_dims_5 = {batch_size, sequence_length, total_sequence_length};
     std::vector<int64_t> mask_index_dims_6 = {batch_size, 1, max_sequence_length, max_sequence_length};
     std::vector<int64_t> mask_index_dims;
-    switch (mask_index_type) {
-      case kMaskIndexEnd:
+    switch (mask_type) {
+      case AttentionMaskType::MASK_1D_KEY_SEQ_LEN:
         mask_index_dims = mask_index_dims_1;
         break;
-      case kMaskIndexEndAndStart:
+      case AttentionMaskType::MASK_1D_END_START:
         mask_index_dims = mask_index_dims_2;
         break;
-      case kMaskRaw:
+      case AttentionMaskType::MASK_2D_KEY_PADDING:
         mask_index_dims = mask_index_dims_3;
         break;
-      case kMaskDummy:
+      case AttentionMaskType::MASK_2D_DUMMY:
         mask_index_dims = mask_index_dims_4;
         break;
-      case kMask3D:
+      case AttentionMaskType::MASK_3D_ATTENTION:
         mask_index_dims = mask_index_dims_5;
         break;
-      case kMask4D:
+      case AttentionMaskType::MASK_4D_MEGATRON:
         mask_index_dims = mask_index_dims_6;
         break;
       default:
@@ -258,7 +251,7 @@ static void RunAttentionTest(
     int past_sequence_length = 0,
     const std::vector<float>* past_data = nullptr,
     const std::vector<float>* present_data = nullptr,
-    MaskIndexType mask_index_type = kMaskIndexEnd,
+    AttentionMaskType mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN,
     int input_hidden_size = 0,
     int max_sequence_length = 0,
     const bool disable_cpu = false,
@@ -271,13 +264,13 @@ static void RunAttentionTest(
   RunAttentionTest(input_data, weights_data, false, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
-                   past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length,
+                   past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, extra_add_data,
                    kv_sequence_length, past_present_share_buffer);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
-                   past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length,
+                   past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, extra_add_data,
                    kv_sequence_length, past_present_share_buffer);
 }

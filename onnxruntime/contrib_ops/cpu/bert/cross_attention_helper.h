@@ -20,10 +20,11 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    int max_threads_per_block) {
-  //   query         (Q)       : (B, S, D)
-  //   key           (K)       : (B, L, D)    or (B, L, D + D_v) packed
-  //   value         (V)       : (B, L, D_v)  or (B, L, D + D_v) packed
-  //   bias          (Q/K/V)   : (D + D + D_v)
+  //   query            (Q)       : (B, S, D)
+  //   key              (K)       : (B, L, D) or (B, L, D + D_v) when K and V are packed
+  //   value            (V)       : (B, L, D_v) or nullptr when K and V are packed
+  //   bias             (Q/K/V)   : (D + D + D_v)
+  //   key_padding_mask (K/V)     : (B, L) or (L)
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3) {
@@ -37,12 +38,6 @@ Status CheckInputs(const T* query,
                            key_dims.size());
   }
 
-  const auto& value_dims = value->Shape().GetDims();
-  if (value_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                           value_dims.size());
-  }
-
   if (bias == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Optional 'bias' is not implemented yet");
   }
@@ -53,38 +48,55 @@ Status CheckInputs(const T* query,
                            bias_dims.size());
   }
 
+  AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
+  if (key_padding_mask != nullptr) {
+    mask_type = AttentionMaskType::MASK_UNKNOWN;
+    const auto& mask_dims = key_padding_mask->Shape().GetDims();
+    if (mask_dims.size() == 1 && mask_dims[0] == key_dims[0]) {
+      mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+    } else if (mask_dims.size() == 2 && mask_dims[0] == key_dims[0] && mask_dims[1] == key_dims[1]) {
+      mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    }
+
+    if (mask_type == AttentionMaskType::MASK_UNKNOWN) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'key_padding_mask' shape shall be (batch_size) or (batch_size, kv_sequence_length)");
+    }
+  }
+
   if (query_dims[0] != key_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'query' and 'key' shall have same dim 0 (batch size)");
   }
 
-  if (query_dims[0] != value_dims[0]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'value' shall have same dim 0 (batch size)");
-  }
-
-  if (key_dims[1] != value_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'key' and 'value' shall have same same dim 0 (sequence length)");
-  }
-
   int64_t batch_size = query_dims[0];
   int64_t sequence_length = query_dims[1];
+  int64_t kv_sequence_length = key_dims[1];
   int64_t q_hidden_size = query_dims[2];
-
-  int64_t kv_sequence_length = value_dims[1];
-  int64_t v_hidden_size = value_dims[2];
-
-  if (key == value) {  // packed key value
-    if (bias_dims[0] != query_dims[2] + value_dims[2] || query_dims[2] >= value_dims[2]) {
+  int64_t v_hidden_size = 0;
+  if (value == nullptr) {  // packed K and V
+    if (bias_dims[0] != query_dims[2] + key_dims[2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query', 'value' and 'bias' dim 2 not matched for packed key/value format");
+                             "Input 'query', 'key' and 'bias' dim 2 not matched for packed key/value format");
     }
-    v_hidden_size = value_dims[2] - query_dims[2];
+    v_hidden_size = key_dims[2] - query_dims[2];
   } else {
-    if (query_dims[2] != key_dims[2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' and 'key' shall have same hidden size");
+    const auto& value_dims = value->Shape().GetDims();
+    if (value_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+                             value_dims.size());
     }
+
+    if (query_dims[0] != value_dims[0]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+    }
+
+    if (key_dims[1] != value_dims[1]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'key' and 'value' shall have same same dim 1 (sequence_length)");
+    }
+    v_hidden_size = value_dims[2];
   }
 
   if (parameters != nullptr) {
@@ -103,6 +115,7 @@ Status CheckInputs(const T* query,
     output_parameters->num_heads = num_heads;
     output_parameters->is_unidirectional = false;
     output_parameters->past_present_share_buffer = false;
+    output_parameters->mask_type = mask_type;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {

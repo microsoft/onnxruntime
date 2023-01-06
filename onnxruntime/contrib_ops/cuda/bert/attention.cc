@@ -77,9 +77,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-    2, parameters.batch_size, parameters.num_heads,
-    past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-    parameters.head_size};
+      2, parameters.batch_size, parameters.num_heads,
+      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+      parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
@@ -88,14 +88,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #ifndef ENABLE_TRAINING  // Only enable fused kernel on non-training builds
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-  bool is_1d_mask = nullptr != mask_index && mask_index->Shape().NumDimensions() == 1;
+  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
   if (is_unidirectional_) {  // GPT
     // Fused kernels requires left side padding (The mask shall be sequence lengths or no mask)
     // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
     // where past state is empty.
     bool use_causal_fused_runner = !disable_fused_runner_ &&
-                                   (nullptr == mask_index || is_1d_mask) &&
+                                   (nullptr == mask_index || is_mask_1d_seq_len) &&
                                    nullptr == extra_add_qk &&
                                    parameters.past_sequence_length == 0 &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
@@ -113,7 +113,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   } else {  // BERT
     bool use_fused_runner = !disable_fused_runner_ &&
-                            (nullptr == mask_index || is_1d_mask) &&
+                            (nullptr == mask_index || is_mask_1d_seq_len) &&
                             nullptr == past &&
                             nullptr == present &&
                             nullptr == extra_add_qk &&
@@ -187,7 +187,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
 
   return QkvToContext<CudaT>(
-    device_prop, cublas, Stream(context), parameters, data, reinterpret_cast<void*>(fused_runner), past_present_share_buffer_);
+      device_prop, cublas, Stream(context), parameters, data, reinterpret_cast<void*>(fused_runner), past_present_share_buffer_);
 }
 
 }  // namespace cuda

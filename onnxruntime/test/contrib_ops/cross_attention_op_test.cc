@@ -13,13 +13,13 @@ namespace onnxruntime {
 namespace test {
 
 static void RunCrossAttentionTest(
-    const std::vector<float>& query_data,             // query:  [batch_size, sequence_length, hidden_size]
-    const std::vector<float>& key_data,               // key:    [batch_size, kv_sequence_length, hidden_size]
-    const std::vector<float>& value_data,             // value:  [batch_size, kv_sequence_length, v_hidden_size]
-    const std::vector<float>& bias_data,              // bias:   [hidden_size + hidden_size + v_hidden_size]
-    const std::vector<float>& key_padding_mask_data,  // key_padding_mask: see below
-    int key_padding_mask_format,                      // 1 for [batch_size], 2 for [batch_size, kv_sequence_length]
-    const std::vector<float>& output_data,            // output: [batch_size, sequence_length, v_hidden_size]
+    const std::vector<float>& query_data,               // query:  [batch_size, sequence_length, hidden_size]
+    const std::vector<float>& key_data,                 // key:    [batch_size, kv_sequence_length, hidden_size]
+    const std::vector<float>& value_data,               // value:  [batch_size, kv_sequence_length, v_hidden_size]
+    const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size]
+    const std::vector<int32_t>& key_padding_mask_data,  // key_padding_mask: see below
+    int key_padding_mask_format,                        // 1 for [batch_size], 2 for [batch_size, kv_sequence_length]
+    const std::vector<float>& output_data,              // output: [batch_size, sequence_length, v_hidden_size]
     int number_of_heads,
     int batch_size,
     int sequence_length,
@@ -37,7 +37,6 @@ static void RunCrossAttentionTest(
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
-  int head_size = hidden_size / number_of_heads;
   if (enable_cpu || enable_cuda || enable_rocm) {
     OpTester tester("CrossAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
@@ -64,9 +63,9 @@ static void RunCrossAttentionTest(
       }
 
       if (key_padding_mask_data.size()) {
-        tester.AddInput<MLFloat16>("key_padding_mask", key_padding_mask_dims, ToFloat16(key_padding_mask_data));
+        tester.AddInput<int32_t>("key_padding_mask", key_padding_mask_dims, key_padding_mask_data);
       } else {
-        tester.AddOptionalInputEdge<MLFloat16>();
+        tester.AddOptionalInputEdge<int32_t>();
       }
 
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
@@ -82,9 +81,9 @@ static void RunCrossAttentionTest(
       }
 
       if (key_padding_mask_data.size()) {
-        tester.AddInput<float>("bias", key_padding_mask_dims, key_padding_mask_data);
+        tester.AddInput<int32_t>("key_padding_mask", key_padding_mask_dims, key_padding_mask_data);
       } else {
-        tester.AddOptionalInputEdge<float>();
+        tester.AddOptionalInputEdge<int32_t>();
       }
 
       tester.AddOutput<float>("output", output_dims, output_data);

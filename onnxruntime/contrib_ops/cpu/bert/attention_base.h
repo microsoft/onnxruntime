@@ -48,7 +48,7 @@ class AttentionBase {
   }
 
   Status CheckMask(const Tensor* mask_index,
-                   bool& is_dummy,                // output: whether the mask is dummy with shape (1 or batch_size, 1)
+                   AttentionMaskType& mask_type,
                    int64_t& max_sequence_length,  // output: max_sequence_length when mask_index is 4D tensor
                    int64_t batch_size,
                    int64_t sequence_length,

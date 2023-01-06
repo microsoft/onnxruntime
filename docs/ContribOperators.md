@@ -958,6 +958,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Multi-Head Cross Attention. Bias from input projection is included.
   
+  When key and value are packed, key will have packed data of K and V with shape
+  (batch_size, kv_sequence_length, hidden_size + v_hidden_size). The value shall be empty in such case.
+  
   The mask is optional. It could be key padding mask with shape (batch_size, kv_sequence_length), where value 0
   means padding or 1 otherwise. Another format is supported when key has right-side padding: mask is actual length of
   each key sequence excluding paddings, and its shape is (batch_size).
@@ -969,19 +972,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>format</tt> : int (required)</dt>
+<dd>Input format: 1 means key has packed K and V.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (2 - 5)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
 <dt><tt>key</tt> : T</dt>
-<dd>Key with shape (batch_size, kv_sequence_length, hidden_size)or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed.Required when weights is not available.</dd>
-<dt><tt>value</tt> : T</dt>
-<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size), or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed. Required when weights is not available.</dd>
+<dd>Key with shape (batch_size, kv_sequence_length, hidden_size) or (batch_size, kv_sequence_length, hidden_size + v_hidden_size) when key and value are packed.</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size), or empty when key and value are packed.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
@@ -999,7 +1004,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
+<dd>Constrain input and output to float or half tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to integer types</dd>
 </dl>

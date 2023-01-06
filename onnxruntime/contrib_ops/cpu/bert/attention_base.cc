@@ -176,15 +176,18 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   int64_t max_sequence_length = -1;
+  AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   if (mask_index != nullptr) {  // mask_index is optional
-    bool is_dummy = false;
-    auto status = this->CheckMask(mask_index, is_dummy,
+    mask_type = AttentionMaskType::MASK_UNKNOWN;
+    auto status = this->CheckMask(mask_index, mask_type,
                                   max_sequence_length, batch_size, sequence_length, total_sequence_length);
     if (status != Status::OK()) {
       return status;
     }
-    if (is_dummy) {
+
+    if (mask_type == AttentionMaskType::MASK_2D_DUMMY) {
       mask_index = nullptr;
+      mask_type = AttentionMaskType::MASK_NONE;
     }
   }
 
@@ -245,30 +248,31 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0);
+    output_parameters->mask_type = mask_type;
   }
 
   return Status::OK();
 }
 
 Status AttentionBase::CheckMask(const Tensor* mask_index,
-                                bool& is_dummy,
+                                AttentionMaskType& mask_type,
                                 int64_t& max_sequence_length,
                                 int64_t batch_size,
                                 int64_t sequence_length,
                                 int64_t total_sequence_length) const {
-  is_dummy = false;
   const auto& mask_dims = mask_index->Shape().GetDims();
   if (mask_dims.size() == 1) {
     if (mask_dims[0] != batch_size && mask_dims[0] != 2 * batch_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size");
     }
+    mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : AttentionMaskType::MASK_1D_END_START);
   } else if (mask_dims.size() == 2) {
     if (mask_dims[0] != batch_size || mask_dims[1] != total_sequence_length) {
       // Add operator supports broadcasting. Here we handle a case with only one element in the 2nd dimension.
       if ((mask_dims[0] == batch_size || mask_dims[0] == 1) && mask_dims[1] == 1) {
         // Mask will have same value after propagation, which has same effect as no mask.
-        is_dummy = true;
+        mask_type = AttentionMaskType::MASK_2D_DUMMY;
       } else {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
@@ -276,6 +280,7 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
             "batch_size x total_sequence_length");
       }
     }
+    mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
   } else if (mask_dims.size() == 3) {
     if (mask_dims[0] != batch_size || mask_dims[1] != sequence_length || mask_dims[2] != total_sequence_length) {
       return ORT_MAKE_STATUS(
@@ -283,6 +288,7 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
           "Inputs 'mask_index' with 3D data shall have shape "
           "batch_size x sequence_length x total_sequence_length");
     }
+    mask_type = AttentionMaskType::MASK_3D_ATTENTION;
   } else if (mask_dims.size() == 4) {
     if (mask_dims[0] != batch_size || mask_dims[1] != 1 || mask_dims[2] != mask_dims[3] ||
         mask_dims[2] < total_sequence_length) {
@@ -292,8 +298,8 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
           "batch_size x 1 x max_sequence_length x max_sequence_length)");
     }
     max_sequence_length = mask_dims[3];
-
-    if (is_unidirectional_ == true) {
+    mask_type = AttentionMaskType::MASK_4D_MEGATRON;
+    if (this->is_unidirectional_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'mask_index' with 4D data shall have is_unidirectional_ set to false");
     }

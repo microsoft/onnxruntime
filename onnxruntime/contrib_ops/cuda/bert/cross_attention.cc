@@ -74,10 +74,10 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
 
-  bool is_1d_mask = nullptr != key_padding_mask && key_padding_mask->Shape().NumDimensions() == 1;
+  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
   bool use_fused_runner = !disable_fused_runner_ &&
-                          (nullptr == key_padding_mask || is_1d_mask) &&
+                          (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
                           FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
@@ -117,7 +117,7 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.value = (nullptr == value) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
