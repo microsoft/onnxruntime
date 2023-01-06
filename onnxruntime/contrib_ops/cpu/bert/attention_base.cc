@@ -268,7 +268,9 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
     }
     mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : AttentionMaskType::MASK_1D_END_START);
   } else if (mask_dims.size() == 2) {
-    if (mask_dims[0] != batch_size || mask_dims[1] != total_sequence_length) {
+    if (mask_dims[0] == batch_size && mask_dims[1] == total_sequence_length) {
+      mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    } else {
       // Add operator supports broadcasting. Here we handle a case with only one element in the 2nd dimension.
       if ((mask_dims[0] == batch_size || mask_dims[0] == 1) && mask_dims[1] == 1) {
         // Mask will have same value after propagation, which has same effect as no mask.
@@ -280,7 +282,6 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
             "batch_size x total_sequence_length");
       }
     }
-    mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
   } else if (mask_dims.size() == 3) {
     if (mask_dims[0] != batch_size || mask_dims[1] != sequence_length || mask_dims[2] != total_sequence_length) {
       return ORT_MAKE_STATUS(
@@ -301,7 +302,7 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
     mask_type = AttentionMaskType::MASK_4D_MEGATRON;
     if (this->is_unidirectional_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'mask_index' with 4D data shall have is_unidirectional_ set to false");
+                             "Inputs 'mask_index' with 4D data shall have is_unidirectional set to false");
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

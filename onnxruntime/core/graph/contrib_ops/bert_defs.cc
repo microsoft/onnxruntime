@@ -269,12 +269,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* CrossAttention_ver1_doc = R"DOC(
 Multi-Head Cross Attention. Bias from input projection is included.
 
-When key and value are packed, key will have packed data of K and V with shape
-(batch_size, kv_sequence_length, hidden_size + v_hidden_size). The value shall be empty in such case.
-
-The mask is optional. It could be key padding mask with shape (batch_size, kv_sequence_length), where value 0
-means padding or 1 otherwise. Another format is supported when key has right-side padding: mask is actual length of
-each key sequence excluding paddings, and its shape is (batch_size).
+The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
+means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
+each key sequence excluding paddings.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -282,7 +279,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(CrossAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("format", "Input format: 1 means key has packed K and V.", AttributeProto::INT)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
