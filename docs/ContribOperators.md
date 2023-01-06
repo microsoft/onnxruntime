@@ -3934,8 +3934,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Saved mean used during training to speed up gradient computation</dd>
 <dt><tt>inv_std_var</tt> (optional) : U</dt>
 <dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
-<dt><tt>input_skip_sum</tt> (optional) : T</dt>
-<dd>Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T</dt>
+<dd>Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).</dd>
 </dl>
 
 #### Type Constraints
@@ -3985,8 +3985,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Saved mean used during training to speed up gradient computation</dd>
 <dt><tt>inv_std_var</tt> (optional) : U</dt>
 <dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
-<dt><tt>input_skip_sum</tt> (optional) : T</dt>
-<dd>Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T</dt>
+<dd>Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).</dd>
 </dl>
 
 #### Type Constraints
