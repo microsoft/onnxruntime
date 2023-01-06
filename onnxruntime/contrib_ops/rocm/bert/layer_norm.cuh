@@ -23,7 +23,7 @@ limitations under the License.
 #pragma once
 
 #include <hip/hip_fp16.h>
-#include <hipblas.h>
+#include <hipblas/hipblas.h>
 #include <hipcub/hipcub.hpp>
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
