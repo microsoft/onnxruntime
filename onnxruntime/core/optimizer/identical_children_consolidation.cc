@@ -7,7 +7,6 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 
-
 namespace onnxruntime {
 Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   GraphViewer const graph_viewer(graph);
@@ -25,13 +24,10 @@ Status IdenticalChildrenConsolidation::ApplyImpl(Graph& graph, bool& modified, i
         Node* first_twin = graph.GetNode(twin_group[0]);
         for (size_t i = 1; i < twin_group.size(); i++) {
           Node* other_twin = graph.GetNode(twin_group[i]);
-          // Replace all outputs of other_twin with first_twin
-          // If A = parent_node, B1, B2 are twins, C1, C2 are grandchild from each twin
-          // We want 2 edges B1 -> C1 and  B2->C2 to become => B1->C1, B1->C2
-          // So ReplaceDownstreamNodeInput(graph, B2,j, B1,j) is called
-          for (size_t j = 0; j < other_twin->GetOutputEdgesCount(); j++) {
-            graph_utils::ReplaceDownstreamNodeInput(graph, *other_twin, static_cast<int>(j), *first_twin, static_cast<int>(j));
+          if (graph.NodeProducesGraphOutput(*other_twin)) {
+            continue;
           }
+          graph_utils::ReplaceDownstreamNodeInput(graph, *other_twin, 0, *first_twin, 0);
           graph_utils::RemoveNode(graph, *other_twin);
           modified = true;
         }

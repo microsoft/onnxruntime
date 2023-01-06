@@ -359,7 +359,7 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
 }
 
 template <typename InputType, typename OutputType>
-GetQDQTestCaseFn BuildQDQSplitTestCase(
+GetQDQTestCaseFn BuildConsolidationTestCase(
     const std::vector<int64_t>& input_shape,
     const int64_t& axis) {
   return [input_shape, axis](ModelTestBuilder& builder) {
@@ -392,6 +392,38 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     builder.AddDequantizeLinearNode<OutputType>(lower_q_output_1, .003f, dq_zp, q_split_output_1);
     builder.AddDequantizeLinearNode<OutputType>(lower_q_output_2, .003f, dq_zp, q_split_output_2);
     builder.AddDequantizeLinearNode<OutputType>(lower_q_output_3, .003f, dq_zp, q_split_output_3);
+  };
+}
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQSplitTestCase(
+    const std::vector<int64_t>& input_shape,
+    const int64_t& axis) {
+  return [input_shape, axis](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
+
+    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
+    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
+
+    // add Split
+
+    auto* split_output_1 = builder.MakeIntermediate();
+    auto* split_output_2 = builder.MakeIntermediate();
+    auto* split_output_3 = builder.MakeIntermediate();
+    Node& split_node = builder.AddNode("Split", {dq_output}, {split_output_1, split_output_2, split_output_3});
+    split_node.AddAttribute("axis", axis);
+
+    // add Q
+    auto* q_split_output_1 = builder.MakeOutput();
+    auto* q_split_output_2 = builder.MakeOutput();
+    auto* q_split_output_3 = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<OutputType>(split_output_1, .003f, q_zp, q_split_output_1);  // Model input (node_token_1)
+    builder.AddQuantizeLinearNode<OutputType>(split_output_2, .003f, q_zp, q_split_output_2);  // Model input (node_token_2)
+    builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3);
   };
 }
 template <typename InputType>
