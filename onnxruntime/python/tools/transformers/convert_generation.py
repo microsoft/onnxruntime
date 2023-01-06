@@ -455,7 +455,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
-        arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
+        arguments.extend(["--op_block_list", "Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"])
 
     if args.verbose:
         logger.info(f"arguments for convert_to_onnx:{arguments}")
@@ -1114,6 +1114,8 @@ def generate_gpt2_init_decoder(
 
     # Try to find the last residual Add
     # For fp16, there are Casts along the way
+
+    # Normalization Node is : LayerNormalization
     logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
         logits_matmul_node,
         [
@@ -1134,13 +1136,48 @@ def generate_gpt2_init_decoder(
         [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     )
 
+    # Normalization Node is : SkipLayerNormalization
+    if logits_matmul_to_residual_add_path is None:
+        logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+            logits_matmul_node,
+            [
+                "Cast",
+                "SkipLayerNormalization",
+                "Cast",
+                "MatMul",
+                "Cast",
+                "FastGelu",
+                "Cast",
+                "MatMul",
+                "Cast",
+                "SkipLayerNormalization",
+            ],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        )
+
     # Try without the Casts before and after the MatMuls
     if logits_matmul_to_residual_add_path is None:
+
+        # Normalization Node is : LayerNormalization
         logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
             logits_matmul_node,
             ["LayerNormalization", "Add", "Add", "MatMul", "FastGelu", "MatMul", "LayerNormalization", "Add"],
             [0, 0, 1, 0, 0, 0, 0, 0],
         )
+
+        # Normalization Node is : SkipLayerNormalization
+        if logits_matmul_to_residual_add_path is None:
+            logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+                logits_matmul_node,
+                [
+                    "SkipLayerNormalization",
+                    "MatMul",
+                    "FastGelu",
+                    "MatMul",
+                    "SkipLayerNormalization",
+                ],
+                [0, 1, 0, 0, 0],
+            )
 
     # TODO(hasesh): Are there more permutations to try before returning ?
     if logits_matmul_to_residual_add_path is None:
@@ -1148,40 +1185,84 @@ def generate_gpt2_init_decoder(
 
     residual_add_node = logits_matmul_to_residual_add_path[-1]
 
-    residual_add_to_attention_parent_index = 0
-    residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-        residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
-    )
+    # If the last node in the pattern is SkipLayerNormalization, we need to adjust our pattern searches accordingly
+    is_skiplayernorm_path = True if residual_add_node.op_type == "SkipLayerNormalization" else False
 
-    # Try other parent index of the residual Add node
-    if residual_add_to_attention_path is None:
-        residual_add_to_attention_parent_index = 1
+    # Regular LayerNormalization path
+    if not is_skiplayernorm_path:
+        residual_add_to_attention_parent_index = 0
         residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
             residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
         )
 
-    # Try without the Casts before and after the MatMuls
-    if residual_add_to_attention_path is None:
+        # Try other parent index of the residual Add node
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 1
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node,
+                ["Add", "Cast", "MatMul", "Attention"],
+                [residual_add_to_attention_parent_index, 0, 0, 0],
+            )
+
+        # Try without the Casts before and after the MatMuls
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 0
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+            )
+
+        # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 1
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+            )
+
+    # SkipLayerNormalization path
+    else:
         residual_add_to_attention_parent_index = 0
         residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-            residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+            residual_add_node, ["Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
         )
 
-    # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
-    if residual_add_to_attention_path is None:
-        residual_add_to_attention_parent_index = 1
-        residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-            residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
-        )
+        # Try other parent index of the residual Add node
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 1
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node, ["Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+            )
+
+        # Try without the Casts before and after the MatMuls
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 0
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node, ["MatMul", "Attention"], [residual_add_to_attention_parent_index, 0]
+            )
+
+        # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 1
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node, ["MatMul", "Attention"], [residual_add_to_attention_parent_index, 0]
+            )
 
     # TODO(hasesh): Are there more permutations to try before returning ?
     if residual_add_to_attention_path is None:
         return False
 
     residual_add_to_add_parent_index = 0 if residual_add_to_attention_parent_index == 1 else 1
-    add_before_residual_add = gpt2_init_decoder_model.match_parent(
-        residual_add_node, "Add", residual_add_to_add_parent_index
-    )
+
+    # Regular LayerNormalization path
+    if not is_skiplayernorm_path:
+        add_before_residual_add = gpt2_init_decoder_model.match_parent(
+            residual_add_node, "Add", residual_add_to_add_parent_index
+        )
+
+    # SkipLayerNormalization path
+    else:
+        add_before_residual_add = gpt2_init_decoder_model.match_parent(
+            residual_add_node, "SkipLayerNormalization", residual_add_to_add_parent_index
+        )
 
     if add_before_residual_add is None:
         return False
@@ -1238,11 +1319,15 @@ def generate_gpt2_init_decoder(
     )
 
     # Add Slice node to the graph such that it consumes the output of Add before the residual Add
+    add_before_residual_add_output = (
+        add_before_residual_add.output[0] if not is_skiplayernorm_path else add_before_residual_add.output[3]
+    )
+
     slice_1_output_name = "edge_modified_" + add_before_residual_add.output[0]
     slice_node_1 = onnx.helper.make_node(
         "Slice",
         inputs=[
-            add_before_residual_add.output[0],
+            add_before_residual_add_output,
             "SliceLastTokenStarts",
             "SliceLastTokenEnds",
             "SliceLastTokenAxes",
@@ -1258,9 +1343,7 @@ def generate_gpt2_init_decoder(
 
     # Adjust the input(s) to the nodes consuming the outputs of the added Slice nodes
     gpt2_init_decoder_model.replace_node_input(matmul_after_attention, attention.output[0], slice_0_output_name)
-    gpt2_init_decoder_model.replace_node_input(
-        residual_add_node, add_before_residual_add.output[0], slice_1_output_name
-    )
+    gpt2_init_decoder_model.replace_node_input(residual_add_node, add_before_residual_add_output, slice_1_output_name)
 
     # Topologically sort the updated graph
     gpt2_init_decoder_model.topological_sort()
@@ -1286,7 +1369,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if is_greedysearch or is_sampling:
         if not is_gpt2:
-            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is supported")
+            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is sup(ported")
         if args.output_sequences_scores:
             raise NotImplementedError("output_sequences_scores currently is not supported in greedy search/sampling")
         if args.output_token_scores:
