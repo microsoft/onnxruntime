@@ -21,17 +21,15 @@ RUN cd /opt/mpi_install/ucx/build &&\
       make -j $(nproc) &&\
       make install
 
-
-
 RUN apt-get update &&\
     apt-get install -y half libnuma-dev
 
 # Install rbuild
 RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz numpy yapf==0.28.0
 
-# Install MIGraphX from source
+# Install MIGraphX from source, the tag we use should be same as ROCm version
 RUN mkdir -p /migraphx
-RUN cd /migraphx && git clone --depth=1 --branch migraphx_for_ort https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
+RUN cd /migraphx && git clone --depth=1 --branch rocm-5.4.0 https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
 RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx
