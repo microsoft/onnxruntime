@@ -99,12 +99,10 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 
 
 @pytest.mark.parametrize("batch", [1, 64])
-@pytest.mark.parametrize("m, n, k", get_gemm_bert_sizes(full=False))
-# FIXME: ck has bug when any of m,n,k < 8
-# @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
-def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k, batch):
+def test_ck_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
     wrapper_name = "CKStridedBatchedGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
     _test_strided_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
 
