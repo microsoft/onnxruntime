@@ -1319,6 +1319,8 @@ def generate_gpt2_init_decoder(
     )
 
     # Add Slice node to the graph such that it consumes the output of Add before the residual Add
+    # If the 'Add' output is produced by a SkipLayerNormalization node, then adjust its output
+    # index appropriately
     add_before_residual_add_output = (
         add_before_residual_add.output[0] if not is_skiplayernorm_path else add_before_residual_add.output[3]
     )
@@ -1369,7 +1371,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if is_greedysearch or is_sampling:
         if not is_gpt2:
-            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is sup(ported")
+            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is supported")
         if args.output_sequences_scores:
             raise NotImplementedError("output_sequences_scores currently is not supported in greedy search/sampling")
         if args.output_token_scores:
