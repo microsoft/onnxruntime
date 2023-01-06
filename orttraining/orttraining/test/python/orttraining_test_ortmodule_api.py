@@ -4820,9 +4820,14 @@ def test_ortmodule_attribute_name_collision_warning():
     with pytest.warns(UserWarning) as warning_record:
         ort_model = ORTModule(pt_model)
 
-    assert len(warning_record) == 2
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[0].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
+    # Please annotate treat the first argument (g) as GraphContext and use context information from the object
+    # instead.')
+    # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
+    assert len(warning_record) == 3
+
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[2].message.args[0]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():

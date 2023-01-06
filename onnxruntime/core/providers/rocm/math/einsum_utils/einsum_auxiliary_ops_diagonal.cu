@@ -63,21 +63,21 @@ void DiagonalImpl(
 
     switch (element_size) {
       case sizeof(int32_t):
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(_DiagonalKernel<int32_t>), blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream, 
+        _DiagonalKernel<int32_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
             reinterpret_cast<const ToHipType<int32_t>::MappedType*>(input_data), input_rank, dim_1, dim_2,
             input_strides, reinterpret_cast<ToHipType<int32_t>::MappedType*>(output_data), output_strides,
             output_size);
         break;
 
       case sizeof(int64_t):
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(_DiagonalKernel<int64_t>), blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream, 
+        _DiagonalKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
             reinterpret_cast<const ToHipType<int64_t>::MappedType*>(input_data), input_rank, dim_1, dim_2,
             input_strides, reinterpret_cast<ToHipType<int64_t>::MappedType*>(output_data), output_strides,
             output_size);
         break;
 
       case sizeof(int16_t):
-        hipLaunchKernelGGL(HIP_KERNEL_NAME(_DiagonalKernel<half>), blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream, 
+        _DiagonalKernel<half><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
             reinterpret_cast<const half*>(input_data), input_rank, dim_1, dim_2,
             input_strides, reinterpret_cast<half*>(output_data), output_strides,
             output_size);

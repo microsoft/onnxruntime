@@ -8,7 +8,7 @@ jobs:
   pool: 'AMD-GPU'
   timeoutInMinutes: 150
 
-  # gid of video and render group on gcr-openpai-35 and -36
+  # gid of video and render group on gcramdrr1-mi100-085 and -86
   variables:
     - name: video
       value: 44
@@ -17,7 +17,7 @@ jobs:
     - name: onnxruntimeBuildSucceeded
       value: false
     - name: RocmVersion
-      value: 5.2.3
+      value: 5.4
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
@@ -53,7 +53,6 @@ jobs:
         python tools/ci_build/build.py \
           --config Release \
           --enable_training \
-          --enable_training_torch_interop \
           --mpi_home /opt/ompi \
           --cmake_extra_defines \
               CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \

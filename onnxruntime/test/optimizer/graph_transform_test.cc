@@ -24,7 +24,6 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
-#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
@@ -4454,6 +4453,70 @@ TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+    auto* pow_initializer = builder.MakeInitializer<float>({}, {2.0f});
+    auto* add_initializer = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* weight_initializer = builder.MakeInitializer<MLFloat16>({3}, std::vector<MLFloat16>(3, MLFloat16(1.0f)));
+    auto* bias_initializer = builder.MakeInitializer<MLFloat16>({3}, std::vector<MLFloat16>(3, MLFloat16(0.0f)));
+    auto* reduce_mean_out_1 = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* cast_out_1 = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out_2 = builder.MakeIntermediate();
+    auto* add_out_1 = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* cast_out_2 = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* add_out_2 = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {data_arg}, {reduce_mean_out_1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {data_arg, reduce_mean_out_1}, {sub_out});
+    builder.AddNode("Cast", {sub_out}, {cast_out_1})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Pow", {cast_out_1, pow_initializer}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
+    builder.AddNode("Sqrt", {add_out_1}, {sqrt_out});
+    builder.AddNode("Div", {cast_out_1, sqrt_out}, {div_out});
+    builder.AddNode("Cast", {div_out}, {cast_out_2})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    builder.AddNode("Mul", {cast_out_2, weight_initializer}, {mul_out});
+    builder.AddNode("Add", {mul_out, bias_initializer}, {add_out_2});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ReduceMean"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sub"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Pow"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sqrt"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Div"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ReduceMean"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sub"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Pow"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sqrt"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Div"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["LayerNormalization"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<LayerNormFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_t5.onnx";
   std::shared_ptr<Model> p_model;
@@ -5067,199 +5130,6 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
   EXPECT_EQ(op_to_count["Add"], 1);
 }
 
-#endif
-
-// LayerNormalization implementation is in contrib namespace (OnnxDomain 1), so
-// Without contib_ops enabled, we cannot parse the graph correctly.
-#ifndef DISABLE_CONTRIB_OPS
-// We used Opset 12 for testing to make sure we are not using GatherND OnnxDomain Opset 1.
-static void GatherNDComputationReductionTest(const std::string op_type, logging::Logger& logger) {
-  std::string op_type_lower = op_type;
-  std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
-  std::string file_path = std::string("testdata/transform/computation_reduction/gathernd_") + op_type_lower + std::string(".onnx");
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ToPathString(file_path), model, nullptr, logger));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
-
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-
-  Node* gathernd_node = nullptr;
-  for (auto node_index : node_topology_list) {
-    Node* p_node = graph.GetNode(node_index);
-    ASSERT_FALSE(p_node == nullptr);
-    if (p_node->OpType().compare("GatherND") == 0) {
-      gathernd_node = p_node;
-      EXPECT_EQ(gathernd_node->MutableInputDefs()[0]->Name(), "input");
-      const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
-      EXPECT_EQ(consumers[0]->OpType(), op_type);
-    }
-  }
-
-  ASSERT_FALSE(gathernd_node == nullptr);
-}
-
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_Gelu) {
-  GatherNDComputationReductionTest("Gelu", *logger_);
-}
-
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_Add) {
-  GatherNDComputationReductionTest("Add", *logger_);
-}
-
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_LayerNormalization) {
-  GatherNDComputationReductionTest("LayerNormalization", *logger_);
-}
-
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_MatMul) {
-  GatherNDComputationReductionTest("MatMul", *logger_);
-}
-
-static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const PathString& model_uri,
-                                const std::string session_log_id, const std::string& provider_type,
-                                const std::vector<int64_t>& dims_input,
-                                const std::vector<float>& input_values,
-                                const std::vector<int64_t>& dims_unsqueezed_masked_lm_positions,
-                                const std::vector<int64_t>& values_unsqueezed_masked_lm_positions) {
-  SessionOptions so;
-  // we don't want any transformation here.
-  so.graph_optimization_level = TransformerLevel::Default;
-  so.session_logid = session_log_id;
-
-  InferenceSession session_object{so, GetEnvironment()};
-  std::unique_ptr<IExecutionProvider> execution_provider;
-  if (provider_type == onnxruntime::kCpuExecutionProvider)
-    execution_provider = DefaultCpuExecutionProvider();
-  else if (provider_type == onnxruntime::kCudaExecutionProvider)
-    execution_provider = DefaultCudaExecutionProvider();
-  else if (provider_type == onnxruntime::kRocmExecutionProvider)
-    execution_provider = DefaultRocmExecutionProvider();
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-
-  Status st;
-  ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
-  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
-
-  OrtValue input1;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
-  OrtValue input2;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
-                         values_unsqueezed_masked_lm_positions, &input2);
-
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("input", input1));
-  feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
-
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("output");
-  output_names.push_back("gather_output");
-
-  // Now run
-  RunOptions run_options;
-  st = session_object.Run(run_options, feeds, output_names, &run_results);
-
-  EXPECT_TRUE(st.IsOK());
-}
-
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "computation_reduction/e2e.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  // check the expected node orders.
-  {
-    GraphViewer graph_viewer(graph);
-    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-
-    Node* gathernd_node = nullptr;
-    for (auto node_index : node_topology_list) {
-      Node* p_node = graph.GetNode(node_index);
-      ASSERT_FALSE(p_node == nullptr);
-      if (p_node->OpType().compare("GatherND") == 0) {
-        gathernd_node = p_node;
-        const Node* layer_norm_node = graph.GetProducerNode(gathernd_node->MutableInputDefs()[0]->Name());
-        EXPECT_EQ(layer_norm_node->OpType(), "LayerNormalization");
-        EXPECT_EQ(layer_norm_node->Name(), "layer_norm_1");
-        const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
-        EXPECT_EQ(consumers[0]->OpType(), "MatMul");
-        EXPECT_EQ(consumers[0]->Name(), "matmul_1");
-        break;
-      }
-    }
-
-    ASSERT_FALSE(gathernd_node == nullptr);
-  }
-
-  // check result diff after the re-order
-  auto new_model_uri = "computation_reduction_transformer_after.onnx";
-  ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));
-
-  float scale = 1.f;
-  float mean = 0.f;
-  float seed = 123.f;
-  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
-  std::normal_distribution<float> distribution_float{mean, scale};
-
-  int batch_size = 8;
-  int sequence = 128;
-  int hidden_size = 128;
-  int dynamic_predict_count = 20;
-  const std::vector<int64_t> dims_input = {batch_size, sequence, hidden_size};
-  std::vector<float> input_values(TensorShape(dims_input).Size());
-  std::for_each(input_values.begin(), input_values.end(),
-                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
-
-  const std::vector<int64_t> dims_unsqueezed_masked_lm_positions = {batch_size, dynamic_predict_count, 1};
-  std::vector<int64_t> values_unsqueezed_masked_lm_positions(TensorShape(dims_unsqueezed_masked_lm_positions).Size());
-
-  std::random_device rd;                                   // obtain a random number from hardware
-  std::mt19937 eng(rd());                                  // seed the generator
-  std::uniform_int_distribution<> distr(0, sequence - 1);  // define the range
-  std::for_each(values_unsqueezed_masked_lm_positions.begin(), values_unsqueezed_masked_lm_positions.end(),
-                [&distr, &eng](int64_t& value) { value = distr(eng); });
-
-  static const std::string all_provider_types[] = {
-      onnxruntime::kCpuExecutionProvider,
-#ifdef USE_CUDA
-      onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
-#endif
-  };
-
-  for (auto& provider_type : all_provider_types) {
-    std::vector<OrtValue> expected_ort_values;
-    RunGatherNDE2EGraph(expected_ort_values, model_uri, std::string("RawGraphRun"), provider_type,
-                        dims_input, input_values, dims_unsqueezed_masked_lm_positions,
-                        values_unsqueezed_masked_lm_positions);
-
-    std::vector<OrtValue> actual_ort_values;
-    RunGatherNDE2EGraph(actual_ort_values, ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type,
-                        dims_input, input_values, dims_unsqueezed_masked_lm_positions,
-                        values_unsqueezed_masked_lm_positions);
-
-    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
-    constexpr double per_sample_tolerance = 1e-4;
-    constexpr double relative_per_sample_tolerance = 1e-4;
-    for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
-      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
-    }
-  }
-}
 #endif
 
 #ifndef DISABLE_CONTRIB_OPS
