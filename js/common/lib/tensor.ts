@@ -239,8 +239,8 @@ export interface ImageFromTensorOptions {
   tensorLayout?: 'NHWC'|'NCHW';
   height?: number;
   width?: number;
-  norm?: {normBias?: number,  // Todo add support - |[number,number,number]|[number,number,number,number];
-          normMean?: number}  // Todo add support - |[number,number,number]|[number,number,number,number];
+  norm?: {normBias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+          normMean?: number;};  // Todo add support - |[number,number,number]|[number,number,number,number];
 }
 export interface TensorFromImageOptions {
   bitmapFormat?: 'RGB'|'RGBA'|'BGR'|'RBG';  // used only in the case of image bitmap is used for
@@ -251,15 +251,16 @@ export interface TensorFromImageOptions {
   width?: number;
   tensorHeight?: number;
   tensorWidth?: number;
-  norm?: {normBias?: number,  // Todo add support - |[number,number,number]|[number,number,number,number];
-          normMean?: number}  // Todo add support - |[number,number,number]|[number,number,number,number];
+  norm?: {normBias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+          normMean?: number;};  // Todo add support - |[number,number,number]|[number,number,number,number];
 }
 export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
-   * @param Options - Optional - Interface describing input image & output tensor - Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
+   * @param Options - Optional - Interface describing input image & output tensor - 
+   * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: ImageData, Options?: TensorFromImageOptions): Promise<Tensor>;
@@ -268,7 +269,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
-   * @param Options - Optional - Interface describing input image & output tensor - Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
+   * @param Options - Optional - Interface describing input image & output tensor - 
+   * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: HTMLImageElement, Options?: TensorFromImageOptions): Promise<Tensor>;
@@ -277,7 +279,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - string - Asumming the string is a URL to an image
-   * @param Options - Optional - Interface describing input image & output tensor - Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
+   * @param Options - Optional - Interface describing input image & output tensor - 
+   * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: string, Options?: TensorFromImageOptions): Promise<Tensor>;
@@ -286,7 +289,8 @@ export interface TensorFactory {
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
    * @param image - ImageBitmap Type - since the data is stored as ImageData no need for format parameter
-   * @param Options - NOT Optional - Interface describing input image & output tensor - Output Defaults: same as input parameters
+   * @param Options - NOT Optional - Interface describing input image & output tensor - 
+   * Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
   fromImage(image: ImageBitmap, Options?: TensorFromImageOptions): Promise<Tensor>;
