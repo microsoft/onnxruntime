@@ -10,6 +10,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
+using contrib::AttentionMaskType;
 namespace test {
 
 static void RunCrossAttentionTest(
