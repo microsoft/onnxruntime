@@ -1752,6 +1752,7 @@ class PlannerImpl {
   PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                        const std::basic_string<PATH_CHAR_TYPE>& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
+    ORT_ENFORCE(partitioner, "Failed to create graph partitioner");
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);

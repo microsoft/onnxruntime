@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <sstream>
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
 
 #include "core/framework/session_state.h"
 #include "core/framework/kernel_registry.h"
@@ -1279,47 +1281,13 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   TypeProto conv_0_out_type, conv_1_out_type, conv_2_out_type, conv_3_out_type, conv_4_out_type;
   conv_0_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_0_out_shape = conv_0_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_0_out_shape->add_dim()->set_dim_value(3L);
-  //conv_0_out_shape->add_dim()->set_dim_value(64L);
-  //conv_0_out_shape->add_dim()->set_dim_value(150L);
-  //conv_0_out_shape->add_dim()->set_dim_value(150L);
-
   conv_1_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_1_out_shape = conv_1_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_1_out_shape->add_dim()->set_dim_value(3L);
-  //conv_1_out_shape->add_dim()->set_dim_value(64L);
-  //conv_1_out_shape->add_dim()->set_dim_value(75L);
-  //conv_1_out_shape->add_dim()->set_dim_value(75L);
-
   conv_2_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_2_out_shape = conv_2_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_2_out_shape->add_dim()->set_dim_value(3L);
-  //conv_2_out_shape->add_dim()->set_dim_value(64L);
-  //conv_2_out_shape->add_dim()->set_dim_value(75L);
-  //conv_2_out_shape->add_dim()->set_dim_value(75L);
-
   conv_3_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_3_out_shape = conv_3_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_3_out_shape->add_dim()->set_dim_value(3L);
-  //conv_3_out_shape->add_dim()->set_dim_value(256L);
-  //conv_3_out_shape->add_dim()->set_dim_value(75L);
-  //conv_3_out_shape->add_dim()->set_dim_value(75L);
-
   conv_4_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_4_out_shape = conv_4_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_4_out_shape->add_dim()->set_dim_value(3L);
-  //conv_4_out_shape->add_dim()->set_dim_value(256L);
-  //conv_4_out_shape->add_dim()->set_dim_value(75L);
-  //conv_4_out_shape->add_dim()->set_dim_value(75L);
 
   TypeProto graph_out_type;
   graph_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* graph_out_shape = graph_out_type.mutable_tensor_type()->mutable_shape();
-  //graph_out_shape->add_dim()->set_dim_value(3L);
-  //graph_out_shape->add_dim()->set_dim_value(256L);
-  //graph_out_shape->add_dim()->set_dim_value(75L);
-  //graph_out_shape->add_dim()->set_dim_value(75L);
 
   onnxruntime::Model model("main_graph", false, ModelMetaData(),
                            PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -1327,8 +1295,6 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   auto& main_graph = model.MainGraph();
 
   auto& graph_in = main_graph.GetOrCreateNodeArg("graph_in", &graph_in_type);
-  //main_graph.AddOuterScopeNodeArg("graph_in");
-  //main_graph.AddValueInfo(&graph_in);
 
   auto& maxpool_0_out = main_graph.GetOrCreateNodeArg("maxpool_out", &maxpool_0_out_type);
   auto& relu_0_out = main_graph.GetOrCreateNodeArg("relu_0_out", &relu_0_out_type);
@@ -1672,11 +1638,8 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     auto& per_value_plan = per_value_plans[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
       std::string reused;
-      // std::string current;
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
-      // ORT_ENFORCE(main_graph_ort_value_index_map.GetName(i, current).IsOK());
       reuse_pairs.erase(reused);
-      // std::cout << reused << " resused by " << current << std::endl;
     }  //if
   }    //for
   ASSERT_TRUE(reuse_pairs.empty());
@@ -1699,6 +1662,78 @@ TEST_F(PlannerTest, TestMultiStreamConfig) {
               graph_partitioner_cpu_gpu->Type() == "DeviceBasedPartitioner" &&
               graph_partitioner_cpu_gpu->Streams() == 2);
 }
+
+// dump partition config to a file and check its completeness
+TEST_F(PlannerTest, TestMultiStreamDumpConfig) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream.json";
+  {
+    SessionOptions sess_opt;
+    sess_opt.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_TRUE(sess_opt.config_options.AddConfigEntry("session.node_partition_config_file",
+                                                       config_file_path)
+                    .IsOK());
+
+    InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+    auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Load();
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Initialize();
+    ASSERT_TRUE(status.IsOK());
+  }
+
+  std::ifstream if_stream(config_file_path);
+  ASSERT_TRUE(if_stream.is_open());
+  std::set<std::string> node_set{"model_41/conv2d_34/Conv2D__2321",
+                                 "model_41/conv2d_34/Conv2D",
+                                 "model_41/lambda_9/add",
+                                 "model_41/activation_27/Relu",
+                                 "Transpose__2331"};
+
+  try {
+    json json_config = json::parse(if_stream);
+    ASSERT_TRUE(json_config["type"] == "DeviceBasedPartitioner");
+
+    for (const auto& node_stream : json_config["streams"]) {
+      ASSERT_TRUE(node_stream.is_array());
+
+      for (const auto& node_name : node_stream) {
+        ASSERT_TRUE(node_name.is_string());
+        auto iter = node_set.find(node_name);
+
+        ASSERT_TRUE(iter != node_set.end());
+        node_set.erase(iter);
+      }
+    }
+  } catch (...) {
+    ASSERT_TRUE(false);
+  }
+  if_stream.close();
+  ASSERT_TRUE(node_set.empty());
+}
+
+// load with partition config where a node is missing, session load expected to fail.
+TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry("session.node_partition_config_file",
+                                                     config_file_path)
+                  .IsOK());
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(!status.IsOK());
+}
+
 #endif
 
 }  // namespace test
