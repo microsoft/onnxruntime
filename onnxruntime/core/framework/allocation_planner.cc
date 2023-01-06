@@ -2232,6 +2232,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
                         ExecutionOrder execution_order) override;
 
   const char* Type() const override { return "DeviceBasedPartitioner"; }
+  size_t Streams() const override { return node_names_by_stream_.size(); }
 
  private:
 
@@ -2296,14 +2297,13 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
   for (auto node_index : p_graph_nodes) {
     const auto* node = graph_viewer.GetNode(node_index);
     const auto& op_type = node->OpType();
-    const auto& node_name = node->Name();
+    auto node_name = node->Name();
     if (node_name.empty()) {
-      auto tmp_name = op_type + std::to_string(op_type_counter[op_type]++);
-      ORT_ENFORCE(node_stream_map.find(tmp_name) != node_stream_map.end());
-      stream_nodes[node_stream_map[tmp_name]].push_back(node_index);
-    } else {
-      stream_nodes[node_stream_map[node_name]].push_back(node_index);
+      node_name = op_type + std::to_string(op_type_counter[op_type]++);
     }
+    auto iter = node_stream_map.find(node_name);
+    ORT_ENFORCE(iter != node_stream_map.end(), "Failed to find node \"", node_name, "\" in node-stream map");
+    stream_nodes[node_stream_map[node_name]].push_back(node_index);
   }
   return Status::OK();
 };
@@ -2316,8 +2316,8 @@ void DeviceBasedPartitioner::Initialize() {
   if (if_stream.is_open()) {
     try {
       json json_config = json::parse(if_stream);
-      if (json_config["type"] != "DummyPartitioner") {
-        EXIT_ON_ERR("Partitioner type is not DummyPartitioner");
+      if (json_config["type"] != "DeviceBasedPartitioner") {
+        EXIT_ON_ERR("Partitioner type is not DeviceBasedPartitioner");
       }
       for (const auto& node_stream : json_config["streams"]) {
         node_names_by_stream_.emplace_back();

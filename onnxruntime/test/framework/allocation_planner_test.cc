@@ -1641,7 +1641,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
   ASSERT_TRUE(so.config_options.AddConfigEntry("session.node_partition_config_file",
-                                               "./testdata/multi_stream_models/simplified_ssd_cpu.csv")
+                                               "./testdata/multi_stream_models/simplified_ssd_cpu.json")
                   .IsOK());
   InferenceSession sess{so, GetEnvironment()};
 
@@ -1682,31 +1682,23 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   ASSERT_TRUE(reuse_pairs.empty());
 }
 
-/*
 TEST_F(PlannerTest, TestMultiStreamConfig) {
-  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu.csv");
-  ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu->Devices() == 1);
+  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(
+      DefaultLoggingManager().DefaultLogger(),
+      ORT_TSTR("./testdata/multi_stream_models/multi_stream_single_stream.json"));
 
-  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_cpu_gpu.csv");
+  ASSERT_TRUE(graph_partitioner_cpu &&
+              graph_partitioner_cpu->Type() == "DeviceBasedPartitioner" &&
+              graph_partitioner_cpu->Streams() == 1);
+
+  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(
+      DefaultLoggingManager().DefaultLogger(),
+      ORT_TSTR("./testdata/multi_stream_models/multi_stream_double_stream.json"));
+
   ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu_gpu->Devices() == 2);
+              graph_partitioner_cpu_gpu->Type() == "DeviceBasedPartitioner" &&
+              graph_partitioner_cpu_gpu->Streams() == 2);
 }
-
-TEST_F(PlannerTest, TestMultiStreamConfigMisshaped) {
-  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu_missing_nodes.csv");
-  ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu->Devices() == 0);
-
-  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu_missing_devices.csv");
-  ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu_gpu->Devices() == 0);
-}*/
-
 #endif
 
 }  // namespace test

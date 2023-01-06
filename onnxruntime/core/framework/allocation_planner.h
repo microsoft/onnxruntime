@@ -79,35 +79,30 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 // but we can't assume any execution order between sequences, unless there is a data dependency.
 class IGraphPartitioner {
  public:
-  // DeviceBasedPartition is the default, who partitions a graph based off device information.
-  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
-  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
-  // We will add more optimized partitioner later.
   enum GraphPartitioningStrategy {
     DeviceBasedPartition = 0,
     Unknown,
   };
+  // DeviceBasedPartition is the default, who partitions a graph based off device information.
+  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
+  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
+  // We will add more optimized partitioner later.
   virtual ~IGraphPartitioner() = default;
-  // create the partition based on the partition type.
-  // perform partition based on the user input when provided.
   static std::unique_ptr<IGraphPartitioner> CreateGraphPartitioner(const logging::Logger& logger,
-                                                                   const std::string& configuration_file = {});
+                                                                   const std::basic_string<PATH_CHAR_TYPE>& config_file);
   virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                 const ExecutionProviders& execution_providers,
                                 std::vector<InlinedVector<NodeIndex>>& stream_nodes,
                                 ExecutionOrder execution_order) = 0;
-  virtual const std::string& Name() const = 0;
-  int Devices() const { return devices_; };
+  virtual const char* Type() const = 0;
+  virtual size_t Streams() const = 0;
 
  protected:
-  static InlinedVector<std::string> Split(const std::string& line, char splitor);
-  static InlinedHashMap<std::string, GraphPartitioningStrategy> name_type_map;
-  IGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
+  IGraphPartitioner(const logging::Logger& logger,
+                    const std::basic_string<PATH_CHAR_TYPE>& config_file) : logger_(logger), config_file_(config_file) {}
   const logging::Logger& logger_;
-  std::string configuration_file_{};
-  int devices_ = 0;
+  std::basic_string<PATH_CHAR_TYPE> config_file_;
 };
-
 #endif
 
 class SequentialPlanner {
@@ -126,7 +121,7 @@ class SequentialPlanner {
 #ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-      const std::string& partition_config_file,
+      const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
       const logging::Logger& logger,
       std::optional<SequentialExecutionPlan>& plan);
 };
