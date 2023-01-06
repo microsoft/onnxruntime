@@ -3661,6 +3661,8 @@ struct OrtApi {
   * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
   * are logged.
   *
+  * Can be used in custom operators to log information in manner consistent with built-in operators.
+  *
   * \param[in] log_severity_level The message's severity level.
   * \param[in] message The message to log.
   * \param[in] file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
