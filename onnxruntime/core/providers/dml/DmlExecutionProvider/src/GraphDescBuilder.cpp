@@ -136,8 +136,8 @@ namespace Dml::GraphDescBuilder
         }
 
         graphIntermediateEdges.erase(
-            std::remove_if(graphIntermediateEdges.begin(), graphIntermediateEdges.end(), [](const auto& intermediateEdge){
-                nodesData[intermediateEdge.FromNodeIndex].state == NodeState::NotVisited || nodesData[intermediateEdge.ToNodeIndex].state == NodeState::NotVisited ||
+            std::remove_if(graphIntermediateEdges.begin(), graphIntermediateEdges.end(), [&nodesData](const auto& intermediateEdge){
+                return nodesData[intermediateEdge.FromNodeIndex].state == NodeState::NotVisited || nodesData[intermediateEdge.ToNodeIndex].state == NodeState::NotVisited ||
             }),
             graphIntermediateEdges.end());
     }
