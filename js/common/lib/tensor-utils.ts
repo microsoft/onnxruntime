@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, ImageFromTensorOptions, TypedTensor} from './tensor';
+import {ImageFromTensorOptions, Tensor, TypedTensor} from './tensor';
 
 interface Properties {
   /**

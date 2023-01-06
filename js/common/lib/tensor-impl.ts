@@ -173,8 +173,7 @@ export class Tensor implements TensorInterface {
    * @param imageFormat - input image configuration - required configurations height, width, format
    * @param tensorFormat - output tensor configuration - Default is RGB format
    */
-  private static bufferToTensor(
-      buffer: Uint8ClampedArray|undefined, options: TensorFromImageOptions): Tensor {
+  private static bufferToTensor(buffer: Uint8ClampedArray|undefined, options: TensorFromImageOptions): Tensor {
     if (buffer === undefined) {
       throw new Error('Image buffer must be defined');
     }
@@ -185,27 +184,27 @@ export class Tensor implements TensorInterface {
     const {height, width} = options;
 
     const norm = options.norm;
-    let normMean :number;
-    let normBias :number;
+    let normMean: number;
+    let normBias: number;
     if (norm === undefined || norm.normMean === undefined) {
       normMean = 255;
-    }else{
+    } else {
       normMean = norm.normMean;
     }
     if (norm === undefined || norm.normBias === undefined) {
       normBias = 0;
-    }else{
+    } else {
       normBias = norm.normBias;
     }
 
-    const inputformat = options.bitmapFormat !== undefined ? options.bitmapFormat : 'RGBA'; 
+    const inputformat = options.bitmapFormat !== undefined ? options.bitmapFormat : 'RGBA';
     // default value is RGBA since imagedata and HTMLImageElement uses it
 
-    const outputformat = options.tensorFormat !== undefined ? 
-          (options.tensorFormat !== undefined ? options.tensorFormat : 'RGB') : 'RGB';
+    const outputformat = options.tensorFormat !== undefined ?
+        (options.tensorFormat !== undefined ? options.tensorFormat : 'RGB') :
+        'RGB';
     const offset = height * width;
-    const float32Data = outputformat === 'RGBA' ? 
-          new Float32Array(offset * 4) : new Float32Array(offset * 3);
+    const float32Data = outputformat === 'RGBA' ? new Float32Array(offset * 4) : new Float32Array(offset * 3);
 
     // Default pointer assignments
     let step = 4, rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
@@ -253,11 +252,10 @@ export class Tensor implements TensorInterface {
   static async fromImage(image: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(image: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(image: ImageBitmap, options?: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(image: string, options?: TensorFromImageOptions):Promise<Tensor>;
+  static async fromImage(image: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
-  static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string,
-                         options?: TensorFromImageOptions): Promise<Tensor> {
-
+  static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, options?: TensorFromImageOptions):
+      Promise<Tensor> {
     // checking the type of image object
     const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
     const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
@@ -277,11 +275,11 @@ export class Tensor implements TensorInterface {
         let height = image.naturalHeight;
         let width = image.naturalWidth;
 
-        if(options !== undefined && options.tensorHeight !== undefined && options.tensorWidth !== undefined){
+        if (options !== undefined && options.tensorHeight !== undefined && options.tensorWidth !== undefined) {
           height = options.tensorHeight;
-          width = options.tensorWidth;    
+          width = options.tensorWidth;
         }
-        
+
         if (options !== undefined) {
           tensorConfig = options;
           if (options.tensorFormat !== undefined) {
@@ -342,7 +340,7 @@ export class Tensor implements TensorInterface {
       tensorConfig.height = height;
       tensorConfig.width = width;
 
-      if (options !== undefined){
+      if (options !== undefined) {
         const tempCanvas = document.createElement('canvas');
 
         tempCanvas.width = width;
@@ -456,7 +454,8 @@ export class Tensor implements TensorInterface {
       const inputformat =
           tensorFormat !== undefined ? (tensorFormat.format !== undefined ? tensorFormat.format : 'RGB') : 'RGB';
       const normMean = tensorFormat !== undefined ?
-          (tensorFormat.norm?.normMean !== undefined ? tensorFormat.norm.normMean : 255) : 255;
+          (tensorFormat.norm?.normMean !== undefined ? tensorFormat.norm.normMean : 255) :
+          255;
       const normBias =
           tensorFormat !== undefined ? (tensorFormat.norm?.normBias !== undefined ? tensorFormat.norm.normBias : 0) : 0;
       const offset = height * width;
