@@ -219,9 +219,10 @@ class TRTModelIdGenerator {
 
     // Use model name instead of path to avoid cache regeneration if path changes
     const auto& model_path = main_graph.ModelPath();
-    if (!model_path.IsEmpty()) {
-      // Get model name
-      const PathString& path_string = model_path.GetComponents().back();
+    if (!model_path.IsEmpty()) {  // Has a root and maybe some path components after the root path.
+      const auto& path_components = model_path.GetComponents();
+      PathString path_string = path_components.empty() ? model_path.GetRootPathString() :
+          path_components.back();
 
 #ifdef _WIN32
       std::string model_name;
