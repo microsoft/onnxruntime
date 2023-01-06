@@ -19,7 +19,7 @@ keywords = ["neuralnetworks", "onnx", "bindings"]
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.60"
+bindgen = "0.63"
 cmake = "0.1"
 
 # Used on unix
