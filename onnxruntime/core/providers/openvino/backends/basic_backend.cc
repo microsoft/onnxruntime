@@ -134,9 +134,13 @@ void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_conf
 }
 
 void BasicBackend::EnableCaching() {
-  if (global_context_.use_compiled_network == true) {
+  if (global_context_.use_compiled_network == true && global_context_.is_wholly_supported_graph) {
     #if defined (OPENVINO_2022_3)
+      #if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
+      _putenv_s("OV_GPU_CACHE_MODEL", "1");
+      #else
       setenv("OV_GPU_CACHE_MODEL", "1", 1);
+      #endif
     #endif
     std::string cache_dir_path;
     if (global_context_.blob_dump_path.empty()) {
