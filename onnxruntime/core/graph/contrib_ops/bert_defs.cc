@@ -135,22 +135,12 @@ void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   // Shape inference
-  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
     if (query_dims.size() != 3) {
       fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
     }
-
-    auto& key_shape = getInputShape(ctx, 1);
-    auto& key_dims = key_shape.dim();
-    if (key_dims.size() != 3) {
-      fail_shape_inference("Inputs 1 (key) shall be 3 dimensions");
-    }
-
-    ONNX_NAMESPACE::TensorShapeProto output_shape;
-    *output_shape.add_dim() = query_dims[0];
-    *output_shape.add_dim() = query_dims[1];
 
     auto& value_shape = getInputShape(ctx, 2);
     auto& value_dims = value_shape.dim();
@@ -158,8 +148,10 @@ void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
       fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
     }
 
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    *output_shape.add_dim() = query_dims[0];
+    *output_shape.add_dim() = query_dims[1];
     *output_shape.add_dim() = value_dims[2];
-
     updateOutputShape(ctx, 0, output_shape);
   }
 }
@@ -445,51 +437,54 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           return true;
         }));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(SkipLayerNormalization, 1,
-                            OpSchema()
-                                .SetDoc("Skip and Layer Normalization Fusion")
-                                .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
-                                .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
-                                .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T", OpSchema::Optional)
-                                .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
-                                .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
-                                .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
-                                .Output(3, "input_skip_bias_sum", "Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
-                                .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
-                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SkipLayerNormalization, 1,
+    OpSchema()
+        .SetDoc("Skip and Layer Normalization Fusion")
+        .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
+        .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T", OpSchema::Optional)
+        .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+        .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+        .Output(3, "input_skip_bias_sum", "Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(SkipSimplifiedLayerNormalization, 1,
-                            OpSchema()
-                                .SetDoc("Skip and Root Mean Square Layer Normalization")
-                                .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
-                                .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
-                                .Input(3, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
-                                .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-                                .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
-                                .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
-                                .Output(3, "input_skip_bias_sum", "Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
-                                .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
-                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SkipSimplifiedLayerNormalization, 1,
+    OpSchema()
+        .SetDoc("Skip and Root Mean Square Layer Normalization")
+        .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
+        .Input(3, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+        .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+        .Output(3, "input_skip_bias_sum", "Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 constexpr const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
 )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(NGramRepeatBlock, 1,
-                            OpSchema().SetDoc(NGramRepeatBlock_ver1_doc).Attr("ngram_size", "The NGram size.", AttributeProto::INT).Input(0, "input_ids", "2D input tensor with shape (batch_size, sequence_length)", "Tid").Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T").Output(0, "scores_out", "2D output tensor with shape (batch_size, vocab_size)", "T").TypeConstraint("Tid", {"tensor(int64)"}, "Constrain indices to integer types").TypeConstraint("T", {"tensor(float)"}, "Constrain scores input and output types to float tensors.").TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                              propagateElemTypeFromInputToOutput(ctx, 1, 0);
-                              if (!hasInputShape(ctx, 1)) {
-                                return;
-                              }
-                              propagateShapeFromInputToOutput(ctx, 1, 0);
-                            }));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    NGramRepeatBlock, 1,
+    OpSchema().SetDoc(NGramRepeatBlock_ver1_doc).Attr("ngram_size", "The NGram size.", AttributeProto::INT).Input(0, "input_ids", "2D input tensor with shape (batch_size, sequence_length)", "Tid").Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T").Output(0, "scores_out", "2D output tensor with shape (batch_size, vocab_size)", "T").TypeConstraint("Tid", {"tensor(int64)"}, "Constrain indices to integer types").TypeConstraint("T", {"tensor(float)"}, "Constrain scores input and output types to float tensors.").TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      propagateElemTypeFromInputToOutput(ctx, 1, 0);
+      if (!hasInputShape(ctx, 1)) {
+        return;
+      }
+      propagateShapeFromInputToOutput(ctx, 1, 0);
+    }));
 
 constexpr const char* BifurcationDetector_ver1_doc = R"DOC(
 Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
@@ -504,45 +499,47 @@ Return the index of the start of the n-gram in source tokens.
 No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
 )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(BifurcationDetector, 1,
-                            OpSchema()
-                                .SetDoc(BifurcationDetector_ver1_doc)
-                                .Attr("min_ngram_size", "The minimum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("max_ngram_size", "The maximum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(3))
-                                .Input(0, "src_tokens", "Encoder input ids.", "T")
-                                .Input(1, "cur_tokens", "Decoder input ids.", "T")
-                                .Input(2, "prev_suffix_match_idx", "Previous suffix match index", "T")
-                                .Input(3, "pred_tokens", "Predicted token ids from aggressive decoding", "T", OpSchema::Optional)
-                                .Output(0, "tokens", "Decoder input ids after merging predicted tokens", "T")
-                                .Output(1, "suffix_match_idx", "new suffix match index", "T")
-                                .TypeConstraint("T", {"tensor(int64)"}, "Constrain to integer types.")
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  propagateElemTypeFromInputToOutput(ctx, 1, 0);
-                                  propagateElemTypeFromInputToOutput(ctx, 2, 1);
-                                  if (hasInputShape(ctx, 2)) {
-                                    propagateShapeFromInputToOutput(ctx, 2, 1);
-                                  }
-                                  // output tokens lengths is dynamic as it depends on the bifurcation index of predicted tokens and source tokens,
-                                  // and current tokens length.
-                                  // tokens_length = cur_tokens_length + bifurcation_index + 1.
-                                }));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    BifurcationDetector, 1,
+    OpSchema()
+        .SetDoc(BifurcationDetector_ver1_doc)
+        .Attr("min_ngram_size", "The minimum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("max_ngram_size", "The maximum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(3))
+        .Input(0, "src_tokens", "Encoder input ids.", "T")
+        .Input(1, "cur_tokens", "Decoder input ids.", "T")
+        .Input(2, "prev_suffix_match_idx", "Previous suffix match index", "T")
+        .Input(3, "pred_tokens", "Predicted token ids from aggressive decoding", "T", OpSchema::Optional)
+        .Output(0, "tokens", "Decoder input ids after merging predicted tokens", "T")
+        .Output(1, "suffix_match_idx", "new suffix match index", "T")
+        .TypeConstraint("T", {"tensor(int64)"}, "Constrain to integer types.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          propagateElemTypeFromInputToOutput(ctx, 2, 1);
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 1);
+          }
+          // output tokens lengths is dynamic as it depends on the bifurcation index of predicted tokens and source tokens,
+          // and current tokens length.
+          // tokens_length = cur_tokens_length + bifurcation_index + 1.
+        }));
 
 constexpr const char* GemmFastGelu_ver1_doc = R"DOC(
 It's a fusion of MatMul and FastGelu.)DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(GemmFastGelu, 1,
-                            OpSchema()
-                                .SetDoc(GemmFastGelu_ver1_doc)
-                                .Input(0, "X", "input tensor", "T")
-                                .Input(1, "W", "input tensor", "T")
-                                .Input(2, "bias", "bias tensor", "T", OpSchema::Optional)
-                                .Output(0, "Y", "output tensor", "T")
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                                                "Constrain input and output types to float or half tensors.")
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-                                  ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
-                                }));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GemmFastGelu, 1,
+    OpSchema()
+        .SetDoc(GemmFastGelu_ver1_doc)
+        .Input(0, "X", "input tensor", "T")
+        .Input(1, "W", "input tensor", "T")
+        .Input(2, "bias", "bias tensor", "T", OpSchema::Optional)
+        .Output(0, "Y", "output tensor", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float or half tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+        }));
 
 constexpr const char* RemovePadding_ver1_doc = R"DOC(
 Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.

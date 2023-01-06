@@ -18,7 +18,7 @@ static void RunCrossAttentionTest(
     const std::vector<float>& value_data,               // value:  [batch_size, kv_sequence_length, v_hidden_size]
     const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size]
     const std::vector<int32_t>& key_padding_mask_data,  // key_padding_mask: see below
-    int key_padding_mask_format,                        // 1 for [batch_size], 2 for [batch_size, kv_sequence_length]
+    AttentionMaskType mask_type,                        // 1 for [batch_size], 2 for [batch_size, kv_sequence_length]
     const std::vector<float>& output_data,              // output: [batch_size, sequence_length, v_hidden_size]
     int number_of_heads,
     int batch_size,
@@ -49,7 +49,9 @@ static void RunCrossAttentionTest(
 
     std::vector<int64_t> mask_dims_1 = {batch_size};
     std::vector<int64_t> mask_dims_2 = {batch_size, kv_sequence_length};
-    std::vector<int64_t>& key_padding_mask_dims = (key_padding_mask_format == 1) ? mask_dims_1 : mask_dims_2;
+    std::vector<int64_t>& key_padding_mask_dims = (mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN)
+                                                      ? mask_dims_1
+                                                      : mask_dims_2;
 
     if (use_float16) {
       tester.AddInput<MLFloat16>("query", query_dims, ToFloat16(query_data));
@@ -138,7 +140,7 @@ TEST(CrossAttentionTest, CrossAttentionBatch1) {
                                     0.9887343f, 0.74572039f};
 
   std::vector<int32_t> key_padding_mask_data = {2L};
-  constexpr int key_padding_mask_format = 1;
+  constexpr AttentionMaskType mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
   bool use_float16 = false;
 
@@ -147,7 +149,7 @@ TEST(CrossAttentionTest, CrossAttentionBatch1) {
   constexpr bool disable_rocm = true;  // not supported in rocm right now.
 
   RunCrossAttentionTest(
-      query_data, key_data, value_data, bias_data, key_padding_mask_data, key_padding_mask_format, output_data,
+      query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16, disable_cpu, disable_cuda, disable_rocm);
 }

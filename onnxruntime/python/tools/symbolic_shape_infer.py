@@ -1995,19 +1995,16 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_CrossAttention(self, node):
-        query_shape = self._get_shape(node, 0)  # (B, S, D)
-        key_shape = self._get_shape(node, 1)  # (B, L, D), or (B, L, D + D_v) for packed kv
-        value_shape = self._get_shape(node, 2)  # (B, L, D_v), or (B, L, D + D_v) for packed kv
+        # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+        # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+        # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+        query_shape = self._get_shape(node, 0)
+        value_shape = self._get_shape(node, 2)
 
-        assert len(query_shape) == 3 and len(key_shape) == 3 and len(value_shape) == 3 and len(bias_shape) == 1
-
-        is_packed_kv = key_shape[2] != query_shape[2]
-
+        assert len(query_shape) == 3 and len(value_shape) == 3
         output_shape = query_shape
-        if is_packed_kv:
-            output_shape[2] = int(key_shape[2]) - int(query_shape[2])
-        else:
-            output_shape[2] = int(value_shape[2])
+        output_shape[2] = value_shape[2]
 
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
