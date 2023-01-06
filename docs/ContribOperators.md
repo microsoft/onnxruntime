@@ -4045,57 +4045,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.SkipSimplifiedLayerNormalization"></a><a name="com.microsoft.skipsimplifiedlayernormalization">**com.microsoft.SkipSimplifiedLayerNormalization**</a>
-
-  Skip and Root Mean Square Layer Normalization
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>epsilon</tt> : float</dt>
-<dd>The epsilon value to use to avoid division by zero.</dd>
-</dl>
-
-#### Inputs (3 - 4)
-
-<dl>
-<dt><tt>input</tt> : T</dt>
-<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>skip</tt> : T</dt>
-<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>gamma</tt> : T</dt>
-<dd>1D input tensor with shape (hidden_size)</dd>
-<dt><tt>bias</tt> (optional) : T</dt>
-<dd>1D bias tensor with shape (hidden_size</dd>
-</dl>
-
-#### Outputs (1 - 4)
-
-<dl>
-<dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>mean</tt> (optional) : U</dt>
-<dd>Saved mean used during training to speed up gradient computation</dd>
-<dt><tt>inv_std_var</tt> (optional) : U</dt>
-<dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
-<dt><tt>input_skip_sum</tt> (optional) : T</dt>
-<dd>Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float or half tensors.</dd>
-<dt><tt>U</tt> : tensor(float)</dt>
-<dd>Constrain mean and inv_std_var to float tensors.</dd>
-</dl>
-
-
 ### <a name="com.microsoft.Snpe"></a><a name="com.microsoft.snpe">**com.microsoft.Snpe**</a>
 
   Onnx node for SNPE.
