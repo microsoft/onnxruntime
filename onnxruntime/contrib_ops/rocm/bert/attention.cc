@@ -29,7 +29,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true, true) {}
+Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true) {}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -40,18 +40,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past = context->Input<Tensor>(4);
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
 
-  const Tensor* key = context->Input<Tensor>(6);
-  const Tensor* value = context->Input<Tensor>(7);
-
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  weights == nullptr ? nullptr : &(weights->Shape()),
+                                  weights->Shape(),
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   extra_add_qk,
-                                  key,
-                                  value,
                                   nullptr,
                                   device_prop.maxThreadsPerBlock));
 
