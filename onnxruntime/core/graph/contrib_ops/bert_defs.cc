@@ -377,13 +377,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(FastGelu, 1,
                                   return true;
                                 }));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(RelPosAttnBiasGen, 1,
+ONNX_MS_OPERATOR_SET_SCHEMA(RelativePositionBias, 1,
                             OpSchema()
-                                .SetDoc("Compute binned relative position bias")
+                                .SetDoc("Compute binned relative position bias for T5 model. ref: https://arxiv.org/abs/1803.02155v2")
                                 .Attr("max_distance", "Max distance", AttributeProto::INT)
                                 .Attr("is_bidirectional", "Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Input(0, "bias_table", "2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)", "T")
-                                .Input(1, "sequence_length", "Real sequence length from last dimension of hidden states", "U")
+                                .Input(1, "query_length", "The length of query. Self Attention requires query_length = key_length", "U")
+                                .Input(2, "key_length", "The length of key.", "U")
                                 .Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
                                 .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
