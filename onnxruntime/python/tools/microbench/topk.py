@@ -27,12 +27,12 @@ class BenchmarkTopK(BenchmarkOp):
     @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        a = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
-        b = np.array([op_param.k]).astype(np.int64)
-        c = np.random.rand(op_param.dim1, op_param.dim2, op_param.k).astype(op_param.data_type)
-        d = np.random.rand(op_param.dim1, op_param.dim2, op_param.k).astype(np.int64)
-        inputs = {"input": a, "k": b}
-        outputs = {"values": c, "indices": d}
+        input_data = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
+        dim_k = np.array([op_param.k]).astype(np.int64)
+        values = np.random.rand(op_param.dim1, op_param.dim2, op_param.k).astype(op_param.data_type)
+        indices = np.random.rand(op_param.dim1, op_param.dim2, op_param.k).astype(np.int64)
+        inputs = {"input": input_data, "k": dim_k}
+        outputs = {"values": values, "indices": indices}
         return inputs, outputs
 
     def create_cases(self):

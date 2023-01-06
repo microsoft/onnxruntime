@@ -26,10 +26,10 @@ class BenchmarkSoftmax(BenchmarkOp):
     @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        a = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
-        c = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
-        inputs = {"input": a}
-        outputs = {"softmax": c}
+        input_data = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
+        softmax_output = np.random.rand(op_param.dim1, op_param.dim2, op_param.dim3).astype(op_param.data_type)
+        inputs = {"input": input_data}
+        outputs = {"softmax": softmax_output}
         return inputs, outputs
 
     def create_cases(self):
