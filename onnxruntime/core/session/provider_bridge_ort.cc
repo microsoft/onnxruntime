@@ -810,6 +810,7 @@ struct ProviderHostImpl : ProviderHost {
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
   const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept override { return p->GetComponents(); }
   bool Path__IsEmpty(const Path* p) noexcept override { return p->IsEmpty(); }
+  PathString Path__GetRootPathString(const Path* p) noexcept override { return p->GetRootPathString(); }
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
