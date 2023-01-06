@@ -6,8 +6,11 @@
 #include <unordered_set>
 #include <sstream>
 #include "gtest/gtest.h"
+
+#ifdef ORT_ENABLE_STREAM
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
+#endif
 
 #include "core/framework/session_state.h"
 #include "core/framework/kernel_registry.h"
@@ -1202,7 +1205,7 @@ TEST_F(PlannerTest, MultiStream) {
 }
 #endif
 
-#if not defined(__wasm__)
+#if not defined(__wasm__) and defined(ORT_ENABLE_STREAM)
 
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
@@ -1646,12 +1649,16 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
+
+  const char* type = "DeviceBasedPartitioner";
+  constexpr size_t type_len = 22;
+
   auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(
       DefaultLoggingManager().DefaultLogger(),
       ORT_TSTR("./testdata/multi_stream_models/multi_stream_single_stream.json"));
 
   ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Type() == "DeviceBasedPartitioner" &&
+              strncmp(graph_partitioner_cpu->Type(), type, type_len) == 0 &&
               graph_partitioner_cpu->Streams() == 1);
 
   auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(
@@ -1659,7 +1666,7 @@ TEST_F(PlannerTest, TestMultiStreamConfig) {
       ORT_TSTR("./testdata/multi_stream_models/multi_stream_double_stream.json"));
 
   ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Type() == "DeviceBasedPartitioner" &&
+              strncmp(graph_partitioner_cpu_gpu->Type(), type, type_len) == 0 &&
               graph_partitioner_cpu_gpu->Streams() == 2);
 }
 
