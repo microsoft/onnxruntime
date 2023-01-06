@@ -95,16 +95,6 @@ namespace Dml::GraphDescBuilder
             }
         }
 
-        // Collect all the unvisited nodes
-        std::unordered_set<uint32_t> orphanNodes;
-        for (uint32_t nodeIndex = 0; nodeIndex < nodesData.size(); ++nodeIndex)
-        {
-            if (nodesData[nodeIndex].state == NodeState::NotVisited)
-            {
-                orphanNodes.insert(nodeIndex);
-            }
-        }
-
         // Mapping from the old indices to the new indices that have been shifted after removing earlier nodes
         std::vector<uint32_t> shiftedIndicesMapping(graphNodes.size());
 
@@ -119,7 +109,6 @@ namespace Dml::GraphDescBuilder
             else
             {
                 // The node is connected, so we keep it and adjust its mapping
-                shiftedIndicesMapping[nodeIndex] = nodeIndex;
                 graphNodes[nodeIndex - shift] = std::move(graphNodes[nodeIndex]);
                 shiftedIndicesMapping[nodeIndex] = nodeIndex - shift;
             }
@@ -145,6 +134,12 @@ namespace Dml::GraphDescBuilder
             intermediateEdge.FromNodeIndex = shiftedIndicesMapping[intermediateEdge.FromNodeIndex];
             intermediateEdge.ToNodeIndex = shiftedIndicesMapping[intermediateEdge.ToNodeIndex];
         }
+
+        graphIntermediateEdges.erase(
+            std::remove_if(graphIntermediateEdges.begin(), graphIntermediateEdges.end(), [](const auto& intermediateEdge){
+                nodesData[intermediateEdge.FromNodeIndex].state == NodeState::NotVisited || nodesData[intermediateEdge.ToNodeIndex].state == NodeState::NotVisited ||
+            }),
+            graphIntermediateEdges.end());
     }
 
     GraphDesc BuildGraphDesc(
