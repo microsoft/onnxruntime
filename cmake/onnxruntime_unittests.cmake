@@ -328,7 +328,7 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_OPS)
+if (onnxruntime_ENABLE_TRAINING_APIS)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
