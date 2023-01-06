@@ -22,6 +22,8 @@
 #include "core/framework/utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
 
 using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -2207,8 +2209,214 @@ Status SequentialPlanner::CreatePlan(
 
 #ifdef ORT_ENABLE_STREAM
 
+class IGraphPartitioner2 {
+ public:
+  enum GraphPartitioningStrategy {
+    DeviceBasedPartition = 0,
+    Unknown,
+  };
+  virtual ~IGraphPartitioner2() = default;
+  static std::unique_ptr<IGraphPartitioner2> CreateGraphPartitioner(const logging::Logger& logger,
+                                                                    const std::basic_string<PATH_CHAR_TYPE>& config_file);
+  virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                const ExecutionProviders& execution_providers,
+                                std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                                ExecutionOrder execution_order) = 0;
+  virtual const char* Type() const = 0;
+  int Devices() const { return devices_; };
+
+ protected:
+  IGraphPartitioner2(const logging::Logger& logger,
+                     const std::basic_string<PATH_CHAR_TYPE>& config_file) : logger_(logger), config_file_(config_file) {}
+  const logging::Logger& logger_;
+  std::basic_string<PATH_CHAR_TYPE> config_file_;
+  int devices_ = 0;
+};
+
+class EpBasedPartitioner : public IGraphPartitioner2 {
+ public:
+  EpBasedPartitioner(const logging::Logger& logger,
+                     const std::basic_string<PATH_CHAR_TYPE>& config_file) : IGraphPartitioner2(logger, config_file) {
+    Initialize();
+  }
+
+  ~EpBasedPartitioner() {
+    if (need_dump_) {
+      if (!DumpPartition()) {
+        LOGS(logger_, WARNING) << "Failed to save partition info";
+      }
+    }
+  }
+
+  bool DumpPartition() const;
+
+  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                        const ExecutionProviders& execution_providers,
+                        std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                        ExecutionOrder execution_order) override;
+
+  const char* Type() const override { return "DeviceBasedPartitioner"; }
+
+ private:
+
+  void Initialize();
+  std::vector<InlinedVector<std::string>> node_names_by_stream_;
+  bool need_dump_ = false;
+};
+
+#define EXIT_ON_ERR(warning)         \
+  LOGS(logger_, WARNING) << warning; \
+  node_names_by_stream_.clear();     \
+  if_stream.close();                 \
+  return;
+
+Status EpBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                               const ExecutionProviders& execution_providers,
+                                               std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                                               ExecutionOrder execution_order) {
+  InlinedHashMap<std::string, int> op_type_counter;
+  auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
+
+  if (node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
+
+    InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
+
+    for (auto node_index : p_graph_nodes) {
+
+      // get device info of the node
+      const auto* node = graph_viewer.GetNode(node_index);
+      const auto& op_type = node->OpType();
+      const auto& node_name = node->Name();
+      auto* ep = execution_providers.Get(*node);
+      auto& device_mem_location = ep->GetAllocator(ep->GetDeviceId(), OrtMemType::OrtMemTypeDefault)->Info();
+      auto device_type = device_mem_location.device.Type();
+
+      // log the device
+      auto it = device_to_stream.find(device_type);
+      if (it == device_to_stream.end()) {
+        device_to_stream[device_type] = static_cast<int>(node_names_by_stream_.size());
+        node_names_by_stream_.push_back({});
+        it = device_to_stream.find(device_type);
+      }
+
+      // put the node into the belonging stream
+      if (node_name.empty()) {
+        node_names_by_stream_[it->second].push_back(op_type + std::to_string(op_type_counter[op_type]++));
+      } else {
+        node_names_by_stream_[it->second].push_back(node_name);
+      }
+    }
+  }
+  InlinedHashMap<std::string, size_t> node_stream_map;
+  node_stream_map.reserve(p_graph_nodes.size());
+  for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
+    for (const auto& node_name : node_names_by_stream_[i]) {
+      node_stream_map[node_name] = i;
+    }
+  }
+  op_type_counter.clear();
+  stream_nodes.clear();
+  stream_nodes.resize(node_names_by_stream_.size());
+  for (auto node_index : p_graph_nodes) {
+    const auto* node = graph_viewer.GetNode(node_index);
+    const auto& op_type = node->OpType();
+    const auto& node_name = node->Name();
+    if (node_name.empty()) {
+      auto tmp_name = op_type + std::to_string(op_type_counter[op_type]++);
+      ORT_ENFORCE(node_stream_map.find(tmp_name) != node_stream_map.end());
+      stream_nodes[node_stream_map[tmp_name]].push_back(node_index);
+    } else {
+      stream_nodes[node_stream_map[node_name]].push_back(node_index);
+    }
+  }
+  return Status::OK();
+};
+
+void EpBasedPartitioner::Initialize() {
+  if (config_file_.empty()) {
+    return;
+  }
+  std::ifstream if_stream(config_file_);
+  if (if_stream.is_open()) {
+    try {
+      json json_config = json::parse(if_stream);
+      if (json_config["type"] != "DummyPartitioner") {
+        EXIT_ON_ERR("Partitioner type is not DummyPartitioner");
+      }
+      for (const auto& node_stream : json_config["streams"]) {
+        node_names_by_stream_.emplace_back();
+        for (const auto& node_name : node_stream) {
+          node_names_by_stream_.back().push_back(node_name);
+        }
+      }
+    } catch (const std::exception& ex) {
+      EXIT_ON_ERR(ex.what());
+    }
+    if_stream.close();
+  } else {
+    // when config file specified but failed to open, rewrite it.
+    need_dump_ = true;
+  }
+}
+
+bool EpBasedPartitioner::DumpPartition() const {
+  try {
+    json json_config;
+    json_config["type"] = "EpBasedPartitioner";
+    if (!node_names_by_stream_.empty()) {
+      json_config["streams"] = json::array();
+      for (const auto& node_stream : node_names_by_stream_) {
+        auto node_array = json::array();
+        for (const auto& node_name : node_stream) {
+          node_array.insert(node_array.end(), node_name);
+        }
+        json_config["streams"].insert(json_config["streams"].end(), node_array);
+      }
+    }
+    std::ofstream of_stream(config_file_);
+    if (of_stream.is_open()) {
+      of_stream << json_config.dump();
+      of_stream.close();
+      return true;
+    }
+  } catch (const std::exception& ex) {
+    LOGS(logger_, WARNING) << "Caught exception: " << ex.what();
+  }
+  return false;
+}
+
+std::unique_ptr<IGraphPartitioner2> IGraphPartitioner2::CreateGraphPartitioner(const logging::Logger& logger,
+                                                                               const std::basic_string<PATH_CHAR_TYPE>& config_file) {
+  // use device based partitioner by default
+  IGraphPartitioner2::GraphPartitioningStrategy partitioner_type =
+      IGraphPartitioner2::GraphPartitioningStrategy::DeviceBasedPartition;
+  if (!config_file.empty()) {
+    std::ifstream f(config_file);
+    if (f.is_open()) {
+      try {
+        json json_config = json::parse(f);
+        if (json_config.contains("type")) {
+          auto type = json_config["type"];
+          if (type == "EpBasedPartitioner") {
+            partitioner_type = IGraphPartitioner2::GraphPartitioningStrategy::DeviceBasedPartition;
+          }
+        }
+      } catch (const std::exception& ex) {
+        LOGS(logger, WARNING) << "Caught exception when reading partition config file: " << ex.what();
+      }
+      f.close();
+    }
+  }
+  if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
+    return std::make_unique<EpBasedPartitioner>(logger, config_file);
+  }  // else other partitioner types ...
+  return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy>
-    IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
+IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
@@ -2249,12 +2457,6 @@ line 6: node_name,node_name,node_name ...        # list of nodes on 2nd stream o
 line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream of the 2nd ep
 line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
 */
-
-#define EXIT_ON_ERR(warning)         \
-  LOGS(logger_, WARNING) << warning; \
-  Reset();                           \
-  if_stream.close();                 \
-  return;
 
 void DeviceBasedPartitioner::Initialize() {
   if (configuration_file_.empty()) {

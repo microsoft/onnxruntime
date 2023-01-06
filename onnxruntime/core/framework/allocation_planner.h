@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/status.h"
+#include "core/platform/path_lib.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/allocator.h"
 #include "core/framework/sequential_execution_plan.h"
@@ -106,6 +107,7 @@ class IGraphPartitioner {
   std::string configuration_file_{};
   int devices_ = 0;
 };
+
 #endif
 
 class SequentialPlanner {
