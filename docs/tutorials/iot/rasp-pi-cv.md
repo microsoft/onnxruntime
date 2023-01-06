@@ -10,7 +10,13 @@ nav_order: 2
 # ONNX Runtime IoT Deployment on Raspberry Pi
 {: .no_toc }
 
-In this tutorial we will look at how we can deploy ML Models to a Raspberry Pi edge device. There are many benefits and use cases for deploying models to edge devices. Check out the list on our [IoT tutorial home page](index.md). It is assumed that you have a basic understand of how to image and configure a Raspberry Pi. If you have not configured a Raspberry Pi before check out the [Raspberry Pi documentation](https://www.raspberrypi.com/documentation/computers/getting-started.html) to get your device setup.
+Learn how to perform image classification on the edge using ONNX Runtime and a Raspberry Pi, taking input from the device's camera and sending the classification results to the terminal.
+
+If you have not configured a Raspberry Pi before, check out the [Raspberry Pi documentation](https://www.raspberrypi.com/documentation/computers/getting-started.html) to get your device setup.
+
+There are many benefits and use cases for deploying models to edge devices. Check out the list on our [IoT tutorial home page](index.md).
+
+
 
 <img src="../../../images/rbpi-camera.jpg" width="50%" height="100%" alt="Image of Raspberry Pi and camera."/>
 
