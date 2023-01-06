@@ -164,7 +164,7 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 static constexpr PATH_TYPE CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI = TSTR(
     "testdata/custom_op_openvino_wrapper_library/custom_op_mnist_ov_wrapper.onnx");
 #endif
@@ -1198,7 +1198,7 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   // Tests a custom operator that wraps an OpenVINO MNIST model (.xml and .bin files serialized into node attributes).
   // The custom op extracts the serialized .xml/.bin bytes and creates an in-memory OpenVINO model
   // during kernel creation. The custom op is passed an image of a hand-drawn "1" as an input during computation, which
-  // is then inferenced using OpenVINO APIs.
+  // is then inferenced using OpenVINO C++ APIs.
   std::vector<Input> inputs(1);
   inputs[0].name = "Input3";
   inputs[0].dims = {1, 1, 28, 28};

@@ -42,4 +42,3 @@ struct LibraryHandles {
   InlinedVector<std::pair<PathString, void*>> libraries_;
 };
 }  // namespace onnxruntime
-

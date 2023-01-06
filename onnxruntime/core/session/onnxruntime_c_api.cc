@@ -148,7 +148,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message,
+ORT_API_STATUS_IMPL(OrtApis::OrtLog, OrtLoggingLevel log_severity_level, _In_z_ const char* message,
                     _In_z_ const char* file_path, int line_number, _In_z_ const char* func_name) {
   API_IMPL_BEGIN
   const auto& logger = onnxruntime::logging::LoggingManager::DefaultLogger();  // Throws if no default logger exists.
@@ -2649,7 +2649,7 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
     &OrtApis::RegisterCustomOpsLibrary_V2,
-    &OrtApis::Log,
+    &OrtApis::OrtLog,
     &OrtApis::KernelInfo_GetInputCount,
     &OrtApis::KernelInfo_GetOutputCount,
     &OrtApis::KernelInfo_GetInputName,

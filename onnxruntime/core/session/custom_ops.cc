@@ -203,8 +203,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
-                    _Out_writes_z_(size) char* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                    _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto input_defs = op_info->node().InputDefs();
@@ -220,8 +220,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
-                    _Out_writes_z_(size) char* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                    _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto output_defs = op_info->node().OutputDefs();

@@ -388,7 +388,7 @@ struct Env : detail::Base<OrtEnv> {
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
-// Logs a message at the specified severity level. Wraps OrtApi::Log.
+// Logs a message at the specified severity level. Wraps OrtApi::OrtLog.
 #define ORT_CXX_LOG(severity, message) \
   Ort::detail::LogImpl(severity, message, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__))
 

@@ -76,6 +76,14 @@ struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
     return INPUT_OUTPUT_VARIADIC;
   }
 
+  constexpr bool GetVariadicInputHomogeneity() const noexcept {
+    return false;  // heterogenous
+  }
+
+  constexpr bool GetVariadicOutputHomogeneity() const noexcept {
+    return false;  // heterogeneous
+  }
+
   std::vector<std::string> GetSessionConfigKeys() const;
 
  private:

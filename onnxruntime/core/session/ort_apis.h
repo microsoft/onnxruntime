@@ -410,15 +410,15 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
                     _In_ const ORTCHAR_T* library_name);
 
-ORT_API_STATUS_IMPL(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
+ORT_API_STATUS_IMPL(OrtLog, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
                     int line_number, _In_z_ const char* func_name);
 
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
-ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
-                    _Out_writes_z_(size) char* out, _Inout_ size_t* size);
-ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
-                    _Out_writes_z_(size) char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                    _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                    _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                     _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
@@ -429,6 +429,6 @@ ORT_API_STATUS_IMPL(KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* inf
 ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
+                    _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
 }  // namespace OrtApis
 

@@ -57,7 +57,6 @@ extern "C" {
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
-#define _Out_writes_z_(X)
 #define _Success_(X)
 #define _Outptr_result_buffer_maybenull_(X)
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
@@ -3664,14 +3663,14 @@ struct OrtApi {
   *
   * \param[in] log_severity_level The message's severity level.
   * \param[in] message The message to log.
-  * \param[in] file_path The filepath of the file in which this message is logged. Usually the value of __FILE__.
-  * \param[in] line_number The file line number in which this message is logged. Usually the value of __LINE__.
-  * \param[in] func_name The name of the function in which this message is logged. Usually the value of __FUNCTION__.
+  * \param[in] file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+  * \param[in] line_number The file line number in which the message is logged. Usually the value of __LINE__.
+  * \param[in] func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(Log, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
+  ORT_API2_STATUS(OrtLog, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
                   int line_number, _In_z_ const char* func_name);
 
   /// @}
@@ -3680,11 +3679,11 @@ struct OrtApi {
 
   /** \brief Get the number of inputs from ::OrtKernelInfo.
   *
-  * Can be used in the CreateKernel callback of a OrtCustomOp to query the number of inputs
+  * Can be used in the CreateKernel callback of an OrtCustomOp to query the number of inputs
   * during kernel/session creation.
   *
-  * \param[in]  info Instance of ::OrtKernelInfo.
-  * \param[out] out  Pointer to variable assigned with the result on success.
+  * \param[in] info Instance of ::OrtKernelInfo.
+  * \param[out] out Pointer to variable assigned with the result on success.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
@@ -3693,11 +3692,11 @@ struct OrtApi {
 
   /** \brief Get the number of outputs from ::OrtKernelInfo.
   *
-  * Can be used in the CreateKernel callback of a OrtCustomOp to query the number of outputs
+  * Can be used in the CreateKernel callback of an OrtCustomOp to query the number of outputs
   * during kernel/session creation.
   *
-  * \param[in]  info Instance of ::OrtKernelInfo.
-  * \param[out] out  Pointer to variable assigned with the result on success.
+  * \param[in] info Instance of ::OrtKernelInfo.
+  * \param[out] out Pointer to variable assigned with the result on success.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
@@ -3706,7 +3705,7 @@ struct OrtApi {
 
   /** \brief Get the name of a ::OrtKernelInfo's input.
   *
-  * Can be used in the CreateKernel callback of a OrtCustomOp to query the input names
+  * Can be used in the CreateKernel callback of an OrtCustomOp to query an input's name
   * during kernel/session creation.
   *
   * If `out` is nullptr, the value of `size` is set to the size of the name
@@ -3720,21 +3719,20 @@ struct OrtApi {
   * is not nullptr, the value of `size` is set to the true size of the string
   * and a failure status is returned.
   *
-  * \param[in] info  An instance of ::OrtKernelInfo.
-  * \param[in] index  The index of the input name to get. Returns a failure status if out-of-bounds.
-  * \param[out] out   Memory location into which to write the UTF-8 null-terminated string representing the 
-  *                   input's name.
-  * \param[in,out] size  Pointer to the size of the `out` buffer. See above comments for details.
+  * \param[in] info An instance of ::OrtKernelInfo.
+  * \param[in] index The index of the input name to get. Returns a failure status if out-of-bounds.
+  * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the input's name.
+  * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
-                  _Out_writes_z_(size) char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                  _Inout_ size_t* size);
 
   /** \brief Get the name of a ::OrtKernelInfo's output.
   *
-  * Can be used in the CreateKernel callback of a OrtCustomOp to query the output names
+  * Can be used in the CreateKernel callback of an OrtCustomOp to query an output's name
   * during kernel/session creation.
   *
   * If `out` is nullptr, the value of `size` is set to the size of the name
@@ -3748,26 +3746,25 @@ struct OrtApi {
   * is not nullptr, the value of `size` is set to the true size of the string
   * and a failure status is returned.
   *
-  * \param[in] info  An instance of ::OrtKernelInfo.
-  * \param[in] index  The index of the output name to get. Returns a failure status if out-of-bounds.
-  * \param[out] out   Memory location into which to write the UTF-8 null-terminated string representing the 
-  *                   output's name.
-  * \param[in,out] size  Pointer to the size of the `out` buffer. See above comments for details.
+  * \param[in] info An instance of ::OrtKernelInfo.
+  * \param[in] index The index of the output name to get. Returns a failure status if out-of-bounds.
+  * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the output's
+  *                 name.
+  * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
-                  _Out_writes_z_(size) char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                  _Inout_ size_t* size);
 
   /** \brief Get the type information for a ::OrtKernelInfo's input.
   *
-  * Can be used in the CreateKernel callback of a OrtCustomOp to query the shape and type information
-  * of all inputs during kernel/session creation.
+  * Can be used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
+  * of an input during kernel/session creation.
   *
-  * \param[in] info  An instance of ::OrtKernelInfo.
-  * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo.
-  *                       Must be freed with OrtApi::ReleaseTypeInfo
+  * \param[in] info An instance of ::OrtKernelInfo.
+  * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
@@ -3777,12 +3774,11 @@ struct OrtApi {
 
   /** \brief Get the type information for a ::OrtKernelInfo's output.
   *
-  * Can be used in the CreateKernel callback of a OrtCustomOp to query the shape and type information
-  * of all outputs during kernel/session creation.
+  * Can be used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
+  * of an output during kernel/session creation.
   *
-  * \param[in] info  An instance of ::OrtKernelInfo.
-  * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo.
-  *                       Must be freed with OrtApi::ReleaseTypeInfo
+  * \param[in] info An instance of ::OrtKernelInfo.
+  * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
@@ -3811,7 +3807,7 @@ struct OrtApi {
   *
   * The config_key formats are defined in onnxruntime_session_options_config_keys.h
   *
-  * \param[in] options The session options.
+  * \param[in] options The ::OrtSessionOptions instance.
   * \param[in] config_key A null-terminated UTF-8 string representation of the configuration key.
   * \param[out] out Pointer set to 1 if the entry exists and 0 otherwise.
   *
@@ -3822,9 +3818,6 @@ struct OrtApi {
                   _In_z_ const char* config_key, _Out_ int* out);
 
   /** \brief Get a session configuration value.
-  *
-  * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h.
-  * This API can be used to get configuration values for custom operators.
   *
   * Returns a failure status if the configuration key does not exist.
   * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h
@@ -3841,7 +3834,7 @@ struct OrtApi {
   * and a failure status is returned.
   *
   * \param[in] options The session options.
-  * \param[in] config_key A null-terminated UTF-8 string representation of the config key
+  * \param[in] config_key A null-terminated UTF-8 string representation of the config key.
   * \param[in] config_value Pointer to memory where the null-terminated UTF-8 string value will be stored.
   * \param[in,out] size Pointer to the size of the `config_value` buffer. See above comments for details.
   *
@@ -3849,7 +3842,7 @@ struct OrtApi {
   * \since Version 1.14
   */
   ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
-                  _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
+                  _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

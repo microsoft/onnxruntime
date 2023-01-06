@@ -41,4 +41,3 @@ void LibraryHandles::UnloadLibraries() noexcept {
 }
 
 }  // namespace onnxruntime
-

@@ -225,7 +225,7 @@ ORT_API_STATUS_IMPL(OrtApis::HasSessionConfigEntry, _In_ const OrtSessionOptions
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size) {
+                    _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   auto value_opt = options->value.config_options.GetConfigEntry(config_key);
 
