@@ -152,7 +152,7 @@ class PlannerImpl {
 #ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-      const std::string& partition_config_file,
+      const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
       const logging::Logger& logger);
 
  private:
@@ -1750,7 +1750,7 @@ class PlannerImpl {
 
   void
   PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const std::string& partition_config_file) {
+                       const std::basic_string<PATH_CHAR_TYPE>& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -2110,7 +2110,7 @@ Status PlannerImpl::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-    const std::string& partition_config_file,
+    const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
     const logging::Logger& logger) {
   // 1. partition graph into streams
   PartitionIntoStreams(logger, execution_providers_, partition_config_file);
@@ -2186,7 +2186,7 @@ Status SequentialPlanner::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-    const std::string& partition_config_file,
+    const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
     const logging::Logger& logger,
     std::optional<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
@@ -2209,38 +2209,14 @@ Status SequentialPlanner::CreatePlan(
 
 #ifdef ORT_ENABLE_STREAM
 
-class IGraphPartitioner2 {
+class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
-  enum GraphPartitioningStrategy {
-    DeviceBasedPartition = 0,
-    Unknown,
-  };
-  virtual ~IGraphPartitioner2() = default;
-  static std::unique_ptr<IGraphPartitioner2> CreateGraphPartitioner(const logging::Logger& logger,
-                                                                    const std::basic_string<PATH_CHAR_TYPE>& config_file);
-  virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
-                                const ExecutionProviders& execution_providers,
-                                std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                                ExecutionOrder execution_order) = 0;
-  virtual const char* Type() const = 0;
-  int Devices() const { return devices_; };
-
- protected:
-  IGraphPartitioner2(const logging::Logger& logger,
-                     const std::basic_string<PATH_CHAR_TYPE>& config_file) : logger_(logger), config_file_(config_file) {}
-  const logging::Logger& logger_;
-  std::basic_string<PATH_CHAR_TYPE> config_file_;
-  int devices_ = 0;
-};
-
-class EpBasedPartitioner : public IGraphPartitioner2 {
- public:
-  EpBasedPartitioner(const logging::Logger& logger,
-                     const std::basic_string<PATH_CHAR_TYPE>& config_file) : IGraphPartitioner2(logger, config_file) {
+  DeviceBasedPartitioner(const logging::Logger& logger,
+                     const std::basic_string<PATH_CHAR_TYPE>& config_file) : IGraphPartitioner(logger, config_file) {
     Initialize();
   }
 
-  ~EpBasedPartitioner() {
+  ~DeviceBasedPartitioner() {
     if (need_dump_) {
       if (!DumpPartition()) {
         LOGS(logger_, WARNING) << "Failed to save partition info";
@@ -2270,7 +2246,7 @@ class EpBasedPartitioner : public IGraphPartitioner2 {
   if_stream.close();                 \
   return;
 
-Status EpBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
+Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                                const ExecutionProviders& execution_providers,
                                                std::vector<InlinedVector<NodeIndex>>& stream_nodes,
                                                ExecutionOrder execution_order) {
@@ -2332,7 +2308,7 @@ Status EpBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_
   return Status::OK();
 };
 
-void EpBasedPartitioner::Initialize() {
+void DeviceBasedPartitioner::Initialize() {
   if (config_file_.empty()) {
     return;
   }
@@ -2359,10 +2335,10 @@ void EpBasedPartitioner::Initialize() {
   }
 }
 
-bool EpBasedPartitioner::DumpPartition() const {
+bool DeviceBasedPartitioner::DumpPartition() const {
   try {
     json json_config;
-    json_config["type"] = "EpBasedPartitioner";
+    json_config["type"] = "DeviceBasedPartitioner";
     if (!node_names_by_stream_.empty()) {
       json_config["streams"] = json::array();
       for (const auto& node_stream : node_names_by_stream_) {
@@ -2385,11 +2361,11 @@ bool EpBasedPartitioner::DumpPartition() const {
   return false;
 }
 
-std::unique_ptr<IGraphPartitioner2> IGraphPartitioner2::CreateGraphPartitioner(const logging::Logger& logger,
+std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger,
                                                                                const std::basic_string<PATH_CHAR_TYPE>& config_file) {
   // use device based partitioner by default
-  IGraphPartitioner2::GraphPartitioningStrategy partitioner_type =
-      IGraphPartitioner2::GraphPartitioningStrategy::DeviceBasedPartition;
+  IGraphPartitioner::GraphPartitioningStrategy partitioner_type =
+      IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!config_file.empty()) {
     std::ifstream f(config_file);
     if (f.is_open()) {
@@ -2397,8 +2373,8 @@ std::unique_ptr<IGraphPartitioner2> IGraphPartitioner2::CreateGraphPartitioner(c
         json json_config = json::parse(f);
         if (json_config.contains("type")) {
           auto type = json_config["type"];
-          if (type == "EpBasedPartitioner") {
-            partitioner_type = IGraphPartitioner2::GraphPartitioningStrategy::DeviceBasedPartition;
+          if (type == "DeviceBasedPartitioner") {
+            partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
           }
         }
       } catch (const std::exception& ex) {
@@ -2408,230 +2384,11 @@ std::unique_ptr<IGraphPartitioner2> IGraphPartitioner2::CreateGraphPartitioner(c
     }
   }
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
-    return std::make_unique<EpBasedPartitioner>(logger, config_file);
+    return std::make_unique<DeviceBasedPartitioner>(logger, config_file);
   }  // else other partitioner types ...
   return {};
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy>
-IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};
-
-class DeviceBasedPartitioner : public IGraphPartitioner {
- public:
-  DeviceBasedPartitioner(const logging::Logger& logger, const std::string& configuration_file) : IGraphPartitioner(logger, configuration_file) {
-    Initialize();
-  }
-  ~DeviceBasedPartitioner() {
-    if (need_dump_) {
-      DumpPartition();
-    }
-  }
-  void DumpPartition() const;
-  Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes, ExecutionOrder execution_order) override;
-  virtual const std::string& Name() const override {
-    return name;
-  }
-
- private:
-  void Initialize();
-  void Reset();
-  int num_streams_{};
-  std::map<OrtDevice::DeviceType, int> max_streams_;
-  std::vector<InlinedVector<std::string>> node_names_by_stream_;
-  bool need_dump_ = false;
-  static const std::string name;
-};
-
-const std::string DeviceBasedPartitioner::name = "DeviceBasedPartitioner";
-
-/*
-Format of the configuration file for dummpy partition:
-line 1: DummyPartition                           # name of the partitioner
-line 2: Devices:2                                # number of devices
-line 3: CpuExecutionProvider:2                   # number of streams of the 1st ep
-line 4: GpuExecutionProvider:2                   # number of streams of the 2nd ep
-line 5: node_name,node_name,node_name ...        # list of nodes on 1st stream of the 1st ep
-line 6: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 1st ep
-line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream of the 2nd ep
-line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
-*/
-
-void DeviceBasedPartitioner::Initialize() {
-  if (configuration_file_.empty()) {
-    return;
-  }
-  std::ifstream if_stream(configuration_file_);
-  if (if_stream.is_open()) {
-    std::string line;
-    if (!std::getline(if_stream, line) || line != Name()) {
-      EXIT_ON_ERR("configuration file should start with a line of partition name");
-    }
-    if (std::getline(if_stream, line)) {
-      auto columns = IGraphPartitioner::Split(line, ':');
-      if (columns.size() != 2 || columns[0] != "Devices") {
-        EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders:<an integer>");
-      }
-      int eps = atoi(columns[1].c_str());
-      devices_ = eps;
-      if (eps <= 0) {
-        EXIT_ON_ERR("2nd line, the number of ExecutionProviders must be a positive value");
-      }
-      for (int i = 0; i < eps; ++i) {
-        if (std::getline(if_stream, line)) {
-          columns = IGraphPartitioner::Split(line, ':');
-          if (columns.size() != 2) {
-            EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting")
-          }
-        } else {
-          EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting");
-        }
-        auto num_current_stream = atoi(columns[1].c_str());
-        max_streams_[static_cast<OrtDevice::DeviceType>(std::atoi(columns[0].c_str()))] = num_current_stream;  // TODO: handle the case when columns[1] has non alpha char
-        num_streams_ += num_current_stream;
-      }
-      while (getline(if_stream, line)) {
-        node_names_by_stream_.push_back(IGraphPartitioner::Split(line, ','));
-        if (node_names_by_stream_.back().empty()) {
-          EXIT_ON_ERR("invalid configuration - the line of node names is empty");
-        }
-      }
-      if (node_names_by_stream_.size() != (size_t)num_streams_) {
-        EXIT_ON_ERR("invalid configuration - the total number of line of streams mismatch with the sum of execution provider stream setting");
-      }
-    } else {
-      need_dump_ = true;
-    }
-    if_stream.close();
-  }
-}
-
-void DeviceBasedPartitioner::Reset() {
-  devices_ = 0;
-  num_streams_ = 0;
-  max_streams_.clear();
-  node_names_by_stream_.clear();
-}
-
-void DeviceBasedPartitioner::DumpPartition() const {
-  if (configuration_file_.empty()) {
-    return;
-  }
-  std::ofstream of_stream(configuration_file_, std::ios_base::out | std::ios_base::trunc);
-  if (of_stream.is_open()) {
-    of_stream << Name() << std::endl;
-    of_stream << "Devices:" << max_streams_.size() << std::endl;
-    for (const auto& kv : max_streams_) {
-      of_stream << kv.first << ":" << kv.second << std::endl;
-    }
-    for (const auto& nodes : node_names_by_stream_) {
-      std::copy(nodes.begin(), nodes.end() - 1, std::ostream_iterator<std::string>(of_stream, ","));
-      if (!nodes.empty()) {
-        of_stream << nodes.back() << std::endl;
-      }
-    }
-    of_stream.close();
-  } else {
-    LOGS(logger_, WARNING) << "DeviceBasedPartitioner failed to dump configuration to file: " << configuration_file_;
-  }
-}
-
-Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
-                                              const ExecutionProviders& execution_providers,
-                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                                              ExecutionOrder execution_order) {
-  InlinedHashMap<std::string, int> op_type_counter;
-  auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
-
-  if (max_streams_.empty() && node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
-    // partition by ep, each has one stream
-    InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
-    for (auto node_index : p_graph_nodes) {
-      const auto* node = graph_viewer.GetNode(node_index);
-      const auto& op_type = node->OpType();
-      const auto& node_name = node->Name();
-      auto* ep = execution_providers.Get(*node);
-      auto& device_mem_location = ep->GetAllocator(ep->GetDeviceId(), OrtMemType::OrtMemTypeDefault)->Info();
-      auto device_type = device_mem_location.device.Type();
-      if (max_streams_.find(device_mem_location.device.Type()) == max_streams_.end()) {
-        max_streams_[device_type] = 1;
-      }
-      auto it = device_to_stream.find(device_type);
-      if (it == device_to_stream.end()) {
-        device_to_stream[device_type] = static_cast<int>(node_names_by_stream_.size());
-        node_names_by_stream_.push_back({});
-        it = device_to_stream.find(device_type);
-      }
-      if (node_name.empty()) {
-        node_names_by_stream_[it->second].push_back(op_type + std::to_string(op_type_counter[op_type]++));
-      } else {
-        node_names_by_stream_[it->second].push_back(node_name);
-      }
-    }
-  }
-  InlinedHashMap<std::string, size_t> node_stream_map;
-  node_stream_map.reserve(p_graph_nodes.size());
-  for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
-    for (const auto& node_name : node_names_by_stream_[i]) {
-      node_stream_map[node_name] = i;
-    }
-  }
-  op_type_counter.clear();
-  stream_nodes.clear();
-  stream_nodes.resize(node_names_by_stream_.size());
-  for (auto node_index : p_graph_nodes) {
-    const auto* node = graph_viewer.GetNode(node_index);
-    const auto& op_type = node->OpType();
-    const auto& node_name = node->Name();
-    if (node_name.empty()) {
-      auto tmp_name = op_type + std::to_string(op_type_counter[op_type]++);
-      ORT_ENFORCE(node_stream_map.find(tmp_name) != node_stream_map.end());
-      stream_nodes[node_stream_map[tmp_name]].push_back(node_index);
-    } else {
-      stream_nodes[node_stream_map[node_name]].push_back(node_index);
-    }
-  }
-  return Status::OK();
-}
-
-InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, char splitor) {
-  InlinedVector<std::string> columns;
-  std::string column;
-  std::stringstream ss;
-  ss << line;
-  while (getline(ss, column, splitor)) {
-    columns.push_back(column);
-  }
-  return columns;
-}
-
-std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger, const std::string& configuration_file) {
-  std::string cfg_file = configuration_file;
-  IGraphPartitioner::GraphPartitioningStrategy partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
-  if (!cfg_file.empty()) {
-    std::ifstream if_stream(cfg_file);
-    if (if_stream.is_open()) {
-      std::string partitioner_name;
-      std::getline(if_stream, partitioner_name);
-      if_stream.close();
-      auto iter = name_type_map.find(partitioner_name);
-      ORT_ENFORCE(iter != name_type_map.end(), "invalid node partitioner name");
-      partitioner_type = iter->second;
-    } else {  // create and initialize the configure file if not already there
-      std::ofstream of_stream(cfg_file, std::ios_base::out | std::ios_base::trunc);
-      ORT_ENFORCE(of_stream.is_open(), "cannnot write configuration to", cfg_file.c_str());
-      of_stream << "DummyPartition" << std::endl;
-      of_stream.close();
-    }
-  }  // else means configuration will not be written to a file
-  std::unique_ptr<IGraphPartitioner> graph_partitioner;
-  if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
-    graph_partitioner = std::make_unique<DeviceBasedPartitioner>(logger, cfg_file);
-  }
-
-  return graph_partitioner;
-}
 #endif
 
 }  // namespace onnxruntime

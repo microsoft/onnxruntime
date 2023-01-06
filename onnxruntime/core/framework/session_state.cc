@@ -1349,18 +1349,25 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SequentialPlannerContext context(session_options.execution_mode,
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
+
+  std::string raw_partition_config_file =
+      session_options.config_options.GetConfigOrDefault(
+          kNodePartitionConfigFile, "");
+
+  std::basic_string<PATH_CHAR_TYPE> partition_config_file{raw_partition_config_file.begin(),
+                                                          raw_partition_config_file.end()};
+
   auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_create_info_map_,
-                                                    subgraphs_kernel_create_info_maps,
-                                                    outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context,
+                                              execution_providers_, kernel_create_info_map_,
+                                              subgraphs_kernel_create_info_maps,
+                                              outer_scope_node_arg_to_location_map,
+                                              ort_value_name_idx_map_, context,
 #ifdef ORT_ENABLE_STREAM
-                                                    GetStreamHandleRegistryInstance(),
+                                              GetStreamHandleRegistryInstance(),
 #endif
-                                                    session_options.config_options.GetConfigOrDefault(
-                                                        kNodePartitionConfigFile, ""),
-                                                    Logger(),
-                                                    p_seq_exec_plan_);
+                                              partition_config_file,
+                                              Logger(),
+                                              p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
 // Record the allocation plan
