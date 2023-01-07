@@ -15,7 +15,7 @@ using QDQ::InputIndex;
 
 /**
  * @Class DoubleQDQPairsRemover
- * @brief Remove one pair of Q-DQ Double Q-DQ pairs.
+ * @brief Remove one pair of Q-DQ from Double Q-DQ pairs.
  */
 class DoubleQDQPairsRemover : public GraphTransformer {
  public:

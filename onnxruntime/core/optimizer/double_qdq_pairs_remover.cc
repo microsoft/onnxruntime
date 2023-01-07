@@ -21,15 +21,11 @@ Status DoubleQDQPairsRemover::ApplyImpl(
     NodeIndex child_index = 0;
     NodeIndex grandchild_index = 0;
     if (IsNodeRemovable(graph, self_index, parent_index, child_index, grandchild_index)) {
-//      graph.RemoveEdge(parent_index, self_index, 0, 0);
       graph.RemoveEdge(self_index, child_index, 0, 0);
       graph.RemoveEdge(child_index, grandchild_index, 0, 0);
-//      graph_utils::ReplaceNodeInput(*graph.GetNode(grandchild_index), 0, *graph.GetNode(self_index)->MutableInputDefs()[0]);
-//      graph.AddEdge(parent_index, grandchild_index, 0, 0);
-      graph_utils::ReplaceDownstreamNodeInput(graph, *graph.GetNode(grandchild_index), 0, *graph.GetNode(self_index),0);
+      graph_utils::ReplaceDownstreamNodeInput(graph, *graph.GetNode(grandchild_index), 0, *graph.GetNode(self_index), 0);
       graph.RemoveNode(child_index);
       graph.RemoveNode(grandchild_index);
-
 
       modified = true;
     }
@@ -65,7 +61,7 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   const Node* child = graph.GetNode(child_index);
   if (child == nullptr ||
       child->OpType() != "QuantizeLinear" ||
-      child->GetOutputEdgesCount() != 1||
+      child->GetOutputEdgesCount() != 1 ||
       graph.NodeProducesGraphOutput(*child)) {
     return false;
   }
@@ -78,9 +74,11 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
       graph.NodeProducesGraphOutput(*grandchild)) {
     return false;
   }
+
   float new_scale = 0.0f;
   int new_zero_point = 0;
   TensorProto_DataType type = ONNX_NAMESPACE::TensorProto_DataType_INT8;
+
   if (!FindNewZeroPointAndScale(graph, *self, *grandchild, new_scale, new_zero_point, type)) {
     return false;
   }
