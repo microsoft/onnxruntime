@@ -1761,7 +1761,7 @@ class PlannerImpl {
     num_logic_streams_ = stream_nodes_.size();
   }
 
-  void ConstructWaitOnEPStep(const onnxruntime::Node* node, Node::NodeConstIterator it, size_t notification_owner_index, 
+  void ConstructWaitOnEPStep(const onnxruntime::Node* node, Node::NodeConstIterator it, size_t notification_owner_index,
                              const IStreamCommandHandleRegistry& stream_handle_registry, InlinedVector<std::unique_ptr<SequentialExecutionPlan::LogicStream>>& execution_plan, 
                              size_t plan_index, InlinedHashSet<OrtDevice::DeviceType>& devices_to_wait_on) {
     // push a wait command if has EP registered it.
@@ -1782,7 +1782,7 @@ class PlannerImpl {
             if (wait_handle) {
               execution_plan[plan_index]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_owner_index));
 #ifdef ENABLE_TRAINING
-              execution_plan[plan_index]->step_pc.push_back(node_index);
+              execution_plan[plan_index]->step_pc.push_back(node->Index());
 #endif
             }
             devices_to_wait_on.insert(consumer_device.Type());
