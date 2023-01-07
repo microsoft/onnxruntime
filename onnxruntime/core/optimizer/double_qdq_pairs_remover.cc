@@ -166,7 +166,7 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   const float real_min = std::max(real_min1, real_min2);
   const float real_max = std::min(real_max1, real_max2);
   new_scale = (real_max - real_min) / (q_max_1 - q_min_1);
-  new_zero_point = (q_min_1 - real_min) / new_scale;
+  new_zero_point = gsl::narrow_cast<int>((q_min_1 - real_min) / new_scale);
   type = static_cast<TensorProto_DataType>(zero_point_init_1.data_type());
   return true;
 }
