@@ -3,15 +3,15 @@
 
 #pragma once
 
-#ifdef USE_CLOUD
+#ifdef USE_AZURE
 #include "core/framework/iexecutor.h"
 namespace onnxruntime {
 
-class CloudExecutor : public onnxruntime::IExecutor {
+class AzureExecutor : public onnxruntime::IExecutor {
  public:
-  explicit CloudExecutor(const std::unordered_map<std::string, std::string>& run_options) : run_options_(run_options){};
-  ~CloudExecutor() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CloudExecutor);
+  explicit AzureExecutor(const std::unordered_map<std::string, std::string>& run_options) : run_options_(run_options){};
+  ~AzureExecutor() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AzureExecutor);
 
   common::Status Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,

@@ -147,8 +147,8 @@ endif()
 if (onnxruntime_USE_CANN)
   set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
-if (onnxruntime_USE_CLOUD)
-  set(PROVIDERS_CLOUD onnxruntime_providers_cloud)
+if (onnxruntime_USE_AZURE)
+  set(PROVIDERS_AZURE onnxruntime_providers_azure)
 endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -1596,22 +1596,21 @@ if (onnxruntime_USE_CANN)
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if (onnxruntime_USE_CLOUD)
+if (onnxruntime_USE_AZURE)
 
-  file(GLOB_RECURSE onnxruntime_providers_cloud_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.cc"
+  file(GLOB_RECURSE onnxruntime_providers_azure_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/azure/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/azure/*.cc"
   )
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cloud_src})
-  onnxruntime_add_static_library(onnxruntime_providers_cloud ${onnxruntime_providers_cloud_src})
-  add_dependencies(onnxruntime_providers_cloud ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  #target_include_directories(onnxruntime_providers_cloud PRIVATE external/curl/include)
-  onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11)
-  target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx onnxruntime_common onnxruntime_framework)
-  set_target_properties(onnxruntime_providers_cloud PROPERTIES FOLDER "ONNXRuntime")
-  set_target_properties(onnxruntime_providers_cloud PROPERTIES LINKER_LANGUAGE CXX)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_azure_src})
+  onnxruntime_add_static_library(onnxruntime_providers_azure ${onnxruntime_providers_azure_src})
+  add_dependencies(onnxruntime_providers_azure ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  onnxruntime_add_include_to_target(onnxruntime_providers_azure onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11)
+  target_link_libraries(onnxruntime_providers_azure PRIVATE onnx onnxruntime_common onnxruntime_framework)
+  set_target_properties(onnxruntime_providers_azure PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_azure PROPERTIES LINKER_LANGUAGE CXX)
 
-  install(TARGETS onnxruntime_providers_cloud
+  install(TARGETS onnxruntime_providers_azure
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

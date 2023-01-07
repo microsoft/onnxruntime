@@ -241,7 +241,7 @@ constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
-constexpr const char* kCloudExecutionProvider = "CloudExecutionProvider";
+constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
