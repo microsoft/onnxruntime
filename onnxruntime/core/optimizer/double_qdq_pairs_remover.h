@@ -5,8 +5,14 @@
 
 #include "core/common/common.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 
 namespace onnxruntime {
+
+using ONNX_NAMESPACE::TensorProto;
+using ONNX_NAMESPACE::TensorProto_DataType;
+using QDQ::InputIndex;
+
 /**
  * @Class DoubleQDQPairsRemover
  * @brief Remove one pair of Q-DQ Double Q-DQ pairs.
@@ -23,11 +29,21 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       const logging::Logger& logger) const override;
 
   static bool IsNodeRemovable(
-      const Graph& graph,
-      const logging::Logger& logger,
-      const NodeIndex& node_index,
+      Graph& graph,
+      const NodeIndex& self_index,
       NodeIndex& parent_index,
       NodeIndex& child_index,
       NodeIndex& grandchild_index);
+
+  static bool FindNewZeroPointAndScale(
+      const Graph& graph,
+      const Node& node1,
+      const Node& node2,
+      float& new_scale,
+      int& new_zero_point,
+      TensorProto_DataType& zp_type);
+
+  template <typename T>
+  static void ApplyNewInputValue(Graph& graph, Node& node, const InputIndex& index, T value);
 };
 }  // namespace onnxruntime
