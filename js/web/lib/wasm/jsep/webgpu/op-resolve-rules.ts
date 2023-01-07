@@ -12,7 +12,7 @@ import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePool
 // './ops/reduce-tensors'; import {reshape} from './ops/reshape'; import {shape} from './ops/shape';
 // import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
 // import {parseSqueezeAttributes, squeeze, squeezeV13} from './ops/squeeze';
-// import {parseTransposeAttributes, transpose} from './ops/transpose';
+import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 
@@ -86,7 +86,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sub', [binaryOps.sub]],  // ['Sum', '', '6+', sum],
   ['Tan', [unaryOps.tan]], ['Tanh', [unaryOps.tanh]],
   // ['Tile', '', '6+', tile],
-  //['Transpose', '', '1+', transpose, parseTransposeAttributes],
+  ['Transpose', [transpose, parseTransposeAttributes]],
   // ['Upsample', '', '7-8', upsample, parseUpsampleAttributesV7],
   // ['Upsample', '', '9', upsample, parseUpsampleAttributesV9],
   //['Unsqueeze', '', '1-12', unsqueeze, parseUnsqueezeAttributes], ['Unsqueeze', '', '13+', unsqueezeV13],
