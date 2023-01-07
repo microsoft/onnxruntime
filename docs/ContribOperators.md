@@ -71,6 +71,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
@@ -3701,6 +3702,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input type to 8-bit integer tensor.</dd>
 <dt><tt>T2</tt> : tensor(int32), tensor(uint32)</dt>
 <dd>Constrain output data type to 32-bit integer tensor.T2 must be tensor(uint32) when T1 is tensor(uint8),or must be tensor(int32) when T1 is tensor(int8).</dd>
+</dl>
+
+
+### <a name="com.microsoft.RelativePositionBias"></a><a name="com.microsoft.relativepositionbias">**com.microsoft.RelativePositionBias**</a>
+
+  Compute binned relative position bias for T5 model. ref: https://arxiv.org/abs/1803.02155v2
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>is_bidirectional</tt> : int</dt>
+<dd>Default value is 0.</dd>
+<dt><tt>max_distance</tt> : int (required)</dt>
+<dd>Max distance</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>bias_table</tt> : T</dt>
+<dd>2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)</dd>
+<dt><tt>query_length</tt> : U</dt>
+<dd>The length of query. Self Attention requires query_length = key_length</dd>
+<dt><tt>key_length</tt> : U</dt>
+<dd>The length of key.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>4D output tensor with shape (1, num_heads, sequence_length, sequence_length)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>U</tt> : tensor(int64)</dt>
+<dd>Constrain sequence_length to int tensors.</dd>
 </dl>
 
 
