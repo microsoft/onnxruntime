@@ -230,6 +230,38 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
       params->c, params->ldc));
 }
 
+template <typename T>
+Status RocBlasBatchedGemmOp(const BatchedGemmParams<T>* params) {
+  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  return ROCBLAS_CALL(rocblasGemmBatchedHelper(
+      params->handle,
+      params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+      params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+      params->n, params->m, params->k,
+      &(params->alpha),
+      params->bs, params->ldb,
+      params->as, params->lda,
+      &(params->beta),
+      params->cs, params->ldc,
+      params->batch));
+}
+
+template <typename T>
+Status RocBlasStridedBatchedGemmOp(const StridedBatchedGemmParams<T>* params) {
+  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  return ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
+      params->handle,
+      params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+      params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+      params->n, params->m, params->k,
+      &(params->alpha),
+      params->b, params->ldb, params->stride_b,
+      params->a, params->lda, params->stride_a,
+      &(params->beta),
+      params->c, params->ldc, params->stride_c,
+      params->batch));
+}
+
 }  // namespace internal
 }  // namespace blas
 }  // namespace tunable
