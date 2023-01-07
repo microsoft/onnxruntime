@@ -623,6 +623,8 @@ typedef OrtCustomThreadHandle (*OrtCustomCreateThreadFn)(void* ort_custom_thread
 */
 typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_handle);
 
+typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
+
 /** \brief The C API
 *
 * All C API functions are defined inside this structure as pointers to functions.
@@ -3634,6 +3636,19 @@ struct OrtApi {
   *  \since Version 1.14
   */
   ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
+
+  /** \brief Register custom ops
+   *
+   * Searches for registration_func_name using dlsym and if found calls it.
+   * The registration function must have the signature of RegisterCustomOpsFn:
+   *    OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
+   *
+   * \param[in] options OrtSessionOptions to pass to registration function.
+   * \param[in] registration_func_name Name of registration function to use.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(RegisterCustomOps, _Inout_ OrtSessionOptions* options, _In_ const char* registration_func_name);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

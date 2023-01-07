@@ -605,12 +605,30 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
-  OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
-
+  RegisterCustomOpsFn RegisterCustomOps;
   ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps",
                                                                       (void**)&RegisterCustomOps));
   if (!RegisterCustomOps)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
+
+  return RegisterCustomOps(options, OrtGetApiBase());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOps, _Inout_ OrtSessionOptions* options,
+                    _In_ const char* registration_func_name) {
+  API_IMPL_BEGIN
+
+  if (!registration_func_name) {
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOps: Registration function name must be specified.");
+  }
+
+  RegisterCustomOpsFn RegisterCustomOps;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(nullptr, registration_func_name,
+                                                                      (void**)&RegisterCustomOps));
+  if (!RegisterCustomOps) {
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOps: Registration function was not found");
+  }
 
   return RegisterCustomOps(options, OrtGetApiBase());
   API_IMPL_END
@@ -2611,6 +2629,7 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
+    &OrtApis::RegisterCustomOps,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
