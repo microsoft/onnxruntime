@@ -85,7 +85,7 @@ if (onnxruntime_ENABLE_ATEN)
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json)
 
 if (onnxruntime_USE_MIMALLOC)
     target_link_libraries(onnxruntime_framework mimalloc-static)
