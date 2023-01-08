@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "GraphDescBuilder.h"
+#include <stack>
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -14,9 +15,9 @@ namespace Dml::GraphDescBuilder
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
     {
         // The node's name is optional, and it might be re-created with a different index
-        // and pointer after partitioning occurs.  Use the name of the node's first valid 
+        // and pointer after partitioning occurs.  Use the name of the node's first valid
         // output as the unique identifier for the node itself.
-        for (const auto* arg : node.OutputDefs()) 
+        for (const auto* arg : node.OutputDefs())
         {
             if (arg->Exists())
             {
@@ -31,6 +32,116 @@ namespace Dml::GraphDescBuilder
     }
     #pragma warning(pop)
 
+    static void RemoveUnconnectedNodes(
+        std::vector<NodeInfo>& graphNodes,
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC>& graphInputEdges,
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC>& graphIntermediateEdges,
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC>& graphOutputEdges)
+    {
+        enum class NodeState
+        {
+            NotVisited,
+            Visiting,
+            Visited,
+        };
+
+        struct NodeData
+        {
+            std::vector<uint32_t> predecessorIndices;
+            NodeState state = {};
+        };
+
+        std::vector<NodeData> nodesData(graphNodes.size());
+        for (const DML_INTERMEDIATE_GRAPH_EDGE_DESC& intermediateEdge : graphIntermediateEdges)
+        {
+            nodesData[intermediateEdge.ToNodeIndex].predecessorIndices.push_back(intermediateEdge.FromNodeIndex);
+        }
+
+        std::stack<uint32_t> nodeIndicesToVisit;
+
+        // Start from the outputs of the graph and traverse upwards
+        for (const DML_OUTPUT_GRAPH_EDGE_DESC& outputEdge : graphOutputEdges)
+        {
+            nodeIndicesToVisit.push(outputEdge.FromNodeIndex);
+        }
+
+        while (!nodeIndicesToVisit.empty())
+        {
+            const uint32_t nodeIndex = nodeIndicesToVisit.top();
+            NodeData* node = &nodesData[nodeIndex];
+
+            if (node->state == NodeState::Visited)
+            {
+                nodeIndicesToVisit.pop();
+                continue;
+            }
+
+            if (node->state == NodeState::Visiting)
+            {
+                // The stack has been popped all the way back to this node, which means all its predecessors have been
+                // visited. That means we're done visiting this node too.
+                node->state = NodeState::Visited;
+                nodeIndicesToVisit.pop();
+                continue;
+            }
+
+            node->state = NodeState::Visiting;
+
+            for (uint32_t predecessorNodeIndex : node->predecessorIndices)
+            {
+                // If we're already visiting that node, we are in a cycle and we should fail early
+                ORT_THROW_HR_IF(E_INVALIDARG, nodesData[predecessorNodeIndex].state == NodeState::Visiting);
+                nodeIndicesToVisit.push(predecessorNodeIndex);
+            }
+        }
+
+        // Mapping from the old indices to the new indices that have been shifted after removing earlier nodes
+        std::vector<uint32_t> shiftedIndicesMapping(graphNodes.size());
+
+        uint32_t shift = 0;
+        for (uint32_t nodeIndex = 0; nodeIndex < graphNodes.size(); ++nodeIndex)
+        {
+            if (nodesData[nodeIndex].state == NodeState::NotVisited)
+            {
+                // The node is not connected, so we simply increase the shift value (the node will be overwritten by the following nodes)
+                ++shift;
+            }
+            else
+            {
+                // The node is connected, so we keep it and adjust its mapping
+                graphNodes[nodeIndex - shift] = std::move(graphNodes[nodeIndex]);
+                shiftedIndicesMapping[nodeIndex] = nodeIndex - shift;
+            }
+        }
+
+        graphNodes.resize(graphNodes.size() - shift);
+
+        // Adjust the node indices in the input edges
+        for (auto& inputEdge : graphInputEdges)
+        {
+            inputEdge.ToNodeIndex = shiftedIndicesMapping[inputEdge.ToNodeIndex];
+        }
+
+        // Adjust the node indices in the output edges
+        for (auto& outputEdge : graphOutputEdges)
+        {
+            outputEdge.FromNodeIndex = shiftedIndicesMapping[outputEdge.FromNodeIndex];
+        }
+
+        // Adjust the node indices in the intermediate edges
+        for (auto& intermediateEdge : graphIntermediateEdges)
+        {
+            intermediateEdge.FromNodeIndex = shiftedIndicesMapping[intermediateEdge.FromNodeIndex];
+            intermediateEdge.ToNodeIndex = shiftedIndicesMapping[intermediateEdge.ToNodeIndex];
+        }
+
+        graphIntermediateEdges.erase(
+            std::remove_if(graphIntermediateEdges.begin(), graphIntermediateEdges.end(), [&nodesData](const auto& intermediateEdge){
+                return nodesData[intermediateEdge.FromNodeIndex].state == NodeState::NotVisited || nodesData[intermediateEdge.ToNodeIndex].state == NodeState::NotVisited;
+            }),
+            graphIntermediateEdges.end());
+    }
+
     GraphDesc BuildGraphDesc(
         const uint8_t* isConstGpuGraphInput,
         const size_t isConstGpuGraphInputCount,
@@ -41,7 +152,6 @@ namespace Dml::GraphDescBuilder
         IDMLDevice* device,
         const void* executionHandle)
     {
-        
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
         struct NodeAndIndex
@@ -79,12 +189,12 @@ namespace Dml::GraphDescBuilder
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> graphIntermediateEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> graphOutputEdges;
 
-        // Avoid using separate command lists for small graphs. This value can be reduced by tuning the 
+        // Avoid using separate command lists for small graphs. This value can be reduced by tuning the
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
-        
+
         if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList)
         {
             reuseCommandList = true;
@@ -108,7 +218,7 @@ namespace Dml::GraphDescBuilder
 
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
-        for (size_t sortedNodeIndex : indexedSubGraph.nodes) 
+        for (size_t sortedNodeIndex : indexedSubGraph.nodes)
         {
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
@@ -145,11 +255,11 @@ namespace Dml::GraphDescBuilder
             std::unordered_map<uint32_t, uint32_t> operatorGraphNodeIndexToMainGraphNodeIndexMap;
             uint32_t graphNodeCount = gsl::narrow_cast<uint32_t>(graphNodes.size());
             const bool isNodeAsOpDesc = graphNodeCreateInfo.nodesAsOperatorDesc.size() > 0;
-            
+
             if (isNodeAsOpDesc)
             {
                 // Can't populate graphNodes vector at this point, because operatorDesc may get modified later.
-                for (uint32_t nodeIndex = 0; nodeIndex < graphNodeCreateInfo.nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < graphNodeCreateInfo.nodeCount; nodeIndex++)
                 {
                     ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodesAsOperatorDesc[nodeIndex]);
                     operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, graphNodeCount++);
@@ -157,7 +267,7 @@ namespace Dml::GraphDescBuilder
             }
             else
             {
-                for (uint32_t nodeIndex = 0; nodeIndex < graphNodeCreateInfo.nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < graphNodeCreateInfo.nodeCount; nodeIndex++)
                 {
                     ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodesAsIDMLOperator[nodeIndex].Get());
                     operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, graphNodeCount++);
@@ -191,8 +301,8 @@ namespace Dml::GraphDescBuilder
                         graphInputEdges.push_back(edge);
 
                         // If this is a constant input, set the appropriate flags on the desc
-                        if (isNodeAsOpDesc && 
-                            dmlFusedNodeInputIndex < isConstGpuGraphInputCount && 
+                        if (isNodeAsOpDesc &&
+                            dmlFusedNodeInputIndex < isConstGpuGraphInputCount &&
                             isConstGpuGraphInput[dmlFusedNodeInputIndex])
                         {
                             auto& graphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
@@ -232,8 +342,8 @@ namespace Dml::GraphDescBuilder
                 const onnxruntime::NodeArg* arg = node.OutputDefs()[operatorGraphOutputEdge.GraphOutputIndex];
                 if (arg->Exists())
                 {
-                    nameToNodeAndIndexMap[arg->Name()] = NodeAndIndex { 
-                        operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphOutputEdge.FromNodeIndex], 
+                    nameToNodeAndIndexMap[arg->Name()] = NodeAndIndex {
+                        operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphOutputEdge.FromNodeIndex],
                         operatorGraphOutputEdge.FromNodeOutputIndex
                     };
                 }
@@ -269,7 +379,9 @@ namespace Dml::GraphDescBuilder
             edge.GraphOutputIndex = gsl::narrow_cast<uint32_t>(outputIndex);
             graphOutputEdges.push_back(edge);
         }
-        
+
+        RemoveUnconnectedNodes(graphNodes, graphInputEdges, graphIntermediateEdges, graphOutputEdges);
+
         GraphDesc graphDesc{};
         graphDesc.nodes = std::move(graphNodes);
         graphDesc.inputEdges = std::move(graphInputEdges);
