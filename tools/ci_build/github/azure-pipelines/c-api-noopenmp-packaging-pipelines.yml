@@ -4,7 +4,7 @@ parameters:
   type: boolean
   default: true
 
-- name: UseIncreasedTimeoutForTests 
+- name: UseIncreasedTimeoutForTests
   displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
   type: boolean
   default: false
@@ -664,7 +664,7 @@ jobs:
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU
+    AgentPool : Onnxruntime-Linux-GPU-beta
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
 
