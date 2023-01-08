@@ -394,26 +394,6 @@ class HistogramCalibrater(CalibraterBase):
         """
         Entropy Calibrator collects operators' tensors as well as generates tensor histogram for each operator.
         """
-        while True:
-            inputs = data_reader.get_next()
-            if not inputs:
-                break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
-
-        if len(self.intermediate_outputs) == 0:
-            raise ValueError("No data is collected.")
-
-        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
-        output_dicts_list = [
-            dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
-        ]
-
-        merged_dict = {}
-        for d in output_dicts_list:
-            for k, v in d.items():
-                merged_dict.setdefault(k, []).append(v)
-
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
 
         if not self.collector:
             self.collector = HistogramCollector(
@@ -423,7 +403,22 @@ class HistogramCalibrater(CalibraterBase):
                 num_quantized_bins=self.num_quantized_bins,
                 percentile=self.percentile,
             )
-        self.collector.collect(clean_merged_dict)
+        
+        print("Collecting tensor data and making histogram ...")
+        while True:
+            inputs = data_reader.get_next()
+            if not inputs:
+                break
+            intermediate_output = self.infer_session.run(None, inputs)
+            output_names = [self.infer_session.get_outputs()[i].name for i in range(len(intermediate_output))]
+            output_dicts = dict(zip(output_names, intermediate_output))
+            merged_dict = {}
+            for k, v in output_dicts.items():
+                merged_dict.setdefault(k, []).append(v)
+
+            clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
+
+            self.collector.collect(clean_merged_dict)
 
         self.clear_collected_data()
 
@@ -549,7 +544,6 @@ class HistogramCollector(CalibrationDataCollector):
         return self.histogram_dict
 
     def collect(self, name_to_arr):
-        print("Collecting tensor data and making histogram ...")
 
         # TODO: Currently we have different collect() for entropy and percentile method respectively.
         #       Need unified collect in the future.
