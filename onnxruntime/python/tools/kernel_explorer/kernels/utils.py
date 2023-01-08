@@ -26,7 +26,22 @@ def transab_to_suffix(transab):
     }[tuple(transab)]
 
 
-def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, transa: bool, transb: bool):
+def dtype_to_suffix(dtype):
+    return {
+        "float32": "float",
+        "float16": "half",
+    }[dtype]
+
+
+def get_gemm_bound(
+    dtype: str,
+    a: np.ndarray,
+    b: np.ndarray,
+    c: np.ndarray,
+    transa: bool,
+    transb: bool,
+    a_b_positive=False,  # if both a and b are positive matrix, we can skip coeff computation
+):
     k = b.shape[1] if transb else b.shape[0]
     # The machine epsilon, unit roundoff, the smallest positive floating point number n such that the floating point
     # number that represents 1 + n is greater than 1.
@@ -35,8 +50,11 @@ def get_gemm_bound(dtype: str, a: np.ndarray, b: np.ndarray, c: np.ndarray, tran
     # The following implements error bound 5.7 in paper I. C. Ipsen and H. Zhou, “Probabilistic error analysis for
     # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726–1741, 2020.
     # NOTE: the bound is not tight for float16 when k is large
-    absa_mul_absb = np.abs(a.T if transa else a) @ np.abs(b.T if transb else b)
-    coeff = np.max(absa_mul_absb / np.abs(c))
+    if a_b_positive:
+        coeff = 1.0
+    else:
+        absa_mul_absb = np.abs(a.T if transa else a) @ np.abs(b.T if transb else b)
+        coeff = np.max(absa_mul_absb / np.abs(c))
     gamma_2k = (1.0 + machine_eps) ** (2 * k) - 1.0
     bound_5_7 = coeff * np.sqrt(np.log(2 / 1e-10) * machine_eps * gamma_2k / 2)
     bound = bound_5_7

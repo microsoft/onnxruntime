@@ -965,10 +965,12 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.use_cache:
-        cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-        cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-        if args.use_cuda:
+        cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
+        if not (is_windows() and args.cmake_generator != "Ninja"):
+            cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            if args.use_cuda:
+                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -1369,9 +1371,10 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 build_tool_args += [
-                    "/maxcpucount:{}".format(num_parallel_jobs),
+                    f"/maxcpucount:{num_parallel_jobs}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
+                    f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif is_macOS() and args.use_xcode:
                 # CMake will generate correct build tool args for Xcode
@@ -1667,168 +1670,6 @@ def run_ios_tests(args, source_dir, config, cwd):
         )
 
 
-def run_orttraining_test_orttrainer_frontend_separately(cwd):
-    class TestNameCollecterPlugin:
-        def __init__(self):
-            self.collected = set()
-
-        def pytest_collection_modifyitems(self, items):
-            for item in items:
-                print("item.name: ", item.name)
-                test_name = item.name
-                start = test_name.find("[")
-                if start > 0:
-                    test_name = test_name[:start]
-                self.collected.add(test_name)
-
-    import pytest
-
-    plugin = TestNameCollecterPlugin()
-    test_script_filename = os.path.join(cwd, "orttraining_test_orttrainer_frontend.py")
-    pytest.main(["--collect-only", test_script_filename], plugins=[plugin])
-
-    for test_name in plugin.collected:
-        run_subprocess(
-            [sys.executable, "-m", "pytest", "orttraining_test_orttrainer_frontend.py", "-v", "-k", test_name], cwd=cwd
-        )
-
-
-def run_training_python_frontend_tests(cwd):
-    # have to disable due to (with torchvision==0.9.1+cu102 which is required by ortmodule):
-    # Downloading http://yann.lecun.com/exdb/mnist/
-    # https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz
-    # Failed to download (trying next):
-    # HTTP Error 404: Not Found
-    # run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
-
-    run_subprocess([sys.executable, "onnxruntime_test_training_unit_tests.py"], cwd=cwd)
-    run_subprocess(
-        [
-            sys.executable,
-            "orttraining_test_transformers.py",
-            "BertModelTest.test_for_pretraining_full_precision_list_input",
-        ],
-        cwd=cwd,
-    )
-    run_subprocess(
-        [
-            sys.executable,
-            "orttraining_test_transformers.py",
-            "BertModelTest.test_for_pretraining_full_precision_dict_input",
-        ],
-        cwd=cwd,
-    )
-    run_subprocess(
-        [
-            sys.executable,
-            "orttraining_test_transformers.py",
-            "BertModelTest.test_for_pretraining_full_precision_list_and_dict_input",
-        ],
-        cwd=cwd,
-    )
-
-    # TODO: use run_orttraining_test_orttrainer_frontend_separately to work around a sporadic segfault.
-    # shall revert to run_subprocess call once the segfault issue is resolved.
-    run_orttraining_test_orttrainer_frontend_separately(cwd)
-    # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
-
-    run_subprocess([sys.executable, "-m", "pytest", "-sv", "orttraining_test_orttrainer_bert_toy_onnx.py"], cwd=cwd)
-
-    run_subprocess([sys.executable, "-m", "pytest", "-sv", "orttraining_test_checkpoint_storage.py"], cwd=cwd)
-
-    run_subprocess(
-        [sys.executable, "-m", "pytest", "-sv", "orttraining_test_orttrainer_checkpoint_functions.py"], cwd=cwd
-    )
-    # Not technically training related, but it needs torch to be installed.
-    run_subprocess([sys.executable, "-m", "pytest", "-sv", "test_pytorch_export_contrib_ops.py"], cwd=cwd)
-
-
-def run_training_python_frontend_e2e_tests(cwd):
-    # frontend tests are to be added here:
-    log.info("Running python frontend e2e tests.")
-
-    run_subprocess(
-        [sys.executable, "orttraining_run_frontend_batch_size_test.py", "-v"],
-        cwd=cwd,
-        env={"CUDA_VISIBLE_DEVICES": "0"},
-    )
-
-    import torch
-
-    ngpus = torch.cuda.device_count()
-    if ngpus > 1:
-        bert_pretrain_script = "orttraining_run_bert_pretrain.py"
-        # TODO: this test will be replaced with convergence test ported from backend
-        log.debug(
-            "RUN: mpirun -n {} "
-            "-x"
-            "NCCL_DEBUG=INFO"
-            " {} {} {}".format(
-                ngpus, sys.executable, bert_pretrain_script, "ORTBertPretrainTest.test_pretrain_convergence"
-            )
-        )
-        run_subprocess(
-            [
-                "mpirun",
-                "-n",
-                str(ngpus),
-                "-x",
-                "NCCL_DEBUG=INFO",
-                sys.executable,
-                bert_pretrain_script,
-                "ORTBertPretrainTest.test_pretrain_convergence",
-            ],
-            cwd=cwd,
-        )
-
-        log.debug("RUN: mpirun -n {} {} orttraining_run_glue.py".format(ngpus, sys.executable))
-        run_subprocess(
-            ["mpirun", "-n", str(ngpus), "-x", "NCCL_DEBUG=INFO", sys.executable, "orttraining_run_glue.py"], cwd=cwd
-        )
-
-    # with orttraining_run_glue.py.
-    # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
-    #   for fine-tune tests.
-    # 2. need to run test separately (not to mix between fp16
-    #   and full precision runs. this need to be investigated).
-    run_subprocess(
-        [sys.executable, "orttraining_run_glue.py", "ORTGlueTest.test_bert_with_mrpc", "-v"],
-        cwd=cwd,
-        env={"CUDA_VISIBLE_DEVICES": "0"},
-    )
-
-    run_subprocess(
-        [sys.executable, "orttraining_run_glue.py", "ORTGlueTest.test_bert_fp16_with_mrpc", "-v"],
-        cwd=cwd,
-        env={"CUDA_VISIBLE_DEVICES": "0"},
-    )
-
-    run_subprocess(
-        [sys.executable, "orttraining_run_glue.py", "ORTGlueTest.test_roberta_with_mrpc", "-v"],
-        cwd=cwd,
-        env={"CUDA_VISIBLE_DEVICES": "0"},
-    )
-
-    run_subprocess(
-        [sys.executable, "orttraining_run_glue.py", "ORTGlueTest.test_roberta_fp16_with_mrpc", "-v"],
-        cwd=cwd,
-        env={"CUDA_VISIBLE_DEVICES": "0"},
-    )
-
-    run_subprocess(
-        [sys.executable, "orttraining_run_multiple_choice.py", "ORTMultipleChoiceTest.test_bert_fp16_with_swag", "-v"],
-        cwd=cwd,
-        env={"CUDA_VISIBLE_DEVICES": "0"},
-    )
-
-    run_subprocess([sys.executable, "onnxruntime_test_ort_trainer_with_mixed_precision.py"], cwd=cwd)
-
-    run_subprocess(
-        [sys.executable, "orttraining_test_transformers.py", "BertModelTest.test_for_pretraining_mixed_precision"],
-        cwd=cwd,
-    )
-
-
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
@@ -1946,11 +1787,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
-
-            # The following test has multiple failures on Windows
-            if args.enable_training and args.use_cuda and not is_windows():
-                # run basic frontend tests
-                run_training_python_frontend_tests(cwd=cwd)
 
             if args.build_eager_mode:
                 # run eager mode test

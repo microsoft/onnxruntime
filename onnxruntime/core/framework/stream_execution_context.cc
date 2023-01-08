@@ -13,7 +13,7 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                 int32_t num_streams,
                                                 gsl::span<const size_t> notification_owners,
                                                 size_t num_barriers,
-                                                const DeviceStreamCollection& device_stream_map,
+                                                const DeviceStreamCollection* device_stream_map,
                                                 gsl::span<const int> feed_mlvalue_idxs,
                                                 gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                                 std::vector<OrtValue>& fetches,
@@ -26,14 +26,14 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                                                   fetches,
                                                                                   fetch_allocators,
                                                                                   sess_state,
-                                                                                  device_stream_map.GetStreams()),
+                                                                                  device_stream_map ? device_stream_map->GetStreams() : gsl::span<Stream*>({})),
                                                                            logger_(&sess_logger),
                                                                            single_thread_mode_(single_thread_mode),
                                                                            device_stream_map_(device_stream_map),
                                                                            count_down_barriers_(num_barriers) {
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
-    auto* stream = device_stream_map_.GetStream(notification_owners[i]);
+    auto* stream = device_stream_map_ ? device_stream_map_->GetStream(notification_owners[i]) : nullptr;
     if (stream)
       notifications_.emplace_back(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0));
     else
@@ -69,8 +69,12 @@ bool StreamExecutionContext ::DecCountDownBarrier(size_t barrier_id) {
 }
 
 Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
-  ORT_ENFORCE(idx < device_stream_map_.NumStreams());
-  return device_stream_map_.GetStream(idx);
+  if (device_stream_map_) {
+    ORT_ENFORCE(idx < device_stream_map_->NumStreams());
+    return device_stream_map_->GetStream(idx);
+  } else {
+    return nullptr;
+  }
 }
 
 #else
@@ -110,15 +114,15 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
 }
 
 synchronize::Notification* StreamExecutionContext ::GetNotification(size_t /*idx*/) {
-    ORT_THROW("Try to get notification in a build which doesn't enable Stream!");
+  ORT_THROW("Try to get notification in a build which doesn't enable Stream!");
 }
 
 bool StreamExecutionContext ::DecCountDownBarrier(size_t /*barrier_id*/) {
-    ORT_THROW("Try to decrease barrier in a build which doesn't enable Stream!");
+  ORT_THROW("Try to decrease barrier in a build which doesn't enable Stream!");
 }
 
 Stream* StreamExecutionContext ::GetDeviceStream(size_t /*idx*/) {
-    return nullptr;
+  return nullptr;
 }
 #endif
 
