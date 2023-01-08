@@ -1805,7 +1805,6 @@ class PlannerImpl {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          bool requires_notification = false;
           // !! special case, Shape op's output is ready for all the EPs, so don't need notification
           if (node->OpType() != "Shape") {
             for (auto* output : node->OutputDefs()) {
@@ -1815,23 +1814,20 @@ class PlannerImpl {
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                   // there are two cases we need notification:
                   // 1. the consumer is not in the same stream
-                  // 2. the consumer is in the same stream(non-cpu device), but it consumer a CPU tensor from an non-shape op.
+                  // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
                   if (node_stream_map_[it->Index()] != i ||
                       (node_stream_map_[it->Index()] == i &&
                        execution_plan[i]->device_.Type() != OrtDevice::CPU &&
                        plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
-                    requires_notification = true;
+                    node_to_notification[node_index] = num_notifications;
+                    num_notifications++;
                     break;
                   }
                 }
               }
             }
-          }
-          if (requires_notification) {
-            node_to_notification[node_index] = num_notifications;
-            num_notifications++;
           }
         }
       }
@@ -1898,7 +1894,14 @@ class PlannerImpl {
                   OrtValueIndex input_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(inputs->Name(), input_arg_idx));
                   auto& consumer_device = plan_.allocation_plan[input_arg_idx].location.device;
-                  if (devices_to_wait_on.find(consumer_device.Type()) == devices_to_wait_on.end()) {
+
+                  // launch WaitOnEPStep only when (same condition when initializing node_to_notification)
+                  // 1. input node and current node are in different streams
+                  // 2. current node consumes a CPU tensor from an non-shape op.
+                  size_t inputNodeStream = node_stream_map_[it->Index()];
+                  if (it->OpType() != "Shape" &&
+                      (inputNodeStream != i || (execution_plan[inputNodeStream]->device_.Type() != OrtDevice::CPU && consumer_device.Type() == OrtDevice::CPU)) &&
+                      devices_to_wait_on.find(consumer_device.Type()) == devices_to_wait_on.end()) {
                     auto wait_handle = stream_handle_registry.GetWaitHandle(
                         execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
                         consumer_device.Type());
