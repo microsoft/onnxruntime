@@ -548,6 +548,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_Hailo(int use_arena) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_Hailo(p_, use_arena));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }

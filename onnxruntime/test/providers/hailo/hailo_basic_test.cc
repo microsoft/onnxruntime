@@ -7,6 +7,8 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/constants.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -288,6 +290,17 @@ TEST(HailoCustomOpTest, one_session_multiple_threads_stress)
             th.join();
         }
     }
+}
+
+TEST(HailoCustomOpTest, hailo_provider_in_ort_api)
+{
+    const OrtApi* ort_api = OrtGetApiBase()->GetApi(11);
+    OrtSessionOptions* soptions;
+    auto so_status = ort_api->CreateSessionOptions(&soptions);
+    ASSERT_TRUE(so_status == nullptr); // nullptr for Status* indicates success (As written in onnxruntime_c_api.h)
+
+    auto provider_status = ort_api->SessionOptionsAppendExecutionProvider_Hailo(soptions, 1);
+    ASSERT_TRUE(provider_status == nullptr); // nullptr for Status* indicates success (As written in onnxruntime_c_api.h)
 }
 
 }  // namespace test
