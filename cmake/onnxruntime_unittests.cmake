@@ -1160,6 +1160,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+
+    if(NOT WIN32)
+      # add linker flag so dlsym can find symbol in main image.
+      # required to make CApiTest.TestRegisterCustomOpsUsingFuncName work without building a totally separate library
+      # containing that function.
+      # NOTE: in theory "-Wl,-export_dynamic" is more generic but only adding rdynamic works on Ubuntu.
+      # NOTE: need to figure out what clang requires on Android/iOS. possibly
+      target_link_options(onnxruntime_shared_lib_test PRIVATE "-rdynamic")
+    endif()
+
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
         "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
@@ -1167,6 +1177,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
     endif()
+
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD
