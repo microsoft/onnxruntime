@@ -6,10 +6,10 @@ version = "0.0.14"
 
 description = "Wrapper around Microsoft's ONNX Runtime"
 documentation = "https://docs.rs/onnxruntime"
-homepage = "https://github.com/nbigaouette/onnxruntime-rs"
+homepage = "https://onnxruntime.ai/"
 license = "MIT OR Apache-2.0"
 readme = "../README.md"
-repository = "https://github.com/nbigaouette/onnxruntime-rs"
+repository = "https://github.com/microsoft/onnxruntime"
 
 categories = ["science"]
 keywords = ["neuralnetworks", "onnx", "bindings"]
