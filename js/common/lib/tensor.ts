@@ -234,70 +234,123 @@ export interface TensorConstructor {
   // #endregion
 }
 
-export interface ImageFromTensorOptions {
-  format?: 'RGB'|'RGBA'|'BGR'|'RBG';
+/**
+ * Specify the image format. Assume 'RGBA' if ommitted.
+ */
+export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
+
+/**
+ * Describes Tensor configuration to an image data.
+ */
+export interface TensorToImageDataOptions {
+  /**
+  * Describes Tensor channels order.
+  */
+  format?: ImageFormat;
+  /**
+  * Tensor channel layout - default is 'NHWC'
+  */
   tensorLayout?: 'NHWC'|'NCHW';
+  /**
+  * Describes Tensor Height - can be accessed via tensor dimensions as well
+  */
   height?: number;
+  /**
+  * Describes Tensor Width - can be accessed via tensor dimensions as well
+  */
   width?: number;
+   /**
+  * Describes normalization parameters to ImageData conversion from tensor - default values - Bias: 0, Mean: 255 
+  */
   norm?: {
-    normBias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
-    normMean?: number;
-  };  // Todo add support - |[number,number,number]|[number,number,number,number];
+    bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+    mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+  };  
 }
+/**
+ * Describes Tensor and Image configuration to an image data.
+ */
 export interface TensorFromImageOptions {
-  bitmapFormat?: 'RGB'|'RGBA'|'BGR'|'RBG';  // used only in the case of image bitmap is used for
-  tensorFormat?: 'RGB'|'RGBA'|'BGR'|'RBG';
+  /**
+  * Describes image data format - will be used only in the case of ImageBitMap
+  */
+  bitmapFormat?: ImageFormat;  
+  /**
+  * Describes Tensor channels order - can differ from original image
+  */
+  tensorFormat?: ImageFormat;
+  /**
+  * Tensor data type - default is 'float32'
+  */
   dataType?: 'float32'|'uint8';
+  /**
+  * Tensor channel layout - default is 'NHWC'
+  */
   tensorLayout?: 'NHWC'|'NCHW';
+  /**
+  * Describes Image Height - Required only in the case of ImageBitMap
+  */
   height?: number;
+  /**
+  * Describes Image Width - Required only in the case of ImageBitMap
+  */
   width?: number;
+  /**
+  * Describes Tensor Height - can be accessed via tensor dimensions as well
+  */
   tensorHeight?: number;
+  /**
+  * Describes Tensor Width - can be accessed via tensor dimensions as well
+  */
   tensorWidth?: number;
+  /**
+  * Describes normalization parameters to tensor conversion from image data - default values - Bias: 0, Mean: 255 
+  */
   norm?: {
-    normBias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
-    normMean?: number;
-  };  // Todo add support - |[number,number,number]|[number,number,number,number];
+    bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+    mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+  };
 }
 export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param image - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
-   * @param Options - Optional - Interface describing input image & output tensor -
+   * @param imageEle - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
+   * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageData, Options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(imageEle: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param image - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
-   * @param Options - Optional - Interface describing input image & output tensor -
+   * @param imageEle - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
+   * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: HTMLImageElement, Options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(imageEle: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param image - string - Asumming the string is a URL to an image
-   * @param Options - Optional - Interface describing input image & output tensor -
+   * @param imageEle - string - Asumming the string is a URL to an image
+   * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: string, Options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(imageEle: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param image - ImageBitmap Type - since the data is stored as ImageData no need for format parameter
-   * @param Options - NOT Optional - Interface describing input image & output tensor -
+   * @param imageEle - ImageBitmap Type - since the data is stored as ImageData no need for format parameter
+   * @param options - NOT Optional - Interface describing input image & output tensor -
    * Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(image: ImageBitmap, Options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(imageEle: ImageBitmap, options?: TensorFromImageOptions): Promise<Tensor>;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

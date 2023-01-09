@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {ImageFromTensorOptions, Tensor, TypedTensor} from './tensor';
+import {TensorToImageDataOptions, Tensor, TypedTensor} from './tensor';
 
 interface Properties {
   /**
@@ -28,5 +28,5 @@ export interface TypedTensorUtils<T extends Tensor.Type> extends Properties, Typ
    * 0-255, NHWC
    * @returns An ImageData instance which can be used to draw on canvas
    */
-  toImage(tensorFormat?: ImageFromTensorOptions): ImageData;
+  toImageData(options?: TensorToImageDataOptions): ImageData;
 }

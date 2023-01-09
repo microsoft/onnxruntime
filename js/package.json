@@ -23,7 +23,7 @@
     "prepare-node-tests": "tsc --build scripts && node ./scripts/prepare-onnx-node-tests"
   },
   "license": "MIT",
-  "dependencies": {
+  "devDependencies": {
     "@types/node": "^18.11.18"
   }
 }
