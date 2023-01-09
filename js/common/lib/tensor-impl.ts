@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorToImageDataOptions, Tensor as TensorInterface, TensorFromImageOptions} from './tensor';
+import {Tensor as TensorInterface, TensorFromImageOptions, TensorToImageDataOptions} from './tensor';
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;
@@ -451,13 +451,9 @@ export class Tensor implements TensorInterface {
       const height = this.dims[2];
       const channels = this.dims[1];
 
-      const inputformat =
-      options !== undefined ? (options.format !== undefined ? options.format : 'RGB') : 'RGB';
-      const normMean = options !== undefined ?
-          (options.norm?.mean !== undefined ? options.norm.mean : 255) :
-          255;
-      const normBias =
-      options !== undefined ? (options.norm?.bias !== undefined ? options.norm.bias : 0) : 0;
+      const inputformat = options !== undefined ? (options.format !== undefined ? options.format : 'RGB') : 'RGB';
+      const normMean = options !== undefined ? (options.norm?.mean !== undefined ? options.norm.mean : 255) : 255;
+      const normBias = options !== undefined ? (options.norm?.bias !== undefined ? options.norm.bias : 0) : 0;
       const offset = height * width;
 
       if (options !== undefined) {
