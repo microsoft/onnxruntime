@@ -789,7 +789,6 @@ Status WindowsEnv::GetSymbolFromLibrary(void* handle, const std::string& symbol_
   bool global_search = handle == nullptr;
 
   if (global_search) {
-    // handle = GetModuleHandle(NULL);
     *symbol = dlfcn_win32::SearchModulesForSymbol(symbol_name.c_str());
   } else {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());

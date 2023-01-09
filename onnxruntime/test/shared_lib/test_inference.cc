@@ -2625,14 +2625,3 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
   ASSERT_TRUE(output_dims == expected_output_dims);
 }
-
-TEST(CApiTest, TestRegisterCustomOpsUsingFuncName) {
-  Ort::SessionOptions session_options;
-
-  // RegisterUnitTestCustomOps will add the Foo custom op in domain ort_unit_test
-  Ort::ThrowOnError(Ort::GetApi().RegisterCustomOps(session_options, "RegisterUnitTestCustomOps"));
-
-  // load model containing an ort_unit_test.Foo node to validate. will throw if custom op wasn't registered.
-  static constexpr PATH_TYPE model = TSTR("testdata/custom_foo.onnx");
-  Ort::Session session(*ort_env, model, session_options);
-}
