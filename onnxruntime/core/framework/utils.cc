@@ -21,7 +21,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
 #ifdef USE_AZURE
-#include "core/framework/azure_executor.h"
+#include "core/framework/cloud_executor.h"
 #endif
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
@@ -788,9 +788,9 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #ifdef USE_AZURE
   const auto iter = run_options.config_options.configurations.find("use_azure");
   if (iter != run_options.config_options.configurations.end() && iter->second != "0") {
-    AzureExecutor azure_executor(run_options.config_options.configurations);
+    CloudExecutor cloud_executor(run_options.config_options.configurations);
     const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
-    return azure_executor.Execute(session_state,
+    return cloud_executor.Execute(session_state,
                                   feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                   feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
                                   logger);

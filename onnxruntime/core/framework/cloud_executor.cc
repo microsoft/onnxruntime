@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #ifdef USE_AZURE
-#include "core/framework/azure_executor.h"
-#include "core/framework/azure_invoker.h"
+#include "core/framework/cloud_executor.h"
+#include "core/framework/cloud_invoker.h"
 #include "core/framework/session_state.h"
 
 namespace onnxruntime {
 
-common::Status AzureExecutor::Execute(const SessionState& session_state, gsl::span<const int>,
+common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::span<const int>,
                                       gsl::span<const OrtValue> feeds, gsl::span<const int>,
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, CustomAllocator>&,
@@ -32,9 +32,9 @@ common::Status AzureExecutor::Execute(const SessionState& session_state, gsl::sp
   //create invoker
   static const OrtDevice cpu_device;
   auto allocator = session_state.GetAllocator(cpu_device);
-  std::unique_ptr<AzureEndPointInvoker> invoker;
+  std::unique_ptr<CloudEndPointInvoker> invoker;
 
-  auto status = AzureEndPointInvoker::CreateInvoker(
+  auto status = CloudEndPointInvoker::CreateInvoker(
       session_state.GetSessionOptions().config_options.configurations,
       allocator, invoker);
 

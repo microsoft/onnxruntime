@@ -7,11 +7,11 @@
 #include "core/framework/iexecutor.h"
 namespace onnxruntime {
 
-class AzureExecutor : public onnxruntime::IExecutor {
+class CloudExecutor : public onnxruntime::IExecutor {
  public:
-  explicit AzureExecutor(const std::unordered_map<std::string, std::string>& run_options) : run_options_(run_options){};
-  ~AzureExecutor() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AzureExecutor);
+  explicit CloudExecutor(const std::unordered_map<std::string, std::string>& run_options) : run_options_(run_options){};
+  ~CloudExecutor() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CloudExecutor);
 
   common::Status Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,

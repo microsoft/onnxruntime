@@ -4,7 +4,7 @@
 #ifdef USE_AZURE
 #include "http_client.h"
 #include "core/common/common.h"
-#include "core/framework/azure_invoker.h"
+#include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
 
 #define CHECK_TRITON_ERR(ret, msg)                                                           \
@@ -26,17 +26,17 @@ const char* kAzureEndpointType = "azure.endpoint_type";
 const char* kAzureAuthKey = "azure.auth_key";
 const char* kAzureTriton = "triton";
 
-AzureEndPointInvoker::AzureEndPointInvoker(const AzureEndPointConfig& config,
+CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
   if (!allocator_) {
     ORT_THROW("Cannot create invoker on invalid allocator");
   }
 }
 
-class TritonInvoker : public AzureEndPointInvoker {
+class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
-  TritonInvoker(const AzureEndPointConfig& config, const AllocatorPtr& allocator);
-  onnxruntime::Status Send(const AzureEndPointConfig& run_options,
+  AzureTritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
+  onnxruntime::Status Send(const CloudEndPointConfig& run_options,
                            const InlinedVector<std::string>& input_names,
                            gsl::span<const OrtValue> ort_inputs,
                            const InlinedVector<std::string>& output_names,
@@ -53,7 +53,7 @@ class TritonInvoker : public AzureEndPointInvoker {
   std::unique_ptr<triton::client::InferenceServerHttpClient> triton_client_;
 };
 
-std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
+std::string AzureTritonInvoker::MapDataType(int32_t ort_data_type) {
   std::string triton_data_type;
   switch (ort_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -105,7 +105,7 @@ std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
   return triton_data_type;
 }
 
-onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type, const onnxruntime::VectorInt64& dim) const {
+onnxruntime::TensorPtr AzureTritonInvoker::CreateTensor(const std::string& data_type, const onnxruntime::VectorInt64& dim) const {
   if (data_type == "FP32") {
     return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), TensorShape{dim}, allocator_);
   } else if (data_type == "UINT8") {
@@ -137,8 +137,8 @@ onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type,
   }
 }
 
-TritonInvoker::TritonInvoker(const AzureEndPointConfig& config,
-                             const AllocatorPtr& allocator) : AzureEndPointInvoker(config, allocator) {
+AzureTritonInvoker::AzureTritonInvoker(const CloudEndPointConfig& config,
+                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
   ReadConfig(kAzureUri, uri_);
   ReadConfig(kAzureModelName, model_name_);
   ReadConfig(kAzureModelVer, model_ver_, false);
@@ -150,7 +150,7 @@ TritonInvoker::TritonInvoker(const AzureEndPointConfig& config,
   }
 }
 
-onnxruntime::Status TritonInvoker::Send(const AzureEndPointConfig& run_options,
+onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_options,
                                         const InlinedVector<std::string>& input_names,
                                         gsl::span<const OrtValue> ort_inputs,
                                         const InlinedVector<std::string>& output_names,
@@ -268,7 +268,7 @@ onnxruntime::Status TritonInvoker::Send(const AzureEndPointConfig& run_options,
   return Status::OK();
 }
 
-void AzureEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
+void CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
   const auto iter = config_.find(config_name);
   if (config_.end() != iter) {
     config_val = iter->second;
@@ -277,15 +277,15 @@ void AzureEndPointInvoker::ReadConfig(const char* config_name, std::string& conf
   }
 }
 
-Status AzureEndPointInvoker::CreateInvoker(const AzureEndPointConfig& config,
+Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator,
-                                           std::unique_ptr<AzureEndPointInvoker>& invoker) {
+                                           std::unique_ptr<CloudEndPointInvoker>& invoker) {
   auto status = Status::OK();
   ORT_TRY {
     const auto iter = config.find(kAzureEndpointType);
     if (config.end() != iter) {
       if (iter->second == kAzureTriton) {
-        invoker = std::make_unique<TritonInvoker>(config, allocator);
+        invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
         return status;
       } // else other endpoint types ...
     }
