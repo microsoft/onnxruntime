@@ -29,7 +29,7 @@ using json = nlohmann::json;
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif  // USE_CUDA
-
+#include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -1609,7 +1609,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
-  ASSERT_TRUE(so.config_options.AddConfigEntry("session.node_partition_config_file",
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kNodePartitionConfigFile,
                                                "./testdata/multi_stream_models/simplified_ssd_cpu.json")
                   .IsOK());
   InferenceSession sess{so, GetEnvironment()};
@@ -1676,7 +1676,7 @@ TEST_F(PlannerTest, TestMultiStreamDumpConfig) {
   {
     SessionOptions sess_opt;
     sess_opt.graph_optimization_level = TransformerLevel::Default;
-    ASSERT_TRUE(sess_opt.config_options.AddConfigEntry("session.node_partition_config_file",
+    ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
                                                        config_file_path)
                     .IsOK());
 
@@ -1726,7 +1726,7 @@ TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
-  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry("session.node_partition_config_file",
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
                                                      config_file_path)
                   .IsOK());
 

@@ -79,15 +79,17 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 // but we can't assume any execution order between sequences, unless there is a data dependency.
 class IGraphPartitioner {
  public:
+  // DeviceBasedPartitioner is the default, who partitions a graph based off device information.
+  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
+  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
+  // We will add more optimized partitioner later.
   enum GraphPartitioningStrategy {
     DeviceBasedPartition = 0,
     Unknown,
   };
-  // DeviceBasedPartition is the default, who partitions a graph based off device information.
-  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
-  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
-  // We will add more optimized partitioner later.
   virtual ~IGraphPartitioner() = default;
+  // create the partition based on the partition type.
+  // perform partition based on the user input when provided.
   static std::unique_ptr<IGraphPartitioner> CreateGraphPartitioner(const logging::Logger& logger,
                                                                    const std::basic_string<PATH_CHAR_TYPE>& config_file);
   virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
@@ -95,11 +97,13 @@ class IGraphPartitioner {
                                 std::vector<InlinedVector<NodeIndex>>& stream_nodes,
                                 ExecutionOrder execution_order) = 0;
   virtual const char* Type() const = 0;
+  // return total number of streams
   virtual size_t Streams() const = 0;
 
  protected:
   IGraphPartitioner(const logging::Logger& logger,
-                    const std::basic_string<PATH_CHAR_TYPE>& config_file) : logger_(logger), config_file_(config_file) {}
+                    const std::basic_string<PATH_CHAR_TYPE>& config_file) : logger_(logger),
+                                                                            config_file_(config_file) {}
   const logging::Logger& logger_;
   std::basic_string<PATH_CHAR_TYPE> config_file_;
 };

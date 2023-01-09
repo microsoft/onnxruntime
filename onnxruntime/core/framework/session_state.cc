@@ -1350,12 +1350,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
 
-  std::string raw_partition_config_file =
+#ifdef _WIN32
+
+  std::basic_string<PATH_CHAR_TYPE> partition_config_file =
+      ToWideString(session_options.config_options.GetConfigOrDefault(
+          kNodePartitionConfigFile, ""));
+
+#else
+
+  std::basic_string<PATH_CHAR_TYPE> partition_config_file =
       session_options.config_options.GetConfigOrDefault(
           kNodePartitionConfigFile, "");
 
-  std::basic_string<PATH_CHAR_TYPE> partition_config_file{raw_partition_config_file.begin(),
-                                                          raw_partition_config_file.end()};
+#endif
 
   auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                               execution_providers_, kernel_create_info_map_,
