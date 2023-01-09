@@ -93,14 +93,12 @@ class SessionState {
  public:
   SessionState(Graph& graph,
                const ExecutionProviders& execution_providers,
-               bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
-               bool use_deterministic_compute = false,
-               bool enable_mem_reuse = true,
+               const SessionOptions& sess_options,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr);
 
   ~SessionState() {
@@ -230,7 +228,7 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> tensor_inputs,
                                        MemoryPatternGroup mem_patterns) const;
 
-  bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
+  bool GetUseDeterministicCompute() const { return sess_options_.use_deterministic_compute; }
 
   /**
   Get enable memory pattern flag
@@ -301,7 +299,6 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
-                              const SessionOptions& session_options = {},
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
@@ -325,7 +322,7 @@ class SessionState {
     return subgraph_session_states_;
   }
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
 
   void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
@@ -345,6 +342,8 @@ class SessionState {
     return graph_executions_counter_;
   }
 #endif
+
+  const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -506,8 +505,8 @@ class SessionState {
 
   const DataTransferManager& data_transfer_mgr_;
 
-  bool use_deterministic_compute_;
-  bool enable_mem_reuse_;
+  const SessionOptions& sess_options_;
+
   std::optional<NodeIndexInfo> node_index_info_;
 
   // Container to store pre-packed weights to share between sessions.
@@ -550,12 +549,14 @@ class SessionState {
   size_t graph_executions_counter_ = 0;
 #endif
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 
   // lock for the device stream pool
   mutable OrtMutex device_stream_pool_mutex_;
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+  // flag to indicate whether current session using any EP that create device stream dynamically.
+  bool has_device_stream_enabled_ep_ = false;
 #endif
 };
 
