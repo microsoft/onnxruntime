@@ -505,7 +505,7 @@ static int64_t CalculateMemoryPatternsKey(const gsl::span<const OrtValue>& tenso
   return key;
 }
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 namespace {
 Status ResolveDimParams(const GraphViewer& graph,
                         const InlinedHashMap<std::string, TensorShape>& feeds,
@@ -750,7 +750,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
     MemoryPatternGroup mem_patterns;
     InlinedHashMap<int, TensorShape> inferred_shapes;
     if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
@@ -958,7 +958,7 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());

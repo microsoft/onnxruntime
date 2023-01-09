@@ -126,7 +126,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
     std::vector<NodeIndex> step_pc;
 #endif
    public:
@@ -166,7 +166,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   size_t num_barriers{0};
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
   InlinedVector<NodeIndex> node_execution_order_in_training;
 #endif
 

@@ -39,7 +39,7 @@
 #endif
 
 #include "core/framework/stream_handles.h"
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #include "core/framework/program_region.h"
 #endif
 
@@ -292,7 +292,7 @@ class SessionState {
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
   void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
@@ -386,7 +386,7 @@ class SessionState {
                                   const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
       gsl::span<const OrtValue> inputs,
       gsl::span<const int> feed_mlvalue_idxs,
@@ -488,7 +488,7 @@ class SessionState {
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
   // This is mutable under mutex in training scenarios so execution frame would make a copy
   // of the value when created.
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
   mutable NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
 #else
   NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
@@ -515,7 +515,8 @@ class SessionState {
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
+// Needed for ORTTRainer. Should be removed along with ORTTrainer code
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else

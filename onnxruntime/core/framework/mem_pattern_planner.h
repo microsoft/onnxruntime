@@ -32,7 +32,7 @@ class MemPatternPlanner {
   // only the Training code currently uses the program counter based logic
   MemPatternPlanner(bool using_counters) : using_counters_{using_counters} {}
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
   // TODO: OverlappingTimeSchedules should be private
   // Returns true if there is an intersection between two time schedules.
   // ProgramCounter values are validated when the execution plan is created
@@ -203,7 +203,7 @@ class MemPatternPlanner {
   MemoryPattern GenerateMemPattern() const {
     std::lock_guard<OrtMutex> lock(lock_);
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
     if (using_counters_) {
       // Time schedules of overlapping memory blocks SHOULD NOT intersect.
       for (size_t index_1 = 0; index_1 < allocs_.size(); index_1 += 1) {
