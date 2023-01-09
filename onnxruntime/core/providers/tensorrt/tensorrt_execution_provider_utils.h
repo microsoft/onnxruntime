@@ -202,7 +202,6 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 class TRTModelIdGenerator {
  public:
   int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
-    std::cout << "[TensorRT EP] Generating model ID" << std::endl;  // TODO: Remove
     model_hash = 0;
 
     // find the top level graph
@@ -219,11 +218,9 @@ class TRTModelIdGenerator {
     };
 
     // Use model name instead of path to avoid cache regeneration if path changes
-    std::cout << "[TensorRT EP] Getting model name" << std::endl;  // TODO: Remove
     const auto& model_path = main_graph.ModelPath();
     if (!model_path.IsEmpty()) {  // Has a root and maybe some path components after the root path.
       const auto& path_components = model_path.GetComponents();
-      std::cout << "[TensorRT EP] Number of model path components " << path_components.size() << std::endl;  // Remove
       PathString path_string = path_components.empty() ? model_path.GetRootPathString() :
           path_components.back();
 
