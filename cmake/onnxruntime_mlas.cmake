@@ -43,6 +43,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
 
 if(MLAS_AMX_SUPPORTED)
   target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_AMX_SUPPORTED)
+else()
+  message(WARNING "AMX instructions NOT supported due to lack of compiler tool chain!")
 endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
