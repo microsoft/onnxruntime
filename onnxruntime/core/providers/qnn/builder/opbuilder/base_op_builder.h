@@ -33,6 +33,7 @@ class BaseOpBuilder : public IOpBuilder {
 
  protected:
   virtual Qnn_DataType_t GetSupportedOutputDataType(size_t index, Qnn_DataType_t qnn_data_type) const {
+    ORT_UNUSED_PARAMETER(index);
     return qnn_data_type;
   }
 
