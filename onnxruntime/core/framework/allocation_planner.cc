@@ -2212,7 +2212,18 @@ Status SequentialPlanner::CreatePlan(
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef ORT_ENABLE_STREAM
-
+/*
+DeviceBasedPartitioner stores config in json format:
+{
+"type":"DeviceBasedPartitioner",
+"streams":[
+           ["node_1","node_7"],
+           ["node_2","node_4","node_5"],
+           ["node_3","node_6"],
+          ]
+}
+Each sub-array of "streams" contains nodes on a certain device.
+*/
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
   DeviceBasedPartitioner(const logging::Logger& logger,
