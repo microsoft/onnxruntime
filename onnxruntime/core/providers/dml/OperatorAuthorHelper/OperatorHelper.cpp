@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "OperatorHelper.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 
 namespace OperatorHelper
 {
@@ -614,11 +615,18 @@ namespace OperatorHelper
             ML_CHECK_VALID_ARGUMENT(dimensionCount > 2,
                 "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
 
-            std::rotate(newSizes.begin(), newSizes.end() - 2, newSizes.end() - 1);
-            std::rotate(newStrides.begin(), newStrides.end() - 2, newStrides.end() - 1);
+            uint32_t leadingDim = newSizes[0];
+            uint32_t leadingStride = newStrides[0];
+            for (size_t i = 0; i < newSizes.size() - 2; ++i)
+            {
+                newSizes[i] = newSizes[i + 1];
+                newStrides[i] = newStrides[i + 1];
+            }
+            newSizes[newSizes.size() - 2] = leadingDim;
+            newStrides[newStrides.size() - 2] = leadingStride;
         }
 
-        if (transpose)
+        if (transpose && dimensionCount > 1)
         {
             std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
             std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
@@ -1668,65 +1676,31 @@ namespace OperatorHelper
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 2);
 
-        // Following numpy.matmul for shape inference:
-        // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
-        // The behavior depends on the arguments in the following way.
-        // * If both arguments are 2 - D they are multiplied like conventional matrices.
-        // * If either argument is N - D, N > 2, it is treated as a stack of matrices residing in the last two indexes and broadcast accordingly.
-        // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions. After matrix multiplication the prepended 1 is removed.
-        // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions. After matrix multiplication the appended 1 is removed.
-
         auto inputShape0 = shapeInfo.GetInputTensorShape(0);
         auto inputShape1 = shapeInfo.GetInputTensorShape(1);
         ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
 
-        auto [sizesA, stridesA] = GetFusedMatMulSizesAndStrides(
-            inputShape0,
-            shapeInfo.GetOptionalAttribute(AttrName::TransBatchA, -1),
-            shapeInfo.GetOptionalAttribute(AttrName::TransA, -1)
-        );
-        inputShape0 = sizesA;
+        std::vector<int64_t> aSizes(inputShape0.begin(), inputShape0.end());
+        std::vector<int64_t> bSizes(inputShape1.begin(), inputShape1.end());
+        auto transAAttr = shapeInfo.GetOptionalAttribute<int64_t>(AttrName::TransA, 0);
+        auto transBAttr = shapeInfo.GetOptionalAttribute<int64_t>(AttrName::TransB, 0);
 
-        auto [sizesB, stridesB] = GetFusedMatMulSizesAndStrides(
-            inputShape1,
-            shapeInfo.GetOptionalAttribute(AttrName::TransBatchB, -1),
-            shapeInfo.GetOptionalAttribute(AttrName::TransB, -1)
-        );
-        inputShape1 = sizesB;
+        const bool transA = transAAttr && aSizes.size() != 1;
+        const bool transB = transBAttr && bSizes.size() != 1;
+        auto transBatchA = shapeInfo.GetOptionalAttribute<int64_t>(AttrName::TransBatchA, 0);
+        auto transBatchB = shapeInfo.GetOptionalAttribute<int64_t>(AttrName::TransBatchB, 0);
 
-        std::vector<uint32_t> outputMatrixDims;
+        onnxruntime::MatMulComputeHelper helper;
+        ML_CHECK_VALID_ARGUMENT(helper.Compute(onnxruntime::TensorShape(aSizes), onnxruntime::TensorShape(bSizes), transA, transB, transBatchA, transBatchB, false).IsOK());
 
-        // Modify the input and truncated output shapes per the above comments.
-        // The extra dimensions of the output beyond the two matrix dimensions
-        // will be computed afterward by broadcasting.
-        if (inputShape0.size() == 1)
-        {
-            inputShape0.insert(inputShape0.begin(), 1);
-        }
-        else
-        {
-            outputMatrixDims.push_back(inputShape0[inputShape0.size() - 2]);
-        }
+        auto outputDims = helper.OutputShape().AsShapeVector();
 
-        if (inputShape1.size() == 1)
-        {
-            inputShape1.push_back(1);
-        }
-        else
-        {
-            outputMatrixDims.push_back(inputShape1[inputShape1.size() - 1]);
-        }
+        std::vector<uint32_t> outputShape;
+        outputShape.reserve(outputDims.size());
+        std::transform(outputDims.begin(), outputDims.end(), std::back_inserter(outputShape), [](int64_t dimSize){ return static_cast<uint32_t>(dimSize); });
 
-        // Remove the matrix dimensions from each input, resulting in broadcastable shapes.
-        std::vector<uint32_t> batchDims0(inputShape0.begin(), inputShape0.end() - 2);
-        std::vector<uint32_t> batchDims1(inputShape1.begin(), inputShape1.end() - 2);
-
-        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions.
-        std::vector<uint32_t> outputDims = BroadcastTensorShape(batchDims0, batchDims1);
-        outputDims.insert(outputDims.end(), outputMatrixDims.begin(), outputMatrixDims.end());
-
-        return {std::move(outputDims)};
+        return {std::move(outputShape)};
     }
 
     void TopKHelper::Initialize(
