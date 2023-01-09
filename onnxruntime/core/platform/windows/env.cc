@@ -608,7 +608,8 @@ common::Status WindowsEnv::GetCanonicalPath(
 
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ",
+                           error_code, " - ", std::system_category().message(error_code));
   }
 
   constexpr DWORD initial_buffer_size = MAX_PATH;
@@ -709,15 +710,91 @@ Status WindowsEnv::UnloadDynamicLibrary(void* handle) const {
   return Status::OK();
 }
 
+namespace dlfcn_win32 {
+// adapted from https://github.com/dlfcn-win32 version 1.3.1.
+// Simplified to only support finding symbols in libraries that were linked against.
+// If ORT dynamically loads a custom ops library using RegisterCustomOpsLibrary[_V2] the handle from the library load
+// is explicitly provided in the call to GetSymbolFromLibrary.
+//
+// NOTE: This is NOT threadsafe. ORT only calls this during session initialization so there shouldn't be any issue.
+
+/* Load Psapi.dll at runtime, this avoids linking caveat */
+bool MyEnumProcessModules(HANDLE hProcess, HMODULE* lphModule, DWORD cb, LPDWORD lpcbNeeded) {
+  static BOOL(WINAPI * EnumProcessModulesPtr)(HANDLE, HMODULE*, DWORD, LPDWORD) = nullptr;
+  static bool failed = false;
+
+  if (failed) {
+    return false;
+  }
+
+  if (EnumProcessModulesPtr == NULL) {
+    // Windows 7 and newer versions have K32EnumProcessModules in Kernel32.dll which is always pre-loaded
+    HMODULE psapi = GetModuleHandleA("Kernel32.dll");
+    if (psapi) {
+      EnumProcessModulesPtr =
+          (BOOL(WINAPI*)(HANDLE, HMODULE*, DWORD, LPDWORD))(LPVOID)GetProcAddress(psapi, "K32EnumProcessModules");
+    }
+
+    if (EnumProcessModulesPtr == nullptr) {
+      failed = true;
+      return false;
+    }
+  }
+
+  return EnumProcessModulesPtr(hProcess, lphModule, cb, lpcbNeeded);
+}
+
+struct local_object {
+  HMODULE hModule;
+  struct local_object* previous;
+  struct local_object* next;
+};
+
+void* SearchModulesForSymbol(const char* name) {
+  HANDLE hCurrentProc = GetCurrentProcess();
+  DWORD dwSize = 0;
+
+  void* symbol = nullptr;
+
+  /* GetModuleHandle(NULL) only returns the current program file. So if we want to get ALL loaded module including
+   * those in linked DLLs, we have to use EnumProcessModules().
+   */
+  if (MyEnumProcessModules(hCurrentProc, nullptr, 0, &dwSize) != false) {
+    HMODULE* modules = nullptr;
+    do {
+      modules = static_cast<HMODULE*>(malloc(dwSize));
+      if (modules) {
+        DWORD cb_needed = 0;
+        if (MyEnumProcessModules(hCurrentProc, modules, dwSize, &cb_needed) != 0 && dwSize == cb_needed) {
+          for (size_t i = 0; i < dwSize / sizeof(HMODULE); i++) {
+            symbol = GetProcAddress(modules[i], name);
+            if (symbol != nullptr) {
+              break;
+            }
+          }
+        }
+      }
+    } while (false);
+
+    free(modules);
+  }
+
+  return symbol;
+}
+}  // namespace dlfcn_win32
+
 Status WindowsEnv::GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const {
   Status status = Status::OK();
 
-  if (handle == nullptr) {
-    // use global scope for lookup
-    handle = GetModuleHandle(NULL);
+  bool global_search = handle == nullptr;
+
+  if (global_search) {
+    // handle = GetModuleHandle(NULL);
+    *symbol = dlfcn_win32::SearchModulesForSymbol(symbol_name.c_str());
+  } else {
+    *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
   }
 
-  *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
   if (!*symbol) {
     const auto error_code = GetLastError();
     static constexpr DWORD bufferLength = 64 * 1024;
