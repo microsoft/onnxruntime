@@ -244,68 +244,68 @@ export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
  */
 export interface TensorToImageDataOptions {
   /**
-  * Describes Tensor channels order.
-  */
+   * Describes Tensor channels order.
+   */
   format?: ImageFormat;
   /**
-  * Tensor channel layout - default is 'NHWC'
-  */
+   * Tensor channel layout - default is 'NHWC'
+   */
   tensorLayout?: 'NHWC'|'NCHW';
   /**
-  * Describes Tensor Height - can be accessed via tensor dimensions as well
-  */
+   * Describes Tensor Height - can be accessed via tensor dimensions as well
+   */
   height?: number;
   /**
-  * Describes Tensor Width - can be accessed via tensor dimensions as well
-  */
+   * Describes Tensor Width - can be accessed via tensor dimensions as well
+   */
   width?: number;
-   /**
-  * Describes normalization parameters to ImageData conversion from tensor - default values - Bias: 0, Mean: 255 
-  */
+  /**
+   * Describes normalization parameters to ImageData conversion from tensor - default values - Bias: 0, Mean: 255
+   */
   norm?: {
     bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
     mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
-  };  
+  };
 }
 /**
  * Describes Tensor and Image configuration to an image data.
  */
 export interface TensorFromImageOptions {
   /**
-  * Describes image data format - will be used only in the case of ImageBitMap
-  */
-  bitmapFormat?: ImageFormat;  
+   * Describes image data format - will be used only in the case of ImageBitMap
+   */
+  bitmapFormat?: ImageFormat;
   /**
-  * Describes Tensor channels order - can differ from original image
-  */
+   * Describes Tensor channels order - can differ from original image
+   */
   tensorFormat?: ImageFormat;
   /**
-  * Tensor data type - default is 'float32'
-  */
+   * Tensor data type - default is 'float32'
+   */
   dataType?: 'float32'|'uint8';
   /**
-  * Tensor channel layout - default is 'NHWC'
-  */
+   * Tensor channel layout - default is 'NHWC'
+   */
   tensorLayout?: 'NHWC'|'NCHW';
   /**
-  * Describes Image Height - Required only in the case of ImageBitMap
-  */
+   * Describes Image Height - Required only in the case of ImageBitMap
+   */
   height?: number;
   /**
-  * Describes Image Width - Required only in the case of ImageBitMap
-  */
+   * Describes Image Width - Required only in the case of ImageBitMap
+   */
   width?: number;
   /**
-  * Describes Tensor Height - can be accessed via tensor dimensions as well
-  */
+   * Describes Tensor Height - can be accessed via tensor dimensions as well
+   */
   tensorHeight?: number;
   /**
-  * Describes Tensor Width - can be accessed via tensor dimensions as well
-  */
+   * Describes Tensor Width - can be accessed via tensor dimensions as well
+   */
   tensorWidth?: number;
   /**
-  * Describes normalization parameters to tensor conversion from image data - default values - Bias: 0, Mean: 255 
-  */
+   * Describes normalization parameters to tensor conversion from image data - default values - Bias: 0, Mean: 255
+   */
   norm?: {
     bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
     mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
