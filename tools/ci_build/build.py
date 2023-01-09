@@ -1574,7 +1574,10 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_shell("chmod +x {}/onnxruntime_test_all".format(device_dir))
             adb_push("onnx_test_runner", device_dir, cwd=cwd)
             adb_shell("chmod +x {}/onnx_test_runner".format(device_dir))
+            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
+            adb_shell("chmod +x {}/onnxruntime_customopregistration_test".format(device_dir))
             run_adb_shell("{0}/onnxruntime_test_all".format(device_dir))
+            run_adb_shell("{0}/onnxruntime_customopregistration_test".format(device_dir))
 
             if args.build_java:
                 gradle_executable = "gradle"
@@ -1718,6 +1721,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_shared_lib_test.exe")
                     executables.append("onnxruntime_global_thread_pools_test.exe")
                     executables.append("onnxruntime_api_tests_without_env.exe")
+                    executables.append("onnxruntime_customopregistration_test")
+
                 run_subprocess(
                     [
                         "vstest.console.exe",
@@ -1733,7 +1738,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path=dll_path,
                 )
             else:
-                executables = ["onnxruntime_test_all", "onnxruntime_mlas_test"]
+                executables = ["onnxruntime_test_all", "onnxruntime_mlas_test", "onnxruntime_customopregistration_test"]
                 if args.build_shared_lib:
                     executables.append("onnxruntime_shared_lib_test")
                     executables.append("onnxruntime_global_thread_pools_test")
