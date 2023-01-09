@@ -1361,7 +1361,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
     set (onnxruntime_customopregistration_test_SRC
             ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
 
-    set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_test_utils)
+    set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_common onnxruntime_test_utils)
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
             SOURCES ${onnxruntime_customopregistration_test_SRC} ${onnxruntime_unittest_main_src}
