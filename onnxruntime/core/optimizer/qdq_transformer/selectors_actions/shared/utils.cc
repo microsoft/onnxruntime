@@ -44,9 +44,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"GlobalAveragePool", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
+          {"Tanh", {}},
           {"ReduceMean", {}},
+          {"ReduceMin", {}},
           {"Relu", {}},
           {"LeakyRelu", {}},
+          // Add Slice here instead of MiscOpVersionsMap which requires input & output have same quantization parameter
+          {"Slice", {}},
           {"Sigmoid", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
