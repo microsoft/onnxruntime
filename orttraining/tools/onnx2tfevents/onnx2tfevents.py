@@ -342,12 +342,14 @@ class ListUnpackTransformer(TransformerBase):
 
 class AppendOpTypeTransformer(ReplaceNameTransformer):
     """Tensorboard's node search tool can only index the node name, not the node type. To make the op type searchable,
-    append the op type to the end of the node name.
+    add the op type to the beginning of the node name. From the tensorboard, we can also easily get the op type
+    even part of the node name is truncated.
     """
 
     def _generate_new_names(self, graph: GraphProto) -> None:
         for node in graph.node:
-            self.new_names[node.output[0]] = node.output[0] + "::" + node.op_type
+            pos = node.output[0].rfind("/")
+            self.new_names[node.output[0]] = node.output[0][: pos + 1] + node.op_type + "::" + node.output[0][pos + 1 :]
 
 
 def main():
