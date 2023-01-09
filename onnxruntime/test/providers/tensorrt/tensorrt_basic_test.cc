@@ -277,7 +277,6 @@ TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceW
 }
 
 // Test loading same model in different way, when hash id is generated via model name/model content/env metadata
-/*
 TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   auto model_path = ORT_TSTR("testdata/mnist.onnx");
 
@@ -354,7 +353,6 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
     asserted_subgraph_id++;
   }
 }
-*/
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   // GetParam() returns the parameter of following format:

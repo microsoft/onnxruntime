@@ -95,25 +95,25 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
-  bool fp16_enable;
-  bool int8_enable;
-  bool int8_calibration_cache_available;
-  bool dla_enable;
-  int dla_core;
+  bool fp16_enable = false;
+  bool int8_enable = false;
+  bool int8_calibration_cache_available = false;
+  bool dla_enable = false;
+  int dla_core = 0;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
-  bool engine_cache_enable;
+  bool engine_cache_enable = false;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
-  bool context_memory_sharing_enable;
+  bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
   IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
-  bool engine_decryption_enable;
-  int (*engine_decryption)(const char*, char*, size_t*);
-  int (*engine_encryption)(const char*, char*, size_t);
+  bool engine_decryption_enable = false;
+  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
+  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
 };
 
 // Logical device representation.
@@ -172,10 +172,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
-  mutable char model_path_[4096];  // Reserved for max path length
+  mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
-  int (*engine_decryption_)(const char*, char*, size_t*);
-  int (*engine_encryption_)(const char*, char*, size_t);
+  int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
+  int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;

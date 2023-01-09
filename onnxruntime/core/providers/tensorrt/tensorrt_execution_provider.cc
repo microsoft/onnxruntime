@@ -624,6 +624,7 @@ bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t su
 }
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
+  std::cout << "[TensorRT] : GetSubGraph()" << std::endl;  // TODO: Remove
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
@@ -693,7 +694,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
         if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
           output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         } else {
-          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
+          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - it->GetNode().InputDefs().size()];
         }
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);

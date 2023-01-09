@@ -202,7 +202,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 class TRTModelIdGenerator {
  public:
   int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Generating model ID" << std::flush;  // TODO: Remove
+    std::cout << "[TensorRT EP] Generating model ID" << std::endl;  // TODO: Remove
     model_hash = 0;
 
     // find the top level graph
@@ -219,14 +219,11 @@ class TRTModelIdGenerator {
     };
 
     // Use model name instead of path to avoid cache regeneration if path changes
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Getting model name" << std::flush;  // TODO: Remove
-    // const auto& model_path = main_graph.ModelPath();
-    const std::string& model_name = main_graph.Name();
-    // if (!model_path.IsEmpty()) {  // Has a root and maybe some path components after the root path.
-    if (!model_name.empty()) {
-      /*
+    std::cout << "[TensorRT EP] Getting model name" << std::endl;  // TODO: Remove
+    const auto& model_path = main_graph.ModelPath();
+    if (!model_path.IsEmpty()) {  // Has a root and maybe some path components after the root path.
       const auto& path_components = model_path.GetComponents();
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of model path components " << path_components.size() << std::flush;  // Remove
+      std::cout << "[TensorRT EP] Number of model path components " << path_components.size() << std::endl;  // Remove
       PathString path_string = path_components.empty() ? model_path.GetRootPathString() :
           path_components.back();
 
@@ -249,9 +246,8 @@ class TRTModelIdGenerator {
 #else
       std::string model_name(path_string);
 #endif
-      */
 
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Model name is " << model_name << std::flush;
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name << std::flush;
       // Ensure enough characters are hashed in case model names are too short
       const size_t model_name_length = model_name.size();
       constexpr size_t hash_string_length = 500;
@@ -261,7 +257,7 @@ class TRTModelIdGenerator {
       }
       hash_str(repeat_model_name);
     } else {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Model path is empty" << std::flush;
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty" << std::flush;
     }
 
     // fingerprint the main graph by hashing graph inputs
@@ -320,6 +316,7 @@ int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
+  std::cout << "[TensorRT] Calling TRTGenerateModelId" << std::endl;
   return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
 }
 }
