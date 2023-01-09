@@ -6,12 +6,14 @@
 #
 # Usage: python onnx2tfevents.py --logdir <tensorboard log directory> --model <onnx model path>
 #
-# Note: This tool requires tensorboard to be installed.
+# Once the events file is generated, start the tensorboard and visualize the model graph.
+# Note: This tool requires torch and tensorboard to be installed.
 
 import argparse
 import inspect
 import itertools
 from abc import ABC, abstractmethod
+from typing import Callable, List
 
 import numpy as np
 from tensorboard.compat.proto.attr_value_pb2 import AttrValue
@@ -23,6 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import onnx
 from onnx import helper, numpy_helper
+from onnx.onnx_ml_pb2 import ModelProto, GraphProto, NodeProto
 
 _DTYPE_ONNX_TO_TF = {
     1: 1,  # FLOAT
@@ -44,28 +47,27 @@ _DTYPE_ONNX_TO_TF = {
 }
 
 
-def dtype_onnx_to_tf(onnx_dtype):
-    if onnx_dtype in _DTYPE_ONNX_TO_TF:
-        return _DTYPE_ONNX_TO_TF[onnx_dtype]
-    return 0
+def dtype_onnx_to_tf(onnx_dtype: int) -> int:
+    return _DTYPE_ONNX_TO_TF.get(onnx_dtype, 0)
 
 
-def get_node_by_input(graph, input_name):
+def get_node_by_input(graph: GraphProto, input_name: str) -> NodeProto:
+    """Get the first node in the graph node list that consumes the input_name as the first input.
+    Return None if no such node is found.
+    """
+
     for node in graph.node:
-        for input in node.input:
-            if input == input_name:
-                return node
+        if len(node.input) >= 1 and node.input[0] == input_name:
+            return node
     return None
 
 
-def get_prefix(name):
+def get_prefix(name: str) -> str:
     pos = name.rfind("/")
-    if pos >= 0:
-        return name[: pos + 1]
-    return ""
+    return name[: pos + 1] if pos >= 0 else ""
 
 
-def parse(graph):
+def parse(graph: GraphProto) -> GraphDef:
     nodes = []
 
     def _add_io_node(node, type):
@@ -91,6 +93,9 @@ def parse(graph):
 
     for node in graph.initializer:
         shape_proto = TensorShapeProto(dim=[TensorShapeProto.Dim(size=d) for d in node.dims])
+        data = np.array2string(numpy_helper.to_array(node), separator=",").replace("\n", "").replace(" ", "")
+        # Truncate the data if it is too long.
+        data = data[:128] + "..." if len(data) > 128 else data
         nodes.append(
             NodeDef(
                 name=node.name.encode(encoding="utf_8"),
@@ -99,12 +104,7 @@ def parse(graph):
                 attr={
                     "dtype": AttrValue(type=dtype_onnx_to_tf(node.data_type)),
                     "shape": AttrValue(shape=shape_proto),
-                    "attr": AttrValue(
-                        s=np.array2string(numpy_helper.to_array(node), separator=",")
-                        .replace("\n", "")
-                        .replace(" ", "")
-                        .encode(encoding="utf_8")
-                    ),
+                    "data": AttrValue(s=data.encode(encoding="utf_8")),
                 },
             )
         )
@@ -122,7 +122,7 @@ def parse(graph):
             _attr.append(" = ".join([str(f[1]) for f in s.ListFields()]))
         attr = ", ".join(_attr).encode(encoding="utf_8")
         shape_proto = None
-        elem_type = None
+        elem_type = 0
         if node.output[0] in value_info_map:
             shape_proto, elem_type = value_info_map[node.output[0]]
         nodes.append(
@@ -141,7 +141,7 @@ def parse(graph):
     return GraphDef(node=nodes, versions=VersionDef(producer=22))
 
 
-def add_onnx_model(self, model):
+def add_onnx_model(self: SummaryWriter, model: ModelProto) -> None:
     self._get_file_writer().add_onnx_graph(parse(model.graph))
 
 
@@ -152,7 +152,8 @@ SummaryWriter.add_onnx_model = add_onnx_model
 class TransformerBase(ABC):
     """Abstract base class for transformers that need to be applied to the ONNX graph before
     converting it to TensorBoard. This base class is also used as a registry for all non-abstract transformers.
-    NOTE: Transformers are applied in the order they are registered.
+    NOTE: Transformers are applied in the order they are registered. Adding a new transformer needs to consider
+    the dependency between it and existing transformers.
     """
 
     _TRANSFORMERS = []
@@ -172,10 +173,10 @@ class TransformerBase(ABC):
         TransformerBase.register_transformer(cls)
 
     @abstractmethod
-    def transform(self, graph):
+    def transform(self, graph: GraphProto) -> None:
         pass
 
-    def _apply_to_all_names(self, graph, func):
+    def _apply_to_all_names(self, graph: GraphDef, func: Callable[[str], str]) -> None:
         for node in graph.node:
             for idx, name in enumerate(node.input):
                 node.input[idx] = func(name)
@@ -186,8 +187,8 @@ class TransformerBase(ABC):
 
 
 class HierarchicalNameTransformer(TransformerBase):
-    """TensorBoard can show the graph in different level for better visualization. PyTorch exporter can already
-    add hierarchical information to the ONNX graph nodes, but the behavior is not consistent. For example,
+    """TensorBoard can show the graph in different levels for better visualization. PyTorch exporter can already
+    add hierarchical information to the ONNX graph nodes and edges, but the behavior is not consistent. For example,
     for graph inputs and outputs, the exported name is _original_module.A.B.C, but for activations and initializers,
     the exported name is /_original_module/A/B/C. This transformer will make the exported names consistent
     to use "/" as the separator. The top level _original_module will also be removed.
@@ -198,39 +199,37 @@ class HierarchicalNameTransformer(TransformerBase):
         self.sections = set()
         self.original_module_name = "_original_module"
 
-    def _add_sections(self, name):
+    def _add_sections(self, name: str) -> None:
         if "/" in name:
             for sec in name.split("/"):
                 if len(sec) > 0:
                     self.sections.add(sec)
 
-    def _transform_name(self, name):
+    def _get_sections(self, curr_name: str, sections: List[str]) -> None:
+        for section in self.sections:
+            if curr_name.startswith(section) and (len(curr_name) == len(section) or curr_name[len(section)] == "."):
+                sections.append(section)
+                if curr_name == section:
+                    return
+                self._get_sections(curr_name[len(section) + 1 :], sections)
+                return
+        sections.append(curr_name)
+
+    def _transform_name(self, name: str) -> str:
         if "/" in name:
             if name.startswith("/" + self.original_module_name + "/"):
                 name = name[len(self.original_module_name) + 2 :]
             if name.startswith("/"):
                 name = name[1:]
             return name
-        new_name = ""
-        while True:
-            curr_section = ""
-            for section in self.sections:
-                if name.startswith(section) and (len(name) == len(section) or name[len(section)] == "."):
-                    if section != self.original_module_name:
-                        new_name = new_name + "/" + section
-                    curr_section = section
-                    break
-            if curr_section == "":
-                new_name = new_name + "/" + name
-                break
-            else:
-                if name == curr_section:
-                    break
-                name = name[len(curr_section) + 1 :]
-                assert len(name) > 0
-        return new_name[1:]
 
-    def transform(self, graph):
+        sections = []
+        self._get_sections(name, sections)
+        if sections[0] == self.original_module_name:
+            sections = sections[1:]
+        return "/".join(sections)
+
+    def transform(self, graph: GraphProto) -> None:
         for node in graph.node:
             for name in itertools.chain(node.input, node.output):
                 self._add_sections(name)
@@ -240,24 +239,22 @@ class HierarchicalNameTransformer(TransformerBase):
 
 
 class ReplaceNameTransformer(TransformerBase):
-    """Abstract class for transformers that need to replace the names of edges in the ONNX graph.
-    The sub-class need to prepare the new names in the _generate_new_names method.
+    """Abstract class for transformers that need to replace the names of nodes and edges in the ONNX graph.
+    The sub-class need to prepare the mapping between old names and new names in the _generate_new_names method.
     """
 
     def __init__(self):
         super().__init__()
         self.new_names = {}
 
-    def _transform_name(self, name):
-        if name in self.new_names:
-            return self.new_names[name]
-        return name
+    def _transform_name(self, name: str) -> str:
+        return self.new_names.get(name, name)
 
     @abstractmethod
-    def _generate_new_names(self, graph):
+    def _generate_new_names(self, graph: GraphProto) -> None:
         pass
 
-    def transform(self, graph):
+    def transform(self, graph: GraphProto) -> None:
         self._generate_new_names(graph)
         self._apply_to_all_names(graph, self._transform_name)
 
@@ -265,7 +262,7 @@ class ReplaceNameTransformer(TransformerBase):
 class SplitSqueezeTransformer(ReplaceNameTransformer):
     """Handle the edge names without hierarchical information that are introduced by GatherToSplitFusion."""
 
-    def _generate_new_names(self, graph):
+    def _generate_new_names(self, graph: GraphProto) -> None:
         for node in graph.node:
             if node.doc_string == "Split for Fused Gather nodes":
                 squeeze_node = get_node_by_input(graph, node.output[0])
@@ -279,8 +276,8 @@ class SplitSqueezeTransformer(ReplaceNameTransformer):
 
 class ExtraOutputsTransformer(ReplaceNameTransformer):
     """Handle the output names without hierarchical information that are introduced by some fusions.
-    This kind of fusions will add extra outputs to the node, we will try to use the hierarchical information
-    from the first output of the node.
+    This kind of fusions add extra outputs to the node, we will try to extract the hierarchical information
+    from the first output of the node and add it to those extra outputs.
     """
 
     def __init__(self):
@@ -293,7 +290,7 @@ class ExtraOutputsTransformer(ReplaceNameTransformer):
             "BitmaskBiasDropout",
         ]
 
-    def _generate_new_names(self, graph):
+    def _generate_new_names(self, graph: GraphProto) -> None:
         for node in graph.node:
             if node.op_type in self.supported_ops and len(node.output) > 1:
                 prefix = get_prefix(node.output[0])
@@ -306,36 +303,33 @@ class ExtraOutputsTransformer(ReplaceNameTransformer):
 class YieldOpTransformer(ReplaceNameTransformer):
     """Handle the output names without hierarchical information that are introduced by YieldOp."""
 
-    def _generate_new_names(self, graph):
+    def _generate_new_names(self, graph: GraphProto) -> None:
         for node in graph.node:
             if node.op_type == "YieldOp":
                 # TODO: the length of input and output can be not equal if attribute non_differentiable_outputs
                 # is not empty. Need to handle this case.
                 assert len(node.input) == len(node.output)
-                for idx in range(len(node.input)):
-                    prefix = get_prefix(node.input[idx])
+                for idx, input in enumerate(node.input):
+                    prefix = get_prefix(input)
                     if len(prefix) > 0:
                         self.new_names[node.output[idx]] = prefix + node.output[idx]
 
 
 class ListUnpackTransformer(TransformerBase):
-    """Tensorboard's NodeDef doesn't have output, it assumes each node has only one output and put this output as
-    node name. If an ONNX node have more than one outputs, we will add a special node named ListUnpack for each output.
+    """Tensorboard's NodeDef doesn't have output field, it assumes each node has only one output and put this output as
+    node name. If an ONNX node has more than one outputs, we will add a special node typed ListUnpack for each output.
     """
 
     def __init__(self):
+        super().__init__()
         self.ops = {}
 
-    def transform(self, graph):
+    def transform(self, graph: GraphProto) -> None:
         new_nodes = []
         for node in graph.node:
             if len([output for output in node.output if len(output) > 0]) > 1:
-                idx = 0
-                if node.op_type in self.ops:
-                    idx = self.ops[node.op_type]
-                    self.ops[node.op_type] = idx + 1
-                else:
-                    self.ops[node.op_type] = 1
+                idx = self.ops.get(node.op_type, 0)
+                self.ops[node.op_type] = idx + 1
                 new_output = get_prefix(node.output[0]) + node.op_type + "_" + str(idx) + "_output"
                 for output in node.output:
                     if len(output) > 0:
@@ -347,11 +341,11 @@ class ListUnpackTransformer(TransformerBase):
 
 
 class AppendOpTypeTransformer(ReplaceNameTransformer):
-    """Tensorboard's node search can only index the node name, not the node type. To make the op type searchable,
+    """Tensorboard's node search tool can only index the node name, not the node type. To make the op type searchable,
     append the op type to the end of the node name.
     """
 
-    def _generate_new_names(self, graph):
+    def _generate_new_names(self, graph: GraphProto) -> None:
         for node in graph.node:
             self.new_names[node.output[0]] = node.output[0] + "::" + node.op_type
 
@@ -364,7 +358,7 @@ def main():
     args = parser.parse_args()
     if not args.logdir or not args.model:
         print("Fail to convert. Please specify the tensorboard log directory and the onnx model path.")
-        print("Usage: python3 onnx2tfevents.py --logdir <tensorboard log directory> --model <onnx model path>")
+        parser.print_help()
         return
 
     model = onnx.load(args.model)
