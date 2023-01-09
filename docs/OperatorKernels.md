@@ -127,7 +127,7 @@ Do not modify directly.*
 |||[7, 8]|**T** = tensor(double), tensor(float)<br/> **T1** = tensor(bool)|
 |GreaterOrEqual|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|16+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(bool)|
 |||[12, 15]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(bool)|
-|GridSample|*in* X:**T1**<br> *in* grid:**T1**<br> *out* Y:**T2**|16+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|16+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
 |HammingWindow|*in* size:**T1**<br> *out* output:**T2**|17+|**T1** = tensor(int32), tensor(int64)<br/> **T2** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |HannWindow|*in* size:**T1**<br> *out* output:**T2**|17+|**T1** = tensor(int32), tensor(int64)<br/> **T2** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |HardSigmoid|*in* X:**T**<br> *out* Y:**T**|6+|**T** = tensor(float)|
@@ -211,13 +211,15 @@ Do not modify directly.*
 |OneHot|*in* indices:**T1**<br> *in* depth:**T2**<br> *in* values:**T3**<br> *out* output:**T3**|11+|**T1** = tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(float), tensor(int32), tensor(int64)<br/> **T3** = tensor(float), tensor(int32), tensor(int64), tensor(string)|
 |||[9, 10]|**T1** = tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(float), tensor(int32), tensor(int64)<br/> **T3** = tensor(float), tensor(int32), tensor(int64), tensor(string)|
 |Optional|*in* input:**V**<br> *out* output:**O**|15+|**O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8))<br/> **V** = seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|OptionalGetElement|*in* input:**O**<br> *out* output:**V**|15+|**O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8))<br/> **V** = seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|OptionalHasElement|*in* input:**O**<br> *out* output:**B**|15+|**B** = tensor(bool)<br/> **O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8))|
+|OptionalGetElement|*in* input:**O**<br> *out* output:**V**|18+|**O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8)), seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **V** = seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|||[15, 17]|**O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8))<br/> **V** = seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|OptionalHasElement|*in* input:**O**<br> *out* output:**B**|18+|**B** = tensor(bool)<br/> **O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8)), seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|||[15, 17]|**B** = tensor(bool)<br/> **O** = optional(seq(tensor(bfloat16))), optional(seq(tensor(bool))), optional(seq(tensor(double))), optional(seq(tensor(float))), optional(seq(tensor(float16))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(int8))), optional(seq(tensor(string))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(uint8))), optional(tensor(bfloat16)), optional(tensor(bool)), optional(tensor(double)), optional(tensor(float)), optional(tensor(float16)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(int8)), optional(tensor(string)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(uint8))|
 |Or|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|7+|**T** = tensor(bool)<br/> **T1** = tensor(bool)|
 |PRelu|*in* X:**T**<br> *in* slope:**T**<br> *out* Y:**T**|16+|**T** = tensor(float)|
 |||[9, 15]|**T** = tensor(float)|
 |||[7, 8]|**T** = tensor(float)|
-|Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *in* axes:**Tind**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[2, 10]|**T** = tensor(double), tensor(float)|
 |ParametricSoftplus|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
@@ -238,36 +240,45 @@ Do not modify directly.*
 |Range|*in* start:**T**<br> *in* limit:**T**<br> *in* delta:**T**<br> *out* output:**T**|11+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64)|
 |Reciprocal|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float)|
 |||[6, 12]|**T** = tensor(double), tensor(float)|
-|ReduceL1|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(int32)|
+|ReduceL1|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(float), tensor(int32)|
+|||[13, 17]|**T** = tensor(float), tensor(int32)|
 |||[11, 12]|**T** = tensor(float), tensor(int32)|
 |||[1, 10]|**T** = tensor(float), tensor(int32)|
-|ReduceL2|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(int32)|
+|ReduceL2|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(float), tensor(int32)|
+|||[13, 17]|**T** = tensor(float), tensor(int32)|
 |||[11, 12]|**T** = tensor(float), tensor(int32)|
 |||[1, 10]|**T** = tensor(float), tensor(int32)|
-|ReduceLogSum|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(int32)|
+|ReduceLogSum|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(float), tensor(int32)|
+|||[13, 17]|**T** = tensor(float), tensor(int32)|
 |||[11, 12]|**T** = tensor(float), tensor(int32)|
 |||[1, 10]|**T** = tensor(float), tensor(int32)|
-|ReduceLogSumExp|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32)|
+|ReduceLogSumExp|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(double), tensor(float), tensor(int32)|
+|||[13, 17]|**T** = tensor(double), tensor(float), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32)|
-|ReduceMax|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
+|ReduceMax|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
+|||[13, 17]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||12|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||11|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
-|ReduceMean|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32)|
+|ReduceMean|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(double), tensor(float), tensor(int32)|
+|||[13, 17]|**T** = tensor(double), tensor(float), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32)|
-|ReduceMin|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
+|ReduceMin|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
+|||[13, 17]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||12|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||11|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
-|ReduceProd|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(int32), tensor(int64)|
+|ReduceProd|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(float), tensor(int32), tensor(int64)|
+|||[13, 17]|**T** = tensor(float), tensor(int32), tensor(int64)|
 |||[11, 12]|**T** = tensor(float), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(float), tensor(int32), tensor(int64)|
 |ReduceSum|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
-|ReduceSumSquare|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(int32)|
+|ReduceSumSquare|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|18+|**T** = tensor(double), tensor(float), tensor(int32)|
+|||[13, 17]|**T** = tensor(double), tensor(float), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32)|
 |Relu|*in* X:**T**<br> *out* Y:**T**|14+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int8)|
@@ -277,7 +288,8 @@ Do not modify directly.*
 |||13|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **shape** = tensor(int64)|
 |||[5, 12]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **shape** = tensor(int64)|
 |||[1, 4]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|Resize|*in* X:**T**<br> *in* scales:**tensor(float)**<br> *out* Y:**T**<br><br>or<br><br>*in* X:**T1**<br> *in* roi:**T2**<br> *in* scales:**tensor(float)**<br> *in* sizes:**tensor(int64)**<br> *out* Y:**T1**|13+|**T1** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
+|Resize|*in* X:**T**<br> *in* scales:**tensor(float)**<br> *out* Y:**T**<br><br>or<br><br>*in* X:**T1**<br> *in* roi:**T2**<br> *in* scales:**tensor(float)**<br> *in* sizes:**tensor(int64)**<br> *out* Y:**T1**|18+|**T1** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
+|||[13, 17]|**T1** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
 |||[11, 12]|**T1** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
 |||10|**T** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
 |ReverseSequence|*in* input:**T**<br> *in* sequence_lens:**tensor(int64)**<br> *out* Y:**T**|10+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -623,7 +635,7 @@ Do not modify directly.*
 |PRelu|*in* X:**T**<br> *in* slope:**T**<br> *out* Y:**T**|16+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[9, 15]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
-|Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16)|
+|Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *in* axes:**Tind**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[2, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |ParametricSoftplus|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
@@ -641,37 +653,37 @@ Do not modify directly.*
 |Range|*in* start:**T**<br> *in* limit:**T**<br> *in* delta:**T**<br> *out* output:**T**|11+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64)|
 |Reciprocal|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
-|ReduceL1|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
+|ReduceL1|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
-|ReduceL2|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
+|ReduceL2|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
-|ReduceLogSum|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|ReduceLogSum|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
-|ReduceLogSumExp|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|ReduceLogSumExp|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
-|ReduceMax|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
+|ReduceMax|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||11|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
-|ReduceMean|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
+|ReduceMean|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
-|ReduceMin|*in* data:**T**<br> *out* reduced:**T**|14+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
+|ReduceMin|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|14+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||13|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint8)|
 |||11|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
-|ReduceProd|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
+|ReduceProd|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |ReduceSum|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
-|ReduceSumSquare|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|ReduceSumSquare|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Relu|*in* X:**T**<br> *out* Y:**T**|14+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
@@ -998,7 +1010,7 @@ Do not modify directly.*
 |PRelu|*in* X:**T**<br> *in* slope:**T**<br> *out* Y:**T**|16+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int8)|
 |||9+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int8)|
 |||7+|**T** = tensor(float), tensor(float16)|
-|Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *in* axes:**Tind**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||11+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||2+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |ParametricSoftplus|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
@@ -1015,36 +1027,36 @@ Do not modify directly.*
 |Range|*in* start:**T**<br> *in* limit:**T**<br> *in* delta:**T**<br> *out* output:**T**|11+|**T** = tensor(float), tensor(int16), tensor(int32), tensor(int64)|
 |Reciprocal|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||6+|**T** = tensor(float), tensor(float16)|
-|ReduceL1|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|ReduceL1|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||11+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||1+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
-|ReduceL2|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
+|ReduceL2|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||11+|**T** = tensor(float), tensor(float16)|
 |||1+|**T** = tensor(float), tensor(float16)|
-|ReduceLogSum|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
+|ReduceLogSum|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||11+|**T** = tensor(float), tensor(float16)|
 |||1+|**T** = tensor(float), tensor(float16)|
-|ReduceLogSumExp|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
+|ReduceLogSumExp|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||11+|**T** = tensor(float), tensor(float16)|
 |||1+|**T** = tensor(float), tensor(float16)|
-|ReduceMax|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|ReduceMax|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||12+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||11+|**T** = tensor(float), tensor(float16)|
 |||1+|**T** = tensor(float), tensor(float16)|
-|ReduceMean|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
+|ReduceMean|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||11+|**T** = tensor(float), tensor(float16)|
 |||1+|**T** = tensor(float), tensor(float16)|
-|ReduceMin|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|ReduceMin|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||12+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||11+|**T** = tensor(float), tensor(float16)|
 |||1+|**T** = tensor(float), tensor(float16)|
-|ReduceProd|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|ReduceProd|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||11+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||1+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |ReduceSum|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||11+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||1+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
-|ReduceSumSquare|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|ReduceSumSquare|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* reduced:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||11+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||1+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |Relu|*in* X:**T**<br> *out* Y:**T**|14+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int8)|
