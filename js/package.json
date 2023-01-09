@@ -1,6 +1,7 @@
 {
   "devDependencies": {
     "@types/fs-extra": "^9.0.13",
+    "@types/node": "^18.11.18",
     "@types/npmlog": "^4.1.4",
     "@typescript-eslint/eslint-plugin": "^4.22.1",
     "@typescript-eslint/parser": "^4.22.1",
@@ -22,8 +23,5 @@
     "format": "clang-format --glob=\"{scripts/**/*.ts,common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h},web/{lib,script,test}/**/*.ts,react_native/{android,example,ios,lib}/**/*.{ts,mm,java}}\" --style=file -i",
     "prepare-node-tests": "tsc --build scripts && node ./scripts/prepare-onnx-node-tests"
   },
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^18.11.18"
-  }
+  "license": "MIT"
 }
