@@ -1574,10 +1574,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_shell("chmod +x {}/onnxruntime_test_all".format(device_dir))
             adb_push("onnx_test_runner", device_dir, cwd=cwd)
             adb_shell("chmod +x {}/onnx_test_runner".format(device_dir))
-            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-            adb_shell("chmod +x {}/onnxruntime_customopregistration_test".format(device_dir))
             run_adb_shell("{0}/onnxruntime_test_all".format(device_dir))
-            run_adb_shell("{0}/onnxruntime_customopregistration_test".format(device_dir))
 
             if args.build_java:
                 gradle_executable = "gradle"
@@ -1601,12 +1598,19 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
                 run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
+
             # run shared_lib_test if necessary
             if args.build_shared_lib:
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
                 adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
+                adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
+                adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
                 adb_shell("chmod +x {}/onnxruntime_shared_lib_test".format(device_dir))
+                adb_shell("chmod +x {}/onnxruntime_customopregistration_test".format(device_dir))
                 run_adb_shell("LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test".format(device_dir))
+                run_adb_shell(
+                    "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_customopregistration_test".format(device_dir)
+                )
 
 
 def run_ios_tests(args, source_dir, config, cwd):

@@ -1357,7 +1357,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
     endif()
   endif()
 
-  if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
+  if (onnxruntime_BUILD_SHARED_LIB AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
     set (onnxruntime_customopregistration_test_SRC
             ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
 
