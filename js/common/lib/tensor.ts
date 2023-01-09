@@ -235,7 +235,7 @@ export interface TensorConstructor {
 }
 
 /**
- * Specify the image format. Assume 'RGBA' if ommitted.
+ * Specify the image format. Assume 'RGBA' if omitted.
  */
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
 
@@ -315,7 +315,7 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param imageEle - ImageData Type - composeed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
+   * @param imageEle - ImageData Type - composed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
    * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
@@ -335,7 +335,7 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param imageEle - string - Asumming the string is a URL to an image
+   * @param imageEle - string - Assuming the string is a URL to an image
    * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
