@@ -24,7 +24,11 @@ Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category = c
   }                                                                 \
   catch (const std::exception& ex) {                                \
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
+  }                                                                 \
+  catch (...) {                                                     \
+    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");    \
   }
+
 #else
 #define API_IMPL_BEGIN {
 #define API_IMPL_END }
