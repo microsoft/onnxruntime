@@ -427,6 +427,42 @@ class BitShift final : public OpKernel {
   bool shift_left_;
 };
 
+template <typename T>
+class BitwiseAnd final : public OpKernel {
+ public:
+  explicit BitwiseAnd(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseNot final : public OpKernel {
+ public:
+  explicit BitwiseNot(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseOr final : public OpKernel {
+ public:
+  explicit BitwiseOr(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseXor final : public OpKernel {
+ public:
+  explicit BitwiseXor(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
