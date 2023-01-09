@@ -10,6 +10,8 @@ FROM ubuntu:20.04
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
 ARG ROCM_VERSION=5.4
+# MIGraphX version should be the same as ROCm version
+ARG MIGRAPHX_VERSION=rocm-5.4.0
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
@@ -39,7 +41,7 @@ ENV PATH /opt/miniconda/bin:/code/cmake-3.24.3-linux-x86_64/bin:${PATH}
 
 # Install MIGraphX from source
 RUN mkdir -p /migraphx
-RUN cd /migraphx && git clone --depth=1 --branch rocm-5.4.0 https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
+RUN cd /migraphx && git clone --depth=1 --branch ${MIGRAPHX_VERSION} https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
 RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx
