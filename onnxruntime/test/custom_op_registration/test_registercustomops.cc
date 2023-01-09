@@ -22,8 +22,9 @@ extern std::unique_ptr<Ort::Env> ort_env;
 TEST(CustomOpRegistration, TestUsingFuncName) {
   Ort::SessionOptions session_options;
 
-  void* addr = RegisterCustomOps;
-  std::cout << "RegisterCustomOps addr " << addr << "\n";
+  // need to reference something in the custom ops library to prevent it being thrown away by the linker
+  void* addr = reinterpret_cast<void*>(RegisterCustomOpsAltName);
+  std::cout << "RegisterCustomOpsAltName addr " << addr << "\n";
 
   // RegisterUnitTestCustomOps will add the Foo custom op in domain ort_unit_test
   // custom_op_library has RegisterCustomOps and RegisterCustomOpsAltName as options for registration functions.
