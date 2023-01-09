@@ -105,7 +105,8 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   out << "\nExecution Plan:\n";
   for (size_t i = 0; i < plan.execution_plan.size(); ++i) {
     auto& execution_plan = plan.execution_plan[i];
-    out << " Start logic stream : " << i << "on device: " << execution_plan->device_.Type() << std::endl;
+    out << "Start logic stream: " << i << " on device: " << std::to_string(execution_plan->device_.Type())
+        << std::endl;
     for (auto& step : execution_plan->steps_) {
       out << step->ToString() << std::endl;
     }
@@ -146,7 +147,7 @@ class PlannerImpl {
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan(
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
       const std::string& partition_config_file,
@@ -815,7 +816,8 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          auto allocator = exec_provider->GetAllocator(exec_provider->GetDeviceId(), p_kernel_def->OutputMemoryType(i));
+          int device_id = p_kernel_def->IsOutputOnCpu(i) ? 0 : exec_provider->GetDeviceId();
+          auto allocator = exec_provider->GetAllocator(device_id, p_kernel_def->OutputMemoryType(i));
           ORT_ENFORCE(allocator);
           plan_.SetLocation(static_cast<size_t>(index),
                             allocator->Info());
@@ -993,7 +995,7 @@ class PlannerImpl {
     return true;
   }
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   // assume we already have a baseline reuse plan (no memory reuse at all)
   // this funciton will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
@@ -1333,7 +1335,7 @@ class PlannerImpl {
     // restore context
     context_ = backup_context;
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
 #endif
 
@@ -1711,7 +1713,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-#ifndef ENABLE_STREAM
+#ifndef ORT_ENABLE_STREAM
   void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
                             const std::string& /*partition_config_file*/) {
     stream_nodes_.push_back({});
@@ -2103,7 +2105,7 @@ class PlannerImpl {
 };
 
 Status PlannerImpl::CreatePlan(
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
     const std::string& partition_config_file,
@@ -2121,7 +2123,7 @@ Status PlannerImpl::CreatePlan(
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
 #else
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
@@ -2179,7 +2181,7 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
     const std::string& partition_config_file,
@@ -2194,7 +2196,7 @@ Status SequentialPlanner::CreatePlan(
                       ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan(
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
       stream_handle_registry,
 #endif
       partition_config_file,
@@ -2203,7 +2205,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 
 InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy>
     IGraphPartitioner::name_type_map = {{std::string{"DeviceBasedPartitioner"}, GraphPartitioningStrategy::DeviceBasedPartition}};

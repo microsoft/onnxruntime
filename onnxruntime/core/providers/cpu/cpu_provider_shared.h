@@ -9,7 +9,8 @@ class AttentionBase;
 namespace transformers {
 class BeamSearch;
 class GreedySearch;
-}
+class Sampling;
+}  // namespace transformers
 }  // namespace contrib
 
 class GatherBase__Prepare;
@@ -129,23 +130,21 @@ struct ProviderHostCPU {
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
 
   virtual Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p,
-  const TensorShape& input_shape,
-  const TensorShape& weights_shape,
-  const TensorShape& bias_shape,
-  const TensorShape& mask_shape,
-  const TensorShape& global_weights_shape,
-  const TensorShape& global_bias_shape,
-  const TensorShape& global_shape) = 0;
+                                                      const TensorShape& input_shape,
+                                                      const TensorShape& weights_shape,
+                                                      const TensorShape& bias_shape,
+                                                      const TensorShape& mask_shape,
+                                                      const TensorShape& global_weights_shape,
+                                                      const TensorShape& global_bias_shape,
+                                                      const TensorShape& global_shape) = 0;
 
   virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
                                             const TensorShape& input_shape,
-                                            const TensorShape* weights_shape,
+                                            const TensorShape& weights_shape,
                                             const TensorShape& bias_shape,
                                             const Tensor*& mask_index,
                                             const Tensor* past,
                                             const Tensor* extra_add_qk,
-                                            const Tensor* key,
-                                            const Tensor* value,
                                             void* parameters,
                                             const int max_threads_per_block,
                                             const Tensor* past_seq_len) = 0;
@@ -173,6 +172,10 @@ struct ProviderHostCPU {
                                                           const SessionState& session_state,
                                                           const std::string& attribute_name,
                                                           const SessionState& subgraph_session_state) = 0;
+
+  virtual void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) = 0;
+  virtual Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) = 0;
+  virtual Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
 
 #ifdef ENABLE_ATEN
   virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;
@@ -263,7 +266,7 @@ inline void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const
 inline void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) { g_host_cpu.contrib__GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
 inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) { g_host_cpu.contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
 inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host_cpu.contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
-} // namespace contrib
+}  // namespace contrib
 #endif
 
 #ifdef ENABLE_TRAINING

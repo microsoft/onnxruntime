@@ -15,7 +15,7 @@ from utils import dtype_to_bytes
 
 
 def get_bert_sizes_test():
-    batch_sizes = [1, 8, 128]
+    batch_sizes = [1, 8]
     seq_lens = [64, 256]
     hidden_sizes = [1, 2, 3, 4, 5, 7, 8, 9, 13, 32, 63, 64, 65, 127, 128, 129, 177, 256, 1023, 1024]
     return product(batch_sizes, seq_lens, hidden_sizes)

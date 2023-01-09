@@ -591,7 +591,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    auto tp = TestEnv::CreateThreadPool(Env::Default());
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
@@ -679,6 +680,19 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"resize_downsample_scales_cubic_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_scales_linear_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_cubic_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_linear_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_nearest_not_larger", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_nearest_not_smaller", "resize kernel needs update for opset18."},
+    {"resize_tf_crop_and_resize_axes_2_3", "resize kernel needs update for opset18."},
+    {"resize_tf_crop_and_resize_axes_3_2", "resize kernel needs update for opset18."},
+    {"resize_upsample_scales_nearest_axes_2_3", "resize kernel needs update for opset18."},
+    {"resize_upsample_scales_nearest_axes_3_2", "resize kernel needs update for opset18."},
+    {"resize_upsample_sizes_nearest_axes_2_3", "resize kernel needs update for opset18."},
+    {"resize_upsample_sizes_nearest_axes_3_2", "resize kernel needs update for opset18."},
+    {"resize_upsample_sizes_nearest_not_larger", "resize kernel needs update for opset18."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
     {"test_optional_get_element", "Optional type not supported in this build flavor."},

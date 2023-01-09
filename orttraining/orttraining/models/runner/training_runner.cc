@@ -55,7 +55,15 @@ static SessionOptions SESSION_OPTION = {
     false,                             // use_deterministic_compute
     {},                                // config_options
     {},                                // initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},                                // external_initializers
+#endif
+    nullptr,                           // custom_create_thread_fn
+    nullptr,                           // custom_thread_creation_options
+    nullptr,                           // custom_join_thread_fn
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    {},                                // custom_op_libs
+#endif
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -192,6 +200,7 @@ Status TrainingRunner::Initialize() {
     gt_config.gelu_recompute = params_.gelu_recompute;
     gt_config.transformer_layer_recompute = params_.transformer_layer_recompute;
     gt_config.number_recompute_layers = params_.number_recompute_layers;
+    gt_config.enable_compute_optimizer = true;
 
     config.graph_transformer_config = gt_config;
   }
@@ -580,7 +589,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
         ORT_THROW_IF_ERROR(status);
       } catch (std::exception&) {
-        // If exception happens during worker execution, propogate the exception to main thread.
+        // If exception happens during worker execution, propagate the exception to main thread.
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },

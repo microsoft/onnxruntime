@@ -7,12 +7,12 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
     )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  file(GLOB_RECURSE on_device_training_api_srcs CONFIGURE_DEPENDS
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  file(GLOB_RECURSE training_api_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/training_api/*.cc"
   )
 
-  list(APPEND onnxruntime_session_srcs ${on_device_training_api_srcs})
+  list(APPEND onnxruntime_session_srcs ${training_api_srcs})
 endif()
 
 
@@ -28,7 +28,7 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
 onnxruntime_add_static_library(onnxruntime_session ${onnxruntime_session_srcs})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11 safeint_interface nlohmann_json::nlohmann_json)
+onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface nlohmann_json::nlohmann_json)
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_session PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()

@@ -537,8 +537,6 @@ class FusionEmbedLayerNoMask(Fusion):
         if two_gather is None:
             return False
 
-        add_output = add_before_layernorm.output[0]
-
         word_embedding_gather, position_embedding_gather = two_gather
         input_ids = word_embedding_gather.input[1]
         position_ids = position_embedding_gather.input[1]
@@ -549,9 +547,22 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
+        # output of this node.
+
+        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # is the (optional) fourth index output of this node.
+        add_output = None
         optional_embedding_sum_output = False
-        if self.is_embedding_sum_needed(add_before_layernorm):
+        if (add_before_layernorm.op_type == "Add" and self.is_embedding_sum_needed(add_before_layernorm)) or (
+            add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4
+        ):
             optional_embedding_sum_output = True
+            add_output = (
+                add_before_layernorm.output[0]
+                if add_before_layernorm.op_type == "Add"
+                else add_before_layernorm.output[3]
+            )
 
         # make the fused node
         embed_node = self.create_fused_node(
@@ -725,6 +736,12 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
 
         mask_int32 = self.attention.input[3]
         children_nodes = input_name_to_nodes[mask_int32]
+        if self.model.find_graph_input(mask_int32):
+            attention_nodes = [node for node in children_nodes if node.op_type == "Attention"]
+            self.replace_mask(mask_int32, attention_nodes)
+            self.increase_counter("EmbedLayerNormalization(with mask)")
+            return
+
         if mask_int32 not in output_name_to_node:
             logger.debug("EmbedLayerNormalization will not have mask since %s is not a node output", mask_int32)
             self.increase_counter("EmbedLayerNormalization(no mask)")

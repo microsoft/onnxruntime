@@ -66,6 +66,7 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/identical_children_consolidation.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
@@ -193,6 +194,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
+      transformers.emplace_back(std::make_unique<IdenticalChildrenConsolidation>());
       transformers.emplace_back(std::make_unique<ConstantSharing>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
@@ -307,7 +309,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #ifdef ENABLE_TRAINING
       // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.
-      // Known issue: after mmeory optimization is completed, if some fusion happens, it is possible that the
+      // Known issue: after memory optimization is completed, if some fusion happens, it is possible that the
       // node priority got changed. This may disorder the execution order of nodes to recompute.
       // TODO(pengwa): need to fix this issue.
       const std::string enable_memory_optimizer =
@@ -329,7 +331,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
-      // x86-64 cpu, not edge cpu like arm. But This tranformer could be used by opencl-ep/cpu-ep. So
+      // x86-64 cpu, not edge cpu like arm. But This transformer could be used by opencl-ep/cpu-ep. So
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
