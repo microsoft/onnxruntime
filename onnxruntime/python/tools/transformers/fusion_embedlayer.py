@@ -515,24 +515,24 @@ class FusionEmbedLayerNoMask(Fusion):
 
         return len(nodes) > 1
 
-    def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+    def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather=None):
         # graph checks
-        # gpt2 has no segment embedding, subgraph pattern is like
-        #     input_ids  position_ids
-        #        |        |
-        #     Gather    Gather
-        #          \   /
-        #           Add _ _ _ _ _
-        #            |           |
-        #    LayerNormalization  |
-        #            |           |
-        #         Attention      |
-        #            |           |
-        #          Matmul        |
-        #            |          /
-        #           Add        /
-        #             \       /
-        #                Add
+        # gpt2 has optional segment embedding, subgraph pattern is like
+        #                      input_ids  position_ids
+        #                         |        |
+        #                      Gather    Gather
+        #                           \   /
+        #   Gather (optional)        Add _ _ _ _ _
+        #                   \         |           |
+        #                     LayerNormalization  |
+        #                             |           |
+        #                          Attention      |
+        #                             |           |
+        #                           Matmul        |
+        #                             |          /
+        #                            Add        /
+        #                              \       /
+        #                                 Add
         two_gather = self.match_two_gather(add_before_layernorm)
         if two_gather is None:
             return False
@@ -570,7 +570,7 @@ class FusionEmbedLayerNoMask(Fusion):
             layernorm,
             word_embedding_gather,
             position_embedding_gather,
-            None,
+            optional_segment_gather,
             position_ids,
             optional_embedding_sum_output,
         )
@@ -674,15 +674,26 @@ class FusionEmbedLayerNoMask(Fusion):
         return True
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        first_add_path = self.model.match_parent_path(node, ["Add"], [0])
         if node.op_type == "LayerNormalization":
-            first_add_path = self.model.match_parent_path(node, ["Add"], [0])
             if first_add_path is None:
                 return
             add_before_layernorm = first_add_path[0]
+            optional_segment_gather = None
         else:  # SkipLayerNormalization
-            add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+            gather_0_path = self.model.match_parent_path(node, ["Gather"], [0])
+            gather_1_path = self.model.match_parent_path(node, ["Gather"], [1])
+            if gather_0_path is None and gather_1_path is not None:
+                add_before_layernorm = first_add_path[0]
+                optional_segment_gather = gather_1_path[0]
+            elif gather_0_path is not None and gather_1_path is None:
+                add_before_layernorm = first_add_path[0]
+                optional_segment_gather = gather_0_path[0]
+            else:
+                add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+                optional_segment_gather = None
 
-        if self.fuse_gpt2(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+        if self.fuse_gpt2(node, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather):
             return
 
         if self.fuse_distilbert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
