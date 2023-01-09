@@ -46,7 +46,7 @@ impl Default for EnvironmentSingleton {
 
 /// An [`Environment`](session/struct.Environment.html) is the main entry point of the ONNX Runtime.
 ///
-/// Only one ONNX environment can be created per process. The `onnxruntime` crate
+/// Only one ONNXRuntime environment can be created per process. The `onnxruntime` crate
 /// uses a singleton (through `lazy_static!()`) to enforce this.
 ///
 /// Once an environment is created, a [`Session`](../session/struct.Session.html)
@@ -170,7 +170,7 @@ impl Environment {
     }
 
     /// Create a new [`SessionBuilder`](../session/struct.SessionBuilder.html)
-    /// used to create a new ONNX session.
+    /// used to create a new ONNXRuntime session.
     pub fn new_session_builder(&self) -> Result<SessionBuilder> {
         SessionBuilder::new(self)
     }
@@ -221,7 +221,7 @@ pub struct EnvBuilder {
 impl EnvBuilder {
     /// Configure the environment with a given name
     ///
-    /// **NOTE**: Since ONNX can only define one environment per process,
+    /// **NOTE**: Since ONNXRuntime can only define one environment per process,
     /// creating multiple environments using multiple `EnvBuilder` will
     /// end up re-using the same environment internally; a new one will _not_
     /// be created. New parameters will be ignored.
@@ -235,7 +235,7 @@ impl EnvBuilder {
 
     /// Configure the environment with a given log level
     ///
-    /// **NOTE**: Since ONNX can only define one environment per process,
+    /// **NOTE**: Since ONNXRuntime can only define one environment per process,
     /// creating multiple environments using multiple `EnvBuilder` will
     /// end up re-using the same environment internally; a new one will _not_
     /// be created. New parameters will be ignored.

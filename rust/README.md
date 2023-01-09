@@ -48,7 +48,7 @@ To select which strategy to use, set the `ORT_RUST_STRATEGY` environment variabl
 2. `system`: To use a locally installed version (use `ORT_RUST_LIB_LOCATION` environment variable to point to the install path)
 3. `compile`: To compile the library. This is the default.
 
-The `download` strategy supports downloading a version of ONNX that supports CUDA. To use this, set the
+The `download` strategy supports downloading a version of ONNXRuntime that supports CUDA. To use this, set the
 environment variable `ORT_RUST_USE_CUDA=1` (only supports Linux or Windows).
 
 ### Note on 'ORT_RUST_STRATEGY=system'

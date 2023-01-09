@@ -20,61 +20,61 @@ pub enum OrtError {
     #[error("Failed to construct String")]
     StringConversion(OrtApiError),
     // FIXME: Move these to another enum (they are C API calls errors)
-    /// An error occurred when creating an ONNX environment
+    /// An error occurred when creating an ONNXRuntime environment
     #[error("Failed to create environment: {0}")]
     Environment(OrtApiError),
-    /// Error occurred when creating an ONNX session options
+    /// Error occurred when creating an ONNXRuntime session options
     #[error("Failed to create session options: {0}")]
     SessionOptions(OrtApiError),
-    /// Error occurred when creating an ONNX session
+    /// Error occurred when creating an ONNXRuntime session
     #[error("Failed to create session: {0}")]
     Session(OrtApiError),
-    /// Error occurred when creating an ONNX allocator
+    /// Error occurred when creating an ONNXRuntime allocator
     #[error("Failed to get allocator: {0}")]
     Allocator(OrtApiError),
-    /// Error occurred when counting ONNX input or output count
+    /// Error occurred when counting ONNXRuntime input or output count
     #[error("Failed to get input or output count: {0}")]
     InOutCount(OrtApiError),
-    /// Error occurred when getting ONNX input name
+    /// Error occurred when getting ONNXRuntime input name
     #[error("Failed to get input name: {0}")]
     InputName(OrtApiError),
-    /// Error occurred when getting ONNX type information
+    /// Error occurred when getting ONNXRuntime type information
     #[error("Failed to get type info: {0}")]
     GetTypeInfo(OrtApiError),
-    /// Error occurred when casting ONNX type information to tensor information
+    /// Error occurred when casting ONNXRuntime type information to tensor information
     #[error("Failed to cast type info to tensor info: {0}")]
     CastTypeInfoToTensorInfo(OrtApiError),
     /// Error occurred when getting tensor elements type
     #[error("Failed to get tensor element type: {0}")]
     TensorElementType(OrtApiError),
-    /// Error occurred when getting ONNX dimensions count
+    /// Error occurred when getting ONNXRuntime dimensions count
     #[error("Failed to get dimensions count: {0}")]
     GetDimensionsCount(OrtApiError),
-    /// Error occurred when getting ONNX dimensions
+    /// Error occurred when getting ONNXRuntime dimensions
     #[error("Failed to get dimensions: {0}")]
     GetDimensions(OrtApiError),
     /// Error occurred when creating CPU memory information
     #[error("Failed to get dimensions: {0}")]
     CreateCpuMemoryInfo(OrtApiError),
-    /// Error occurred when creating ONNX tensor
+    /// Error occurred when creating ONNXRuntime tensor
     #[error("Failed to create tensor: {0}")]
     CreateTensor(OrtApiError),
-    /// Error occurred when creating ONNX tensor with specific data
+    /// Error occurred when creating ONNXRuntime tensor with specific data
     #[error("Failed to create tensor with data: {0}")]
     CreateTensorWithData(OrtApiError),
     /// Error occurred when filling a tensor with string data
     #[error("Failed to fill string tensor: {0}")]
     FillStringTensor(OrtApiError),
-    /// Error occurred when checking if ONNX tensor was properly initialized
+    /// Error occurred when checking if ONNXRuntime tensor was properly initialized
     #[error("Failed to check if tensor: {0}")]
     IsTensor(OrtApiError),
     /// Error occurred when getting tensor type and shape
     #[error("Failed to get tensor type and shape: {0}")]
     GetTensorTypeAndShape(OrtApiError),
-    /// Error occurred when ONNX inference operation was called
+    /// Error occurred when ONNXRuntime inference operation was called
     #[error("Failed to run: {0}")]
     Run(OrtApiError),
-    /// Error occurred when extracting data from an ONNX tensor into an C array to be used as an `ndarray::ArrayView`
+    /// Error occurred when extracting data from an ONNXRuntime tensor into an C array to be used as an `ndarray::ArrayView`
     #[error("Failed to get tensor data: {0}")]
     GetTensorMutableData(OrtApiError),
 
@@ -106,13 +106,13 @@ pub enum OrtError {
     /// Ort pointer should not have been null
     #[error("{0} pointer should not be null")]
     PointerShouldNotBeNull(String),
-    /// ONNX Model has invalid dimensions
+    /// ONNXRuntime Model has invalid dimensions
     #[error("Invalid dimensions")]
     InvalidDimensions,
     /// The runtime type was undefined
     #[error("Undefined Tensor Element Type")]
     UndefinedTensorElementType,
-    /// Error occurred when checking if ONNX tensor was properly initialized
+    /// Error occurred when checking if ONNXRuntime tensor was properly initialized
     #[error("Failed to check if tensor")]
     IsTensorCheck,
 }
@@ -144,14 +144,14 @@ pub enum NonMatchingDimensionsError {
     },
 }
 
-/// Error details when ONNX C API fail
+/// Error details when ONNXRuntime C API fail
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum OrtApiError {
-    /// Details as reported by the ONNX C API in case of error
+    /// Details as reported by the ONNXRuntime C API in case of error
     #[error("Error calling ONNX Runtime C function: {0}")]
     Msg(String),
-    /// Details as reported by the ONNX C API in case of error cannot be converted to UTF-8
+    /// Details as reported by the ONNXRuntime C API in case of error cannot be converted to UTF-8
     #[error("Error calling ONNX Runtime C function and failed to convert error message to UTF-8")]
     IntoStringError(std::ffi::IntoStringError),
 }
@@ -180,7 +180,7 @@ pub enum OrtDownloadError {
     },
 }
 
-/// Wrapper type around a ONNX C API's `OrtStatus` pointer
+/// Wrapper type around a ONNXRuntime C API's `OrtStatus` pointer
 ///
 /// This wrapper exists to facilitate conversion from C raw pointers to Rust error types
 pub struct OrtStatusWrapper(*const sys::OrtStatus);

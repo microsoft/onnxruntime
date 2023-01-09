@@ -37,7 +37,7 @@
 //! # }
 //! ```
 //!
-//! Then a [`Session`](session/struct.Session.html) is created from the environment, some options and an ONNX archive:
+//! Then a [`Session`](session/struct.Session.html) is created from the environment, some options and an ONNX model file:
 //!
 //! ```no_run
 //! # use std::error::Error;
