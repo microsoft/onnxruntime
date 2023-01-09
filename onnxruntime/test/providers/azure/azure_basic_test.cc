@@ -63,7 +63,7 @@ TEST(AzureEP, TestSessionRunMissingEP) {
   EXPECT_NO_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL));
 
   run_options.AddConfigEntry("use_azure", "1");
-  //exception expected due to the missing of cloud.uri and cloud.model_name
+  //exception expected due to the missing of azure.uri and azure.model_name
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 
