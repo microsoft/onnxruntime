@@ -689,18 +689,24 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
-  ShapeAndFloatData input = {{3, 2},  // shape
+  ShapeAndFloatData input = {{5, 2},  // shape
                              {1.f, 2.f,
                               3.f, 4.f,
-                              5.f, 6.f}};
+                              5.f, 6.f,
+                              7.f, 8.f,
+                              9.f, 10.f}};
 
   outputs.push_back({{2, 2},
                      {1.f, 2.f,
                       3.f, 4.f}});
 
-  outputs.push_back({{1, 2}, {5.f, 6.f}});
+  outputs.push_back({{2, 2},
+                     {5.f, 6.f,
+                      7.f, 8.f}});
 
-  int64_t num_outputs = 2;
+  outputs.push_back({{1, 2}, {9.f, 10.f}});
+
+  int64_t num_outputs = 3;
   RunTest<float>(axis, {}, input, outputs, false, false, true, num_outputs, false);
 }
 

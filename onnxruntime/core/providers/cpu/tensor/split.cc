@@ -84,7 +84,7 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
     // populate split sizes based on num_outputs so existing code can be utilized
     int32_t size = narrow<int32_t>(std::ceil(float(split_dim_size) / num_outputs));
-    int32_t remainder = split_dim_size % num_outputs;
+    int32_t remainder = split_dim_size % size;
 
     split_sizes = std::vector<int64_t>(num_outputs, size);
     if (remainder) {
