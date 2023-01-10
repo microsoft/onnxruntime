@@ -615,15 +615,8 @@ namespace OperatorHelper
             ML_CHECK_VALID_ARGUMENT(dimensionCount > 2,
                 "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
 
-            uint32_t leadingDim = newSizes[0];
-            uint32_t leadingStride = newStrides[0];
-            for (size_t i = 0; i < newSizes.size() - 2; ++i)
-            {
-                newSizes[i] = newSizes[i + 1];
-                newStrides[i] = newStrides[i + 1];
-            }
-            newSizes[newSizes.size() - 2] = leadingDim;
-            newStrides[newStrides.size() - 2] = leadingStride;
+            std::rotate(newSizes.begin(), newSizes.begin() + 1, newSizes.end() - 1);
+            std::rotate(newStrides.begin(), newStrides.begin() + 1, newStrides.end() - 1);
         }
 
         if (transpose && dimensionCount > 1)
