@@ -28,7 +28,6 @@
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
-#include "core/framework/murmurhash3.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -762,7 +761,6 @@ struct ProviderHostImpl : ProviderHost {
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
-  const Path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
 
@@ -808,8 +806,6 @@ struct ProviderHostImpl : ProviderHost {
 
   // Path (wrapped)
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
-  const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept override { return p->GetComponents(); }
-  bool Path__IsEmpty(const Path* p) noexcept override { return p->IsEmpty(); }
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
@@ -1030,12 +1026,6 @@ struct ProviderHostImpl : ProviderHost {
                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version_map,
 #endif  // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
-  }
-#endif
-
-#if defined(USE_TENSORRT)
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
-    MurmurHash3::x86_128(key, len, seed, out);
   }
 #endif
 
