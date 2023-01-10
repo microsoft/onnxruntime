@@ -27,6 +27,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
+    bool tuning,                               // Whether to enable tuning
     hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
@@ -48,6 +49,7 @@ Status LaunchAttentionKernel(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
+    bool tuning,                      // Whether to enable tuning
     hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor

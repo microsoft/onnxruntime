@@ -17,7 +17,7 @@ class ORTTensorImpl final : public c10::TensorImpl {
         c10::DispatchKeySet{c10::DispatchKey::ORT},
         options.dtype(),
         options.device()) {
-    set_sizes_strides_policy(SizesStridesPolicy::CustomSizes);
+    set_custom_sizes_strides(SizesStridesPolicy::CustomSizes);
     set_tensor(tensor);
   }
 
