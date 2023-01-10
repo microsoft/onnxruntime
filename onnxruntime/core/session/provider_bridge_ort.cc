@@ -1039,7 +1039,7 @@ struct ProviderSharedLibrary {
     if (handle_)
       return;
 
-    auto full_path = Env::Default().GetRuntimePath() + 
+    auto full_path = Env::Default().GetRuntimePath() +
       PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
     ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
