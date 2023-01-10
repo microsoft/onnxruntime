@@ -125,7 +125,7 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
   }
 }
 
-void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
   // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
   // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
@@ -258,8 +258,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
-constexpr const char* CrossAttention_ver1_doc = R"DOC(
-Multi-Head Cross Attention. Bias from input projection is included.
+constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
+Multi-Head Self/Cross Attention. Bias from input projection is included.
 
 The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
 means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
@@ -267,9 +267,9 @@ each key sequence excluding paddings.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    CrossAttention, 1,
+    MultiHeadAttention, 1,
     OpSchema()
-        .SetDoc(CrossAttention_ver1_doc)
+        .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Input(0,
                "query",
@@ -299,7 +299,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          CrossAttentionTypeAndShapeInference(ctx);
+          MultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
@@ -436,7 +436,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           schema.BuildFunction(functionProto);
           return true;
         }));
-        
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     RelativePositionBias, 1,
     OpSchema()
