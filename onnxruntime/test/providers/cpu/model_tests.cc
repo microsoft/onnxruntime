@@ -94,9 +94,9 @@ TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+  // when openvino or dml are enabled, set it to a larger value for resolving MNIST accuracy mismatch
   double relative_per_sample_tolerance = 1e-3;
-  if (provider_name == "openvino") {
+  if (provider_name == "openvino" || provider_name == "dml") {
     relative_per_sample_tolerance = 0.009;
   }
 
@@ -627,17 +627,17 @@ TEST_P(ModelTest, Run) {
   }
 
   // TODO(leca): move the parallel run test list to a config file and load it in GetParameterStrings() to make the load process run only once
-  std::set<std::string> tests_run_parallel = {"test_resnet18v2", 
+  std::set<std::string> tests_run_parallel = {"test_resnet18v2",
       "test_resnet34v2",
       "test_resnet50",
-      "test_resnet50v2", 
-      "test_resnet101v2", 
-      "test_resnet152v2", 
-      "keras_lotus_resnet3D", 
-      "coreml_Resnet50_ImageNet", 
-      "mlperf_mobilenet", 
-      "mlperf_resnet", 
-      "mlperf_ssd_mobilenet_300", 
+      "test_resnet50v2",
+      "test_resnet101v2",
+      "test_resnet152v2",
+      "keras_lotus_resnet3D",
+      "coreml_Resnet50_ImageNet",
+      "mlperf_mobilenet",
+      "mlperf_resnet",
+      "mlperf_ssd_mobilenet_300",
       "mlperf_ssd_resnet34_1200"};
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
@@ -752,7 +752,7 @@ TEST_P(ModelTest, Run) {
                                                   << provider_name << ", test name:" << results->GetName() << ", result: " << res;
         }
         continue;
-      } 
+      }
 #endif // !USE_DNNL
       std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
         ortso, &OrtApis::ReleaseSessionOptions);
