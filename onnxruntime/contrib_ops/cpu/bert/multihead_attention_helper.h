@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace cross_attention_helper {
+namespace multihead_attention_helper {
 
 template <typename T>
 Status CheckInputs(const T* query,
@@ -114,6 +114,6 @@ Status CheckInputs(const T* query,
   return Status::OK();
 }
 
-}  // namespace cross_attention_helper
+}  // namespace multihead_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime
