@@ -2649,7 +2649,7 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
     &OrtApis::RegisterCustomOpsLibrary_V2,
-    &OrtApis::RegisterCustomOps,
+    &OrtApis::RegisterCustomOpsUsingFunction,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
