@@ -91,11 +91,13 @@ set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
 set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
+
+#flatbuffers 1.11.0 does not have flatbuffers::IsOutRange, therefore we require 1.12.0+
 FetchContent_Declare(
     flatbuffers
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
-    FIND_PACKAGE_ARGS NAMES Flatbuffers
+    FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
 )
 
 #Here we support two build mode:
@@ -262,6 +264,32 @@ FetchContent_Declare(
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
 onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+if(NOT flatbuffers_FOUND)
+  if(NOT TARGET flatbuffers::flatbuffers)
+    add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
+  endif()
+  if(TARGET flatc AND NOT TARGET flatbuffers::flatc)
+    add_executable(flatbuffers::flatc ALIAS flatc)
+  endif()
+  if (GDK_PLATFORM)
+    # cstdlib only defines std::getenv when _CRT_USE_WINAPI_FAMILY_DESKTOP_APP is defined, which
+    # is probably an oversight for GDK/Xbox builds (::getenv exists and works).
+    file(WRITE ${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h [[
+#pragma once
+#ifdef __cplusplus
+#include <cstdlib>
+namespace std { using ::getenv; }
+#endif
+]])
+    if(TARGET flatbuffers)
+      target_compile_options(flatbuffers PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
+    endif()
+    if(TARGET flatc)
+      target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
+    endif()
+  endif()
+endif()
+
 if (onnxruntime_BUILD_UNIT_TESTS)
   onnxruntime_fetchcontent_makeavailable(googletest)
 endif()
@@ -374,10 +402,10 @@ endif()
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date_interface)
+set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date_interface)
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
-set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
+set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
 
 target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
 if (NOT onnxruntime_USE_FULL_PROTOBUF)
@@ -438,4 +466,8 @@ endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
 FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
+
+if (onnxruntime_USE_CLOUD)
+    include(triton)
+endif()
 

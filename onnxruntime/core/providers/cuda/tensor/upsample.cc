@@ -85,9 +85,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     TArray<float> scales_vals(scales);
 
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
-    auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size);
+    auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, context->GetComputeStream());
     void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
-    ResizeImpl(Stream(), mode_, (int)rank, input_shape, output_shape,
+    ResizeImpl(Stream(context), mode_, (int)rank, input_shape, output_shape,
                input_strides, output_div_pitches, scales_vals, roi_vals,
                reinterpret_cast<const CudaT*>(X->Data<T>()),
                reinterpret_cast<CudaT*>(Y->MutableData<T>()),
@@ -102,7 +102,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
-    UpampleImpl(Stream(),
+    UpampleImpl(Stream(context),
                 mode_,
                 rank,
                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,

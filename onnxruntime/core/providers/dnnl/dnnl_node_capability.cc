@@ -923,13 +923,6 @@ bool DnnlQAttentionNodeCapability::Supported(const Node* node, const GraphViewer
     return false;
   }
 
-  // qattention is disabled on gpu due to the following onednn bugs
-  // 1. flipped zero points in int8 matmul
-  // 2. unsupported runtime input source0 scaling in binary
-  // 3. f32 matmul on submemory gives wrong result
-  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-    return false;
-  }
   return true;
 }
 

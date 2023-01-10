@@ -39,6 +39,9 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* beta = p_ctx->Input<Tensor>(3);
   const Tensor* bias = p_ctx->Input<Tensor>(4);
   Tensor* output = p_ctx->Output(0, input->Shape());
+  // For inferencing, we support one more optional output which is the sum
+  // of the input and skip tensors
+  Tensor* skip_input_bias_add_output = p_ctx->Output(3, input->Shape());
 
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 3) {
@@ -98,21 +101,34 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   T* output_data = output->MutableData<T>();
 
+  // For inferencing, we support one more optional output which is the sum
+  // of the input and skip tensors
+  T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
+
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        const T* p_input = input_data + task_idx * hidden_size;
-        const T* p_skip = skip_data + task_idx * hidden_size;
-        T* p_output = output_data + task_idx * hidden_size;
+        auto offset = task_idx * hidden_size;
+
+        const T* p_input = input_data + offset;
+        const T* p_skip = skip_data + offset;
+        T* p_output = output_data + offset;
+        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
         T mean = 0;
         T mean_square = 0;
 
         for (int64_t h = 0; h < hidden_size; h++) {
           T value = p_input[h] + p_skip[h];
+
           if (nullptr != bias_data) {
             value += bias_data[h];
           }
+
+          if (nullptr != p_skip_input_bias_add_output_data) {
+            p_skip_input_bias_add_output_data[h] = value;
+          }
+
           p_output[h] = value;
           mean += value;
           mean_square += value * value;

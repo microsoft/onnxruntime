@@ -209,12 +209,11 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     const auto input_count = x_shape.Size();
     const auto output_count = y_shape.Size();
 
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
-    auto temp_Y = GetScratchBuffer<float>(output_count);
-    Impl_Cast<CudaT, float>(Stream(), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
-    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(CudnnHandle(), pooling_desc, &alpha,
-                                               x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
-    Impl_Cast<float, CudaT>(Stream(), temp_Y.get(), y_data, output_count);
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, context->GetComputeStream());
+    auto temp_Y = GetScratchBuffer<float>(output_count, context->GetComputeStream());
+    Impl_Cast<CudaT, float>(Stream(context), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
+    Impl_Cast<float, CudaT>(Stream(context), temp_Y.get(), y_data, output_count);
   } else {
     const auto alpha = Consts<CudaT>::One;
     const auto beta = Consts<CudaT>::Zero;
@@ -223,8 +222,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
-    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(CudnnHandle(), pooling_desc, &alpha,
-                                               x_tensor, x_data, &beta, y_tensor, y_data));
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
   }
 
   return Status::OK();
@@ -265,7 +263,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
     MaxPoolWithIndex<CudaT>(
-        this->Stream(),
+        this->Stream(context),
         x_shape,
         TensorShape(y_dims),
         kernel_shape,

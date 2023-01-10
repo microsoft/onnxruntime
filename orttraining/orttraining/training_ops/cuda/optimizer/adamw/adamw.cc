@@ -30,12 +30,13 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S_MOMENT", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
     AdamWOptimizer);
 
-Status AdamWOptimizer::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor)
+Status AdamWOptimizer::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor, onnxruntime::Stream* stream)
     const {
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_tensor.MutableDataRaw(),
                                        source_tensor.DataRaw(),
                                        source_tensor.SizeInBytes(),
-                                       cudaMemcpyDeviceToDevice, Stream()));
+                                       cudaMemcpyDeviceToDevice, cuda_stream));
   return Status::OK();
 }
 
@@ -57,7 +58,7 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(lr_ptr && step_ptr);
 
     launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
-        Stream(), MTA_ADAMW_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
+        Stream(ctx), MTA_ADAMW_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
         alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
     *updated_flag_ptr = 1;
   } else {

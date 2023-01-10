@@ -2,13 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # ------------------------------------------------------------------------
+# pylint: disable=C0103
 
 import datetime
+import logging
 import platform
 import subprocess
 import sys
-from distutils import log as logger
-from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -16,11 +16,13 @@ from shutil import copyfile
 
 from packaging.tags import sys_tags
 from setuptools import Extension, setup
+from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.command.install import install as InstallCommandBase
 
 nightly_build = False
 package_name = "onnxruntime"
 wheel_name_suffix = None
+logger = logging.getLogger()
 
 
 def parse_arg_remove_boolean(argv, arg_name):
@@ -78,6 +80,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
     package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
+elif parse_arg_remove_boolean(sys.argv, "--use_cloud"):
+    package_name = "onnxruntime-cloud"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -160,7 +164,7 @@ try:
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def _rewrite_ld_preload_tensorrt(self, to_preload):
-            with open("onnxruntime/capi/_ld_preload.py", "a") as f:
+            with open("onnxruntime/capi/_ld_preload.py", "a", encoding="ascii") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
@@ -169,6 +173,21 @@ try:
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
+
+        def _rewrite_ld_preload_cloud(self):
+            with open("onnxruntime/capi/_ld_preload.py", "a") as f:
+                f.write("import os\n")
+                f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
+                f.write("def LoadLib(lib_name):\n")
+                f.write("    lib_path = util.find_library(lib_name)\n")
+                f.write("    if lib_path: _ = CDLL(lib_path, mode=RTLD_GLOBAL)\n")
+                f.write("    else: _ = CDLL(lib_name, mode=RTLD_GLOBAL)\n")
+                f.write('for lib_name in ["RE2", "ZLIB1"]:\n')
+                f.write("    try:\n")
+                f.write("        LoadLib(lib_name)\n")
+                f.write("    except OSError:\n")
+                f.write('        print("Could not load ort cloud-ep dependency: " + lib_name)\n')
+                f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -190,6 +209,7 @@ try:
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
+                to_preload_cann = []
                 cuda_dependencies = []
                 args = ["patchelf", "--debug"]
                 for line in result.stdout.split("\n"):
@@ -258,6 +278,26 @@ try:
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
+                dest = "onnxruntime/capi/libonnxruntime_providers_cann.so"
+                if path.isfile(dest):
+                    result = subprocess.run(
+                        ["patchelf", "--print-needed", dest],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        universal_newlines=True,
+                    )
+                    cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
+                    args = ["patchelf", "--debug"]
+                    for line in result.stdout.split("\n"):
+                        for dependency in cann_dependencies:
+                            if dependency in line:
+                                if dependency not in to_preload:
+                                    to_preload_cann.append(line)
+                                args.extend(["--remove-needed", line])
+                    args.append(dest)
+                    if len(args) > 3:
+                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -270,6 +310,12 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
+                self._rewrite_ld_preload(to_preload_cann)
+
+            else:
+                if "onnxruntime-cloud" == package_name:
+                    self._rewrite_ld_preload_cloud()
+
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
                 assert self.dist_dir is not None
@@ -299,6 +345,7 @@ class InstallCommand(InstallCommandBase):
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
 providers_openvino = "libonnxruntime_providers_openvino.so"
+providers_cann = "libonnxruntime_providers_cann.so"
 
 # Additional binaries
 dl_libs = []
@@ -316,12 +363,14 @@ if platform.system() == "Linux":
     dl_libs = ["libonnxruntime_providers_shared.so"]
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
+    dl_libs.append(providers_cann)
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
+    libs.append(providers_cann)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -400,8 +449,8 @@ if not path.exists(README):
 
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
-with open(README) as f:
-    long_description = f.read()
+with open(README, "r", encoding="utf-8") as fdesc:
+    long_description = fdesc.read()
 
 # Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
 # line option is specified.
@@ -444,7 +493,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
-enable_training_on_device = parse_arg_remove_boolean(sys.argv, "--enable_training_on_device")
+enable_training_apis = parse_arg_remove_boolean(sys.argv, "--enable_training_apis")
 enable_rocm_profiling = parse_arg_remove_boolean(sys.argv, "--enable_rocm_profiling")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
@@ -492,7 +541,7 @@ if enable_training:
             "onnxruntime.training.utils.data",
         ]
     )
-    if enable_training_on_device:
+    if enable_training_apis:
         packages.append("onnxruntime.training.api")
         packages.append("onnxruntime.training.onnxblock")
         packages.append("onnxruntime.training.onnxblock.loss")

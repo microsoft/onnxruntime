@@ -15,7 +15,7 @@ class MyEPDataTransfer : public IDataTransfer {
 
   // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
-  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
 };
 

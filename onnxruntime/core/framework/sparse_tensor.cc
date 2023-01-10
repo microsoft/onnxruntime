@@ -506,16 +506,16 @@ SparseTensor::BlockSparseMutator SparseTensor::MakeBlockSparseData(const TensorS
   return BlockSparseMutator(values_, format_data_[0]);
 }
 
-Status SparseTensor::Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) const {
+Status SparseTensor::Copy(const DataTransferManager& data_transfer_manager, SparseTensor& dst_tensor) const {
   const IDataTransfer* data_transfer = data_transfer_manager.GetDataTransfer(Location().device,
                                                                              dst_tensor.Location().device);
   ORT_RETURN_IF_NOT(data_transfer != nullptr, "Unable to find a data transfer for copying from device type: ",
                     Location().device.Type(), " to device type: ", dst_tensor.Location().device.Type());
 
-  return Copy(*data_transfer, dst_tensor, exec_q_id);
+  return Copy(*data_transfer, dst_tensor);
 }
 
-Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor, int exec_q_id) const {
+Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor) const {
   // Do not copy same destination
   if (this == &dst_tensor) {
     return Status::OK();
@@ -567,18 +567,18 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
         TensorShape buffer_shape{required_buffer_size};
         Tensor src(bytes_type, buffer_shape, p_data_, Location());
         Tensor dst(bytes_type, buffer_shape, result.p_data_, result.Location());
-        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, dst, exec_q_id));
+        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, dst));
       }
     } else {
       // non-contiguos buffer
       if (is_string) {
         CopyStrings(Values(), result_values);
       } else {
-        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(Values(), result_values, exec_q_id));
+        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(Values(), result_values));
       }
       // Copy indices
       for (size_t i = 0, size = format_data_.size(); i < size; ++i) {
-        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(format_data_[i], result.format_data_[i], exec_q_id));
+        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(format_data_[i], result.format_data_[i]));
       }
     }
   }

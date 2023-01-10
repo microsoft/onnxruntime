@@ -376,7 +376,7 @@ void addSparseTensorMethods(pybind11::module& m) {
         auto gpu_transfer = GetGPUDataTransfer();
         auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.DenseShape(),
                                                           std::move(cuda_allocator));
-        ORT_THROW_IF_ERROR(sparse_tensor.Copy(*gpu_transfer, *dest_tensor, 0));
+        ORT_THROW_IF_ERROR(sparse_tensor.Copy(*gpu_transfer, *dest_tensor));
         auto result = std::make_unique<PySparseTensor>(std::move(dest_tensor));
         return result;
 #else

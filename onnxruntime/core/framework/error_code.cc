@@ -55,6 +55,14 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   p->msg[clen] = '\0';
   return p;
 }
+
+Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category) {
+  if (ort_status == nullptr) {
+    return Status::OK();
+  }
+
+  return Status(category, static_cast<common::StatusCode>(ort_status->code), &ort_status->msg[0]);
+}
 }  // namespace onnxruntime
 #ifdef _MSC_VER
 #pragma warning(pop)

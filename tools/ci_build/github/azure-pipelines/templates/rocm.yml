@@ -91,7 +91,6 @@ jobs:
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_UNIT_TESTS=OFF \
-              --enable_training_torch_interop \
               ${{ variables['EnableProfiling'] }}
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime (in container)'
