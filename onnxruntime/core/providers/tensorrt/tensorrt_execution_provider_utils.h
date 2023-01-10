@@ -8,9 +8,9 @@
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include "murmurhash3.h"
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
-#include "core/framework/murmurhash3.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -244,7 +244,7 @@ class TRTModelIdGenerator {
       std::string model_name(path_string);
 #endif
 
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name << std::flush;
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
       // Ensure enough characters are hashed in case model names are too short
       const size_t model_name_length = model_name.size();
       constexpr size_t hash_string_length = 500;
@@ -254,7 +254,7 @@ class TRTModelIdGenerator {
       }
       hash_str(repeat_model_name);
     } else {
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty" << std::flush;
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
     }
 
     // fingerprint the main graph by hashing graph inputs
@@ -313,7 +313,6 @@ int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
-  std::cout << "[TensorRT] Calling TRTGenerateModelId" << std::endl;
   return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
 }
 }

@@ -1034,12 +1034,6 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
-#if defined(USE_TENSORRT)
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
-    MurmurHash3::x86_128(key, len, seed, out);
-  }
-#endif
-
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)
