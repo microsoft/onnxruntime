@@ -1383,9 +1383,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // sharing a single buffer makes it hard to release individual ones, leading
   // to memory waste.
   //
-  // TODO!! disabling memory pattern tracer increases fragementation, leading to
+  // TODO!! disabling memory pattern tracer increases fragmentation, leading to
   //  out of memory error in some training tests. Need to create kernel first,
-  //  and let the kernel tells us whether the initalizer needs to be traced.
+  //  and let the kernel tells us whether the initializer needs to be traced.
   //
 #if defined(ENABLE_TRAINING_CORE)
   std::unique_ptr<ITensorAllocator> tensor_allocator(

@@ -35,13 +35,13 @@
 #include "orttraining/core/graph/training_op_defs.h"
 #endif
 #ifdef ENABLE_TRAINING_CORE
-#include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -266,13 +266,13 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::RegisterTrainingOpSchemas();
 #endif
 #ifdef ENABLE_TRAINING_CORE
-      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       // <training schemas>
       // This can also be moved inside enable_training. Needs more investigation
       training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
 #ifdef ENABLE_TRAINING
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
+      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
 #endif

@@ -516,7 +516,7 @@ class SessionState {
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #ifdef ENABLE_TRAINING
-// Needed for ORTTRainer. Should be removed along with ORTTrainer code
+// Needed for ORTTrainer. Should be removed along with ORTTrainer code
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else

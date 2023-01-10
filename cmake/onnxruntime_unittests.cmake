@@ -1306,8 +1306,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_session
       onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
 
-    set (CXXOPTS ${cxxopts_SOURCE_DIR}/include)
-
+    set(CXXOPTS ${cxxopts_SOURCE_DIR}/include)
     target_include_directories(onnxruntime_test_trainer PRIVATE
       ${CMAKE_CURRENT_BINARY_DIR}
       ${ONNXRUNTIME_ROOT}
@@ -1320,20 +1319,19 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     )
 
     set(ONNXRUNTIME_TEST_LIBS
-    onnxruntime_session
-    ${onnxruntime_libs}
-    # CUDA is dynamically loaded at runtime
-    onnxruntime_optimizer
-    onnxruntime_providers
-    onnxruntime_util
-    onnxruntime_framework
-    onnxruntime_util
-    onnxruntime_graph
-    ${ONNXRUNTIME_MLAS_LIBS}
-    onnxruntime_common
-    onnxruntime_flatbuffers
+      onnxruntime_session
+      ${onnxruntime_libs}
+      # CUDA is dynamically loaded at runtime
+      onnxruntime_optimizer
+      onnxruntime_providers
+      onnxruntime_util
+      onnxruntime_framework
+      onnxruntime_util
+      onnxruntime_graph
+      ${ONNXRUNTIME_MLAS_LIBS}
+      onnxruntime_common
+      onnxruntime_flatbuffers
     )
-
     target_link_libraries(onnxruntime_test_trainer PRIVATE
       ${ONNXRUNTIME_TEST_LIBS}
       ${onnxruntime_EXTERNAL_LIBRARIES}

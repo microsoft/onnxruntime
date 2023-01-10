@@ -73,26 +73,6 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
       )
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS AND NOT onnxruntime_ENABLE_TRAINING)
-    # ideally just *.h and *.cc should work but for some reason it is not so
-    # falling back to manual approach. Need to fix this in order to avoid
-    # maintenance burden when a new loss if added in this folder.
-    list(APPEND orttraining_graph_src
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/bert_loss.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/bert_loss.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/bert_loss_legacy.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/bert_loss_legacy.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/loss_func_common.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/loss_func_common.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/mean_squared_error.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/mean_squared_error.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/softmax_cross_entropy.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_func/softmax_cross_entropy.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_function_registry.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/loss_function_registry.cc"
-    )
-endif()
-
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
