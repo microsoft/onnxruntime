@@ -20,11 +20,12 @@ class FusionOptions:
         self.enable_layer_norm = True
         self.enable_attention = True
 
-        # Use CrossAttention instead of Attention operator.
-        # The difference is that Attention has merged weights for Q/K/V projection, which might be faster in some cases.
-        # Attention could only handle self attention.
-        # CrossAttention could handle both self attention and cross attention, but it has only cuda implementation now.
-        self.use_cross_attention = False
+        # Use MultiHeadAttention instead of Attention operator. The difference:
+        # (1) Attention has merged weights for Q/K/V projection, which might be faster in some cases since 3 MatMul is
+        #     merged into one.
+        # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
+        # (3) MultiHeadAttention has only cuda implementation right now.
+        self.use_multi_head_attention = False
 
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
@@ -55,8 +56,8 @@ class FusionOptions:
             options.enable_layer_norm = False
         if args.disable_attention:
             options.enable_attention = False
-        if args.use_cross_attention:
-            options.use_cross_attention = True
+        if args.use_multi_head_attention:
+            options.use_multi_head_attention = True
         if args.disable_skip_layer_norm:
             options.enable_skip_layer_norm = False
         if args.disable_embed_layer_norm:
@@ -176,10 +177,11 @@ class FusionOptions:
         parser.set_defaults(no_attention_mask=False)
 
         parser.add_argument(
-            "--use_cross_attention",
+            "--use_multi_head_attention",
             required=False,
             action="store_true",
-            help="Use CrossAttention to replace Attention operator for testing purpose. "
-            "Note that CrossAttention might be slower than Attention, and it has only CUDA implementation.",
+            help="Use MultiHeadAttention instead of Attention operator for testing purpose. "
+            "Note that MultiHeadAttention might be slower than Attention since MatMul of input projection is excluded. "
+            "MultiHeadAttention has only CUDA implementation so the model can only run with cuda execution provider.",
         )
-        parser.set_defaults(use_cross_attention=False)
+        parser.set_defaults(use_multi_head_attention=False)

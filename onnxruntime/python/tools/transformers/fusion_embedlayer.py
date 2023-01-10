@@ -72,13 +72,13 @@ class FusionEmbedLayerNoMask(Fusion):
         children = input_name_to_nodes[layernorm.output[0]]
         children_types = sorted([child.op_type for child in children])
 
-        # Try find CrossAttention
+        # Try find MultiHeadAttention
         if children_types == ["MatMul", "MatMul", "MatMul", "SkipLayerNormalization"]:
             for node in children:
                 if node.op_type == "SkipLayerNormalization":
                     path1 = self.model.match_parent_path(
                         node,
-                        ["Add", "MatMul", "CrossAttention", "MatMul"],
+                        ["Add", "MatMul", "MultiHeadAttention", "MatMul"],
                         [None, None, 0, 0],
                     )
                     if path1 is not None and path1[-1].input[0] == layernorm.output[0]:
@@ -731,7 +731,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
             logger.debug("update mask_index in %s", attention_node.name)
             if attention_node.op_type == "Attention":
                 attention_node.input[3] = embed_node.output[1]
-            elif attention_node.op_type == "CrossAttention":
+            elif attention_node.op_type == "MultiHeadAttention":
                 attention_node.input[4] = embed_node.output[1]
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
@@ -761,7 +761,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
 
         children_nodes = input_name_to_nodes[mask_int32]
         if self.model.find_graph_input(mask_int32):
-            attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "CrossAttention"]]
+            attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "MultiHeadAttention"]]
             self.replace_mask(mask_int32, attention_nodes)
             self.increase_counter("EmbedLayerNormalization(with mask)")
             return
@@ -773,7 +773,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
 
         node = output_name_to_node[mask_int32]
         if node.op_type in ["ReduceSum", "Cast"]:
-            attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "CrossAttention"]]
+            attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "MultiHeadAttention"]]
             if node.op_type == "ReduceSum":
                 mask_int32 = node.input[0]
                 if len(children_nodes) == len(attention_nodes):

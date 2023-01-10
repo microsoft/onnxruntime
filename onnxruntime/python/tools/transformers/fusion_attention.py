@@ -93,14 +93,14 @@ class FusionAttention(Fusion):
         hidden_size: int,
         num_heads: int,
         attention_mask: AttentionMask,
-        use_cross_attention: bool = False,
+        use_multi_head_attention: bool = False,
     ):
-        attention_op_name = "CrossAttention" if use_cross_attention else "Attention"
+        attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
         super().__init__(model, attention_op_name, ["SkipLayerNormalization", "LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.attention_mask = attention_mask
-        self.use_cross_attention = use_cross_attention
+        self.use_multi_head_attention = use_multi_head_attention
 
         # Flags to show warning only once
         self.num_heads_warning = True
@@ -310,7 +310,7 @@ class FusionAttention(Fusion):
 
         attention_node_name = self.model.create_node_name("Attention")
 
-        if not self.use_cross_attention:
+        if not self.use_multi_head_attention:
             weight = helper.make_tensor(
                 name=attention_node_name + "_qkv_weight",
                 data_type=TensorProto.FLOAT,
@@ -333,8 +333,8 @@ class FusionAttention(Fusion):
             bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias, self.this_graph_name)
 
-        # For cross attention, use separated inputs for query, key and value, and no weights.
-        if self.use_cross_attention:
+        # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
+        if self.use_multi_head_attention:
             attention_inputs = [
                 q_matmul.output[0],  # query
                 k_matmul.output[0],  # key
@@ -346,8 +346,12 @@ class FusionAttention(Fusion):
             else:
                 attention_inputs.append("")
 
+            if add_qk_str is not None:
+                logger.debug("MultiHeadAttention does not support extra_add_qk: cannot fuse the attention.")
+                return None
+
             attention_node = helper.make_node(
-                "CrossAttention",
+                "MultiHeadAttention",
                 inputs=attention_inputs,
                 outputs=[output],
                 name=attention_node_name,
@@ -623,10 +627,10 @@ class FusionAttention(Fusion):
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
 
-            # For cross attention, MatMul nodes for Q/K/V projection shall not be fused.
-            self.nodes_to_remove.extend(q_nodes if not self.use_cross_attention else q_nodes[:-1])
-            self.nodes_to_remove.extend(k_nodes if not self.use_cross_attention else k_nodes[:-1])
-            self.nodes_to_remove.extend(v_nodes if not self.use_cross_attention else v_nodes[:-1])
+            # For MultiHeadAttention operator, MatMul nodes for Q/K/V projection shall not be fused.
+            self.nodes_to_remove.extend(q_nodes if not self.use_multi_head_attention else q_nodes[:-1])
+            self.nodes_to_remove.extend(k_nodes if not self.use_multi_head_attention else k_nodes[:-1])
+            self.nodes_to_remove.extend(v_nodes if not self.use_multi_head_attention else v_nodes[:-1])
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             self.prune_graph = True
