@@ -748,7 +748,6 @@ struct Path final {
   PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
   const std::vector<PathString>& GetComponents() const noexcept { return g_host->Path__GetComponents(this); }
   bool IsEmpty() const noexcept { return g_host->Path__IsEmpty(this); }
-  PathString GetRootPathString() const noexcept { return g_host->Path__GetRootPathString(this); }
 
   PROVIDER_DISALLOW_ALL(Path)
 };
