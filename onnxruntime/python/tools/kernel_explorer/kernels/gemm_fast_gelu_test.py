@@ -32,7 +32,7 @@ def _test_gemmfastgelu(my_func, dtype: str, m: int, n: int, k: int, transa=False
     bias = (np.random.rand(n)).astype(dtype)
     temp_c = (a.T if transa else a) @ (b.T if transb else b)
 
-    bound = get_gemm_bound(dtype, a, b, temp_c, transa, transb)
+    bound = get_gemm_bound(dtype, a, b, temp_c, transa, transb, a_b_positive=True)
 
     temp_c = temp_c.astype(dtype)
     ref_c = fast_gelu(temp_c, bias)
