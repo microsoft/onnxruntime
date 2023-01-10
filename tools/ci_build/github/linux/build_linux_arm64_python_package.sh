@@ -47,8 +47,10 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
 elif [ "$BUILD_DEVICE" == "AZURE" ]; then
     BUILD_ARGS+=("--use_azure")
     if [ -f /etc/lsb-release ]; then
+        # for ubuntu
         apt-get install -y libipc-system-simple-perl python3 libssl-dev
     else
+        # for redhat
         yum install -y perl-IPC-Cmd python3 openssl-devel
     fi
 fi
