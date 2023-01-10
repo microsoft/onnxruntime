@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// ONNX models aren't supported in a minimal build, and the custom ops need additional infrastructure to test if CUDA
+// is enabled. As we're really testing the symbol lookup, keep it simple and skip if USE_CUDA is defined.
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA)
+
 #include "gtest/gtest.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -35,3 +39,5 @@ TEST(CustomOpRegistration, TestUsingFuncName) {
   static constexpr PATH_TYPE model = TSTR("testdata/custom_op_library/custom_op_test.onnx");
   Ort::Session session(*ort_env, model, session_options);
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
