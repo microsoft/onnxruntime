@@ -1421,7 +1421,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                    "TensorRT EP could not build engine for fused node: " + fused_node.Name());
           }
           if (engine_cache_enable_) {
-            nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+            std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
             size_t engine_size = serializedModel->size();
             if (engine_decryption_enable_) {
               // Encrypt engine
@@ -1433,7 +1433,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
               file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
             }
-            serializedModel->destroy();
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
           }
         }
@@ -1791,7 +1790,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
 
           // Serialize engine
-          nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+          std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
           size_t engine_size = serializedModel->size();
           if (trt_state->engine_decryption_enable) {
             // Encrypt engine
@@ -1803,7 +1802,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
             file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
           }
-          serializedModel->destroy();
         }
 
         // Build context
