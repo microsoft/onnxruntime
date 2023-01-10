@@ -19,6 +19,13 @@ class FusionOptions:
         self.enable_gelu = True
         self.enable_layer_norm = True
         self.enable_attention = True
+
+        # Use CrossAttention instead of Attention operator.
+        # The difference is that Attention has merged weights for Q/K/V projection, which might be faster in some cases.
+        # Attention could only handle self attention.
+        # CrossAttention could handle both self attention and cross attention, but it has only cuda implementation now.
+        self.use_cross_attention = False
+
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
         self.enable_bias_skip_layer_norm = True
@@ -48,6 +55,8 @@ class FusionOptions:
             options.enable_layer_norm = False
         if args.disable_attention:
             options.enable_attention = False
+        if args.use_cross_attention:
+            options.use_cross_attention = True
         if args.disable_skip_layer_norm:
             options.enable_skip_layer_norm = False
         if args.disable_embed_layer_norm:
@@ -165,3 +174,12 @@ class FusionOptions:
             help="no attention mask. Only works for model_type=bert",
         )
         parser.set_defaults(no_attention_mask=False)
+
+        parser.add_argument(
+            "--use_cross_attention",
+            required=False,
+            action="store_true",
+            help="Use CrossAttention to replace Attention operator for testing purpose. "
+            "Note that CrossAttention might be slower than Attention, and it has only CUDA implementation.",
+        )
+        parser.set_defaults(use_cross_attention=False)
