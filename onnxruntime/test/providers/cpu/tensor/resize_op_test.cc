@@ -2063,6 +2063,26 @@ TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 4, 6, 2}, X, {1, 8, 4, 2}, Y);
 }
 
+TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
+  std::vector<float> X(256);
+  std::iota(X.begin(), X.end(), 0.0f);
+
+  std::vector<float> Y = {
+      3.9166667f, 6.4166665f, 13.916667f, 16.416666f, 25.25f,
+      27.75f, 35.25f, 37.75f, 46.583332f, 49.083332f,
+      56.583332f, 59.083332f, 67.916664f, 70.416664f, 77.916664f,
+      80.416664f, 89.25f, 91.75f, 99.25f, 101.75f,
+      110.583336f, 113.083336f, 120.583336f, 123.083336f, 131.91667f,
+      134.41667f, 141.91667f, 144.41667f, 153.25f, 155.75f,
+      163.25f, 165.75f, 174.58333f, 177.08333f, 184.58333f,
+      187.08333f, 195.91667f, 198.41667f, 205.91667f, 208.41667f,
+      217.25f, 219.75f, 227.25f, 229.75f, 238.58333f,
+      241.08333f, 248.58333f, 251.08333f};
+  TestAntialiasing(
+      {{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "align_corners"}},
+      {4, 1, 4, 4, 4}, X, {4, 1, 3, 2, 2}, Y);
+}
+
 TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
   std::vector<float> X(48);
   std::iota(X.begin(), X.end(), 1.0f);

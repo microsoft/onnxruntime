@@ -226,7 +226,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
 
       float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
       auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
-      for (x = 0; x < xmax; x++) {
+      for (x = 0; x < xmax_cut - xmin_cut; x++) {
         scale_buffer[x] *= total_weight_inv;
 
         // normalize the scale to 1 << 22 for int8/uint8
@@ -734,7 +734,9 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
                            false, extrapolation_value,
                            X->Data<T>(), image_temp_buffer.get(), alloc, tp);
 
-  for (int64_t n = 0; n < batch_size; ++n) {
+  auto m_batch_size = batch_size * num_channels < tp->DegreeOfParallelism(tp) ? 1 : batch_size;
+  auto m_channel_size = batch_size * num_channels < tp->DegreeOfParallelism(tp) ? num_channels * batch_size : num_channels;
+  for (int64_t n = 0; n < m_batch_size; ++n) {
     // depth interpolate
     {
       // depth interpolate
@@ -743,7 +745,7 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
       auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width * output_depth),
                                           narrow<size_t>(output_height * num_channels * output_width * output_depth));
 
-      ComputeInterpolationAtLevel2(num_channels, input_depth, output_height * output_width, output_depth, output_height * output_width,
+      ComputeInterpolationAtLevel2(m_channel_size, input_depth, output_height * output_width, output_depth, output_height * output_width,
                                    xdata_span, ydata_span, p, p.dim_z, tp);
     }
   }
