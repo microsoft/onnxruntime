@@ -16,7 +16,7 @@ typedef const char* PATH_TYPE;
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-// Test OrtApi RegisterCustomOps.
+// Test OrtApi RegisterCustomOpsUsingFunction.
 // Replicate the expected mobile setup where the binary is linked against onnxruntime and a custom ops library.
 // In the test we use testdata/custom_op_library. In mobile scenarios onnxruntime-extensions would provide custom ops.
 TEST(CustomOpRegistration, TestUsingFuncName) {
@@ -29,7 +29,7 @@ TEST(CustomOpRegistration, TestUsingFuncName) {
   // RegisterUnitTestCustomOps will add the Foo custom op in domain ort_unit_test
   // custom_op_library has RegisterCustomOps and RegisterCustomOpsAltName as options for registration functions.
   // Call RegisterCustomOpsAltName to test the path which does not use the default name.
-  Ort::ThrowOnError(Ort::GetApi().RegisterCustomOps(session_options, "RegisterCustomOpsAltName"));
+  Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsUsingFunction(session_options, "RegisterCustomOpsAltName"));
 
   // load model containing nodes using the custom op/s to validate. will throw if custom op wasn't registered.
   static constexpr PATH_TYPE model = TSTR("testdata/custom_op_library/custom_op_test.onnx");

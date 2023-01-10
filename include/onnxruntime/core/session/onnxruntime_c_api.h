@@ -3659,11 +3659,11 @@ struct OrtApi {
    */
   ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
 
-  /** \brief Register custom ops
+  /** \brief Register custom ops by calling a RegisterCustomOpsFn function.
    *
    * Searches for registration_func_name and if found calls it. The library containing the function must either be
-   * linked against or previously loaded by the executable. If you require ONNX Runtime to load the library, use
-   * RegisterCustomOpsLibrary_V2.
+   * linked against or previously loaded by the executable.
+   * If you require ONNX Runtime to load the library, use RegisterCustomOpsLibrary_V2.
    *
    * The registration function must have the signature of RegisterCustomOpsFn:
    *    OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
@@ -3673,7 +3673,8 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(RegisterCustomOps, _Inout_ OrtSessionOptions* options, _In_ const char* registration_func_name);
+  ORT_API2_STATUS(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
+                  _In_ const char* registration_func_name);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

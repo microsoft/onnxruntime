@@ -753,6 +753,11 @@ inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* lib
   ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
 }
 
+template <typename T>
+inline void SessionOptionsImpl<T>::RegisterCustomOpsUsingFunction(const ORTCHAR_T* registration_function_name) {
+  ThrowOnError(GetApi().RegisterCustomOpsUsingFunction(this->p_, registration_function_name));
+}
+
 /// Session
 template <typename T>
 inline size_t ConstSessionImpl<T>::GetInputCount() const {
