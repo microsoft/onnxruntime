@@ -323,7 +323,7 @@ Status QkvToContext(
 
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
-    if (data.mask_index_dims.size() == 2) {
+    if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
       LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     } else {
       LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
