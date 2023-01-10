@@ -178,6 +178,10 @@ def find_potential_issues(root_dir, op_to_opset):
             #      IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)
             args = call.split(",", 2)  # first 2 args are simple, remainder need custom processing
             op = args[1].strip()
+            if not op.startswith('"') or not op.endswith('"'):
+                log.error("Symbolic name of '{}' found for op. Please check manually. File:{}".format(op, file))
+                continue
+
             versions_and_domain_arg = args[2]
             v1 = versions_and_domain_arg.find("{")
             v2 = versions_and_domain_arg.find("}")
@@ -190,11 +194,7 @@ def find_potential_issues(root_dir, op_to_opset):
             else:
                 domain = "kOnnxDomain"
 
-            if op.startswith('"') and op.endswith('"'):
-                op = domain + "." + op[1:-1]
-            else:
-                log.error("Symbolic name of '{}' found for op. Please check manually. File:{}".format(op, file))
-                continue
+            op = domain + "." + op[1:-1]
 
             if op in op_to_opset:
                 latest = op_to_opset[op]
