@@ -674,7 +674,7 @@ if (onnxruntime_USE_TENSORRT)
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
 
-  set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+  set(trt_link_libs onnxruntime_framework cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
@@ -687,8 +687,8 @@ if (onnxruntime_USE_TENSORRT)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
-  add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnxruntime_framework onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS})
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${TENSORRT_INCLUDE_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
