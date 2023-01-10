@@ -362,7 +362,6 @@ void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
   }
 }
 
-// Write is not effective
 __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
     getTrtSequenceOffset2d(int* trt_mha_padding_offset,
                            const int* attention_masks,
@@ -375,17 +374,29 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
     const int batch_id = blockIdx.x;
     const int* batch_mask = attention_masks + (batch_id * sequence_length);
     int first_non_padding = sequence_length;
+    int last_non_padding = 0;
     for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
-      if (batch_mask[i]) {
-        first_non_padding = i;
-        break;
+      if (batch_mask[i])
+        if (first_non_padding > i) {
+          first_non_padding = i;
+        }
+        if (last_non_padding < i) {
+          last_non_padding = i;
+        }
       }
     }
 
-    int padding_count = BlockReduce(temp_storage).Reduce(first_non_padding, cub::Min(), blockDim.x);
+    int left_most = BlockReduce(temp_storage).Reduce(first_non_padding, cub::Min(), blockDim.x);
+    int right_most = BlockReduce(temp_storage).Reduce(last_non_padding, cub::Max(), blockDim.x);
+
     if (threadIdx.x == 0) {
-      trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length) + padding_count;
-      trt_mha_padding_offset[2 * batch_id + 1] = (batch_id + 1)* sequence_length;
+      if (left_padding == 0) { // treat default as right padding
+        trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length);
+        trt_mha_padding_offset[2 * batch_id + 1] = (batch_id * sequence_length) + right_most + 1;
+      } else {
+        trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length) + left_most;
+        trt_mha_padding_offset[2 * batch_id + 1] = (batch_id + 1)* sequence_length;
+      }
 
       if (batch_id == gridDim.x - 1) {
         trt_mha_padding_offset[2 * batch_id + 2] = (batch_id + 1)* sequence_length;
