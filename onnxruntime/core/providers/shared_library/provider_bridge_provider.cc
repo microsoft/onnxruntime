@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
@@ -32,15 +33,19 @@
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/greedy_search.h"
+#include "contrib_ops/cpu/transformers/sampling.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/controlflow/yield.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
@@ -313,8 +318,8 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 
@@ -327,8 +332,8 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
   return g_host->CreateROCMPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 
@@ -553,19 +558,17 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
 }
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
-                                  const TensorShape* weights_shape,
+                                  const TensorShape& weights_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
                                   const Tensor* extra_add_qk,
-                                  const Tensor* key,
-                                  const Tensor* value,
                                   void* parameters,
-                                  const int max_threads_per_block) const {
+                                  const int max_threads_per_block,
+                                  const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, extra_add_qk,
-                                               key, value, parameters,
-                                               max_threads_per_block);
+                                               mask_index, past, extra_add_qk, parameters,
+                                               max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
                                   int sequence_length, int& past_sequence_length) const {
@@ -592,6 +595,15 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
   return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
                                                              subgraph_session_state);
 }
+
+void Sampling::Init(const OpKernelInfo& info) { g_host_cpu.Sampling__Init(this, info); }
+
+Status Sampling::Compute(OpKernelContext* ctx) const { return g_host_cpu.Sampling__Compute(this, ctx); }
+
+Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                            const SessionState& subgraph_session_state) {
+  return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
@@ -621,21 +633,25 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
-#ifdef ENABLE_TRAINING
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
+
+#ifdef ENABLE_TRAINING_OPS
 namespace contrib {
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
-Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
-
 Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const {
   return g_host_cpu.contrib__AdamWOptimizerBase__PrepareForCompute(this, ctx, reinterpret_cast<contrib__AdamWOptimizerBase__Prepare&>(prepare));
 }
-
 Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
                                            const TensorSeq* values, TensorSeq* updated_values) const {
   return g_host_cpu.contrib__AdamWOptimizerBase__GenerateOutputs(this, ctx, number_of_values, values, updated_values);
 }
+}
+#endif
 
+#ifdef ENABLE_TRAINING
+namespace contrib {
+Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
 }  // namespace contrib
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -673,5 +689,14 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
+
+namespace cann {
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  return g_host->cann__CreateModel(graph_viewer, logger);
+}
+}  // namespace cann
 #endif
 }  // namespace onnxruntime

@@ -30,6 +30,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class PhiloxGenerator;
+using ProviderType = const std::string&;
 class RandomGenerator;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -157,7 +158,7 @@ struct ProviderHost {
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
@@ -171,7 +172,7 @@ struct ProviderHost {
 #ifdef USE_ROCM
   virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
@@ -431,11 +432,9 @@ struct ProviderHost {
   virtual std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) = 0;
 
   // DataTransferManager
-  virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) = 0;
-  virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
 #endif
   virtual const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
@@ -669,6 +668,7 @@ struct ProviderHost {
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual const Path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
 
@@ -704,6 +704,8 @@ struct ProviderHost {
 
   // Path
   virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
+  virtual const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept = 0;
+  virtual bool Path__IsEmpty(const Path* p) noexcept = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
@@ -730,6 +732,7 @@ struct ProviderHost {
   virtual bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) = 0;
   virtual bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
   virtual bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
+  virtual Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) = 0;
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
@@ -796,6 +799,8 @@ struct ProviderHost {
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
 
+  virtual void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
+
   virtual void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) = 0;
   virtual const void* Tensor__DataRaw(const Tensor* p, MLDataType type) = 0;
   virtual void* Tensor__MutableDataRaw(Tensor* p) noexcept = 0;
@@ -834,7 +839,7 @@ struct ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   // SparseTensor
   virtual const TensorShape& SparseTensor__DenseShape(const SparseTensor*) = 0;
-  virtual Status SparseTensor__Copy(const SparseTensor*, const DataTransferManager&, int, SparseTensor&) = 0;
+  virtual Status SparseTensor__Copy(const SparseTensor*, const DataTransferManager&, SparseTensor&) = 0;
 #endif
 
   // TensorSeq
@@ -875,10 +880,13 @@ struct ProviderHost {
 
 #if defined(USE_CANN)
   virtual RandomGenerator& RandomGenerator__Default() = 0;
+  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
+  virtual std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif

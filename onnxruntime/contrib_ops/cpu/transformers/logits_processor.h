@@ -7,6 +7,7 @@
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
+#include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
@@ -96,11 +97,53 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
   const int batch_size_;
 };
 
+template <typename T>
+class TemperatureLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  TemperatureLogitsProcessor(float temperature);
+
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
+
+ private:
+  float temperature_;
+};
+
+// template <typename T>
+// class TopPLogitsProcessor : public ILogitsProcessor<T> {
+//  public:
+//   TopPLogitsProcessor(float top_p, float filter_value,
+//                       onnxruntime::concurrency::ThreadPool* thread_pool);
+
+//   void Process(const ISequences* sequences,
+//                NextTokenScores<T>& next_token_scores) override;
+
+//  private:
+//   float top_p_;
+//   float filter_value_;
+//   onnxruntime::concurrency::ThreadPool* thread_pool_;
+// };
+
+template <typename T>
+class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  PresencePenaltyLogitsProcessor(const gsl::span<const int32_t>& presence_mask,
+                                 float presence_penalty);
+
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
+
+ private:
+  gsl::span<const int32_t> presence_mask_;
+  float presence_penalty_;
+};
+
 class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
   void Init(const BeamSearchParameters& parameters);
   void Init(const GreedySearchParameters& parameters);
+  void Init(const SamplingParameters& parameters);
   void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
 
  private:
@@ -140,6 +183,19 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(min_length_processor_.get());
     }
 
+    if (parameters.temperature > 0) {
+      temperature_processor_ = std::make_unique<TemperatureLogitsProcessor<float>>(parameters.temperature);
+      processor_list_.push_back(temperature_processor_.get());
+    }
+
+    if (!parameters.presence_mask.empty()) {
+      presence_penalty_processor_ = std::make_unique<
+                                     PresencePenaltyLogitsProcessor<float>
+                                   >(parameters.presence_mask,
+                                     parameters.presence_penalty);
+      processor_list_.push_back(presence_penalty_processor_.get());
+    }
+
     batch_beam_size_ = parameters.BatchBeamSize();
     vocab_size_ = parameters.vocab_size;
   }
@@ -153,6 +209,8 @@ class LogitsProcessorList : public ILogitsProcessorList {
   std::unique_ptr<VocabMaskLogitsProcessor<float>> vocab_mask_processor_;
   std::unique_ptr<PrefixVocabMaskLogitsProcessor<float>> prefix_vocab_mask_processor_;
   std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
+  std::unique_ptr<TemperatureLogitsProcessor<float>> temperature_processor_;
+  std::unique_ptr<PresencePenaltyLogitsProcessor<float>> presence_penalty_processor_;
 };
 
 }  // namespace transformers

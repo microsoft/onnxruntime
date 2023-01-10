@@ -60,7 +60,7 @@ MLASCPUIDInfo::MLASCPUIDInfo() {}
 #endif
 
 #endif // Windows vs Linux vs Unknown
-#else // not MLAS_TARGET_ARM64 
+#else // not MLAS_TARGET_ARM64
 
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo() {}
@@ -125,7 +125,42 @@ MlasReadExtendedControlRegister(
 #endif
 }
 
+#if defined(__linux__)
+#include <sys/syscall.h>
 #endif
+
+bool
+MlasInitAMX()
+{
+#if defined(__linux__)
+#define XFEATURE_XTILECFG 17
+#define XFEATURE_XTILEDATA 18
+#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
+#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
+#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
+
+#define ARCH_GET_XCOMP_PERM 0x1022
+#define ARCH_REQ_XCOMP_PERM 0x1023
+
+    unsigned long bitmask = 0;
+    long rc = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA);
+    if (rc) {
+        return false;
+    }
+    rc = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+    if (rc) {
+        return false;
+    }
+    if (bitmask & XFEATURE_MASK_XTILE) {
+        return true;
+    }
+    return false;
+#else
+    return true;
+#endif
+}
+
+#endif // MLAS_TARGET_AMD64_IX86
 
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
@@ -364,6 +399,19 @@ Return Value:
                     }
                 }
 
+#ifdef MLAS_AMX_SUPPORTED
+                //
+                // Check if the processor supports AMX-TILE and AMX-INT8
+                // features.
+                //
+                if ((Cpuid7[3] & 0b1 << 24) != 0 && (Cpuid7[3] & 0b1 << 25) != 0) {
+                    if (MlasInitAMX()) {
+                        this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
+                        this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
+                    }
+                }
+#endif // MLAS_AMX_SUPPORTED
+
 #endif // ORT_MINIMAL_BUILD
 
             }
@@ -478,4 +526,11 @@ MlasPlatformU8S8Overflow(
     return p.GemmU8U8Dispatch != p.GemmU8S8Dispatch;
 }
 
+#endif
+
+thread_local size_t ThreadedBufSize = 0;
+#ifdef _MSC_VER
+thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder(nullptr, &_aligned_free);
+#else
+thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder(nullptr, &free);
 #endif

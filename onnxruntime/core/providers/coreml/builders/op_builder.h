@@ -29,8 +29,8 @@ class IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const = 0;
 
   // Add the operator to CoreML model
-  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                                   const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
+  [[nodiscard]] virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+                                   const logging::Logger& logger) const = 0;
 #endif
 
   // Operator support related

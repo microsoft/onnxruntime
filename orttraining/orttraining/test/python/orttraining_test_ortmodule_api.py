@@ -4820,9 +4820,14 @@ def test_ortmodule_attribute_name_collision_warning():
     with pytest.warns(UserWarning) as warning_record:
         ort_model = ORTModule(pt_model)
 
-    assert len(warning_record) == 2
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[0].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
+    # Please annotate treat the first argument (g) as GraphContext and use context information from the object
+    # instead.')
+    # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
+    assert len(warning_record) == 3
+
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[2].message.args[0]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():
@@ -5535,3 +5540,61 @@ def test_eval_onnx_models():
     # BatchNormInternal is for training, while BatchNormalization is for inference.
     assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
     assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
+
+
+def test_kwargs_dict_input():
+    class DictNet(torch.nn.Module):
+        def __init__(self):
+            super(DictNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, *args, **kwargs):
+            batch = kwargs["batch"]
+            a = batch["one_value"]
+            b = batch["two_value"]["three_value"]
+            c = batch["two_value"]["four_value"]
+            d = batch["five_value"]["six_value"]
+            e = batch["five_value"]["seven_value"]["eight_value"]
+            return self.dummy + a + b + c + d + e
+
+    device = "cuda"
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = DictNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    batch = {
+        "one_value": torch.randn(N, D_in, device=device),
+        "two_value": {
+            "three_value": torch.randn(N, D_in, device=device),
+            "four_value": torch.randn(N, D_in, device=device),
+        },
+        "five_value": {
+            "six_value": torch.randn(N, D_in, device=device),
+            "seven_value": {"eight_value": torch.randn(N, D_in, device=device)},
+        },
+    }
+    batch_copy = copy.deepcopy(batch)
+    x_copy = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(pt_model(x, batch=batch), ort_model(x_copy, batch=batch_copy))
+
+
+@pytest.mark.parametrize("training_mode", [False, True])
+def test_non_contiguous_tensors_as_inputs(training_mode):
+    class NonContigousNet(torch.nn.Module):
+        def __init__(self):
+            super(NonContigousNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, non_contiguous_tensor):
+            return self.dummy + non_contiguous_tensor
+
+    device = "cuda"
+    pt_model = NonContigousNet().to(device)
+    pt_model.train(training_mode)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model.train(training_mode)
+    x = torch.arange(12).view(4, 3).t().to(device)
+    x_copy = copy.deepcopy(x)
+    assert not x.is_contiguous()
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))

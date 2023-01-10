@@ -27,6 +27,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
+    bool tuning,                               // Whether to enable tuning
     hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
@@ -48,6 +49,7 @@ Status LaunchAttentionKernel(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
+    bool tuning,                      // Whether to enable tuning
     hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
@@ -82,11 +84,13 @@ Status LaunchTransCtx(hipStream_t stream,
 
 Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output,
+                      int total_matrix_count = -1);
 
 Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
+                      int total_matrix_count = -1);
 
 Status LaunchConcatTensorToTensor(hipStream_t stream,
                                   const int all_sequence_length,

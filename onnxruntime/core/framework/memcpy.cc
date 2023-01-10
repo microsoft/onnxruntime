@@ -16,7 +16,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
   if (input_type_0->IsTensorType()) {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+    retval = Info().GetDataTransferManager().CopyTensor(*X, *Y);
 
     if (!retval.IsOK()) {
       LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
@@ -30,7 +30,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
   else if (input_type_0->IsSparseTensorType()) {
     const auto* X = ctx->Input<SparseTensor>(0);
     SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
-    retval = X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+    retval = X->Copy(Info().GetDataTransferManager(), *Y);
     if (!retval.IsOK()) {
       LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
                                                " Copying ", Node().InputDefs()[0]->Name(),

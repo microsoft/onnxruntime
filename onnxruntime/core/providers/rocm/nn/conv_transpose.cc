@@ -129,12 +129,12 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       y_data = reinterpret_cast<HipT*>(p.Y->MutableData<T>());
 
       if (!s_.cached_benchmark_bwd_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
 
         miopenConvAlgoPerf_t perf;
         int algo_count = 1;
         MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
-            MiopenHandle(),
+            GetMiopenHandle(context),
             s_.x_tensor,
             x_data,
             s_.w_desc,
@@ -175,11 +175,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     const auto alpha = Consts<HipT>::One;
     const auto beta = Consts<HipT>::Zero;
 
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, context->GetComputeStream());
 
     MIOPEN_RETURN_IF_ERROR(
         miopenConvolutionBackwardData(
-            MiopenHandle(),
+            GetMiopenHandle(context),
             &alpha,
 	    s_.x_tensor,
 	    x_data,
@@ -196,7 +196,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const HipT*>(B->Data<T>());
-      MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(MiopenHandle(), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
+      MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(GetMiopenHandle(context), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
     }
   }
 

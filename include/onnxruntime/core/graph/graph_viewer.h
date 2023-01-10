@@ -170,7 +170,7 @@ class GraphViewer {
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Get the consumer nodes of a node arg */
   std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
     return graph_->GetConsumerNodes(node_arg_name);

@@ -17,6 +17,8 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "DmlCommittedResourceAllocator.h"
+#include "DmlCommittedResourceWrapper.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -184,7 +186,8 @@ namespace Dml
             CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
 
         m_context->SetAllocator(m_allocator);
 
@@ -1007,7 +1010,11 @@ namespace Dml
     void* CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource)
     {
         uint64_t pooledResourceId = 0; // Not a pooled resource
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, pResource, (size_t)pResource->GetDesc().Width);
+
+        ComPtr<DmlResourceWrapper> resourceWrapper;
+        wil::MakeOrThrow<DmlCommittedResourceWrapper>(pResource).As(&resourceWrapper);
+
+        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
         return allocInfo.Detach();
     }
     void FreeGPUAllocation(void* ptr)

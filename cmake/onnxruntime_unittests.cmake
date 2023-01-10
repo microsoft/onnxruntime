@@ -53,7 +53,7 @@ function(AddTest)
   else()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
-  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
@@ -133,7 +133,7 @@ function(AddTest)
     else()
       target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
     endif()
-    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers)
+    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers::flatbuffers)
     target_include_directories(${_UT_TARGET}_xc PRIVATE ${TEST_INC_DIR})
     get_target_property(${_UT_TARGET}_DEFS ${_UT_TARGET} COMPILE_DEFINITIONS)
     target_compile_definitions(${_UT_TARGET}_xc PRIVATE ${_UT_TARGET}_DEFS)
@@ -253,8 +253,8 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  file(GLOB onnxruntime_test_training_on_device_src
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  file(GLOB onnxruntime_test_training_api_src
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
@@ -467,6 +467,10 @@ if(onnxruntime_USE_DML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
 endif()
 
+if(onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
+endif()
+
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
@@ -510,6 +514,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -586,6 +591,13 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
+if(onnxruntime_USE_CLOUD)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
+endif()
+
 if(WIN32)
   if (onnxruntime_USE_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
@@ -596,8 +608,8 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
-#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common). 
-#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same 
+#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
+#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
 #process and you won't know which one you are testing.
 onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
@@ -616,7 +628,7 @@ endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
 
 
 
@@ -649,7 +661,7 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers Boost::mp11 safeint_interface)
+        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
@@ -672,8 +684,8 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND all_tests ${onnxruntime_test_training_api_src})
   endif()
 endif()
 
@@ -708,13 +720,21 @@ endif()
 
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
-    # TRT EP CI takes much longer time when updating to TRT 8.2
-    # So, we only run trt ep and exclude other eps to reduce CI test time.
-    #
-    # The test names of model tests were using sequential number in the past.
-    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
-    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.
-    list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
+    if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
+       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock.
+       # Therefore we only run filtered TRT EP tests.
+      list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
+      #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
+    else()
+      # TRT EP CI takes much longer time when updating to TRT 8.2
+      # So, we only run trt ep and exclude other eps to reduce CI test time.
+      #
+      # The test names of model tests were using sequential number in the past.
+      # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
+      # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu_* or *xxx_*.
+      list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*" )
+    endif()
+
 endif ()
 
 AddTest(
@@ -734,6 +754,12 @@ if (MSVC)
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
+
+if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
+# attention_op_test.cc: Function uses '49152' bytes of stack:  exceeds /analyze:stacksize '16384'..
+target_compile_options(onnxruntime_test_all PRIVATE  "/analyze:stacksize 131072")
+endif()
+
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
@@ -921,6 +947,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
@@ -947,6 +974,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
@@ -996,7 +1024,6 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_providers
           onnxruntime_util
           onnxruntime_framework
-          flatbuffers
           onnxruntime_graph
           ${ONNXRUNTIME_MLAS_LIBS}
           onnxruntime_common
@@ -1006,6 +1033,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers
+		  flatbuffers::flatbuffers
           ${CMAKE_DL_LIBS}
           )
   if(onnxruntime_ENABLE_TRAINING)
@@ -1065,7 +1093,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   if (onnxruntime_BUILD_SHARED_LIB)
     #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
-    #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless. 
+    #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
     set(onnxruntime_perf_test_libs
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
@@ -1239,8 +1267,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
-  endif()  
-  
+  endif()
+
   if(WIN32)
     target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
   endif()
@@ -1320,6 +1348,30 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 endif()
+
+# Build custom op library that returns an error OrtStatus when the exported RegisterCustomOps function is called.
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+  onnxruntime_add_shared_library_module(custom_op_invalid_library
+                                        ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.cc)
+  target_include_directories(custom_op_invalid_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.def")
+  endif()
+
+  set_property(TARGET custom_op_invalid_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
+endif()
+
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
