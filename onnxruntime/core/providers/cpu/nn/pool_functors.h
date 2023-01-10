@@ -408,7 +408,9 @@ struct LpPool1DTask final {
       int64_t hend = hstart + kernel_shape[0] * dilation_h;
       y_d[ph] = 0;
       for (int64_t h = hstart; h < hend; h += dilation_h) {
-        y_d[ph] += static_cast<T>(std::pow(std::abs(x_d[h]), p));
+        if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
+          y_d[ph] += static_cast<T>(std::pow(std::abs(x_d[h]), p));
+        }
       }
       y_d[ph] = static_cast<T>(std::pow(y_d[ph], 1.0f / p));
     }
@@ -456,12 +458,17 @@ struct LpPool2DTask final {
         const int64_t pool_index = ph * pooled_width + pw;
         y_d[pool_index] = 0;
         for (int64_t h = hstart; h < hend; h += dilation_h) {
+          if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
             for (int64_t w = wstart; w < wend; w += dilation_w) {
+              if (math::is_a_ge_zero_and_a_lt_b(w, width)) {
                 const int64_t input_index = h * width + w;
-              y_d[pool_index] += static_cast<T>(std::pow(std::abs(x_d[input_index]), p));
+                y_d[pool_index] += static_cast<T>(std::pow(std::abs(x_d[input_index]), p));
+              }
             }
+          }
         }
-        y_d[pool_index] += static_cast<T>(std::pow(y_d[pool_index], 1.0f / p));
+        y_d[pool_index] = static_cast<T>(std::pow(y_d[pool_index], 1.0f / p));
+        //std::cout << y_d[pool_index] << "\t";
       }
     }
   }
@@ -517,14 +524,20 @@ struct LpPool3DTask {
           const int64_t pool_index = ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
           y_d[pool_index] = 0;
           for (int64_t h = hstart; h < hend; h += dilation_h) {
+            if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
               for (int64_t w = wstart; w < wend; w += dilation_w) {
+                if (math::is_a_ge_zero_and_a_lt_b(w, width)) {
                   for (int64_t d = dstart; d < dend; d += dilation_d) {
+                    if (math::is_a_ge_zero_and_a_lt_b(d, depth)) {
                       const int64_t input_index = h * width * depth + w * depth + d;
-                        y_d[pool_index] += static_cast<T>(std::pow(std::abs(x_d[input_index]), p));
+                      y_d[pool_index] += static_cast<T>(std::pow(std::abs(x_d[input_index]), p));
+                    }
+                  }
                 }
+              }
             }
           }
-          y_d[pool_index] += static_cast<T>(std::pow(y_d[pool_index], 1.0f / p));
+          y_d[pool_index] = static_cast<T>(std::pow(y_d[pool_index], 1.0f / p));
         }
       }
     }
