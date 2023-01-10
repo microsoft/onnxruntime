@@ -813,6 +813,9 @@ void RawAttentionEmptyPastState(bool past_present_share_buffer) {
   }
 }
 
+// Disable Causal_EmptyPastState temporarily in Windows build since prefast crashes in python package pipelines
+// TODO(tianleiwu): change the test to load test data from file.
+#ifndef _MSC_VER
 #ifndef ENABLE_TRAINING  // TRT fused attention is enabled only on non-training builds
 static void GetWeightAndBiasForHiddenSize64(std::vector<float>& weight_data, std::vector<float>& bias_data) {
   weight_data = {
@@ -2342,6 +2345,7 @@ TEST(AttentionTest, Causal_EmptyPastState) {
                      use_past_state, past_sequence_length, &past_data, &present_data);
   }
 }
+#endif
 #endif
 
 TEST(AttentionTest, AttentionEmptyPastState) {
