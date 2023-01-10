@@ -217,12 +217,11 @@ class TRTModelIdGenerator {
       MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
     };
 
-    // Use model name instead of path to avoid cache regeneration if path changes
-    const auto& model_path = main_graph.ModelPath();
-    if (!model_path.IsEmpty()) {  // Has a root and maybe some path components after the root path.
-      const auto& path_components = model_path.GetComponents();
-      PathString path_string = path_components.empty() ? model_path.GetRootPathString() :
-          path_components.back();
+    // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
+    const auto& model_path_components = main_graph.ModelPath().GetComponents();
+
+    if (!model_path_components.empty()) {
+      const PathString& path_string = model_path_components.back();
 
 #ifdef _WIN32
       std::string model_name;
