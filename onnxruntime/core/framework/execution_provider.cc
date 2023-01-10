@@ -19,6 +19,7 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }  // namespace
 
 AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+  ORT_ENFORCE(device_id == 0 || mem_type == OrtMemType::OrtMemTypeDefault, "It's illegal for non-CPU device to access CPU-related memory type");
   auto iter = allocators_.find(MakeKey(device_id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;
