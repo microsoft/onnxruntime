@@ -187,8 +187,8 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       }
       float total_weight = 0.0;
 
-      auto fmin = floor(center - support + 0.5);
-      auto fmax = floor(center + support + 0.5);
+      auto fmin = std::floor(center - support + 0.5f);
+      auto fmax = std::floor(center + support + 0.5f);
       int64_t xmin_real = static_cast<int64_t>(fmin);
       int64_t xmax_real = static_cast<int64_t>(fmax);
       int64_t xmin_cut = std::max<int64_t>(xmin_real, (0));
