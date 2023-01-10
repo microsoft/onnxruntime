@@ -91,7 +91,7 @@ class IGraphPartitioner {
   // create the partition based on the partition type.
   // perform partition based on the user input when provided.
   static std::unique_ptr<IGraphPartitioner> CreateGraphPartitioner(const logging::Logger& logger,
-                                                                   const std::basic_string<PATH_CHAR_TYPE>& config_file);
+                                                                   const PathString& config_file);
   virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                 const ExecutionProviders& execution_providers,
                                 std::vector<InlinedVector<NodeIndex>>& stream_nodes,
@@ -102,10 +102,10 @@ class IGraphPartitioner {
 
  protected:
   IGraphPartitioner(const logging::Logger& logger,
-                    const std::basic_string<PATH_CHAR_TYPE>& config_file) : logger_(logger),
-                                                                            config_file_(config_file) {}
+                    const PathString& config_file) : logger_(logger),
+                                                     config_file_(config_file) {}
   const logging::Logger& logger_;
-  std::basic_string<PATH_CHAR_TYPE> config_file_;
+  PathString config_file_;
 };
 #endif
 

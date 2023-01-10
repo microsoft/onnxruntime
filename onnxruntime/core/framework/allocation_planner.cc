@@ -155,7 +155,7 @@ class PlannerImpl {
 #ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-      const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
+      const PathString& partition_config_file,
       const logging::Logger& logger);
 
  private:
@@ -1753,9 +1753,8 @@ class PlannerImpl {
 
   void
   PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const std::basic_string<PATH_CHAR_TYPE>& partition_config_file) {
+                       const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
-    ORT_ENFORCE(partitioner, "Failed to create graph partitioner");
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
@@ -2114,7 +2113,7 @@ Status PlannerImpl::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-    const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
+    const PathString& partition_config_file,
     const logging::Logger& logger) {
   // 1. partition graph into streams
   PartitionIntoStreams(logger, execution_providers_, partition_config_file);
@@ -2190,7 +2189,7 @@ Status SequentialPlanner::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-    const std::basic_string<PATH_CHAR_TYPE>& partition_config_file,
+    const PathString& partition_config_file,
     const logging::Logger& logger,
     std::optional<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
@@ -2227,7 +2226,7 @@ Each sub-array of "streams" contains nodes on a certain device.
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
   DeviceBasedPartitioner(const logging::Logger& logger,
-                         const std::basic_string<PATH_CHAR_TYPE>& config_file) : IGraphPartitioner(logger, config_file) {
+                         const PathString& config_file) : IGraphPartitioner(logger, config_file) {
     Initialize();
   }
 
@@ -2259,9 +2258,9 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
   return;
 
 Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
-                                               const ExecutionProviders& execution_providers,
-                                               std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                                               ExecutionOrder execution_order) {
+                                              const ExecutionProviders& execution_providers,
+                                              std::vector<InlinedVector<NodeIndex>>& stream_nodes,
+                                              ExecutionOrder execution_order) {
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
@@ -2270,7 +2269,6 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
     InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
 
     for (auto node_index : p_graph_nodes) {
-
       // get device info of the node
       const auto* node = graph_viewer.GetNode(node_index);
       const auto& op_type = node->OpType();
@@ -2370,7 +2368,7 @@ void DeviceBasedPartitioner::SaveConfig() const {
 }
 
 std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger,
-                                                                             const std::basic_string<PATH_CHAR_TYPE>& config_file) {
+                                                                             const PathString& config_file) {
   // use device based partitioner by default
   IGraphPartitioner::GraphPartitioningStrategy partitioner_type =
       IGraphPartitioner::GraphPartitioningStrategy::Unknown;
@@ -2398,7 +2396,7 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
     return std::make_unique<DeviceBasedPartitioner>(logger, config_file);
   }  // else if other partitioner types ...
-  return {};
+  ORT_THROW("Failed to create partitioner");
 }
 
 #endif

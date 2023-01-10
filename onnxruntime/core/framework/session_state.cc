@@ -1352,13 +1352,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
 #ifdef _WIN32
 
-  std::basic_string<PATH_CHAR_TYPE> partition_config_file =
+  PathString partition_config_file =
       ToWideString(session_options.config_options.GetConfigOrDefault(
           kNodePartitionConfigFile, ""));
 
 #else
 
-  std::basic_string<PATH_CHAR_TYPE> partition_config_file =
+  PathString partition_config_file =
       session_options.config_options.GetConfigOrDefault(
           kNodePartitionConfigFile, "");
 
