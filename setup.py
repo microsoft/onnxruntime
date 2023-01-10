@@ -2,13 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # ------------------------------------------------------------------------
+# pylint: disable=C0103
 
 import datetime
+import logging
 import platform
 import subprocess
 import sys
-from distutils import log as logger
-from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -16,11 +16,13 @@ from shutil import copyfile
 
 from packaging.tags import sys_tags
 from setuptools import Extension, setup
+from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.command.install import install as InstallCommandBase
 
 nightly_build = False
 package_name = "onnxruntime"
 wheel_name_suffix = None
+logger = logging.getLogger()
 
 
 def parse_arg_remove_boolean(argv, arg_name):
@@ -162,7 +164,7 @@ try:
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def _rewrite_ld_preload_tensorrt(self, to_preload):
-            with open("onnxruntime/capi/_ld_preload.py", "a") as f:
+            with open("onnxruntime/capi/_ld_preload.py", "a", encoding="ascii") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
@@ -447,8 +449,8 @@ if not path.exists(README):
 
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
-with open(README) as f:
-    long_description = f.read()
+with open(README, "r", encoding="utf-8") as fdesc:
+    long_description = fdesc.read()
 
 # Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
 # line option is specified.

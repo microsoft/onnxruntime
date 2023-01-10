@@ -193,19 +193,17 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 
   Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
                                     const TensorShape& input_shape,
-                                    const TensorShape* weights_shape,
+                                    const TensorShape& weights_shape,
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
                                     const Tensor* extra_add_qk,
-                                    const Tensor* key,
-                                    const Tensor* value,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
                                                   extra_add_qk,
-                                                  key, value, parameters,
+                                                  parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
   }
@@ -252,7 +250,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
   Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
   Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
-
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
