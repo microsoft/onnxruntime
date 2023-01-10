@@ -20,6 +20,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include <cub/cub.cuh>
 
 using namespace onnxruntime::cuda;
 
@@ -359,6 +360,46 @@ void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
     getTrtSequenceOffset<<<1, kMAX_THREADS_PER_BLOCK, sizeof(int) * (2 * batch_size + 1), stream>>>(
         trt_mha_padding_offset, sequence_token_count, batch_size, sequence_length);
   }
+}
+
+// Write is not effective
+__global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
+    getTrtSequenceOffset2d(int* trt_mha_padding_offset,
+                           const int* attention_masks,
+                           const int batch_size,
+                           const int sequence_length) {
+
+    typedef cub::BlockReduce<int, kMAX_THREADS_PER_BLOCK> BlockReduce;
+    __shared__ typename BlockReduce::TempStorage temp_storage;
+
+    const int batch_id = blockIdx.x;
+    const int* batch_mask = attention_masks + (batch_id * sequence_length);
+    int first_non_padding = sequence_length;
+    for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
+      if (batch_mask[i]) {
+        first_non_padding = i;
+        break;
+      }
+    }
+
+    int padding_count = BlockReduce(temp_storage).Reduce(first_non_padding, cub::Min(), blockDim.x);
+    if (threadIdx.x == 0) {
+      trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length) + padding_count;
+      trt_mha_padding_offset[2 * batch_id + 1] = (batch_id + 1)* sequence_length;
+
+      if (batch_id == gridDim.x - 1) {
+        trt_mha_padding_offset[2 * batch_id + 2] = (batch_id + 1)* sequence_length;
+      }
+    }
+}
+
+void LaunchTrtSequenceOffset2d(int* trt_mha_padding_offset,
+                               const int* attention_masks, // [batch, sequence_length], must be left or right padding
+                               const int batch_size,
+                               const int sequence_length,
+                               cudaStream_t stream) {
+  getTrtSequenceOffset2d<<<batch_size, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+      trt_mha_padding_offset, attention_masks, batch_size, sequence_length);
 }
 
 }  // namespace cuda
