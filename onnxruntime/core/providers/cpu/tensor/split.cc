@@ -88,7 +88,7 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
     split_sizes = std::vector<int64_t>(num_outputs, size);
     if (remainder) {
-      split_sizes[num_outputs - 1] = remainder;
+      split_sizes.back() = remainder;
     }
   }
 
