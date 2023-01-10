@@ -1178,7 +1178,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${TEST_DATA_DES}
+        ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
     endif()
 
@@ -1367,6 +1367,14 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
             LIBS ${onnxruntime_customopregistration_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+      add_custom_command(
+        TARGET onnxruntime_customopregistration_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${TEST_DATA_SRC}
+        $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
+    endif()
   endif()
 endif()
 

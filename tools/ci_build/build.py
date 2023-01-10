@@ -1614,37 +1614,32 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    run_subprocess(
-        [
-            "xcodebuild",
-            "test-without-building",
-            "-project",
-            "./onnxruntime.xcodeproj",
-            "-configuration",
-            config,
-            "-scheme",
-            "onnxruntime_test_all_xc",
-            "-destination",
-            "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-        ],
-        cwd=cwd,
-    )
+    xc_test_schemes = [
+        "onnxruntime_test_all_xc",
+    ]
 
-    run_subprocess(
-        [
-            "xcodebuild",
-            "test-without-building",
-            "-project",
-            "./onnxruntime.xcodeproj",
-            "-configuration",
-            config,
-            "-scheme",
+    if args.build_shared_lib:
+        xc_test_schemes += [
             "onnxruntime_shared_lib_test_xc",
-            "-destination",
-            "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-        ],
-        cwd=cwd,
-    )
+            "onnxruntime_customopregistration_test_xc",
+        ]
+
+    for xc_test_scheme in xc_test_schemes:
+        run_subprocess(
+            [
+                "xcodebuild",
+                "test-without-building",
+                "-project",
+                "./onnxruntime.xcodeproj",
+                "-configuration",
+                config,
+                "-scheme",
+                xc_test_scheme,
+                "-destination",
+                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+            ],
+            cwd=cwd,
+        )
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
