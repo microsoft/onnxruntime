@@ -5,9 +5,6 @@ set -e -x
 yum -y install \
     graphviz
 
-cd /tmp/src
-source ./install_shared_deps.sh
-
 if [ ! -d "/opt/conda/bin" ]; then
     PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
 else
@@ -29,7 +26,9 @@ else
 fi
 
 cd /tmp/src
+source $(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)/install_shared_deps.sh
 
+cd /tmp/src
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps_aten\.sh/..\/install_protobuf.sh}
 fi
