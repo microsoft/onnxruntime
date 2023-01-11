@@ -42,10 +42,12 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
     this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
 #endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
 
+#ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
+#endif
   }
 
   const GemmParams<T>* PreTuning(const GemmParams<T>* params) override {
@@ -127,10 +129,12 @@ class StridedBatchedGemmTunableOp : public tunable::TunableOp<StridedBatchedGemm
  public:
   StridedBatchedGemmTunableOp() {
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
+#ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
+#endif
   }
 
   const StridedBatchedGemmParams<T>* PreTuning(const StridedBatchedGemmParams<T>* params) override {

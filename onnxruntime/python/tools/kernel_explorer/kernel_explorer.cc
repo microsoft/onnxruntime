@@ -25,6 +25,14 @@ PYBIND11_MODULE(_kernel_explorer, m) {
   InitSkipLayerNorm(m);
   InitGemmFastGelu(m);
 #endif
+
+  m.def("IsComposableKernelAvailable", []() {
+#ifdef USE_COMPOSABLE_KERNEL
+    return true;
+#else
+        return false;
+#endif
+  });
 }
 
 }  // namespace onnxruntime

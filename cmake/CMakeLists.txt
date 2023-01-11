@@ -194,6 +194,7 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
@@ -283,6 +284,11 @@ if (onnxruntime_USE_ROCM)
   string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
   message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
+
+  if (onnxruntime_USE_COMPOSABLE_KERNEL AND ROCM_VERSION_DEV VERSION_LESS "5.3")
+    message(WARNING "composable kernel is only supported on ROCm >= 5.3")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
+  endif()
 endif()
 
 if (APPLE)
