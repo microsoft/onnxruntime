@@ -1015,10 +1015,6 @@ struct ProviderHostImpl : ProviderHost {
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
 
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
-    MurmurHash3::x86_128(key, len, seed, out);
-  }
-
   std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
     std::unordered_map<std::string, int> domain_to_version_map;
     domain_to_version_map[kOnnxDomain] = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
@@ -1032,6 +1028,10 @@ struct ProviderHostImpl : ProviderHost {
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 #endif
+
+  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
+    MurmurHash3::x86_128(key, len, seed, out);
+  }
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
