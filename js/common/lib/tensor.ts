@@ -298,11 +298,11 @@ export interface TensorFromImageOptions {
   /**
    * Describes Tensor Height - can be accessed via tensor dimensions as well
    */
-  tensorHeight?: number;
+  resizedHeight?: number;
   /**
    * Describes Tensor Width - can be accessed via tensor dimensions as well
    */
-  tensorWidth?: number;
+  resizedWidth?: number;
   /**
    * Describes normalization parameters to tensor conversion from image data - default values - Bias: 0, Mean: 255
    */
@@ -315,7 +315,7 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param imageEle - ImageData Type - composed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
+   * @param imageData - {ImageData} - composed of: Uint8ClampedArray, width. height - uses known pixel format RGBA
    * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
@@ -325,7 +325,7 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param imageEle - HTMLImageElement Type - since the data is stored as ImageData no need for format parameter
+   * @param imageElement - {HTMLImageElement} - since the data is stored as ImageData no need for format parameter
    * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
@@ -335,7 +335,7 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param imageEle - string - Assuming the string is a URL to an image
+   * @param url - {string} - Assuming the string is a URL to an image
    * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
@@ -345,12 +345,12 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param imageEle - ImageBitmap Type - since the data is stored as ImageData no need for format parameter
+   * @param bitMap - {ImageBitmap} - since the data is stored as ImageData no need for format parameter
    * @param options - NOT Optional - Interface describing input image & output tensor -
    * Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(bitMap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(bitmap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

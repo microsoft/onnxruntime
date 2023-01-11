@@ -251,7 +251,7 @@ export class Tensor implements TensorInterface {
   // #region factory
   static async fromImage(imageData: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(bitMap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(bitmap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(url: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, options?: TensorFromImageOptions):
@@ -275,9 +275,9 @@ export class Tensor implements TensorInterface {
         let height = image.naturalHeight;
         let width = image.naturalWidth;
 
-        if (options !== undefined && options.tensorHeight !== undefined && options.tensorWidth !== undefined) {
-          height = options.tensorHeight;
-          width = options.tensorWidth;
+        if (options !== undefined && options.resizedHeight !== undefined && options.resizedWidth !== undefined) {
+          height = options.resizedHeight;
+          width = options.resizedWidth;
         }
 
         if (options !== undefined) {
@@ -318,9 +318,9 @@ export class Tensor implements TensorInterface {
       let height: number;
       let width: number;
 
-      if (options !== undefined && options.tensorWidth !== undefined && options.tensorHeight !== undefined) {
-        height = options.tensorHeight;
-        width = options.tensorWidth;
+      if (options !== undefined && options.resizedWidth !== undefined && options.resizedHeight !== undefined) {
+        height = options.resizedHeight;
+        width = options.resizedWidth;
       } else {
         height = image.height;
         width = image.width;
