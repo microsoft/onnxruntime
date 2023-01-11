@@ -362,7 +362,9 @@ void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
   }
 }
 
-// Write is not effective
+// only support pure left padding with mask 0 on leading left,
+// or pure right padding with mask 0 on tailing right of each masks vector
+// for batch.
 __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
     getTrtSequenceOffset2d(int* trt_mha_padding_offset,
                            const int* attention_masks,
@@ -374,20 +376,29 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
 
     const int batch_id = blockIdx.x;
     const int* batch_mask = attention_masks + (batch_id * sequence_length);
-    int first_non_padding = sequence_length;
+    const bool counting_on_zero = (batch_mask[0] == 0);
+    int biggest_position = 0;
+
     for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
-      if (batch_mask[i]) {
-        first_non_padding = i;
-        break;
+      if (counting_on_zero == (batch_mask[i] == 0)) {
+        biggest_position = i;
       }
     }
 
-    int padding_count = BlockReduce(temp_storage).Reduce(first_non_padding, cub::Min(), blockDim.x);
-    trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length) + padding_count;
-    trt_mha_padding_offset[2 * batch_id + 1] = (batch_id + 1)* sequence_length;
+    int last_leading_position = BlockReduce(temp_storage.Reduce(biggest_position, cub::Max(), blockDim.x);
 
-    if (batch_id == gridDim.x) {
-      trt_mha_padding_offset[2 * batch_id + 2] = (batch_id + 1)* sequence_length;
+    if (threadIdx.x == 0) {
+      if (!counting_on_zero) { // default right side padding
+        trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length);
+        trt_mha_padding_offset[2 * batch_id + 1] = (batch_id * sequence_length) + last_leading_position + 1;
+      } else { // left side padding
+        trt_mha_padding_offset[2 * batch_id] = (batch_id * sequence_length) + last_leading_position + 1;
+        trt_mha_padding_offset[2 * batch_id + 1] = (batch_id + 1)* sequence_length;
+      }
+
+      if (batch_id == gridDim.x - 1) {
+        trt_mha_padding_offset[2 * batch_id + 2] = (batch_id + 1)* sequence_length;
+      }
     }
 }
 
