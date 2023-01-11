@@ -2208,11 +2208,10 @@ Status SequentialPlanner::CreatePlan(
       logger);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 #ifdef ORT_ENABLE_STREAM
 /*
 DeviceBasedPartitioner stores config in json format:
+------------------------------------------------------
 {
 "type":"DeviceBasedPartitioner",
 "streams":[
@@ -2220,8 +2219,12 @@ DeviceBasedPartitioner stores config in json format:
            ["node_2","node_4","node_5"],
            ["node_3","node_6"],
           ]
+"devices":["0","0","1"]
 }
-Each sub-array of "streams" contains nodes on a certain device.
+------------------------------------------------------
+"streams" specifies streams of nodes;
+"devices" specifies the type of device of each stream.
+Pls check definition of OrtDevice for more detail on device type.
 */
 class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
@@ -2247,6 +2250,8 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 
  private:
   void Initialize();
+  // device_types_[i] saves the device type for nodes in node_names_by_stream_[i]
+  std::vector<OrtDevice::DeviceType> device_types_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
   bool need_save_ = false;
 };
@@ -2282,6 +2287,7 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       if (it == device_to_stream.end()) {
         device_to_stream[device_type] = static_cast<int>(node_names_by_stream_.size());
         node_names_by_stream_.push_back({});
+        device_types_.push_back(device_type);
         it = device_to_stream.find(device_type);
       }
       // put the node into the belonging stream
@@ -2333,10 +2339,15 @@ void DeviceBasedPartitioner::Initialize() {
           node_names_by_stream_.back().push_back(node_name);
         }
       }
+      for (const std::string& device_type : json_config["devices"]) {
+        device_types_.push_back(static_cast<OrtDevice::DeviceType>(std::atoi(device_type.c_str())));
+      }
     } catch (const std::exception& ex) {
       EXIT_ON_ERR(ex.what());
     }
     if_stream.close();
+    ORT_ENFORCE(node_names_by_stream_.size() == device_types_.size(),
+                "Number of streams does not equal to number of device types!");
   } else {
     // when config file specified but cannot be read, rewrite it.
     need_save_ = true;
@@ -2355,6 +2366,12 @@ void DeviceBasedPartitioner::SaveConfig() const {
           node_array.insert(node_array.end(), node_name);
         }
         json_config["streams"].insert(json_config["streams"].end(), node_array);
+      }
+    }
+    if (!device_types_.empty()) {
+      json_config["devices"] = json::array();
+      for (const auto& device_type : device_types_) {
+        json_config["devices"].insert(json_config["devices"].end(), std::to_string(device_type));
       }
     }
     std::ofstream of_stream(config_file_);

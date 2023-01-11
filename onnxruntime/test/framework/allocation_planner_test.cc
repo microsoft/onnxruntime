@@ -1670,8 +1670,8 @@ TEST_F(PlannerTest, TestMultiStreamConfig) {
               graph_partitioner_cpu_gpu->Streams() == 2);
 }
 
-// dump partition config to a file and check its completeness
-TEST_F(PlannerTest, TestMultiStreamDumpConfig) {
+// Save partition config to a file and check its completeness
+TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream.json";
   {
     SessionOptions sess_opt;
@@ -1721,9 +1721,29 @@ TEST_F(PlannerTest, TestMultiStreamDumpConfig) {
   ASSERT_TRUE(node_set.empty());
 }
 
-// load with partition config where a node is missing, session load expected to fail.
+// Load with partition config where a node is missing, session load expected to fail.
 TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                     config_file_path)
+                  .IsOK());
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(!status.IsOK());
+}
+
+// Load with partition config where streams and devices has mismatch
+TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
   ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
