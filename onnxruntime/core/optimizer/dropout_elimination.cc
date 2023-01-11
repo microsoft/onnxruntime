@@ -26,7 +26,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
     return false;
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   // allow Dropout elimination when:
   //    1. ratio input is an initializer of 0
 	//    2. ratio input is not a graph input, so it cannot be overridden
