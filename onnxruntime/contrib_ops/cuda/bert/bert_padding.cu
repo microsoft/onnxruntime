@@ -376,7 +376,7 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
     int first_non_padding = sequence_length;
     int last_non_padding = 0;
     for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
-      if (batch_mask[i])
+      if (batch_mask[i]) {
         if (first_non_padding > i) {
           first_non_padding = i;
         }
