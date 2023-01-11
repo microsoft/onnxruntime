@@ -190,7 +190,7 @@ class SymbolicShapeInference:
             # contrib ops:
             "Attention": self._infer_Attention,
             "BiasGelu": self._infer_BiasGelu,
-            "CrossAttention": self._infer_CrossAttention,
+            "MultiHeadAttention": self._infer_MultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
@@ -1994,7 +1994,7 @@ class SymbolicShapeInference:
     def _infer_BiasGelu(self, node):
         self._propagate_shape_and_type(node)
 
-    def _infer_CrossAttention(self, node):
+    def _infer_MultiHeadAttention(self, node):
         # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
         # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
         # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
