@@ -1192,6 +1192,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   int number_of_trt_nodes = 0;
+  TRTResetModelId();
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);

@@ -286,6 +286,9 @@ class TRTModelIdGenerator {
     return trt_model_id_[model_hash]++;
   }
 
+  void TRTResetId() {
+    trt_model_id_.clear();
+  }
  private:
   std::unordered_map<HashValue, int> trt_model_id_;       // current unique id for model
 };
@@ -299,5 +302,13 @@ int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
   return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
+}
+
+void TRTResetModelId() {
+  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
+  // use a lock when generating an id to be paranoid
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
+  trt_model_id_generator_->TRTResetId();
 }
 }
