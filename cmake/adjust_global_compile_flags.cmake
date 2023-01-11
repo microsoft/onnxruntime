@@ -103,7 +103,7 @@ endif()
 
 # enable stream for all the non-minimal build
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_compile_definitions(ENABLE_STREAM)
+  add_compile_definitions(ORT_ENABLE_STREAM)
 endif()
 
 if (onnxruntime_ENABLE_LTO)
@@ -349,12 +349,12 @@ else()
     message("AVX instruction set is not supported.")
   endif()
 
-  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    message("F16C, FMA and AVX flags are not supported on Android for on-device training.")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_APIS)
+    message("F16C, FMA and AVX flags are not supported on Android for ort training.")
   endif()
 
   if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX) OR
-    (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE))
+    (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_APIS))
     message("One or more AVX/F16C instruction flags are not supported. ")
     set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
   endif()

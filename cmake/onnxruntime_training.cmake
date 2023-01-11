@@ -232,38 +232,4 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   target_link_libraries(onnxruntime_training_gpt2 PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_training_gpt2 PROPERTIES FOLDER "ONNXRuntimeTest")
 
-  # Training API Tests
-  # Currently disable it by default for internal development usage.
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    # Only files in the trainer and common folder will be compiled into test trainer.
-    file(GLOB training_api_test_trainer_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
-      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.cc"
-      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.h"
-    )
-    onnxruntime_add_executable(onnxruntime_test_trainer ${training_api_test_trainer_src})
-
-    onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_training
-      onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
-
-    target_include_directories(onnxruntime_test_trainer PRIVATE
-      ${CMAKE_CURRENT_BINARY_DIR}
-      ${ONNXRUNTIME_ROOT}
-      ${ORTTRAINING_ROOT}
-      ${eigen_INCLUDE_DIRS}
-      ${CXXOPTS}
-      ${extra_includes}
-      ${onnxruntime_graph_header}
-      ${onnxruntime_exec_src_dir}
-    )
-
-    target_link_libraries(onnxruntime_test_trainer PRIVATE
-      onnxruntime_training
-      ${ONNXRUNTIME_LIBS}
-      ${onnxruntime_EXTERNAL_LIBRARIES}
-    )
-    set_target_properties(onnxruntime_test_trainer PROPERTIES FOLDER "ONNXRuntimeTest")
-  endif()
-
 endif()

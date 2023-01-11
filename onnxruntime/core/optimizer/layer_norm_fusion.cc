@@ -52,9 +52,9 @@ due to restriction in older opsets. Therefore, Layer Normalization will also han
 |                     |
 |                     v
 X --> ReduceMean --> Sub --> Cast --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
-                      |                                                        ^
-                      |                                                        |
-                      +--------------------------------------------------------+
+                              |                                                ^
+                              |                                                |
+                              +------------------------------------------------+
 +---------------------+       Cast
 |                     |        |
 |                     v        v
@@ -134,7 +134,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& sub_node = *graph.GetNode(p_sub_node->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node, "Sub", {7, 13, 14}) ||
         sub_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, sub_node, subCnt == 1 ? 2u : 1u) ||
         !IsSupportedDataType(sub_node)) {
       continue;
     }
@@ -184,9 +183,24 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     // Apex O2 pattern specific match ends...
 
-    // Find the "Div" node after "Sub".
+    // Find the "Div" node after "Sub". It's possible that there is "Cast" node after "Sub" node.
+    const Node* p_cast1 = nullptr;
+    if (!p_sub_node_dup && sub_node.GetOutputEdgesCount() == 1) {
+      Node& cast_node = *graph.GetNode(sub_node.OutputNodesBegin()->Index());
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) &&
+          cast_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
+          optimizer_utils::CheckOutputEdges(graph, cast_node, 2u) && IsSupportedDataType(cast_node)) {
+        p_cast1 = &cast_node;
+        nodes_to_remove.push_back(cast_node);
+      }
+    }
+
+    if (!optimizer_utils::CheckOutputEdges(graph, sub_node, subCnt == 1 && !p_cast1 ? 2u : 1u)) {
+      continue;
+    }
+
     const Node* p_div = nullptr;
-    p_div = graph_utils::FirstChildByType(sub_node, "Div");
+    p_div = graph_utils::FirstChildByType(p_cast1 ? *p_cast1 : sub_node, "Div");
 
     // Find the sub_dup node if exist
     if (p_sub_node_dup != nullptr) {
@@ -269,23 +283,19 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     nodes_to_remove.push_back(pow_node);
 
     // check if Cast node exists: either between sub and pow, or as second input to pow
-    const Node* p_cast_node = graph_utils::FirstParentByType(pow_node, "Cast");
-    if (p_cast_node != nullptr) {
-      Node& cast_node = *graph.GetNode(p_cast_node->Index());
+    const Node* p_cast2 = graph_utils::FirstParentByType(pow_node, "Cast");
+    if (p_cast2 != nullptr && p_cast2 != p_cast1) {
+      Node& cast_node = *graph.GetNode(p_cast2->Index());
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) ||
           cast_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, cast_node, 1)) {
         continue;
       }
       nodes_to_remove.push_back(cast_node);
-
-      // Traceback from the last node in vector to find sub --> pow  or  sub --> cast
-      const Node* p_sub2_node = graph_utils::FirstParentByType(nodes_to_remove.back(), "Sub");
-      if (p_sub2_node != nullptr) {
-        // Cast is between Sub and Pow
-        if ((p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup) || !IsSupportedDataType(cast_node)) {
-          continue;
-        }
+    } else if (!p_cast2) {
+      const Node* p_sub2_node = graph_utils::FirstParentByType(pow_node, "Sub");
+      if (!p_sub2_node || (p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup)) {
+        continue;
       }
     }
 
@@ -335,7 +345,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
@@ -352,7 +362,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           bias = last_add_node.MutableInputDefs()[i];
@@ -413,7 +423,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
@@ -584,7 +594,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
@@ -633,7 +643,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     // add one extra output def, so we have 2 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(
         &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));

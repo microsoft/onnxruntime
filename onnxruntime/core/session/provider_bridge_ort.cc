@@ -965,7 +965,7 @@ struct ProviderHostImpl : ProviderHost {
   Status SparseTensor__Copy(const SparseTensor* p, const DataTransferManager& dtm, SparseTensor& dst) override { return p->Copy(dtm, dst); }
 #endif
 
-  void* Allocator__AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) override { return AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
+  void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) override { return AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
 
   // TensorSeq(wrapped)
   MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept override { return p->DataType(); }
@@ -1030,12 +1030,6 @@ struct ProviderHostImpl : ProviderHost {
                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version_map,
 #endif  // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
-  }
-#endif
-
-#if defined(USE_TENSORRT)
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
-    MurmurHash3::x86_128(key, len, seed, out);
   }
 #endif
 

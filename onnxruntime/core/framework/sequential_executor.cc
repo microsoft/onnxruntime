@@ -441,10 +441,12 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   } else {
     KernelScope kernel_scope(session_scope, kernel_ctx, *p_kernel);
     ORT_TRY {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
         ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&kernel_ctx));
       }
+#endif
+#ifdef ENABLE_TRAINING
       // Cache lookup. Currently we only cache single-output nodes,
       // to keep memory overhead impact in check. Hence we only look in cache
       // if the current node has one output.
@@ -499,8 +501,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
-#ifdef ENABLE_STREAM
-                                   const DeviceStreamCollection& device_streams,
+#ifdef ORT_ENABLE_STREAM
+                                   const DeviceStreamCollection* device_streams,
 #endif
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
@@ -514,7 +516,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   }
 
   // prepare the execution context, notifications got initialized.
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   StreamExecutionContext ctx(session_state,
                              valid_streams,
                              execution_plan->notification_owners,
@@ -592,7 +594,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
-                                          const DeviceStreamCollection& device_streams,
+                                          const DeviceStreamCollection* device_streams,
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,

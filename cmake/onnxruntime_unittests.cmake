@@ -253,8 +253,8 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  file(GLOB onnxruntime_test_training_on_device_src
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  file(GLOB onnxruntime_test_training_api_src
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
     "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
@@ -328,12 +328,19 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING_APIS)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
     )
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+      )
+  endif()
+
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
   if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
@@ -514,6 +521,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -588,6 +596,13 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_xnnpack)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
+endif()
+
+if(onnxruntime_USE_CLOUD)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
 endif()
 
 if(WIN32)
@@ -676,9 +691,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
-  endif()
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND all_tests ${onnxruntime_test_training_api_src})
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -939,6 +955,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
@@ -965,6 +982,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
@@ -1275,6 +1293,53 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
     endif()
   endif()
+
+  # Training API Tests
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    # Only files in the trainer and common folder will be compiled into test trainer.
+    file(GLOB training_api_test_trainer_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.h"
+    )
+    onnxruntime_add_executable(onnxruntime_test_trainer ${training_api_test_trainer_src})
+
+    onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_session
+      onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
+
+    set(CXXOPTS ${cxxopts_SOURCE_DIR}/include)
+    target_include_directories(onnxruntime_test_trainer PRIVATE
+      ${CMAKE_CURRENT_BINARY_DIR}
+      ${ONNXRUNTIME_ROOT}
+      ${ORTTRAINING_ROOT}
+      ${eigen_INCLUDE_DIRS}
+      ${CXXOPTS}
+      ${extra_includes}
+      ${onnxruntime_graph_header}
+      ${onnxruntime_exec_src_dir}
+    )
+
+    set(ONNXRUNTIME_TEST_LIBS
+      onnxruntime_session
+      ${onnxruntime_libs}
+      # CUDA is dynamically loaded at runtime
+      onnxruntime_optimizer
+      onnxruntime_providers
+      onnxruntime_util
+      onnxruntime_framework
+      onnxruntime_util
+      onnxruntime_graph
+      ${ONNXRUNTIME_MLAS_LIBS}
+      onnxruntime_common
+      onnxruntime_flatbuffers
+    )
+    target_link_libraries(onnxruntime_test_trainer PRIVATE
+      ${ONNXRUNTIME_TEST_LIBS}
+      ${onnxruntime_EXTERNAL_LIBRARIES}
+    )
+    set_target_properties(onnxruntime_test_trainer PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_WEBASSEMBLY)
@@ -1338,6 +1403,30 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 endif()
+
+# Build custom op library that returns an error OrtStatus when the exported RegisterCustomOps function is called.
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+  onnxruntime_add_shared_library_module(custom_op_invalid_library
+                                        ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.cc)
+  target_include_directories(custom_op_invalid_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.def")
+  endif()
+
+  set_property(TARGET custom_op_invalid_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
+endif()
+
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"

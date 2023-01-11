@@ -50,12 +50,9 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* past_tensor,
                                           void* parameters) const {
   auto& device_prop = GetDeviceProp();
-  auto& weights_shape = weights->Shape();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), &weights_shape, bias->Shape(),
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
                                                  mask_index, past_tensor,
                                                  nullptr,  // extra_add_qk
-                                                 nullptr,  // key
-                                                 nullptr,  // value
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 
@@ -132,7 +129,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   cublasHandle_t cublas = GetCublasHandle(context);
-  const size_t element_size = sizeof(T);
+  constexpr size_t element_size = sizeof(T);
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;

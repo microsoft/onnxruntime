@@ -362,7 +362,7 @@ TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<uint8_t>(12, 3, 278);
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
 TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
 
