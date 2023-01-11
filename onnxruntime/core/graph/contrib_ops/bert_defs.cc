@@ -125,7 +125,7 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
   }
 }
 
-void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
   // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
   // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
@@ -258,8 +258,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
-constexpr const char* CrossAttention_ver1_doc = R"DOC(
-Multi-Head Cross Attention. Bias from input projection is included.
+constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
+Multi-Head Self/Cross Attention. Bias from input projection is included.
 
 The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
 means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
@@ -267,9 +267,9 @@ each key sequence excluding paddings.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    CrossAttention, 1,
+    MultiHeadAttention, 1,
     OpSchema()
-        .SetDoc(CrossAttention_ver1_doc)
+        .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Input(0,
                "query",
@@ -299,7 +299,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          CrossAttentionTypeAndShapeInference(ctx);
+          MultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
@@ -435,6 +435,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
           schema.BuildFunction(functionProto);
           return true;
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RelativePositionBias, 1,
+    OpSchema()
+        .SetDoc("Compute binned relative position bias for T5 model. ref: https://arxiv.org/abs/1803.02155v2")
+        .Attr("max_distance", "Max distance", AttributeProto::INT)
+        .Attr("is_bidirectional", "Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "bias_table", "2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)", "T")
+        .Input(1, "query_length", "The length of query. Self Attention requires query_length = key_length", "U")
+        .Input(2, "key_length", "The length of key.", "U")
+        .Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+            auto& bias_table_shape = getInputShape(ctx, 0);
+            TensorShapeProto output_shape;
+            output_shape.add_dim()->set_dim_value(1);
+            *output_shape.add_dim() = bias_table_shape.dim(1);
+            output_shape.add_dim();
+            output_shape.add_dim();
+            updateOutputShape(ctx, 0, output_shape);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(

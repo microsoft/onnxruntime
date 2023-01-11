@@ -1445,7 +1445,9 @@ if (onnxruntime_USE_ROCM)
     # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
     device_gemm_instance
     device_gemm_add_fastgelu_instance
-    device_gemm_fastgelu_instance)
+    device_gemm_fastgelu_instance
+    device_batched_gemm_instance
+  )
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")

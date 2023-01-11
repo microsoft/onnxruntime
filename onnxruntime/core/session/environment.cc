@@ -34,7 +34,6 @@
 #if defined(ENABLE_TRAINING_OPS)
 #include "orttraining/core/graph/training_op_defs.h"
 #endif
-
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -264,7 +263,6 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       // preserve this order until <training schemas>: this depends on operatorsetschema registration.
       training::RegisterTrainingOpSchemas();
 #endif
-
 #ifdef ENABLE_TRAINING
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();

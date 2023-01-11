@@ -245,7 +245,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--past_present_share_buffer",
         required=False,
         action="store_true",
-        help="Use shared buffer for past and present, currently work for gpt2 greedy search.",
+        help="Use shared buffer for past and present, currently work for gpt2 greedy/sampling search.",
     )
     model_group.set_defaults(past_present_share_buffer=False)
 
@@ -1047,9 +1047,9 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
             kwargs.update({"past_present_share_buffer": 1})
             nis = []
             nis.extend(node.input)
-            while len(nis) < 8:
+            while len(nis) < 6:
                 nis.extend([""])
-            if len(nis) < 9:
+            if len(nis) < 7:
                 nis.extend(["past_sequence_length"])
             node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
         new_nodes.extend([node])
@@ -1365,7 +1365,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     is_beamsearch: bool = generation_type == GenerationType.BEAMSEARCH
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
     is_sampling: bool = generation_type == GenerationType.SAMPLING
-    past_present_share_buffer: bool = args.past_present_share_buffer and is_greedysearch
+    past_present_share_buffer: bool = args.past_present_share_buffer and (is_greedysearch or is_sampling)
 
     logger.info(f"**** past_present_share_buffer={past_present_share_buffer}, is_greedysearch={is_greedysearch}")
 
