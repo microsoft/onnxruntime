@@ -1900,10 +1900,9 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
           InlinedHashMap<NodeIndex, NotificationIndex>::iterator notification_it;
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
+          if (node_stream_map_[it->Index()] != i && execution_plan[node_stream_map_[it->Index()]]->device_.Type() != OrtDevice::CPU) {
             // If the current node and its input node are in different streams, We need to launch both BarrierStep and WaitOnEPStep
             // before LaunchKernelStep on the current node.
-            // find the trigger_point_id
             auto trigger_point_it = diverge_stream_from_node.find(it->Index());
             ORT_ENFORCE(trigger_point_it != diverge_stream_from_node.end());
             size_t trigger_point_index = trigger_point_it->second;
