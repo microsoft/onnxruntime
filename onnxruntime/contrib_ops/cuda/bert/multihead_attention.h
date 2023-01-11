@@ -14,9 +14,9 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class CrossAttention final : public CudaKernel {
+class MultiHeadAttention final : public CudaKernel {
  public:
-  CrossAttention(const OpKernelInfo& info);
+  MultiHeadAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:

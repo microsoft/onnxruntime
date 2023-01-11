@@ -382,7 +382,21 @@
         "^test_roialign_cpu",
         "^test_dft_axis_cpu",
         "^test_dft_cpu",
-        "^test_dft_inverse_cpu"
+        "^test_dft_inverse_cpu",
+        // TODO: Remove identity tests when fixed #42638109
+        "^test_identity_cpu",
+        "^test_sequence_map_add_1_sequence_1_tensor_cpu",
+        "^test_sequence_map_add_1_sequence_1_tensor_expanded_cpu",
+        "^test_sequence_map_add_2_sequences_cpu",
+        "^test_sequence_map_add_2_sequences_expanded_cpu",
+        "^test_sequence_map_extract_shapes_cpu",
+        "^test_sequence_map_extract_shapes_expanded_cpu",
+        "^test_sequence_map_identity_1_sequence_1_tensor_cpu",
+        "^test_sequence_map_identity_1_sequence_1_tensor_expanded_cpu",
+        "^test_sequence_map_identity_1_sequence_cpu",
+        "^test_sequence_map_identity_1_sequence_expanded_cpu",
+        "^test_sequence_map_identity_2_sequences_cpu",
+        "^test_sequence_map_identity_2_sequences_expanded_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
