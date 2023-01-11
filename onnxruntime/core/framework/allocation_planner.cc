@@ -297,7 +297,7 @@ class PlannerImpl {
     *is_strided_tensor = false;
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
-    // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
+    // These tensors will be passed back to pytorch, thus cannot share the buffer with other tensors
 
     // Unhandled corner case:
     // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
@@ -1584,7 +1584,7 @@ class PlannerImpl {
   }
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   bool AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
     if (ci.kernel_def == nullptr) {
@@ -1961,7 +1961,7 @@ class PlannerImpl {
     }
 #ifdef ENABLE_TRAINING
     // 6. build the node_execution_order_in_training
-    //  the training memory optmization rely on a stable order how kernel get launched to calculate memory pattern
+    //  the training memory optimization rely on a stable order how kernel get launched to calculate memory pattern
     //  so we limit training scenario to run with single stream and single thread mode
     //  the code below will simulate the execution and get the stable execution order
     InlinedVector<int> execution_offsets(num_logic_streams_, -1);
@@ -2150,7 +2150,7 @@ Status PlannerImpl::CreatePlan(
   AdjustInplaceLifeIntervals();
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
 #endif
