@@ -30,7 +30,7 @@ PYBIND11_MODULE(_kernel_explorer, m) {
 #ifdef USE_COMPOSABLE_KERNEL
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
 }
