@@ -182,7 +182,7 @@ void LaunchLogitsProcessKernel(
     float repetition_penalty,
     int no_repeat_ngram_size,
     cudaStream_t stream) {
-  int total_elements = batch_size * num_beams * vocab_size;
+  int total_elements = batch_size * num_beams * padded_vocab_size;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
   LogitsProcessKernel<T><<<gridSize, blockSize, 0, stream>>>(
