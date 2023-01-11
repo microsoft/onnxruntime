@@ -5,6 +5,7 @@ set -e -x
 yum -y install \
     graphviz
 
+cd /tmp/src
 source ./install_shared_deps.sh
 
 if [ ! -d "/opt/conda/bin" ]; then

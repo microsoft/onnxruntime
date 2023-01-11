@@ -36,8 +36,6 @@ function GetFile {
   return $?
 }
 
-cd /tmp/src
-
 echo "Installing azcopy"
 mkdir -p /tmp/azcopy
 GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
