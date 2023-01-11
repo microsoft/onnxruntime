@@ -170,7 +170,7 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 ### Thread management
 
 * Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
-* In most cases, by default, both of these values are set to the number of physical cores. The exception is on posix mobile platforms, where the default is determined by `std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2))`
+* In most cases, by default, both of these values are set to the number of physical cores. 
 
 #### Custom threading callbacks
 
