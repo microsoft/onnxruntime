@@ -194,19 +194,17 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 
   Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
                                     const TensorShape& input_shape,
-                                    const TensorShape* weights_shape,
+                                    const TensorShape& weights_shape,
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
                                     const Tensor* extra_add_qk,
-                                    const Tensor* key,
-                                    const Tensor* value,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
                                                   extra_add_qk,
-                                                  key, value, parameters,
+                                                  parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
   }

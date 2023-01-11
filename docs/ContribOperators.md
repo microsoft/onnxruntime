@@ -41,6 +41,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
+  * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
@@ -70,12 +71,14 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
@@ -105,10 +108,6 @@ Do not modify directly.*
   When unidirectional is 1, each token only attends to previous tokens.
   
   Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
-  
-  When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
-  and input is the query after projection. The bias is included for performance consideration.
-  
   The qkv_hidden_sizes is required only when K and V have different hidden sizes.
   
   When there is past state, hidden dimension for Q, K and V shall be the same.
@@ -134,27 +133,23 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 9)
+#### Inputs (3 - 7)
 
 <dl>
-<dt><tt>input</tt> (optional) : T</dt>
-<dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
-<dt><tt>weights</tt> (optional) : T</dt>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
+<dt><tt>weights</tt> : T</dt>
 <dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size)</dd>
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>extra_add</tt> (optional) : T</dt>
 <dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)</dd>
-<dt><tt>key</tt> (optional) : T</dt>
-<dd>Input for key with shape (batch_size, kv_sequence_length, hidden_size). Required when weights is not available.</dd>
-<dt><tt>value</tt> (optional) : T</dt>
-<dd>Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). Required when weights is not available.</dd>
 <dt><tt>past_sequence_length</tt> (optional) : M</dt>
-<dd>When past_present_share_buffer, specify past_sequence_length for effective past sequence lenght (could be 0).Needed when past_present_share_buffer is not zero.</dd>
+<dd>When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -163,7 +158,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
-<dd>past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)If past_present_share_buffer, it should be exactly same as past tensor, of shape (2, batch_size, num_heads, max_sequence_length, head_size),while effective_seq_length = (past_sequence_length + kv_sequence_length)</dd>
+<dd>past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
 </dl>
 
 #### Type Constraints
@@ -2110,6 +2105,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MultiHeadAttention"></a><a name="com.microsoft.multiheadattention">**com.microsoft.MultiHeadAttention**</a>
+
+  Multi-Head Self/Cross Attention. Bias from input projection is included.
+  
+  The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
+  means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
+  each key sequence excluding paddings.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
+<dt><tt>key_padding_mask</tt> (optional) : M</dt>
+<dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to integer types</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MurmurHash3"></a><a name="com.microsoft.murmurhash3">**com.microsoft.MurmurHash3**</a>
 
   The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.
@@ -3659,6 +3705,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.RelativePositionBias"></a><a name="com.microsoft.relativepositionbias">**com.microsoft.RelativePositionBias**</a>
+
+  Compute binned relative position bias for T5 model. ref: https://arxiv.org/abs/1803.02155v2
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>is_bidirectional</tt> : int</dt>
+<dd>Default value is 0.</dd>
+<dt><tt>max_distance</tt> : int (required)</dt>
+<dd>Max distance</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>bias_table</tt> : T</dt>
+<dd>2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)</dd>
+<dt><tt>query_length</tt> : U</dt>
+<dd>The length of query. Self Attention requires query_length = key_length</dd>
+<dt><tt>key_length</tt> : U</dt>
+<dd>The length of key.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>4D output tensor with shape (1, num_heads, sequence_length, sequence_length)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>U</tt> : tensor(int64)</dt>
+<dd>Constrain sequence_length to int tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
 
   Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
@@ -3933,8 +4024,59 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Saved mean used during training to speed up gradient computation</dd>
 <dt><tt>inv_std_var</tt> (optional) : U</dt>
 <dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
-<dt><tt>input_skip_sum</tt> (optional) : T</dt>
-<dd>Sum of the input and skip inputs with shape (batch_size, sequence_length, hidden_size).</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T</dt>
+<dd>Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>U</tt> : tensor(float)</dt>
+<dd>Constrain mean and inv_std_var to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SkipSimplifiedLayerNormalization"></a><a name="com.microsoft.skipsimplifiedlayernormalization">**com.microsoft.SkipSimplifiedLayerNormalization**</a>
+
+  Skip and Root Mean Square Layer Normalization
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>skip</tt> : T</dt>
+<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>gamma</tt> : T</dt>
+<dd>1D input tensor with shape (hidden_size)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>1D bias tensor with shape (hidden_size</dd>
+</dl>
+
+#### Outputs (1 - 4)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>mean</tt> (optional) : U</dt>
+<dd>Saved mean used during training to speed up gradient computation</dd>
+<dt><tt>inv_std_var</tt> (optional) : U</dt>
+<dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T</dt>
+<dd>Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).</dd>
 </dl>
 
 #### Type Constraints

@@ -30,17 +30,16 @@ class TrainingAgent {
                          int local_rank = 0);
   ~TrainingAgent();
   // For ORTModule.forward()
-  common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            PartialGraphExecutionState& state, const OrtValueCachePtr& cache) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state, const OrtValueCachePtr& cache);
 
   // For ORTModule.backward()
-  common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                             PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                             PartialGraphExecutionState& state);
 
-  common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                          PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
-                         const OrtValueCachePtr& cache, int32_t partial_graph_index)
-      ORT_MUST_USE_RESULT;
+                         const OrtValueCachePtr& cache, int32_t partial_graph_index);
 
   void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
                                               const std::vector<std::string>& feed_names,
