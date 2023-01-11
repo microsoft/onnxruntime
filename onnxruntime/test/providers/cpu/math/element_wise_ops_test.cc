@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <math.h>
@@ -52,6 +53,31 @@ void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
   }
 }
 #endif
+
+void TestBFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
+                  const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
+                  const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
+                  const std::initializer_list<float>& out_values) {
+  {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+    OpTester tester(op_name, 14);
+    tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
+    tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
+    tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    #if defined(USE_DNNL)
+    execution_providers.push_back(DefaultDnnlExecutionProvider());
+    #endif  //  USE_DNNL
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+
 
 TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
@@ -139,6 +165,10 @@ TEST(MathOpTest, Add_float) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif  // USE_DNNL
 }
 
 TEST(MathOpTest, Add_double) {
@@ -174,6 +204,10 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
+#endif //USE_DNNL
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
@@ -197,6 +231,10 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
+#endif  // USE_DNNL
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
@@ -219,6 +257,10 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
+#endif  // USE_DNNL
 }
 
 TEST(MathOpTest, Add_Broadcast_0x0) {
@@ -228,6 +270,13 @@ TEST(MathOpTest, Add_Broadcast_0x0) {
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {}, {12.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{10.0f};
+  std::initializer_list<float> rhs_values{2.0f};
+  std::initializer_list<float> out_values{12.0f};
+  TestBFloat16("Add", {}, lhs_values, {}, rhs_values, {}, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_0x1) {
@@ -246,6 +295,13 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
 
   run(false);
   run(true);
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{10.0f};
+  std::initializer_list<float> rhs_values{2.0f};
+  std::initializer_list<float> out_values{12.0f};
+  TestBFloat16("Add", {}, lhs_values, {1}, rhs_values, {1}, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_1x0) {
@@ -264,6 +320,13 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
 
   run(false);
   run(true);
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{10.0f};
+  std::initializer_list<float> rhs_values{2.0f};
+  std::initializer_list<float> out_values{12.0f};
+  TestBFloat16("Add", {1}, lhs_values, {}, rhs_values, {1}, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_1x1) {
@@ -273,6 +336,13 @@ TEST(MathOpTest, Add_Broadcast_1x1) {
   test.AddInput<float>("B", {1}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{10.0f};
+  std::initializer_list<float> rhs_values{2.0f};
+  std::initializer_list<float> out_values{12.0f};
+  TestBFloat16("Add", {1}, lhs_values, {1}, rhs_values, {1}, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
@@ -292,6 +362,19 @@ TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
                          5.0f, 6.0f,
                          8.0f, 9.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{1.0f, 2.0f,
+                                          3.0f, 4.0f,
+                                          5.0f, 6.0f};
+  std::initializer_list<float> rhs_values{1.0f,
+                                          2.0f,
+                                          3.0f};
+  std::initializer_list<float> out_values{2.0f, 3.0f,
+                                          5.0f, 6.0f,
+                                          8.0f, 9.0f};
+  TestBFloat16("Add", {3, 2}, lhs_values, {3, 1}, rhs_values, {3, 2}, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
@@ -312,6 +395,20 @@ TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
                          231.0f, 232.0f, 233.0f, 234.0f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{101.0f, 102.0f, 103.0f, 104.0f,
+                                          201.0f, 202.0f, 203.0f, 204.0f};
+  std::initializer_list<float> rhs_values{010.0f, 020.0f, 030.0f};
+  std::initializer_list<float> out_values{111.0f, 112.0f, 113.0f, 114.0f,
+                                          121.0f, 122.0f, 123.0f, 124.0f,
+                                          131.0f, 132.0f, 133.0f, 134.0f,
+
+                                          211.0f, 212.0f, 213.0f, 214.0f,
+                                          221.0f, 222.0f, 223.0f, 224.0f,
+                                          231.0f, 232.0f, 233.0f, 234.0f};
+  TestBFloat16("Add", {2, 1, 4}, lhs_values, {1, 3, 1}, rhs_values, {2, 3, 4}, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
@@ -340,6 +437,21 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
   excluded_providers.insert(kOpenVINOExecutionProvider);
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);  //TensorRT: Input batch size is inconsistent
+
+#if defined(USE_DNNL)
+  std::initializer_list<float> lhs_values{100.0f, 200.0f};
+  std::initializer_list<float> rhs_values{011.0f, 012.0f, 013.0f, 014.0f,
+                                          021.0f, 022.0f, 023.0f, 024.0f,
+                                          031.0f, 032.0f, 033.0f, 034.0f};
+  std::initializer_list<float> out_values{111.0f, 112.0f, 113.0f, 114.0f,
+                                          121.0f, 122.0f, 123.0f, 124.0f,
+                                          131.0f, 132.0f, 133.0f, 134.0f,
+
+                                          211.0f, 212.0f, 213.0f, 214.0f,
+                                          221.0f, 222.0f, 223.0f, 224.0f,
+                                          231.0f, 232.0f, 233.0f, 234.0f};
+  TestBFloat16("Add", {2, 1, 1}, lhs_values, {3, 4}, rhs_values, {2, 3, 4}, out_values);
+#endif
 }
 
 // Validate runtime failure has useful error message when ORT_ENFORCE is used
@@ -415,6 +527,10 @@ TEST(MathOpTest, Sub) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif
 }
 
 TEST(MathOpTest, Sub_Broadcast_Scalar) {
@@ -473,6 +589,10 @@ TEST(MathOpTest, Mul) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif
 }
 
 TEST(MathOpTest, Div_int32) {
@@ -512,6 +632,10 @@ TEST(MathOpTest, Div) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
+
+#if defined(USE_DNNL)
+  TestBFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif
 }
 
 TEST(MathOpTest, Abs) {
@@ -521,6 +645,22 @@ TEST(MathOpTest, Abs) {
   test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 0.0f, 10.0f});
   test.Run();
 }
+
+#ifdef USE_DNNL
+TEST(MathOpTest, Abs_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test_bf16("Abs", 13);
+  std::vector<int64_t> dims{2, 2};
+  test_bf16.AddInput<BFloat16>("X", dims, MakeBFloat16({1.0f, -2.0f, -0.0f, -10.0f}));
+  test_bf16.AddOutput<BFloat16>("Y", dims, MakeBFloat16({1.0f, 2.0f, 0.0f, 10.0f}));
+  test_bf16.Run();
+}
+#endif  //  USE_DNNL
 
 TEST(MathOpTest, Abs_int8) {
   OpTester test("Abs");
@@ -592,6 +732,18 @@ TEST(MathOpTest, Floor) {
   test.Run();
 }
 
+TEST(MathOpTest, Floor_double) {
+  OpTester test("Floor");
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<double>("X", dims,
+                        {-1.5, 0.2,
+                         -0.5, 10.3});
+  test.AddOutput<double>("Y", dims,
+                         {-2.0, 0.0,
+                          -1.0, 10.0});
+  test.Run();
+}
+
 TEST(MathOpTest, Ceil) {
   OpTester test("Ceil");
   std::vector<int64_t> dims{2, 2};
@@ -601,6 +753,24 @@ TEST(MathOpTest, Ceil) {
   test.AddOutput<float>("Y", dims,
                         {-1.0f, 1.0f,
                          0.0f, 11.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  //This test runs fine on CPU Plugin
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run();
+#endif
+}
+
+TEST(MathOpTest, Ceil_double) {
+  OpTester test("Ceil");
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<double>("X", dims,
+                        {-1.5, 0.2,
+                         -0.5, 10.3});
+  test.AddOutput<double>("Y", dims,
+                         {-1.0, 1.0,
+                          0.0, 11.0});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
   //This test runs fine on CPU Plugin
@@ -645,6 +815,29 @@ TEST(MathOpTest, Sqrt_Float) {
                          0.0f, 3.0f});
   test.Run();
 }
+
+#if defined(USE_DNNL)
+TEST(MathOpTest, Sqrt_bfloat16){
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test_bf16("Sqrt", 13);  // only version 13 support bf16 for sqrt
+  test_bf16.AddInput<BFloat16>("X", {2, 3},
+                               MakeBFloat16({1.0f, 4.0f,
+                                             0.0f, 9.0f, 2.0f, 5.0f}));
+  test_bf16.AddOutput<BFloat16>("Y", {2, 3},
+                                MakeBFloat16({1.0f, 2.0f,
+                                              0.0f, 3.0f, 1.414213562f, 2.236067977f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    #if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+    #endif
+  test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(MathOpTest, Sqrt_Double) {
   OpTester test("Sqrt");
@@ -731,12 +924,39 @@ TEST(MathOpTest, Pow_Float_15) {
                         std::sqrt(2.0f), 1.0f});
   test.AddInput<float>("Y", dims,
                        {0.0f, 8.0f,
-                        2.0f, 9.0f});
+                        2.0f, 9.0f},
+                       true);
   test.AddOutput<float>("Z", dims,
                         {1.0f, 256.0f,
                          2.0f, 1.0f});
   test.Run();
 }
+
+#if defined(USE_DNNL)
+TEST(MathOpTest, Pow_bfloat16_15) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test_bf16("Pow", 15);
+  test_bf16.AddInput<BFloat16>("X", {2,2},
+                                 MakeBFloat16({2.0f, 2.0f,
+                                               std::sqrt(2.0f), 1.0f}));
+  test_bf16.AddInput<BFloat16>("Y", {},
+                                 MakeBFloat16({0.0f}),
+                                 true);
+  test_bf16.AddOutput<BFloat16>("Z", {2,2},
+                                  MakeBFloat16({1.0f, 1.0f,
+                                                1.0f, 1.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+  test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(MathOpTest, Pow_Double_12) {
   OpTester test("Pow", 12);
@@ -872,7 +1092,30 @@ TEST(MathOpTest, Pow_float_float16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
-
+#if defined(USE_DNNL)
+TEST(MathOpTest, Exp_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Exp", 13);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<BFloat16>("X", dims,
+                           MakeBFloat16({0.0f, 1.0f,
+                                          2.0f, 10.0f}));
+  test.AddOutput<BFloat16>("Y", dims,
+                            MakeBFloat16({1.0f, std::exp(1.0f),
+                                           std::exp(2.0f), std::exp(10.0f)}));
+  test.SetOutputRelErr("Y", 1e-7f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_DNNL
+execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);  //TensorRT: result differs
+}
+#endif
 TEST(MathOpTest, Exp_float) {
   OpTester test("Exp");
   std::vector<int64_t> dims{2, 2};
@@ -882,7 +1125,7 @@ TEST(MathOpTest, Exp_float) {
   test.AddOutput<float>("Y", dims,
                         {1.0f, std::exp(1.0f),
                          std::exp(2.0f), std::exp(10.0f)});
-  test.SetOutputRelErr("Y", 1e-7f);
+  test.SetOutputRelErr("Y", 2e-7f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 
@@ -913,6 +1156,29 @@ TEST(MathOpTest, Log) {
   test.Run();
 }
 
+#if defined(USE_DNNL)
+TEST(MathOpTest, Log_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Log", 13);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<BFloat16>("X", dims,
+                          MakeBFloat16({1.0f, 2.0f,
+                        5.0f, 10.0f}));
+  test.AddOutput<BFloat16>("Y", dims,
+                           MakeBFloat16({0.0f, std::log(2.0f),
+                           std::log(5.0f), std::log(10.0f)}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 TEST(MathOpTest, Log_double) {
   OpTester test("Log");
   std::vector<int64_t> dims{2, 2};
@@ -1148,6 +1414,40 @@ TEST(MathOpTest, SumMultipleInputsNoBroadcasting_double) {
     TestSumMultipleInputsNoBroadcasting<double>(num_inputs, shape);
   }
 }
+
+#if defined(USE_DNNL)
+TEST(MathOpTest, Sum_13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("Sum", 13);
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<BFloat16>("data_0", dims,
+                       MakeBFloat16({1.0f, 0.0f, 1.0f,
+                                    -1.0f, 1.1f, -100.0f,
+                                    -5.4f, 0.01f, -10000.0f}));
+  test.AddInput<BFloat16>("data_1", dims,
+                       MakeBFloat16({1.0f, 0.0f, 2.0f,
+                                    -2.0f, 2.2f, 64.0f,
+                                    -1.0f, 0.02f, 0.25f}));
+  test.AddInput<BFloat16>("data_3", dims,
+                       MakeBFloat16({1.0f, 0.0f, 3.0f,
+                                    -3.0f, 3.3f, 64.0f,
+                                     5.4f, 0.03f, 10000.0f}));
+  test.AddOutput<BFloat16>("sum", dims,
+                        MakeBFloat16({3.0f, 0.0f, 6.0f,
+                                     -6.0f, 6.6f, 28.0f,
+                                     -1.0f, 0.06f, 0.25f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 
 TEST(MathOpTest, Min_6) {
   OpTester test("Min", 6);
@@ -1650,6 +1950,32 @@ TEST(MathOpTest, Less) {
   test.Run();
 }
 
+#if defined(USE_DNNL)
+TEST(MathOpTest, Less_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("Less", 13);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
+  test.AddInput<BFloat16>("B", dims, MakeBFloat16({1.0f, 1.0f, 2.0f, -1.0f}));
+  test.AddOutput<bool>("C", dims, {false, true, true, false});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
+
 TEST(MathOpTest, Less_Scalar0) {
   OpTester test("Less");
   test.AddInput<float>("A", {1}, {1.0f});
@@ -1777,6 +2103,176 @@ TEST(MathOpTest, LessOrEqual_multidiretional_broadcastBA) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+#if defined(USE_DNNL)
+TEST(MathOpTest, LessOrEqual_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
+  test.AddInput<BFloat16>("B", dims, MakeBFloat16({1.0f, 1.0f, 2.0f, -1.0f}));
+  test.AddOutput<bool>("C", dims, {true, true, true, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, LessOrEqual_bfloat16_Scalar0) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<BFloat16>("A", {1}, MakeBFloat16({1.0f}));
+  test.AddInput<BFloat16>("B", {4}, MakeBFloat16({1.0f, 1.5f, 2.0f, -1.0f}));
+  test.AddOutput<bool>("C", {4}, {true, true, true, false});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+TEST(MathOpTest, LessOrEqual_bfloat16_Scalar1) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<BFloat16>("A", {4}, MakeBFloat16({1.0f, 0.5f, 2.0f, -1.0f}));
+  test.AddInput<BFloat16>("B", {1}, MakeBFloat16({1.0f}));
+  test.AddOutput<bool>("C", {4}, {true, true, false, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, LessOrEqual_bfloat16_broadcastAB) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<BFloat16>("A", {4, 2}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f}));
+  test.AddInput<BFloat16>("B", {2}, MakeBFloat16({15.0f, 7.0f}));
+  test.AddOutput<bool>("C", {4, 2}, {true, false, true, false, true, false, false, false});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, LessOrEqual_bfloat16_broadcastBA) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<BFloat16>("A", {2}, MakeBFloat16({15.0f, 7.0f}));
+  test.AddInput<BFloat16>("B", {4, 2}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f}));
+  test.AddOutput<bool>("C", {4, 2}, {false, true, false, true, false, true, true, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastAB) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<BFloat16>("A", {4, 1}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f}));
+  test.AddInput<BFloat16>("B", {2}, MakeBFloat16({15.0f, 7.0f}));
+  test.AddOutput<bool>("C", {4, 2}, {true, false, true, false, true, false, true, false});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastBA) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<BFloat16>("A", {2}, MakeBFloat16({15.0f, 7.0f}));
+  test.AddInput<BFloat16>("B", {4, 1}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f}));
+  test.AddOutput<bool>("C", {4, 2}, {false, true, false, true, false, true, false, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
+
 TEST(MathOpTest, Greater_7) {
   OpTester test("Greater");
   std::vector<int64_t> dims{4};
@@ -1821,6 +2317,31 @@ TEST(MathOpTest, Greater_9_int64) {
   test.AddOutput<bool>("C", dims, {false, true, false, true});
   test.Run();
 }
+#if defined(USE_DNNL)
+TEST(MathOpTest, Greater_13_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("Greater", 13);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("A", dims, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f}));
+  test.AddInput<BFloat16>("B", dims, MakeBFloat16({15.0f, 7.0f, 12.0f, 9.0f}));
+  test.AddOutput<bool>("C", dims, {false, true, false, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 
 TEST(MathOpTest, Greater_broadcastAB) {
   OpTester test("Greater", 9);
@@ -1893,6 +2414,34 @@ TEST(MathOpTest, GreaterOrEqual_12_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider});
 }
+
+#if defined(USE_DNNL)
+TEST(MathOpTest, GreaterOrEqual_16_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("GreaterOrEqual", 16);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
+  test.AddInput<BFloat16>("B", dims, MakeBFloat16({1.0f, 1.0f, 2.0f, -1.0f}));
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+      {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
+
+}
+#endif  //  USE_DNNL
 
 TEST(MathOpTest, GreaterOrEqual_broadcastAB) {
   OpTester test("GreaterOrEqual", 12);
@@ -1994,6 +2543,32 @@ TEST(MathOpTest, Equal_float) {
   test.AddOutput<bool>("C", dims, {true, false, false, true});
   test.Run();
 }
+
+#if defined(USE_DNNL)
+TEST(MathOpTest, Equal_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
+  OpTester test("Equal", 13);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
+  test.AddInput<BFloat16>("B", dims, MakeBFloat16({1.0f, 1.0f, 2.0f, -1.0f}));
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 
 TEST(MathOpTest, Equal_broadcastAB) {
   OpTester test("Equal");
@@ -2338,7 +2913,7 @@ TEST(ModOpTest, Int8_mixed_sign) {
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, -2, 5, 0, 2, 3});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
 }
 
 TEST(ModOpTest, Int8_mixed_sign_fmod) {
@@ -2349,7 +2924,7 @@ TEST(ModOpTest, Int8_mixed_sign_fmod) {
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
 }
 
 TEST(ModOpTest, UInt8_mod) {

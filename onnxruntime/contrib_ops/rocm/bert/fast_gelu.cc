@@ -34,12 +34,6 @@ REGISTER_KERNEL_TYPED(BFloat16)
 using namespace ONNX_NAMESPACE;
 
 template <typename T>
-FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  tuning_ = options->IsTuningEnabled();
-}
-
-template <typename T>
 Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
@@ -54,13 +48,13 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToHipType<T>::MappedType HipT;
 
-  return LaunchFastGeluKernel<HipT>(Stream(),
-                                  static_cast<int>(input_length),
-                                  static_cast<int>(bias_length),
-                                  reinterpret_cast<const HipT*>(input->Data<T>()),
-                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
-                                  reinterpret_cast<HipT*>(output->MutableData<T>()),
-                                  tuning_);
+  return LaunchFastGeluKernel<HipT>(IsTunableOpEnabled(),
+                                    Stream(context),
+                                    static_cast<int>(input_length),
+                                    static_cast<int>(bias_length),
+                                    reinterpret_cast<const HipT*>(input->Data<T>()),
+                                    (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
+                                    reinterpret_cast<HipT*>(output->MutableData<T>()));
 }
 
 }  // namespace rocm

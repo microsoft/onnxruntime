@@ -5,6 +5,7 @@
 
 import warnings
 
+import onnx
 import torch
 
 from onnxruntime.capi import _pybind_state as C
@@ -206,7 +207,7 @@ class TrainingManager(GraphExecutionManager):
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
-                    self._initialize_graph_builder(training=True)
+                    self._initialize_graph_builder()
 
                 # since the schema was just extracted while trying to export the model and it was either
                 # saved to self._input_info.schema or checked for equality with the self._input_info.schema
@@ -284,13 +285,36 @@ class TrainingManager(GraphExecutionManager):
         """Build an optimized gradient graph using the module_graph_builder"""
 
         super()._build_graph()
-
+        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
+        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
+            self._graph_builder.get_forward_model()
+        )
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,
                 self._debug_options.save_onnx_models.name_prefix,
                 self._export_mode,
             )
+
+        # Map each input/initializer to its gradient index in the graph output, or -1 is gradient is not required.
+        self._gradient_map = []
+        num_user_input_grads = len(self._input_info.require_grad_names)
+        require_grad_names_set = set(self._input_info.require_grad_names)
+        require_grad_names_index = 0
+        for input_name in self._graph_info.user_input_names:
+            if input_name in require_grad_names_set:
+                self._gradient_map.append(require_grad_names_index)
+                require_grad_names_index += 1
+            else:
+                self._gradient_map.append(-1)
+
+        initializer_index = num_user_input_grads
+        for initializer_name in self._graph_info.initializer_names:
+            if initializer_name in self._graph_initializer_names_to_train:
+                self._gradient_map.append(initializer_index)
+                initializer_index += 1
+            else:
+                self._gradient_map.append(-1)
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
@@ -355,7 +379,7 @@ class TrainingManager(GraphExecutionManager):
             or initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train
         ):
             self._input_info = input_info
-            self._initialize_graph_builder(training=True)
+            self._initialize_graph_builder()
             return True
         return False
 

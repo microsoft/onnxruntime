@@ -18,12 +18,13 @@ Status BeamSearchParameters::Validate() const {
 }
 
 void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
-  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", IBeamSearchParameters::kModelTypeGpt));
+  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", IGenerationParameters::kModelTypeGpt));
   early_stopping = info.GetAttrOrDefault<int64_t>("early_stopping", 0) == 1;
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
   decoder_start_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("decoder_start_token_id", -1));
   no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
+  vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
 }
 
 void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
@@ -34,7 +35,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   batch_size = static_cast<int>(dims[0]);
 
   // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
-  sequence_length = (this->model_type == IBeamSearchParameters::kModelTypeGpt) ? static_cast<int>(dims[1]) : 1;
+  sequence_length = (this->model_type == IGenerationParameters::kModelTypeGpt) ? static_cast<int>(dims[1]) : 1;
 
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;
@@ -68,7 +69,11 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 }
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
-  vocab_size = vocabulary_size;
+  // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
+  // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
+  if (vocab_size == -1 || vocab_size == 0) {
+    vocab_size = vocabulary_size;
+  }
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;

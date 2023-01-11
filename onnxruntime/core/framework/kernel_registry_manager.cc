@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_registry_manager.h"
+
 #include "core/framework/kernel_registry.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/session_state.h"
+#include "core/framework/kernel_type_str_resolver.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/customregistry.h"
@@ -13,7 +15,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
+Status KernelRegistryManager::CreateKernel(const Node& node,
                                            const IExecutionProvider& execution_provider,
                                            SessionState& session_state,
                                            const KernelCreateInfo& kernel_create_info,
@@ -53,15 +55,7 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
-bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
-  std::vector<const KernelRegistry*> kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
-  return std::any_of(kernel_registries.begin(), kernel_registries.end(), [&](const KernelRegistry* kernel_registry) {
-    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type);
-  });
-}
-
-Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
+Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
   Status status;
 
@@ -80,7 +74,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   }
 
   for (auto& registry : custom_kernel_registries_) {
-    status = registry->TryFindKernel(node, std::string(), kernel_create_info);
+    status = registry->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
@@ -93,7 +87,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   }
 
   if (p != nullptr) {
-    status = p->TryFindKernel(node, std::string(), kernel_create_info);
+    status = p->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
@@ -101,25 +95,12 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
 
   return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
 }
-#endif
 
-bool KernelRegistryManager::SearchKernelRegistriesByHash(HashValue kernel_def_hash,
-                                                         const KernelCreateInfo** kernel_create_info) const {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  for (const auto& registry : custom_kernel_registries_) {
-    if (registry->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
-      return true;
-    }
-  }
-#endif
-
-  for (const auto& kv : provider_type_to_registry_) {
-    if (kv.second->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
-      return true;
-    }
-  }
-
-  return false;
+bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
+  const auto kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
+  return std::any_of(kernel_registries.begin(), kernel_registries.end(), [&](const KernelRegistry* kernel_registry) {
+    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type, r.GetKernelTypeStrResolver());
+  });
 }
 
 }  // namespace onnxruntime

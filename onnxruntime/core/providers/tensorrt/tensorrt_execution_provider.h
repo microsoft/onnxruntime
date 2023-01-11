@@ -3,6 +3,8 @@
 
 #pragma once
 #include <ctime>
+#include <cudnn.h>
+#include <cublas_v2.h>
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
@@ -27,6 +29,7 @@ static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENA
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 static const std::string kContextMemorySharingEnable= "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
+static const std::string kLayerNormFP32Fallback= "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -124,7 +127,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
   int GetDeviceId() const { return device_id_; }
 
@@ -137,13 +140,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream) override;
 
-  Status SetComputeStream(void* stream) override;
-
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
   }
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
  private:
   TensorrtExecutionProviderInfo info_;
@@ -168,7 +169,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int device_id_;
   AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
-  size_t max_ctx_mem_size_ = 0;  
+  bool layer_norm_fp32_fallback_ = false;
+  size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
@@ -184,6 +186,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+
+  // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
+  cudnnHandle_t external_cudnn_handle_ = nullptr;
+  cublasHandle_t external_cublas_handle_ = nullptr;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
@@ -201,8 +207,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
-  /** 
-  Get a unique_lock object to control the concurrency behavior. 
+  /**
+  Get a unique_lock object to control the concurrency behavior.
   Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)
   should be protected by a lock when invoked by multiple threads concurrently.
   */
@@ -211,11 +217,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check the graph is the subgraph of control flow op*/
   bool IsSubGraphOfControlFlowOp(const GraphViewer& graph) const;
 
-  /**Check whether all the nodes of the graph are assigned to specific ep*/ 
+  /**Check whether all the nodes of the graph are assigned to specific ep*/
   bool AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const;
 
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
-
 };
 }  // namespace onnxruntime

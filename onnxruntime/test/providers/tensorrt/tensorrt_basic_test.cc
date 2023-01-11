@@ -150,6 +150,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       0,
       nullptr,
       0,
+      0,
       0};
 
     params.trt_engine_cache_enable = 1;
@@ -220,6 +221,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       0,
       nullptr,
       0,
+      0,
       0};
 
     params.trt_engine_cache_enable = 1;
@@ -247,7 +249,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       th.join();
 }
 
-TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionSingleThreadInference) {
+TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   std::string model_name = "trt_execution_provider_multithreading_test.onnx";
   std::string graph_name = "multithreading_test";
@@ -264,7 +266,7 @@ TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionSingleThreadIn
     th.join();
 }
 
-TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionMultiThreadsInference) {
+TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceWithMultiThreads) {
   std::string model_name = "trt_execution_provider_multithreading_test.onnx";
   std::string graph_name = "multithreading_test";
   std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionMultiThreads";
@@ -272,6 +274,84 @@ TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionMultiThreadsIn
 
   CreateBaseModel(model_name, graph_name, dims);
   RunWithOneSessionMultiThreadsInference(model_name, sess_log_id);
+}
+
+// Test loading same model in different way, when hash id is generated via model name/model content/env metadata
+TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
+  auto model_path = ORT_TSTR("testdata/mnist.onnx");
+
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_path, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  Graph& graph = model->MainGraph();
+  GraphViewer viewer(graph);
+
+  // get the hash for the model when loaded from file
+  HashValue model_hash;
+  int id = TRTGenerateModelId(viewer, model_hash);
+  ASSERT_EQ(id, 0);
+  ASSERT_NE(model_hash, 0);
+
+  // now load the model from bytes and check the hash differs
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+
+  std::shared_ptr<Model> model2;
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ASSERT_STATUS_OK(Model::Load(model_file_stream, &model_proto));
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr,
+                               DefaultLoggingManager().DefaultLogger()));
+
+  Graph& graph2 = model2->MainGraph();
+  GraphViewer viewer2(graph2);
+
+  HashValue model_hash2;
+  int id2 = TRTGenerateModelId(viewer2, model_hash2);
+
+  // test comparing model 1 & 2
+  ASSERT_EQ(id2, 0) << "id2 should be 0";
+
+  // Test loading same model from different path, see if hash values are same as well
+  model_path = ORT_TSTR("testdata/TRTEP_test_model/mnist.onnx");
+  std::shared_ptr<Model> model3;
+  ASSERT_TRUE(Model::Load(model_path, model3, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph3 = model3->MainGraph();
+  GraphViewer viewer3(graph3);
+  HashValue model_hash3;
+  int id3 = TRTGenerateModelId(viewer3, model_hash3);
+  ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
+  ASSERT_EQ(id3, 1) << "id3 should be 1 as model 1 & 3 have same hash";
+}
+
+// Compare on TRT subgraph id when repeatedly calling TRTGenerateModelId
+TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
+  // Load model
+  auto model_path = ORT_TSTR("testdata/mnist.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_path, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  Graph& main_graph = model->MainGraph();
+  GraphViewer graph(main_graph);
+  HashValue model_hash;
+
+  // Graph id acquired
+  int graph_id = TRTGenerateModelId(graph, model_hash);
+  int asserted_subgraph_id = graph_id + 1;
+
+  // mock fetching subgraphs and generate id by calling TRTGenerateModelId repeatedly
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    std::cout << "->" << node->Name(); 
+
+    // Check if id increment each time TRTGenerateModelId is called
+    int subgraph_id = TRTGenerateModelId(graph, model_hash);
+    ASSERT_EQ(subgraph_id, asserted_subgraph_id) << "id will increment as TRTGenerateModelId is repeatedly called";
+    asserted_subgraph_id++;
+  }
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
@@ -343,6 +423,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       nullptr,
       0,
       nullptr,
+      0,
       0,
       0};
 

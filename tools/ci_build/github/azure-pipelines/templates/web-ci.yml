@@ -71,7 +71,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
-      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
+      ExtraBuildArgs: '--skip_tests --enable_wasm_api_exception_catching --disable_rtti $(ExtraBuildArgs)'
       PoolName: ${{ parameters.PoolName }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
@@ -85,7 +85,7 @@ stages:
         ExtraBuildArgs: '$(ExtraBuildArgs)'
         PoolName: ${{ parameters.PoolName }}
         SkipPublish: true
-        TimeoutInMinutes: 150
+        TimeoutInMinutes: 180
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release

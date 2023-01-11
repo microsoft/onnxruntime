@@ -25,7 +25,7 @@ __global__ void ClipGradNorm(
 
   T* gradients_chunk_ptr = static_cast<T*>(chunks.tensor_ptrs[0][tensor_idx]) + chunk_start_idx;
 
-#pragma unroll(4)
+#pragma unroll 4
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
     float clip_coefficient = max_norm / (*total_norm + epsilon);
     gradients_chunk_ptr[i] = static_cast<T>(gradients_chunk_ptr[i]) *
@@ -59,6 +59,8 @@ void ClipGradNormFunctor<T>::operator()(
                                            const float max_norm);
 
 SPECIALIZE_CLIPGRADNORM_FUNCTOR(float);
+
+#undef SPECIALIZE_CLIPGRADNORM_FUNCTOR
 
 }  // namespace cuda
 }  // namespace onnxruntime

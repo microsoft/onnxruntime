@@ -21,6 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 1)    // 'max_length' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 2)    // 'min_length' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 3)    // 'repetition_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'custom_attention_mask' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<MLFloat16>()}),
@@ -30,8 +31,6 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper_greedysearch;
 
 GreedySearch::GreedySearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::GreedySearch(info) {
-  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
-
   SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,

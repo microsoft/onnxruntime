@@ -5,7 +5,7 @@
 
 #include <vector>
 #include <string>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
@@ -43,12 +43,13 @@ class Subgraph {
   int head_size;
   int vocab_size;
   int num_layers;
+  bool past_present_share_buffer_;
 
   // Setup execution
   Status Setup(const SessionState& session_state,
                const SessionState& subgraph_session_state);
 
-  FeedsFetchesManager* GetFeedsFetchesManager() { 
+  FeedsFetchesManager* GetFeedsFetchesManager() {
     return (feeds_fetches_manager_.has_value()) ? &*feeds_fetches_manager_ : nullptr;
   }
 

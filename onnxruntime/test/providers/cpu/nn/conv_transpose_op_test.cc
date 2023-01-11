@@ -436,6 +436,11 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: provider_test_utils.cc(866): error: Value of: expect_result == ExpectResult::kExpectSuccess";
+  }
+
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 1, 1, 5},   // invalid kernel_shape, should be [1, 5]
       {},                            // output_padding
@@ -1075,6 +1080,11 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
 }
 
 TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // output_padding
@@ -1119,7 +1129,7 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
 TEST(ConvTransposeTest, SharedPrepackedWeights) {
   OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});

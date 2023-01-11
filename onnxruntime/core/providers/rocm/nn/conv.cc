@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/nn/conv.h"
+#include "core/common/span_utils.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tensor/slice.h"
 
@@ -42,13 +43,11 @@ const miopenConvFwdAlgorithm_t Conv<T>::kAllAlgos[] = {
     miopenConvolutionFwdAlgoWinograd,
     miopenConvolutionFwdAlgoImplicitGEMM
 };
-  miopenStatus_t GetWorkspaceSize(const MiopenConvState<miopenConvAlgoPerf_t>& s, miopenConvFwdAlgorithm_t algo,
-                               size_t* sz) {
-
-  return miopenConvolutionForwardGetWorkSpaceSize(s.handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, sz);
+miopenStatus_t GetWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s, miopenConvFwdAlgorithm_t algo, size_t* sz) {
+  return miopenConvolutionForwardGetWorkSpaceSize(handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, sz);
 }
 
-size_t GetMaxWorkspaceSize(const MiopenConvState<miopenConvAlgoPerf_t>& s,
+size_t GetMaxWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s,
                            const miopenConvFwdAlgorithm_t* algo, int n_algo) {
   // TODO: get maximum available size from memory areana
   size_t free, total;
@@ -59,7 +58,7 @@ size_t GetMaxWorkspaceSize(const MiopenConvState<miopenConvAlgoPerf_t>& s,
   for (int i = 0; i < n_algo; i++) {
     miopenStatus_t err;
     size_t sz;
-    err = GetWorkspaceSize(s, algo[i], &sz);
+    err = GetWorkspaceSize(handle, s, algo[i], &sz);
     if (miopenStatusSuccess != err || sz == 0 || sz < max_ws_size || sz > free) continue;
     max_ws_size = sz;
   }
@@ -80,7 +79,7 @@ Status SliceOutUnwantedOutputSection(hipStream_t stream,
   ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(gsl::make_span(compute_metadata.output_dims_) == output_dims);
+  ORT_ENFORCE(SpanEq(gsl::make_span(compute_metadata.output_dims_), output_dims));
 
   return SliceRocm::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
@@ -90,7 +89,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto x_dims = x_shape.GetDims();
+  const auto x_dims = x_shape.AsShapeVector();
   s_.x_data = reinterpret_cast<const HipT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
@@ -113,11 +112,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   } else {
     s_.z_data = nullptr;
   }
-  bool input_dims_changed = (s_.last_x_dims.GetDims() != x_dims);
-  bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
+  bool input_dims_changed = (s_.last_x_dims != x_dims);
+  bool w_dims_changed = (s_.last_w_dims != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
-      s_.last_x_dims = x_dims;
+      s_.last_x_dims = gsl::make_span(x_dims);
 
     if (w_dims_changed) {
       s_.last_w_dims = gsl::make_span(w_dims);
@@ -180,7 +179,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     }
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-      s_.memory_for_miopen_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size);
+      s_.memory_for_miopen_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
       s_.y_data = reinterpret_cast<HipT*>(s_.memory_for_miopen_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
@@ -227,7 +226,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         s_.b_zero = nullptr;
       }
       HIP_CALL_THROW(hipMalloc(&s_.b_zero, malloc_size));
-      HIP_CALL_THROW(hipMemsetAsync(s_.b_zero, 0, malloc_size, Stream()));
+      HIP_CALL_THROW(hipMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
     }
 
     if (!s_.cached_benchmark_fwd_results.contains(x_dims_miopen)) {
@@ -236,11 +235,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       int algo_count = 1;
       const ROCMExecutionProvider* rocm_ep = static_cast<const ROCMExecutionProvider*>(this->Info().GetExecutionProvider());
       static constexpr int num_algos = MIOPEN_CONVOLUTION_FWD_ALGO_COUNT;
-      size_t max_ws_size = rocm_ep->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(s_, kAllAlgos, num_algos)
+      size_t max_ws_size = rocm_ep->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetMiopenHandle(context), s_, kAllAlgos, num_algos)
                                                                       : AlgoSearchWorkspaceSize;
       IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
       MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionForwardAlgorithm(
-	  s_.handle,
+    GetMiopenHandle(context),
 	  s_.x_tensor,
 	  s_.x_data,
 	  s_.w_desc,
@@ -266,7 +265,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       return Status::OK();
     }
     if (s_.post_slicing_required) {
-      s_.memory_for_miopen_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size);
+      s_.memory_for_miopen_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
       s_.y_data = reinterpret_cast<HipT*>(s_.memory_for_miopen_conv_results.get());
     } else {
       s_.y_data = reinterpret_cast<HipT*>(s_.Y->MutableData<T>());
@@ -284,8 +283,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   }
   const auto alpha = Consts<HipT>::One;
   const auto beta = Consts<HipT>::Zero;
-  IAllocatorUniquePtr<void> workspace = GetWorkSpace();
-  MIOPEN_RETURN_IF_ERROR(miopenConvolutionForward(s_.handle,
+  IAllocatorUniquePtr<void> workspace = GetWorkSpace(context->GetComputeStream());
+  auto miopen_handle = GetMiopenHandle(context);
+  MIOPEN_RETURN_IF_ERROR(miopenConvolutionForward(miopen_handle,
                                                 &alpha,
                                                 s_.x_tensor,
                                                 s_.x_data,
@@ -299,13 +299,13 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                 workspace.get(),
 						s_.workspace_bytes));
   if (nullptr != s_.b_data) {
-    MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(s_.handle, &alpha, s_.b_tensor, s_.b_data,
+    MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data,
                                          &beta, s_.y_tensor, s_.y_data));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(), s_.y_data, s_.y_dims_with_adjusted_pads,
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, s_.y_dims_with_adjusted_pads,
                                                       s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
                                                       s_.slice_ends, s_.slice_axes, s_.element_size));
   }

@@ -9,13 +9,16 @@
 #include <memory>
 #include <chrono>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifndef NDEBUG
+#include "core/providers/cuda/test/all_tests.h"
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -86,8 +89,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return std::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
+    return std::make_unique<GPUDataTransfer>();
   }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
@@ -180,6 +183,30 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
 
+#ifndef NDEBUG
+  bool TestAll() override {
+    // TestAll is the entry point of CUDA EP's insternal tests.
+    // Those internal tests are not directly callable from onnxruntime_test_all
+    // because CUDA EP is a shared library now.
+
+    // This is just one test. Call other test functions below.
+    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
+      return false;
+    }
+
+    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
+      return false;
+    }
+
+    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
+      return false;
+    }
+
+    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
+    // back alive here.
+    return true;
+  }
+#endif
 } g_info;
 
 struct CUDA_Provider : Provider {
@@ -219,6 +246,7 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
+    info.tunable_op.enabled = params->tunable_op_enabled;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }

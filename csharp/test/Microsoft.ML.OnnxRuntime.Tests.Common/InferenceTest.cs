@@ -122,10 +122,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Tvm("Vulkan -device=amd_apu");
 #endif
 
-#if USE_NUPHAR
-                opt.AppendExecutionProvider_Nuphar();
-#endif
-
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
 #endif
@@ -193,6 +189,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
+
+                opt.AddRunConfigEntry("key", "value");
+
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddRunConfigEntry("", "missing key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
             }
         }
 
@@ -223,6 +224,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_ROCM
             Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
 #endif
+        }
+
+        [Fact(DisplayName = "TestUpdatingEnvWithCustomLogLevel")]
+        public void TestUpdatingEnvWithCustomLogLevel()
+        {
+            var ortEnvInstance = OrtEnv.Instance();
+            ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
+            Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
         }
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModel")]

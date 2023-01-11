@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
@@ -84,8 +84,8 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
     return std::make_unique<ROCMPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return std::make_unique<GPUDataTransfer>(static_cast<hipStream_t>(stream));
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
+    return std::make_unique<GPUDataTransfer>();
   }
 
   void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
@@ -173,6 +173,7 @@ struct ROCM_Provider : Provider {
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
+    info.tunable_op.enabled = params->tunable_op_enabled;
 
     return std::make_shared<ROCMProviderFactory>(info);
   }

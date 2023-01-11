@@ -196,6 +196,9 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
 
+  // Mask all thread_data values to negative infinity to allow BlockReduce Max operation over all thread_data
+  // members with all invalid members set to a value that does not impact the final result. This is necessary
+  // to avoid the performance impact from using the valid_items interface.
   float thread_data = -ROCMRT_INF_F;
   if (threadIdx.x < all_sequence_length) {
     if (add_before_softmax == nullptr) {
@@ -242,7 +245,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     return;
   }
 
-  const float max = BlockReduce(tmp_storage).Reduce(thread_data, hipcub::Max(), all_sequence_length);
+  const float max = BlockReduce(tmp_storage).Reduce(thread_data, hipcub::Max());
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -250,8 +253,11 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   }
   __syncthreads();
 
+  // Mask all thread_data_exp values to zero to allow BlockReduce Sum operation over all thread_data_exp
+  // members with all invalid members set to a value that does not impact the final result. This is necessary
+  // to avoid the performance impact from using the valid_items interface.
   float thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum(), all_sequence_length);
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum());
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
@@ -286,32 +292,32 @@ Status ComputeSoftmax(
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output, is_unidirectional);
   } else if (!is_unidirectional) {
     const int blockSize = 1024;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, add_before_softmax, input, output);
+    SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, add_before_softmax, input, output);
   } else {
     ORT_THROW("Attention ROCM operator does not support total sequence length > 1024.");
   }
@@ -397,39 +403,39 @@ Status ComputeSoftmaxWithMask1D(
 
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output, is_unidirectional);
+    MaskedSoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output, is_unidirectional);
+    MaskedSoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output, is_unidirectional);
+    MaskedSoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output, is_unidirectional);
+    MaskedSoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output, is_unidirectional);
+    MaskedSoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output, is_unidirectional);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernelSmall<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output, is_unidirectional);
+    MaskedSoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output, is_unidirectional);
   } else if (!is_unidirectional) {
     const int blockSize = 1024;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(MaskedSoftmaxKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length, mask_index, mask_start,
-                       add_before_softmax, input, output);
+    MaskedSoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length, mask_index, mask_start,
+        add_before_softmax, input, output);
   } else {
     ORT_THROW("Attention ROCM operator does not support total sequence length > 1024.");
   }
@@ -459,46 +465,46 @@ Status ComputeSoftmaxWithRawMask(hipStream_t stream,
   T* out = use_persistent_softmax ? persistent_softmax_workspace : output;
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxWithRawMaskSmallKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length,
-                       attention_mask, key_padding_mask, add_before_softmax, input, out,
-                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                       use_persistent_softmax);
+    SoftmaxWithRawMaskSmallKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length,
+        attention_mask, key_padding_mask, add_before_softmax, input, out,
+        is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+        use_persistent_softmax);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxWithRawMaskSmallKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length,
-                       attention_mask, key_padding_mask, add_before_softmax, input, out,
-                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                       use_persistent_softmax);
+    SoftmaxWithRawMaskSmallKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length,
+        attention_mask, key_padding_mask, add_before_softmax, input, out,
+        is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+        use_persistent_softmax);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxWithRawMaskSmallKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length,
-                       attention_mask, key_padding_mask, add_before_softmax, input, out,
-                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                       use_persistent_softmax);
+    SoftmaxWithRawMaskSmallKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length,
+        attention_mask, key_padding_mask, add_before_softmax, input, out,
+        is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+        use_persistent_softmax);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxWithRawMaskSmallKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length,
-                       attention_mask, key_padding_mask, add_before_softmax, input, out,
-                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                       use_persistent_softmax);
+    SoftmaxWithRawMaskSmallKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length,
+        attention_mask, key_padding_mask, add_before_softmax, input, out,
+        is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+        use_persistent_softmax);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxWithRawMaskSmallKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length,
-                       attention_mask, key_padding_mask, add_before_softmax, input, out,
-                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                       use_persistent_softmax);
+    SoftmaxWithRawMaskSmallKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length,
+        attention_mask, key_padding_mask, add_before_softmax, input, out,
+        is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+        use_persistent_softmax);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(SoftmaxWithRawMaskSmallKernel<T, blockSize>), grid, blockSize, 0, stream,
-                       all_sequence_length, sequence_length,
-                       attention_mask, key_padding_mask, add_before_softmax, input, out,
-                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                       use_persistent_softmax);
+    SoftmaxWithRawMaskSmallKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
+        all_sequence_length, sequence_length,
+        attention_mask, key_padding_mask, add_before_softmax, input, out,
+        is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+        use_persistent_softmax);
   } else {
     ORT_THROW("Attention ROCM operator does not support total sequence length > 1024.");
   }

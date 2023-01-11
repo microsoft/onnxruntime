@@ -5,6 +5,7 @@
 #include "contrib_ops/cpu/crop.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
@@ -65,6 +66,11 @@ TEST(CropContribOpTest, CropBorderAndScale) {
 }
 
 TEST(ImageScalerContribOpTest, ImageScalerTest) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {
       1.0f, 3.0f,
@@ -114,7 +120,7 @@ void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normaliz
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); //OpenVINO doesn't support MVN operator below opset 9
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider}); //OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
 }
 
 void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_variance) {
@@ -181,7 +187,7 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); //OpenVINO doesn't support MVN operator below opset 9
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider}); //OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
 }
 
 TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {

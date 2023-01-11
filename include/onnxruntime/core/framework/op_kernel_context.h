@@ -3,6 +3,7 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
+class Stream;
 namespace concurrency {
 class ThreadPool;
 }
@@ -12,6 +13,7 @@ class OpKernelContext {
   using ArgMap = std::unordered_map<std::string, size_t>;
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
+                  _In_ Stream* stream,
                   _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
@@ -128,37 +130,13 @@ class OpKernelContext {
    Return an allocator on device 0, with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
+  [[nodiscard]] virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const;
 
   /**
    Return the allocator associated with the CPU EP with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
-
-  /**
-  Return the fence of current node's input.
-  @param index The index of the input.
-  @returns Point to the Fence of the input OrtValue.
-  It is null if the input OrtValue doesn't have fence or the input is optional.
-  */
-  virtual Fence_t InputFence(int index) const;
-
-  /**
-  Return the fence of current node's implicit input.
-  @param index The index of the implicit input.
-  @returns Point to the Fence of the implicit input OrtValue.
-  It is null if the input OrtValue doesn't have fence or the input is optional.
-  */
-  virtual Fence_t ImplicitInputFence(int index) const;
-
-  /**
-  Return the fence of current node's output identifed by index.
-  @param index The index of the output.
-  @returns Point to the Fence of the output OrtValue.
-  It is null if the output OrtValue doesn't have fence or the output is optional.
-  */
-  virtual Fence_t OutputFence(int index) const;
+  [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const;
 
   /**
   Return the device id that current kernel runs on.
@@ -171,8 +149,8 @@ class OpKernelContext {
   Return the compute stream associated with the EP that the kernel is partitioned to.
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
-  virtual void* GetComputeStream() const {
-    return kernel_->Info().GetExecutionProvider()->GetComputeStream();
+  [[nodiscard]] virtual Stream* GetComputeStream() const {
+    return stream_;
   }
 
   /**
@@ -203,8 +181,7 @@ class OpKernelContext {
   }
 
  protected:
-
-  OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger);
+  OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -236,6 +213,8 @@ class OpKernelContext {
   int node_input_start_index_{-1};
   int node_implicit_input_start_index_{-1};
   int node_output_start_index_{-1};
+
+  Stream* stream_;
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

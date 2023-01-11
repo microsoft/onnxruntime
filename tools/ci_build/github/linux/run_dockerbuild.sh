@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux Nuphar CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
+# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
 #This file is only for Linux pipelines that build on ubuntu. All the docker images here are based on ubuntu.
 #Please don't put CentOS or manylinux2014 related stuffs here.
 set -e -o -x
@@ -96,26 +96,22 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.6.2-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
-        IMAGE="$BUILD_OS-cuda11.6-cudnn8.4-tensorrt8.4"
+        IMAGE="$BUILD_OS-cuda11.8-cudnn8.4-tensorrt8.5"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
 
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
             --dockerfile $DOCKER_FILE --context .
-else
+elif [[ $BUILD_DEVICE = "openvino"* ]]; then
         BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
-
-        if [ $BUILD_DEVICE = "openvino" ]; then
-           IMAGE="$BUILD_OS-openvino"
-           DOCKER_FILE=Dockerfile.ubuntu_openvino
-           BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
-        else
-           IMAGE="$BUILD_OS"
-           DOCKER_FILE=Dockerfile.ubuntu
-        fi
+        IMAGE="$BUILD_OS-openvino"
+        DOCKER_FILE=Dockerfile.ubuntu_openvino
+        BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="${BUILD_ARGS}" \
                 --dockerfile $DOCKER_FILE --context .
+else
+  exit 1
 fi
 
 if [[ $NEED_BUILD_SHARED_LIB = true ]]; then

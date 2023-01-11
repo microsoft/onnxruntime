@@ -21,9 +21,8 @@ struct Parameter {
   OrtValue& Data() { return data_; }
   const std::string& Name() const { return name_; }
 
-  // Return parameter trainable or not. The trainable property of a param
-  // cannot change over the lifetime of the on-device training
-  // session since the gradient graph is prebuilt for this setting.
+  // Returns whether this parameter is trainable or not.
+  // The trainable property of a param is immutable since the gradient graph is prebuilt for this setting.
   bool RequiresGrad() const { return requires_grad_; }
 
   // Return the mutable gradient for trainable parameter.
@@ -72,7 +71,7 @@ struct Module {
   }
 
   // Reset and release the gradient buffer of all trainable params lazily.
-  Status ResetGrad();
+  Status LazyResetGrad();
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
   // Gradients will be accumulated within the Parameter object
@@ -98,13 +97,30 @@ struct Module {
   std::string GetEvalModelOutputName(size_t index) const;
 
   // Return size of all parameters
-  size_t GetParametersSize(const bool trainable_only=true) const;
+  size_t GetParametersSize(const bool trainable_only = true) const;
 
   // Copy parameters onto contiguous buffer held by parameters_buffer
-  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only=true);
-  
+  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
+
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
-  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only=true);
+  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
+
+  // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
+  // inferencing, and serialize to given path
+  Status ExportModelForInferencing(const std::string& inference_model_path,
+                                   gsl::span<const std::string> graph_output_names) const;
+
+  // Returns the user input count for training graph
+  size_t GetTrainingModelInputCount() const noexcept;
+
+  // Returns the user input count for eval graph
+  size_t GetEvalModelInputCount() const noexcept;
+
+  // Returns the user input name for train graph at given index
+  std::string GetTrainingModelInputName(size_t index) const;
+
+  // Returns the user input name for eval graph at given index
+  std::string GetEvalModelInputName(size_t index) const;
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
@@ -118,6 +134,9 @@ struct Module {
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = false;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
+  std::string eval_model_path_;
+  size_t train_user_input_count_;
+  size_t eval_user_input_count_;
 };
 
 }  // namespace api

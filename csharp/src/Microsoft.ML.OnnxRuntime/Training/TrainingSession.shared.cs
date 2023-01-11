@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-#if __ENABLE_TRAINING_ON_DEVICE__
+#if __ENABLE_TRAINING_APIS__
     enum LRScheduler
     {
         None = 0,
@@ -205,9 +205,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// Sets the reset grad flag on the training graph. The gradient buffers will be reset while executing the
         /// next train step.
         /// </summary>
-        public void ResetGrad()
+        public void LazyResetGrad()
         {
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtResetGrad(_nativeHandle));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLazyResetGrad(_nativeHandle));
         }
 
         /// <summary>
@@ -336,7 +336,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("Training is disabled in the current build.");
+                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
             }
             var options = sessOptions;
             if (sessOptions == null)
@@ -388,15 +388,15 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle;
             string str = null;
             if (training)
-            { 
+            {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
                                            allocator.Pointer,
                                            out nameHandle));
-            } 
+            }
             else
-            { 
+            {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
@@ -498,7 +498,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        #endregion
+    #endregion
     }
 #endif
 }

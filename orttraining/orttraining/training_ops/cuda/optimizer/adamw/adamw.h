@@ -4,7 +4,6 @@
 #pragma once
 
 #include <vector>
-#include "core/providers/shared_library/provider_api.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
@@ -18,9 +17,6 @@ class AdamWOptimizer final : public CudaKernel, public contrib::AdamWOptimizerBa
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
 };
 
 }  // namespace cuda

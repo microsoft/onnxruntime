@@ -37,7 +37,19 @@ class AttentionQuant(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
+        ) = self.quantizer.quantize_activation(node, [0])
+
+        (
+            quantized_input_names_weight,
+            zero_point_names_weight,
+            scale_names_weight,
+            nodes_weight,
+        ) = self.quantizer.quantize_weight(node, [1], reduce_range=True, op_level_per_channel=True)
+        quantized_input_names.extend(quantized_input_names_weight)
+        zero_point_names.extend(zero_point_names_weight)
+        scale_names.extend(scale_names_weight)
+        nodes.extend(nodes_weight)
+
         if quantized_input_names is None:
             return super().quantize()
 

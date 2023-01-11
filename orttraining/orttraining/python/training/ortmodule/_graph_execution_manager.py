@@ -177,6 +177,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False
 
+        # Enable compute optimizer by default. Allowed to be disabled  via environment variable for
+        # convergence parity investigation.
+        self._enable_compute_optimizer = (
+            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
+        )
+
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
@@ -247,33 +253,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         else:
             self._graph_builder.build()
 
-        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_model())
-
-        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
-            self._graph_builder.get_inference_optimized_model()
-        )
-
         self._graph_info = self._graph_builder.get_graph_info()
-
-        # Map each input/initializer to its gradient index in the graph output, or -1 is gradient is not required.
-        self._gradient_map = []
-        num_user_input_grads = len(self._input_info.require_grad_names)
-        require_grad_names_set = set(self._input_info.require_grad_names)
-        require_grad_names_index = 0
-        for input_name in self._graph_info.user_input_names:
-            if input_name in require_grad_names_set:
-                self._gradient_map.append(require_grad_names_index)
-                require_grad_names_index += 1
-            else:
-                self._gradient_map.append(-1)
-
-        initializer_index = num_user_input_grads
-        for initializer_name in self._graph_info.initializer_names:
-            if initializer_name in self._graph_initializer_names_to_train:
-                self._gradient_map.append(initializer_index)
-                initializer_index += 1
-            else:
-                self._gradient_map.append(-1)
 
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
@@ -292,8 +272,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             providers.append("CPUExecutionProvider")
             provider_option_map = {"device_id": str(self._device.index)}
             if not self.is_rocm_pytorch:
-                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
-                provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
+                # Set Conv algo search mode to HEURISTIC by default, which is same as PyTorch's default setting.
+                conv_algo_search = ortmodule._defined_from_envvar("ORTMODULE_CONV_ALGO_SEARCH", "HEURISTIC", warn=True)
+                if conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
+                    warnings.warn("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
+                    conv_algo_search = "HEURISTIC"
+                provider_option_map["cudnn_conv_algo_search"] = conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
             if self._use_external_gpu_allocator:
@@ -318,6 +302,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
+        # Disable memory alleviation by default. Allow user to enable it via environment variable.
+        alleviation_config = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_CONFIG", "", warn=True)
+        probe_level = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_PROBE_RECOMPUTE_LEVEL", "1", warn=True)
+        session_options.add_session_config_entry("optimization.enable_memory_optimizer", alleviation_config)
+        session_options.add_session_config_entry("optimization.enable_memory_probe_recompute_level", probe_level)
 
         if self._debug_options.save_onnx_models.save:
             session_options.optimized_model_filepath = os.path.join(
@@ -462,9 +451,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
         graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
         graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
+        graph_transformer_config.enable_compute_optimizer = self._enable_compute_optimizer
         return graph_transformer_config
 
-    def _initialize_graph_builder(self, training):
+    def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
         # All initializer names along with user inputs are a part of the onnx graph inputs
@@ -486,7 +476,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.initializer_names = initializer_names
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
-        grad_builder_config.build_gradient_graph = training
+        grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(

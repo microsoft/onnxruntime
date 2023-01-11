@@ -27,7 +27,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
@@ -42,7 +42,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -298,7 +298,7 @@ jobs:
               --build_shared_lib \
               --disable_ml_ops \
               --disable_exceptions \
-              --skip_tests
+              --skip_tests --path_to_protoc_exe /usr/bin/protoc
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/clean-agent-build-directory-step.yml

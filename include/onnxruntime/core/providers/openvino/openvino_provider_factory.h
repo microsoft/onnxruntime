@@ -13,7 +13,7 @@ extern "C" {
 
 /**
  * \param device_type openvino device type and precision. Could be any of
- * CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32.
+ * CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
                _In_ OrtSessionOptions* options, _In_ const char* device_type);

@@ -39,8 +39,7 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 }  // namespace
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
   // automatic conversion from const std::vector&
   const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
@@ -69,12 +68,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
-    const KernelCreateInfo* kernel_info = nullptr;
-    for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
-      if (st.IsOK())
-        break;
-    }
+    const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(*node);
     // at least one registry has a target provider's kernel for this node
     ORT_ENFORCE(kernel_info != nullptr);
     node_to_kernel.insert({node_id, kernel_info});
@@ -113,10 +107,21 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     if (!p.second)
       continue;
 
-    if (provider_nodes.find(cur) == provider_nodes.end())
-      continue;
-
     auto* node = graph.GetNode(cur);
+    if (provider_nodes.find(cur) == provider_nodes.end()) {
+      // Nodes not in provider_nodes are either have EP assigned or no kernel found on target EP.
+      // we assume these nodes will fallback to CPU, so add all direct consumers of all outputs to candidates.
+      if (node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == kCpuExecutionProvider) {
+        for (auto* output : node->OutputDefs()) {
+          cpu_output_args.insert(output);
+        }
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          candidates.push((*it).Index());
+        }
+      }
+      continue;
+    }
+
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];

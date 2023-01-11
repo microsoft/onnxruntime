@@ -17,6 +17,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:
@@ -36,10 +38,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  Status SetComputeStream(void* stream) override;
-
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
   rocblas_handle PerThreadRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
   }
@@ -49,18 +47,34 @@ class ROCMExecutionProvider : public IExecutionProvider {
   }
 
   template <typename T>
-  const T* GetConstOnes(size_t count) {
-    return GetPerThreadContext().template GetConstOnes<T>(count);
+  const T* GetConstOnes(size_t count, hipStream_t stream) {
+    return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
-  void AddDeferredReleaseCPUPtr(void* p);
-
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
+    // In some ROCm async
+    if (count_or_bytes == 0)
+      return nullptr;
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
+                                        count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -68,7 +82,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const IKernelLookup& kernel_lookup) const override;
 
   int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
@@ -81,19 +95,17 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  template <typename T>
-  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
-  }
-
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
+  void EnableTunableOp();
+  void DisableTunableOp();
+  bool IsTunableOpEnabled() const;
+
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
  private:
   ROCMExecutionProviderInfo info_;
@@ -101,13 +113,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   hipStream_t stream_ = nullptr;
 
-  struct DeferredReleaseCPUPtrs {
-    bool recorded = false;
-    std::vector<void*> cpu_ptrs;
-  };
-
-  std::unordered_map<hipEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
-  OrtMutex deferred_release_cpu_ptr_mutex_;
+  bool use_ep_level_unified_stream_ = false;
 
   class PerThreadContext final {
    public:
@@ -123,51 +129,35 @@ class ROCMExecutionProvider : public IExecutionProvider {
       return miopen_handle_;
     }
 
-    hipEvent_t& GetCurrentDeferredReleaseEvent() {
-      return current_deferred_release_event_;
-    }
-
     template <typename T>
-    const T* GetConstOnes(size_t count) {
+    const T* GetConstOnes(size_t count, hipStream_t stream) {
       if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
     }
 
-    AllocatorPtr GetAllocator() const {
-      return allocator_;
-    }
-
    private:
-    hipStream_t stream_ = nullptr;
     rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
-
-    // deferred release for temporary CPU pinned memory used in hipMemcpyAsync
-    // note that hipEvent will be assigned at OnRunEnd() when PerThreadContext destory
-    // so the ownership is passed to deferred_release_cpu_ptr_
-    hipEvent_t current_deferred_release_event_ = nullptr;
 
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
-
-    AllocatorPtr allocator_;
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;

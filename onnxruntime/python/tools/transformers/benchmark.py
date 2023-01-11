@@ -118,9 +118,10 @@ def run_onnxruntime(
         use_gpu
         and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers())
         and ("ROCMExecutionProvider" not in onnxruntime.get_available_providers())
+        and ("DmlExecutionProvider" not in onnxruntime.get_available_providers())
     ):
         logger.error(
-            "Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
+            "Please install onnxruntime-gpu or onnxruntime-directml package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
         )
         return results
 
@@ -837,7 +838,7 @@ def main():
         model_fusion_statistics = {}
         if enable_onnxruntime:
             try:
-                use_raw_attention_mask = True
+                use_raw_attention_mask = not args.use_mask_index
                 results += run_onnxruntime(
                     args.use_gpu,
                     args.provider,

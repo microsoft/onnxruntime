@@ -104,7 +104,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(pads_size == 2 * static_cast<size_t>(dimension_count),
                 "Pads tensor size should be equal to twice the input dimension count ");
 
-    pads.reserve(2 * dimension_count);
+    pads.reserve(2LL * dimension_count);
     for (size_t i = 0; i < pads_size; ++i) {
       pads.push_back(pads_tensor_raw_data[i]);
     }
@@ -161,7 +161,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         output_tensor.MutableData<T>(), input_tensor.Data<T>(),
         sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
-        cudaMemcpyDeviceToDevice, Stream()));
+        cudaMemcpyDeviceToDevice, Stream(ctx)));
     return Status::OK();
   }
 
@@ -181,7 +181,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     PadNCHWInputWithPaddingAlongHAndWImpl(
-        Stream(),
+        Stream(ctx),
         dimension_count == 4 ? input_dims[0] : 1,
         dimension_count == 4 ? input_dims[1] : (dimension_count == 3 ? input_dims[0] : 1),
         input_dims[height_dim],
@@ -206,7 +206,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   PadImpl(
-      Stream(),
+      Stream(ctx),
       dimension_count,
       input_dims,
       input_strides,

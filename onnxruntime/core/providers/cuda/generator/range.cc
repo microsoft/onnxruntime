@@ -64,7 +64,8 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
 
-  int count = static_cast<int>(ceil(1.0 * (limit - start) / delta));
+  double num = (static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta);
+  int count = static_cast<int>(ceil(num));
   if (count <= 0)
     count = 0;
   TensorShape shape = {static_cast<int64_t>(count)};
@@ -96,7 +97,7 @@ Status Range::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<int32_t, float, int64_t, double, int16_t>
       t_disp(input_tensor->GetElementType());
-  return t_disp.InvokeRet<Status, cuda_range_internal::CallCudaRangeImpl>(Stream(), ctx);
+  return t_disp.InvokeRet<Status, cuda_range_internal::CallCudaRangeImpl>(Stream(ctx), ctx);
 }
 
 }  // namespace cuda

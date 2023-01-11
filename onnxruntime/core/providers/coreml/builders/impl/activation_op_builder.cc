@@ -6,6 +6,7 @@
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
+#include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
@@ -22,8 +23,8 @@ class ActivationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -51,7 +52,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
                       COREML_SPEC::ActivationPReLU& prelu) {
   // add slope initializer as alpha weight
   const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
-  const auto slope_tensor_num_elements = gsl::narrow<size_t>(Product(slope_tensor.dims()));
+  const auto slope_tensor_num_elements = narrow<size_t>(Product(slope_tensor.dims()));
   if (slope_tensor_num_elements != 1) {
     ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*prelu.mutable_alpha(), slope_tensor));
   } else {

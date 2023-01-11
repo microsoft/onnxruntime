@@ -9,7 +9,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std::vector<MLDataType> {
+const std::vector<MLDataType> castOpTypeConstraints{
   DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<BFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
@@ -34,7 +34,7 @@ const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", *castOpTypeConstraints),          \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
@@ -44,7 +44,7 @@ const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", *castOpTypeConstraints),          \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
@@ -54,7 +54,7 @@ const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", *castOpTypeConstraints),          \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);
 
 template <typename SrcT>
@@ -70,7 +70,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   case TP_TYPE:                                                                                      \
     if (count > 0) {                                                                                 \
       Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
-          Stream(),                                                                                  \
+          Stream(context),                                                                           \
           x_data,                                                                                    \
           reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
           count);                                                                                    \

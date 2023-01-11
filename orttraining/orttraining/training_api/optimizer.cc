@@ -19,7 +19,7 @@ namespace {
 constexpr char GROUP_ZERO_NAME[] = "group0";
 
 // TODO: don't hard code the state names, should get the state names according to the optimizer types.
-// TODO: Conolidate with frontend tooling
+// TODO: Consolidate with frontend tooling
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
 
 constexpr std::array AdamWOptimizerInputs = {
@@ -152,8 +152,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
-    : named_parameters_(named_parameters) {
-  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, env));
+    : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), named_parameters_(named_parameters) {
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }

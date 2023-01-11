@@ -9,13 +9,15 @@
 #include "migraphx_execution_provider.h"
 #include "migraphx_execution_provider_utils.h"
 #include "hip_allocator.h"
-#include "hip_fence.h"
 #include "gpu_data_transfer.h"
-#include "migraphx_call.h"
+#include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
 #include <iterator>
+
+// TODO: find a better way to share this
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -39,9 +41,13 @@ class Memcpy final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    return retval;
+    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+    const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+    if (!gpu_data_transfer)
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
 
@@ -55,7 +61,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kMIGraphXExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -66,7 +71,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kMIGraphXExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -98,6 +102,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true}, device_id_(info.device_id) {
+  InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
   t_ = migraphx::target(info.target_device.c_str());
@@ -113,6 +118,17 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   if (!dump_model_ops_env.empty()) {
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
+
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&external_rocblas_handle_));
+  ROCBLAS_CALL_THROW(rocblas_set_stream(external_rocblas_handle_, stream_));
+
+  MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
+  MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
+}
+
+MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
+  ORT_IGNORE_RETURN_VALUE(ROCBLAS_CALL(rocblas_destroy_handle(external_rocblas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(external_miopen_handle_)));
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -192,7 +208,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()));
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 static bool IsTypeSupported(const NodeArg* node_arg) {
@@ -525,11 +541,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 }
 
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
-  // If the number of nodes in the graph is less than 5, do nothing
-  // this is to deal with onnx unit tests
-  if (graph_viewer.NumberOfNodes() <= 5) {
-    return;
-  }
 
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
@@ -552,11 +563,6 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
           }
         }
       }
-    }
-
-    // if 6 operators or more
-    if (git.size() > 5) {
-      return false;
     }
 
     // rnn operators, run on GPU
@@ -866,7 +872,7 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order, const s
 
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
@@ -1038,9 +1044,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      Ort::CustomOpApi ort{*api};
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
+
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
       migraphx::target t = mgx_state->t;
       migraphx::program& prog = mgx_state->prog;
@@ -1057,9 +1064,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         for (auto& it : map_input_name_index) {
           auto& name = it.first;
           auto& index = it.second;
-          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, index);
-          auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-          const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+          auto input_tensor = ctx.GetInput(index);
+          auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+          const auto tensor_shape = tensor_info.GetShape();
           std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
           cmp_options.set_input_parameter_shape(name, ort_lens);
           input_shape_match = false;
@@ -1073,9 +1080,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         if (param_shapes.size() > 0) {
           for (auto&& name : param_shapes.names()) {
             if (map_input_name_index.count(name) > 0) {
-              const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_name_index[name]);
-              auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-              const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+              auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+              auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+              const auto tensor_shape = tensor_info.GetShape();
               std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
 
               auto mgx_s = param_shapes[name];
@@ -1115,11 +1122,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (param_shapes.size() > 0) {
         for (auto&& name : param_shapes.names()) {
           if (map_input_name_index.count(name) > 0) {
-            const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_name_index[name]);
-            auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-            const auto& tensor_shape = ort.GetTensorShape(tensor_info);
-            auto tensor_type = ort.GetTensorElementType(tensor_info);
-            ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+            auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+            auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+            const auto tensor_shape = tensor_info.GetShape();
+            const auto tensor_type = tensor_info.GetElementType();
 
             migraphx_shape_datatype_t mgx_type;
             getMIGraphXType(tensor_type, mgx_type);
@@ -1128,7 +1134,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             if (mgx_type != mgx_s.type()) {
               LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
             }
-            m.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(ort.GetTensorData<void>(input_tensor))));
+            m.add(name, migraphx::argument(param_shapes[name],
+                                           const_cast<void*>(input_tensor.GetTensorRawData())));
           }
           // It is a output argument
           else {
@@ -1149,8 +1156,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               auto mgx_output_shape = prog_output_shapes[output_index];
               auto lens = mgx_output_shape.lengths();
               std::vector<int64_t> ort_output_shape(lens.begin(), lens.end());
-              OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_output_shape.data(), ort_output_shape.size());
-              void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+              auto output_tensor = ctx.GetOutput(output_index, ort_output_shape.data(), ort_output_shape.size());
+              void* output_data = output_tensor.GetTensorMutableRawData();
 
               // argument shape
               auto mgx_arg_shape = param_shapes[name];
@@ -1163,9 +1170,15 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       {
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+
+        #ifdef MIGRAPHX_STREAM_SYNC
+        void* rocm_stream;
+        Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
+        #else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
-
+        #endif
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
         if (prog_output_indices.size() < output_num) {
@@ -1176,8 +1189,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             migraphx::shape res_shape = gpu_res.get_shape();
             auto res_lens = res_shape.lengths();
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
-            OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, ort_shape.data(), ort_shape.size());
-            void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+            auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
+            void* output_data = output_tensor.GetTensorMutableRawData();
             HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
           }
         }
@@ -1191,4 +1204,36 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
+}
+
+#ifdef MIGRAPHX_STREAM_SYNC
+
+Status MIGraphXExecutionProvider::Sync() const {
+  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
+
+  auto status = hipStreamQuery(stream_);
+  if (status != hipSuccess) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
+  }
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunStart()
+{
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunEnd(bool) {
+  auto status = hipStreamQuery(stream_);
+
+  if (status != hipSuccess) {
+    HIP_CALL_THROW(hipStreamSynchronize(stream_));
+  }
+  return Status::OK();
+}
+
+#endif
 }  // namespace onnxruntime

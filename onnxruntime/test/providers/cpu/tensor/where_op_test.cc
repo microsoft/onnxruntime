@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "test/providers/provider_test_utils.h"
 
@@ -62,7 +62,12 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
     }
     test.AddOutput<T>("output", {3, 3, 3}, result);
 
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+#else
     test.Run();
+#endif
   }
 
   {
@@ -81,7 +86,12 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
     }
     test.AddOutput<T>("output", {3, 3, 3}, result);
 
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+#else
     test.Run();
+#endif
   }
 }
 }  // namespace

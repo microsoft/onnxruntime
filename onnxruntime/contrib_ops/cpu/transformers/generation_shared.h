@@ -4,7 +4,8 @@
 #pragma once
 
 #include <utility>
-#include "gsl/gsl"
+#include <random>
+#include "core/common/gsl.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 
@@ -27,10 +28,20 @@ struct IBeamSearchState {
   gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
   gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
   gsl::span<int32_t> next_indices;     // shape (batch_size, 2 * num_beams)
+  gsl::span<float> next_scores;        // shape (batch_size, 2 * num_beams)
   gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams), empty for T5. Next position for position_ids.
   gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
   gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
   gsl::span<float> remaining_scores;   // portion of scores that is available for appending next token scores.
+  gsl::span<float> topk_buffer;        // temp buffer for topk computation, including:
+                                       // 1st stage needs:
+                                       //   temp score: (batch_size * num_beams * parts_vocab, 2 * num_beams)
+                                       //   temp token: (batch_size * num_beams * parts_vocab, 2 * num_beams)
+                                       // 2nd stage needs:
+                                       //   temp score: (batch_size * num_beams, 2 * num_beams)
+                                       //   temp token: (batch_size * num_beams, 2 * num_beams)
+                                       // in total, it will be:
+                                       // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
 };
 
 struct IBeamSearchCpuState {
@@ -53,6 +64,28 @@ struct IGreedySearchState {
   gsl::span<bool> eos_meet;             // shape (batch_size)
   gsl::span<T> next_token_scores;       // shape (batch_size, vocab_size)
   gsl::span<int32_t> next_tokens;       // shape (batch_size)
+};
+
+template <typename T>
+struct ISamplingState {
+  gsl::span<int> d_index_in;
+  gsl::span<int> d_index_out;
+  gsl::span<int> d_offset;
+  gsl::span<T> d_sorted_score;
+  gsl::span<float> d_sorted_softmaxed_score;
+  gsl::span<float> d_softmaxed_score;
+  gsl::span<float> h_softmaxed_score;
+  gsl::span<float> d_sampled;
+  gsl::span<float> h_sampled_all;
+  gsl::span<int64_t> d_indices;
+  gsl::span<int> d_presence_mask;
+
+  BufferUniquePtr storage_buffer;
+  size_t temp_storage_bytes;
+  std::default_random_engine generator;
+
+  gsl::span<T> sorted_scores;
+  gsl::span<T> cumulative_probs;
 };
 
 class ISequences {
@@ -86,7 +119,7 @@ class IBeamScorer {
                         Tensor* output_sequence_scores) = 0;
 };
 
-struct IBeamSearchParameters {
+struct IGenerationParameters {
   static constexpr int kModelTypeGpt = 0;
   static constexpr int kModelTypeT5 = 1;
 
@@ -110,6 +143,7 @@ struct IBeamSearchParameters {
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
+  gsl::span<const int32_t> presence_mask;
 
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output
@@ -119,6 +153,15 @@ struct IBeamSearchParameters {
   int num_heads;
   int head_size;
   int num_layers;
+
+  // Parameters for TopK/TopP sampling.
+  float presence_penalty;
+  float filter_value;
+  float temperature = 1.0f;
+  float top_p = 0.0f;
+  int seed = 0;
+  int min_tokens_to_keep = 1;
+  bool custom_sampling = false;
 };
 
 class IConsoleDumper {

@@ -15,6 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     // NOTE: The order of the APIs in this struct should match exactly that in
     // OrtApi ort_api_1_to_<latest_version> (onnxruntime/core/session/onnxruntime_c_api.cc)
+    // If syncing your new C API, any other C APIs before yours also need to be synced here if haven't
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
@@ -252,6 +253,13 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseKernelInfo;
 
         public IntPtr GetTrainingApi;
+        public IntPtr SessionOptionsAppendExecutionProvider_CANN;
+        public IntPtr CreateCANNProviderOptions;
+        public IntPtr UpdateCANNProviderOptions;
+        public IntPtr GetCANNProviderOptionsAsString;
+        public IntPtr ReleaseCANNProviderOptions;
+        public IntPtr MemoryInfoGetDeviceType;
+        public IntPtr UpdateEnvWithCustomLogLevel;
     }
 
     internal static class NativeMethods
@@ -333,6 +341,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRunOptionsGetRunTag = (DOrtRunOptionsGetRunTag)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunTag, typeof(DOrtRunOptionsGetRunTag));
             OrtRunOptionsSetTerminate = (DOrtRunOptionsSetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetTerminate, typeof(DOrtRunOptionsSetTerminate));
             OrtRunOptionsUnsetTerminate = (DOrtRunOptionsUnsetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsUnsetTerminate, typeof(DOrtRunOptionsUnsetTerminate));
+            OrtAddRunConfigEntry = (DOrtAddRunConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddRunConfigEntry, typeof(DOrtAddRunConfigEntry));
 
             OrtCreateArenaCfg = (DOrtCreateArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.CreateArenaCfg, typeof(DOrtCreateArenaCfg));
             OrtReleaseArenaCfg = (DOrtReleaseArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.ReleaseArenaCfg, typeof(DOrtReleaseArenaCfg));
@@ -427,6 +436,7 @@ namespace Microsoft.ML.OnnxRuntime
                 = (DSessionOptionsAppendExecutionProvider)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsAppendExecutionProvider,
                     typeof(DSessionOptionsAppendExecutionProvider));
+            OrtUpdateEnvWithCustomLogLevel = (DOrtUpdateEnvWithCustomLogLevel)Marshal.GetDelegateForFunctionPointer(api_.UpdateEnvWithCustomLogLevel, typeof(DOrtUpdateEnvWithCustomLogLevel));
         }
 
         internal class NativeLib
@@ -466,9 +476,13 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */DOrtDisableTelemetryEvents(IntPtr /*(OrtEnv*)*/ env);
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
-#endregion Runtime/Environment API
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, LogLevel custom_log_level);
+        public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
-#region Provider Options API
+        #endregion Runtime/Environment API
+
+        #region Provider Options API
 
         /// <summary>
         /// Creates native OrtTensorRTProviderOptions instance
@@ -888,9 +902,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nuphar(IntPtr /*(OrtSessionOptions*) */ options, int allow_unaligned_buffers, IntPtr /*(char char*)*/ settings);
-
-        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tvm(IntPtr /*(OrtSessionOptions*) */ options, IntPtr /*(char char*)*/ settings);
 #endif
         /// <summary>
@@ -1061,9 +1072,22 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsUnsetTerminate(IntPtr /* OrtRunOptions* */ options);
         public static DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
 
-#endregion
 
-#region Allocator/MemoryInfo API
+        /// <summary>
+        /// Add run config entry
+        /// </summary>
+        /// <param name="options">Native RunOptions instance</param>
+        /// <param name="configKey">Config key</param>
+        /// <param name="configValue">Config value</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddRunConfigEntry(IntPtr /* OrtRunOptions* */ options,
+                                                                      IntPtr /* const char* */configKey,
+                                                                      IntPtr /* const char* */ configValue);
+        public static DOrtAddRunConfigEntry OrtAddRunConfigEntry;
+
+        #endregion
+
+        #region Allocator/MemoryInfo API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateMemoryInfo(

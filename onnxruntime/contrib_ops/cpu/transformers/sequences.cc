@@ -10,7 +10,7 @@ namespace transformers {
 
 void Sequences::Init(gsl::span<int32_t> buffer, int batch_beam_size, int sequence_length, int max_length) {
   size_t sequences_size = SafeInt<size_t>(batch_beam_size) * max_length;
-  assert(buffer.length() == sequences_size + sequences_size);
+  assert(buffer.size() == sequences_size + sequences_size);
 
   sequences[0] = buffer.subspan(0, sequences_size);
   sequences[1] = buffer.subspan(sequences_size);

@@ -8,15 +8,14 @@ PyTorch-ONNX exporter (torch.onnx.export).
 import typing
 
 try:
-#TODO(justinchuby) : Create a function to alert users when torch is not installed
+O(justinchuby) : Create a function to alert users when torch is not installed
     import torch
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "This module is only useful in combination with PyTorch. To install PyTorch see https://pytorch.org/."
     )
 
-import torch.onnx.symbolic_helper as sym_help
-import torch.onnx.symbolic_registry as sym_registry
+from torch.onnx import symbolic_helper
 
 _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
@@ -35,19 +34,19 @@ def register():
     """
 
     def grid_sampler(g, input, grid, mode, padding_mode, align_corners):
-#mode
-#'bilinear' : onnx::Constant[value = {0 }]
-#'nearest' : onnx::Constant[value = {1 }]
-#'bicubic' : onnx::Constant[value = {2 }]
-#padding_mode
-#'zeros' : onnx::Constant[value = {0 }]
-#'border' : onnx::Constant[value = {1 }]
-#'reflection' : onnx::Constant[value = {2 }]
-        mode = sym_help._maybe_get_const(mode, "i")
-        padding_mode = sym_help._maybe_get_const(padding_mode, "i")
+        # mode
+        #   'bilinear'      : onnx::Constant[value={0}]
+        #   'nearest'       : onnx::Constant[value={1}]
+        #   'bicubic'       : onnx::Constant[value={2}]
+        # padding_mode
+        #   'zeros'         : onnx::Constant[value={0}]
+        #   'border'        : onnx::Constant[value={1}]
+        #   'reflection'    : onnx::Constant[value={2}]
+        mode = symbolic_helper._maybe_get_const(mode, "i")
+        padding_mode = symbolic_helper._maybe_get_const(padding_mode, "i")
         mode_str = ["bilinear", "nearest", "bicubic"][mode]
         padding_mode_str = ["zeros", "border", "reflection"][padding_mode]
-        align_corners = int(sym_help._maybe_get_const(align_corners, "b"))
+        align_corners = int(symbolic_helper._maybe_get_const(align_corners, "b"))
 
 #From opset v13 onward, the output shape can be specified with
 #(N, C, H, W)(N, H_out, W_out, 2) =>(N, C, H_out, W_out)
@@ -103,8 +102,12 @@ def unregister():
         try:
             torch.onnx.unregister_custom_op_symbolic(name, _OPSET_VERSION)
         except AttributeError:
-#unregister_custom_op_symbolic is not available before PyTorch 1.12
+            # The symbolic_registry module was removed in PyTorch 1.13.
+            # We are importing it here for backwards compatibility
+            # because unregister_custom_op_symbolic is not available before PyTorch 1.12
+            from torch.onnx import symbolic_registry
+
             namespace, kind = name.split("::")
-            for version in sym_help._onnx_stable_opsets:
-                if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, namespace, version):
-                    del sym_registry._registry[(namespace, version)][kind]
+            for version in symbolic_helper._onnx_stable_opsets:
+                if version >= _OPSET_VERSION and symbolic_registry.is_registered_op(kind, namespace, version):
+                    del symbolic_registry._registry[(namespace, version)][kind]

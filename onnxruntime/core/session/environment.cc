@@ -13,7 +13,7 @@
 #include "core/graph/contrib_ops/internal_nhwc_onnx_opset.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
 #endif
@@ -31,16 +31,17 @@
 #include "core/platform/tracing.h"
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
 #include "orttraining/core/graph/training_op_defs.h"
+#endif
+#ifdef ENABLE_TRAINING_CORE
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
-#include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
-#include "orttraining/core/optimizer/graph_transformer_registry.h"
-
+#include "orttraining/core/graph/loss_function_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -256,21 +257,24 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       RegisterOnnxMLOperatorSetSchema();
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
       RegisterOnnxTrainingOperatorSetSchema();
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
       // preserve this order until <training schemas>: this depends on operatorsetschema registration.
       training::RegisterTrainingOpSchemas();
+#endif
+#ifdef ENABLE_TRAINING_CORE
+      // <training schemas>
+      // This can also be moved inside enable_training. Needs more investigation
+      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
 #ifdef ENABLE_TRAINING
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
-      // <training schemas>
-      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
     });
 

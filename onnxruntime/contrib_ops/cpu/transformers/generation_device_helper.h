@@ -10,7 +10,7 @@
 #endif
 
 #include <vector>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
@@ -35,7 +35,7 @@ namespace GenerationDeviceHelper {
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
-    void* stream,  // cudaStream_t
+    Stream* stream,  // cudaStream_t
     onnxruntime::concurrency::ThreadPool* threadpool,
     Tensor& output_values,
     Tensor& output_indices)>;
@@ -43,6 +43,7 @@ using TopkFunc = std::function<Status(
 // Create subgraph inputs: input_ids, position_ids and attention_mask (for GPT-2).
 using CreateGptInputsFunc = std::function<Status(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
@@ -53,6 +54,7 @@ using CreateGptInputsFunc = std::function<Status(
 
 using AddToFeedsFunc = std::function<Status(
     const IExecutionProvider* provider,
+    Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer)>;
@@ -63,13 +65,13 @@ using InitBeamStateFunc = std::function<void(
     gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
-    void* stream)>;
+    Stream* stream)>;
 
 template <typename T>
 using InitGreedyStateFunc = std::function<void(
     transformers::IGreedySearchState<T>* greedy_state,
     gsl::span<int32_t>& sequence_lengths,
-    void* stream)>;
+    Stream* stream)>;
 
 template <typename T>
 using ProcessLogitsFunc = std::function<Status(
@@ -81,36 +83,38 @@ using ProcessLogitsFunc = std::function<Status(
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
     transformers::ILogitsProcessorList* logits_processors,  // logits processors
     transformers::IBeamScorer* beam_scorer,                 // beam scorer
-    const transformers::IBeamSearchParameters* parameters,  // parameters
+    const transformers::IGenerationParameters* parameters,  // parameters
     int step,                                               // iteration counter
-    void* stream,                                           // cuda stream (for CUDA only)
+    Stream* stream,                                         // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper)>;           // tensor dumper
 
 template <typename T>
 using GreedySearchProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                     // logits output of subgraph
     transformers::IGreedySearchState<T>* greedy_state,          // state
+    transformers::ISamplingState<T>* sampling_state,    // sampling buffers
     transformers::ISequences* sequences,                        // sequences
     AllocatorPtr& allocator,                                    // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
     transformers::ILogitsProcessorList* logits_processors,      // logits processors
-    const transformers::IBeamSearchParameters* parameters,      // parameters
+    const transformers::IGenerationParameters* parameters,      // parameters
+    bool do_sampling,                                           // whether to do sampling
     int step,                                                   // iteration counter
-    void* stream,                                               // cuda stream (for CUDA only)
+    Stream* ort_stream,                                         // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper)>;               // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
     gsl::span<T> target,
     gsl::span<const T> source,
-    void* stream,
+    Stream* stream,
     int copyDirection)>;
 
 // Update subgraph inputs given outputs of last iteration (for GPT-2).
 template <typename T>
 using UpdateGptFeedsFunc = std::function<Status(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -120,7 +124,9 @@ using UpdateGptFeedsFunc = std::function<Status(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx)>;
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
@@ -137,7 +143,7 @@ using CreateEncoderInputsFunc = std::function<Status(
 template <typename T>
 using UpdateDecoderFeedsFunc = std::function<Status(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int num_present_tensors,
@@ -146,14 +152,14 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 
 template <typename T>
 using ExpandBufferFunc = std::function<Status(
-    void* stream,
+    Stream* stream,
     const OrtValue& input,
     int num_beams,
     AllocatorPtr allocator,
@@ -166,13 +172,14 @@ namespace GenerationCpuDeviceHelper {
 Status TopK(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     onnxruntime::concurrency::ThreadPool* threadpool,
     Tensor& output_values,
     Tensor& output_indices);
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,
+    Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer);
@@ -182,12 +189,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   void* stream);
+                   Stream* stream);
 
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
-                     void* stream);
+                     Stream* ort_stream);
 
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
@@ -198,27 +205,29 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                      transformers::ILogitsProcessorList* logits_processors,  // logits processors
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
-                     void* stream,                                           // cuda stream (for CUDA only)
+                     Stream* stream,                                         // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper);            // tensor dumper
 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                                  transformers::IGreedySearchState<T>* greedy_state,      // state
+                                 transformers::ISamplingState<T>* sampling_state,    // sampling buffers
                                  transformers::ISequences* sequences,                    // sequences
                                  AllocatorPtr& allocator,                                // default allocator
                                  onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                                  transformers::ILogitsProcessorList* logits_processors,  // logits processors
-                                 const transformers::IBeamSearchParameters* parameters,  // parameters
+                                 const transformers::IGenerationParameters* parameters,  // parameters
+                                 bool do_sampling,                                       // whether to do sampling
                                  int step,                                               // iteration counter
-                                 void* stream,                                           // cuda stream (for CUDA only)
+                                 Stream* stream,                                         // cuda stream (for CUDA only)
                                  const transformers::IConsoleDumper* dumper);            // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
                   gsl::span<const T> source,
-                  void* stream,
+                  Stream* stream,
                   int copyDirectionn);
 
 // ---------------------------------------------------------------
@@ -227,6 +236,7 @@ Status DeviceCopy(gsl::span<T> target,
 
 Status CreateGptInputs(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
@@ -238,7 +248,7 @@ Status CreateGptInputs(
 template <typename T>
 Status UpdateGptFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -248,7 +258,9 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx);
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
@@ -267,7 +279,7 @@ Status CreateEncoderInputs(
 template <typename T>
 Status UpdateDecoderFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int num_present_tensors,
@@ -276,7 +288,7 @@ Status UpdateDecoderFeeds(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
@@ -289,7 +301,7 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
 
 template <typename T>
 Status ExpandBuffer(
-    void* stream,
+    Stream* stream,
     const OrtValue& input,
     int num_beams,
     AllocatorPtr allocator,

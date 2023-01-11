@@ -222,3 +222,50 @@ def numpy_T_gradient():
             {"operator": {"value": "numpy_T", "dtype": "string"}},
         ),
     ]
+
+
+@register_gradient("org.pytorch.aten", "ATen", "native_group_norm", "")
+def native_group_norm_gradient():
+    return [
+        ("Constant", [], ["Const_0"], {"value": {"value": [True, True, True], "dtype": "bool", "is_tensor": True}}),
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(0)", "O(1)", "O(2)", "I(1)", "I(3)", "I(4)", "I(5)", "I(6)", "Const_0"],
+            ["GI(0)", "GI(1)", "GI(2)"],
+            {"operator": {"value": "native_group_norm_backward", "dtype": "string"}},
+        ),
+    ]
+
+
+# PyTorch removed related backward functions with "vec" overload name since 1.13. The functions with no overload name
+# are available for all versions, though they are not that convienent to use.
+def _upsample_nearest_gradient(backward_fn, dims):
+    scales = ["" for _ in range(dims)]
+    return [
+        ("Shape", ["I(0)"], ["Shape_X"]),
+        ("Shape", ["O(0)"], ["Shape_Y"]),
+        ("Constant", [], ["Const_Start"], {"value": {"value": [2], "dtype": "int", "is_tensor": True}}),
+        ("Constant", [], ["Const_End"], {"value": {"value": [2 + dims], "dtype": "int", "is_tensor": True}}),
+        ("Slice", ["Shape_Y", "Const_Start", "Const_End"], ["Sliced_Shape_Y"]),
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "Sliced_Shape_Y", "Shape_X"] + scales,
+            ["GI(0)"],
+            {"operator": {"value": backward_fn, "dtype": "string"}},
+        ),
+    ]
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_nearest1d", "vec")
+def upsample_nearest1d_gradient():
+    return _upsample_nearest_gradient("upsample_nearest1d_backward", 1)
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_nearest2d", "vec")
+def upsample_nearest2d_gradient():
+    return _upsample_nearest_gradient("upsample_nearest2d_backward", 2)
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_nearest3d", "vec")
+def upsample_nearest3d_gradient():
+    return _upsample_nearest_gradient("upsample_nearest3d_backward", 3)

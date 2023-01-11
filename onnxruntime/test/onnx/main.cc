@@ -40,7 +40,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'snpe' or 'coreml'. "
+      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -66,7 +66,7 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
-    const double absolute = 1e-3;
+    constexpr double absolute = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
     const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
@@ -126,7 +126,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cuda = false;
   bool enable_dnnl = false;
   bool enable_openvino = false;
-  bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_nnapi = false;
@@ -196,8 +195,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
-            enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
@@ -378,14 +375,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_nuphar) {
-#ifdef USE_NUPHAR
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
-#else
-      fprintf(stderr, "Nuphar is not supported in this build");
-      return -1;
-#endif
-    }
     if (enable_dnnl) {
 #ifdef USE_DNNL
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
@@ -427,7 +416,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
         auto pos = token.find("|");
         if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW(R"(Use a '|' to separate the key and value for 
+          ORT_THROW(R"(Use a '|' to separate the key and value for
 the run-time option you are trying to use.\n)");
         }
 
@@ -437,7 +426,7 @@ the run-time option you are trying to use.\n)");
         if (key == "runtime") {
           std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
           if (supported_runtime.find(value) == supported_runtime.end()) {
-            ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
+            ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
           }
         } else if (key == "priority") {
@@ -445,7 +434,7 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
         } else if (key == "buffer_type") {
           std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
           if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
-            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
+            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
         } else {
@@ -602,7 +591,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    auto tp = TestEnv::CreateThreadPool(Env::Default());
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
@@ -690,6 +680,19 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"resize_downsample_scales_cubic_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_scales_linear_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_cubic_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_linear_antialias", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_nearest_not_larger", "resize kernel needs update for opset18."},
+    {"resize_downsample_sizes_nearest_not_smaller", "resize kernel needs update for opset18."},
+    {"resize_tf_crop_and_resize_axes_2_3", "resize kernel needs update for opset18."},
+    {"resize_tf_crop_and_resize_axes_3_2", "resize kernel needs update for opset18."},
+    {"resize_upsample_scales_nearest_axes_2_3", "resize kernel needs update for opset18."},
+    {"resize_upsample_scales_nearest_axes_3_2", "resize kernel needs update for opset18."},
+    {"resize_upsample_sizes_nearest_axes_2_3", "resize kernel needs update for opset18."},
+    {"resize_upsample_sizes_nearest_axes_3_2", "resize kernel needs update for opset18."},
+    {"resize_upsample_sizes_nearest_not_larger", "resize kernel needs update for opset18."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
     {"test_optional_get_element", "Optional type not supported in this build flavor."},
@@ -700,6 +703,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_loop16_seq_none", "Optional type not supported in this build flavor."},
     {"test_identity_opt", "Optional type not supported in this build flavor."},
 #endif
+
 
   };
 
@@ -971,6 +975,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
+
+    // TODO: Remove identity tests when fixed #42638109
+    broken_tests.insert({"identity_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
   }
 
 #if defined(_WIN32) && !defined(_WIN64)

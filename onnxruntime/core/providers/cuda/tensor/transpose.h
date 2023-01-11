@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/providers/shared_library/provider_api.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
@@ -19,6 +19,7 @@ class Transpose final : public CudaKernel, public TransposeBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 
   static Status DoTranspose(const Transpose& transpose_kernel,
+                            onnxruntime::Stream* ort_stream,
                             const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output);
 
   //  `input_shape_override` (if provided) overrides the shape of `input` for compute purposes

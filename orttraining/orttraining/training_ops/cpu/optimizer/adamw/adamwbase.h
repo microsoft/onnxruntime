@@ -50,12 +50,7 @@ class AdamWOptimizerBase {
 
   Status PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const;
 
-  Status GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
-                         const TensorSeq* values, TensorSeq* updated_values) const;
-
  protected:
-  virtual Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const = 0;
-
   float alpha_;
   float beta_;
   float epsilon_;

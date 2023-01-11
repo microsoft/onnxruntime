@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"  // for DEBUG_GENERATION
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
@@ -23,7 +24,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                T5EncoderSubgraph& encoder_subgraph,
                T5DecoderSubgraph& decoder_subgraph,
                concurrency::ThreadPool* thread_pool,
-               void* cuda_stream,
+               Stream* ort_stream,
                IConsoleDumper* cuda_dumper,
                BeamSearchParameters& params,
                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
@@ -38,7 +39,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
                const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
-                          cuda_stream, cuda_dumper, params,
+                          ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
         encoder_session_state_(encoder_session_state),
         encoder_subgraph_(encoder_subgraph),
@@ -130,8 +131,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
       buffer,
-      decoder_input_ids));
+      decoder_input_ids,
+      this->ort_stream_));
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
+#endif
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,
                                              encoder_feeds,
@@ -139,7 +144,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                              {},
                                              ExecutionMode::ORT_SEQUENTIAL,
                                              this->context_.GetTerminateFlag(),
-                                             this->context_.Logger()));
+                                             this->context_.Logger(),
+                                             this->ort_stream_));
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -194,7 +200,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                         cpu_state.sequence_lengths,
                         parameters->batch_size,
                         parameters->num_beams,
-                        this->cuda_stream_);
+                        this->ort_stream_);
 
   // ------------------------------------------------------------------------------
   // Generate next token from logits output from encoder, and initialize decoder inputs.
@@ -214,7 +220,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                 cpu_state,
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
-    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(beam_next_tokens.as_span<const int32_t>(),
+    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                                              this->implicit_inputs_,
                                                              encoder_feeds,
                                                              encoder_fetches,
@@ -224,7 +230,10 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              this->expand_buffer_float_func_,
                                                              this->expand_buffer_float16_func_,
                                                              parameters->num_beams,
-                                                             this->cuda_stream_));
+                                                             this->ort_stream_,
+                                                             decoder_subgraph_.UseSequenceAsInputIds(),
+                                                             current_length,
+                                                             cpu_state.sequences));
   }
 
   // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
@@ -241,6 +250,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     }
 #endif
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    const_cast<SessionState&>(this->decoder_session_state_).IncrementGraphExecutionCounter();
+#endif
     status = utils::ExecuteSubgraph(this->decoder_session_state_,
                                     decoder_feeds_fetches_manager,
                                     decoder_feeds,
@@ -248,7 +260,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                     {},
                                     ExecutionMode::ORT_SEQUENTIAL,
                                     this->context_.GetTerminateFlag(),
-                                    this->context_.Logger());
+                                    this->context_.Logger(),
+                                    this->ort_stream_);
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -280,16 +293,16 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       const int num_present_outputs = 2 * parameters->num_layers;  // number of outputs with name like present_*
       ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
           this->temp_space_allocator_,
-          this->cuda_stream_,
+          this->ort_stream_,
           decoder_fetches,
           decoder_feeds,
           num_present_outputs,
-          beam_next_tokens.as_span<const int32_t>(),
-          beam_indices.as_span<const int32_t>(),
+          ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+          ReinterpretAsSpan<const int32_t>(beam_indices),
           parameters->num_beams,
           decoder_subgraph_.GetFirstPastInputIndex(),
           decoder_subgraph_.GetFirstPresentOutputIndex(),
-          decoder_subgraph_.HasHiddenStates(),
+          decoder_subgraph_.UseSequenceAsInputIds(),
           current_length,
           cpu_state.sequences,
           this->GetConsoleDumper()));
@@ -316,7 +329,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   if (output_scores != nullptr) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
     gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
-    assert(target.length() == source.length());
+    assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 

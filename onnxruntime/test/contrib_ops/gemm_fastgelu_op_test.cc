@@ -8,12 +8,25 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
 namespace gemmfastgelu {
 
 #if defined(USE_ROCM)
+namespace {
+
+const onnxruntime::RunOptions run_options = []() {
+  onnxruntime::RunOptions options{};
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
+  return options;
+}();
+
+const constexpr auto run_with_tunable_op = &run_options;
+
+}  // namespace
+
 static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& weight_data,
                                    const std::vector<float>& bias_data, const std::vector<float>& output_data,
                                    const std::vector<int64_t>& input_dims, const std::vector<int64_t>& weight_dims,
@@ -37,11 +50,9 @@ static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const s
     tester.AddOutput<float>("Y", output_dims, output_data);
   }
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  tester.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
-#endif
 
 TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
   int batch_size = 1;
@@ -71,11 +82,10 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
-#if defined(USE_ROCM)
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          false);
-#endif
 }
 
 TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
@@ -107,15 +117,12 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
-#if defined(USE_ROCM)
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          true);
-#endif
 }
 
-// CUDA and ROCm only for Float16 and BFloat16 type.
-#if defined(USE_ROCM)
 TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -144,6 +151,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          false);
@@ -178,12 +186,13 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
+
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
                          true);
 }
 
-TEST(GemmFastGeluTest, GemmFastGeluWithBias_BFloat16) {
+TEST(GemmFastGeluTest, GemmFastGeluWithBias_bfloat16) {
   OpTester tester("GemmFastGelu", 1, onnxruntime::kMSDomain);
 
   int batch_size = 1;
@@ -225,9 +234,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBias_BFloat16) {
   tester.AddInput<BFloat16>("bias", bias_dims, f_B);
   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  tester.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 #endif
 

@@ -27,7 +27,7 @@ Status IsFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
   Tensor& output = *context->Output(0, input.Shape());
   IsFinite(
-      Stream(),
+      Stream(context),
       reinterpret_cast<const CudaTSrc*>(input.Data<TSrc>()),
       output.MutableData<bool>(), input.Shape().Size());
 

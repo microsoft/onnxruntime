@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"
@@ -41,8 +42,8 @@ struct Inverse::ComputeImpl {
     const auto* input_data = input->Data<T>() + batch_offset;
     auto* output_data = output->MutableData<T>() + batch_offset;
 
-    Eigen::Map<const MatrixT<T>> input_matrix(input_data, rows, cols);
-    Eigen::Map<MatrixT<T>> output_matrix(output_data, rows, cols);
+    Eigen::Map<const MatrixT<T>> input_matrix(input_data, narrow<size_t>(rows), narrow<size_t>(cols));
+    Eigen::Map<MatrixT<T>> output_matrix(output_data, narrow<size_t>(rows), narrow<size_t>(cols));
     output_matrix = input_matrix.inverse();
   }
 };
@@ -56,8 +57,8 @@ struct Inverse::ComputeImpl<MLFloat16> {
     const auto* input_data = reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>() + batch_offset);
     auto* output_data = reinterpret_cast<Eigen::half*>(output->MutableData<MLFloat16>() + batch_offset);
 
-    Eigen::Map<const MatrixT<Eigen::half>> input_matrix(input_data, rows, cols);
-    Eigen::Map<MatrixT<Eigen::half>> output_matrix(output_data, rows, cols);
+    Eigen::Map<const MatrixT<Eigen::half>> input_matrix(input_data, narrow<size_t>(rows), narrow<size_t>(cols));
+    Eigen::Map<MatrixT<Eigen::half>> output_matrix(output_data, narrow<size_t>(rows), narrow<size_t>(cols));
     output_matrix = input_matrix.inverse();
   }
 };
@@ -81,7 +82,7 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
     t_disp.Invoke<ComputeImpl>(input, output, batch_num, rows, cols);
   };
 
-  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_batches, std::move(fn), 0);
+  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), narrow<size_t>(num_batches), std::move(fn), 0);
 
   return Status::OK();
 }

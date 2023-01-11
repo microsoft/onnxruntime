@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 13
+#define ORT_API_VERSION 14
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,7 +129,6 @@ extern "C" {
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT and ORT_EXPORT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  GSL_SUPPRESS(r .11)                  \
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
@@ -267,6 +266,7 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 
@@ -346,6 +346,14 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief This mimics OrtDevice type constants so they can be returned in the API
+ */
+typedef enum OrtMemoryInfoDeviceType {
+  OrtMemoryInfoDeviceType_CPU = 0,
+  OrtMemoryInfoDeviceType_GPU = 1,
+  OrtMemoryInfoDeviceType_FPGA = 2
+} OrtMemoryInfoDeviceType;
+
 /** \brief Algorithm to use for cuDNN Convolution Op
 */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -360,7 +368,16 @@ typedef enum OrtCudnnConvAlgoSearch {
 */
 typedef struct OrtCUDAProviderOptions {
 #ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtCUDAProviderOptions()
+      : device_id{},
+        cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive},
+        gpu_mem_limit{SIZE_MAX},
+        arena_extend_strategy{},
+        do_copy_in_default_stream{1},
+        has_user_compute_stream{},
+        user_compute_stream{},
+        default_memory_arena_cfg{},
+        tunable_op_enabled{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -411,6 +428,12 @@ typedef struct OrtCUDAProviderOptions {
   */
   OrtArenaCfg* default_memory_arena_cfg;
 
+  /** \brief Enable TunableOp.
+  *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+  */
+  int tunable_op_enabled;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
@@ -419,7 +442,16 @@ typedef struct OrtCUDAProviderOptions {
 */
 typedef struct OrtROCMProviderOptions {
 #ifdef __cplusplus
-  OrtROCMProviderOptions() : device_id{}, miopen_conv_exhaustive_search{0}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtROCMProviderOptions()
+      : device_id{},
+        miopen_conv_exhaustive_search{0},
+        gpu_mem_limit{SIZE_MAX},
+        arena_extend_strategy{},
+        do_copy_in_default_stream{1},
+        has_user_compute_stream{},
+        user_compute_stream{},
+        default_memory_arena_cfg{},
+        tunable_op_enabled{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -468,6 +500,12 @@ typedef struct OrtROCMProviderOptions {
   /** \brief ROCM memory arena configuration parameters
   */
   OrtArenaCfg* default_memory_arena_cfg;
+
+  /** \brief Enable TunableOp.
+  *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+  */
+  int tunable_op_enabled;
 
 } OrtROCMProviderOptions;
 
@@ -521,7 +559,7 @@ typedef struct OrtOpenVINOProviderOptions {
 #endif
   /** \brief Device type string
   *
-  * Valid settings are one of: "CPU_FP32", "GPU_FP32", "GPU_FP16", "MYRIAD_FP16", "VAD-M_FP16" or "VAD-F_FP32"
+  * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "MYRIAD_FP16", "VAD-M_FP16" or "VAD-F_FP32"
   */
   const char* device_type;
   unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
@@ -944,7 +982,9 @@ struct OrtApi {
   */
   ORT_API2_STATUS(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
 
-  /** \brief Register custom ops from a shared library
+  /** \deprecated Use OrtApi::RegisterCustomOpsLibrary_V2.
+  *
+  * Registers custom ops from a shared library.
   *
   * Loads a shared library (dll on windows, so on linux, etc) named 'library_path' and looks for this entry point:
   *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
@@ -3461,7 +3501,8 @@ struct OrtApi {
    *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
    *
    * XNNPACK supported keys:
-   *   None currently
+   *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
+   *      default value is 0, which means to use the session thread-pool size.
    *
    * \since Version 1.12.
    */
@@ -3496,6 +3537,125 @@ struct OrtApi {
   */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
 
+  /** \brief Append CANN provider to session options
+  *
+  * If CANN is not available (due to a non CANN enabled build, or if CANN is not installed on the system), this function will return failure.
+  *
+  * \param[in] options
+  * \param[in] cann_options
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CANN,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options);
+
+  /** \brief Create an OrtCANNProviderOptions
+  *
+  * \param[out] out created ::OrtCANNProviderOptions. Must be released with OrtApi::ReleaseCANNProviderOptions
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out);
+
+  /** \brief Set options in a CANN Execution Provider.
+  *
+  * \param[in] cann_options
+  * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+  * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+  * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(UpdateCANNProviderOptions, _Inout_ OrtCANNProviderOptions* cann_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Get serialized CANN provider options string.
+  *
+  * \param[in] cann_options OrtCANNProviderOptions instance
+  * \param[in] allocator a ptr to an instance of OrtAllocator obtained with CreateAllocator()
+  *                      or GetAllocatorWithDefaultOptions(), the specified allocator will be used to allocate
+  *                      continuous buffers for output strings and lengths.
+  * \param[out] ptr is a UTF-8 null terminated string allocated using 'allocator'.
+  *                 The caller is responsible for using the same allocator to free it.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(GetCANNProviderOptionsAsString, _In_ const OrtCANNProviderOptions* cann_options,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an OrtCANNProviderOptions
+  *
+  * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+  *
+  * \since Version 1.13.
+  */
+  void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
+
+ /*  \brief Get OrtDevice type from MemoryInfo
+  *
+  *  \since Version 1.14
+  */
+  void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
+
+  /* \brief Update the OrtEnv instance with custom log severity level
+   *
+   * \param[in] ort_env The OrtEnv instance being used
+   * \param[in] log_severity_level The log severity level.
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
+
+ /*  \brief Set affinities for intra op threads
+  *
+  * Affinity string follows format:
+  * logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id
+  * Semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.
+  * e.g. 1,2,3;4,5
+  * specifies affinities for two threads, with the 1st thread attach to the 1st, 2nd, and 3rd processor, and 2nd thread to the 4th and 5th.
+  * To ease the configuration, an "interval" is also allowed:
+  * e.g. 1-8;8-16;17-24
+  * orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
+  * Note:
+  * 1. Once set, the number of thread affinities must equal to intra_op_num_threads - 1,
+  *    ort does not set affinity on the main thread which is started and managed by the calling app;
+  * 2. For windows, ort will infer the group id from a logical processor id, for example, assuming there are two groups with each has 64 logical processors,
+  *    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
+  *    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
+  * 
+  *  \since Version 1.14
+  */
+  ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
+
+  /** \brief Register custom ops from a shared library.
+  *
+  * Loads a shared library (.dll on windows, .so on linux, etc) named 'library_name' and looks for this entry point:
+  *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+  * It then passes in the provided session options to this function along with the api base.
+  *
+  * The handle to the loaded library is automatically released by ORT when the last OrtSession that references the
+  * library handle is released. If no OrtSession is created, then the library handle is released when the provided
+  * OrtSessionOptions is released.
+  *
+  * \param[in] options The session options.
+  * \param[in] library_name The name of the shared library to load and register. Refer to OS-specific dynamic library
+  *                         loading utilities (e.g., LoadLibraryEx on Windows or dlopen on Linux/MacOS) for information
+  *                         on the format of library names and search paths.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif
@@ -3512,10 +3672,14 @@ struct OrtApi {
 // Specify if the inputs/outputs are one of:
 // 1) Non-optional (input/output must be present in the node)
 // 2) Optional (input/output may be absent in the node)
+// 3) Variadic: A variadic input or output specifies N (i.e., the minimum arity) or more operands.
+//              Only the last input or output of a custom op may be marked as variadic.
+//              The homogeneity of the variadic input or output determines whether all operands must be of the same
+//              tensor element type.
 typedef enum OrtCustomOpInputOutputCharacteristic {
-  // TODO: Support 'Variadic' inputs/outputs
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
+  INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
 
 /*
@@ -3548,6 +3712,31 @@ struct OrtCustomOp {
   // Returns the characteristics of the input & output tensors
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the memory type of the input tensors. This API allows the custom op
+  // to place the inputs on specific devices. By default, it returns
+  // OrtMemTypeDefault, which means the input is placed on the default device for
+  // the execution provider. If the inputs need to be with different memory tyeps,
+  // this function can be overridden to return the specific memory types.
+  OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the minimum number of input arguments expected for the variadic input.
+  // Applicable only for custom ops that have a variadic input.
+  int(ORT_API_CALL* GetVariadicInputMinArity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns true (non-zero) if all arguments of a variadic input have to be of the same type (homogeneous),
+  // and false (zero) otherwise.
+  // Applicable only for custom ops that have a variadic input.
+  int(ORT_API_CALL* GetVariadicInputHomogeneity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns the minimum number of output values expected for the variadic output.
+  // Applicable only for custom ops that have a variadic output.
+  int(ORT_API_CALL* GetVariadicOutputMinArity)(_In_ const struct OrtCustomOp* op);
+
+  // Returns true (non-zero) if all outputs values of a variadic output have to be of the same type (homogeneous),
+  // and false (zero) otherwise.
+  // Applicable only for custom ops that have a variadic output.
+  int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
 };
 
 /*

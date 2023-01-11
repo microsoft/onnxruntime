@@ -3,9 +3,10 @@
 
 #include <memory>
 #include <utility>
-
+#include "core/providers/shared_library/provider_api.h"
 #include "orttraining/training_ops/cuda/optimizer/adamw/adamw.h"
 #include "orttraining/training_ops/cuda/optimizer/adamw/adamw_impl.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -30,15 +31,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S_MOMENT", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
     AdamWOptimizer);
 
-Status AdamWOptimizer::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor)
-    const {
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_tensor.MutableDataRaw(),
-                                       source_tensor.DataRaw(),
-                                       source_tensor.SizeInBytes(),
-                                       cudaMemcpyDeviceToDevice, Stream()));
-  return Status::OK();
-}
-
 Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   AdamWOptimizerBase::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
@@ -57,16 +49,22 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(lr_ptr && step_ptr);
 
     launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
-        Stream(), MTA_ADAMW_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
+        Stream(ctx), MTA_ADAMW_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
         alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
     *updated_flag_ptr = 1;
   } else {
     *updated_flag_ptr = 0;
   }
 
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, p.num_of_weights, p.weights, p.updated_weights));
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, p.num_of_weights, p.momentums_1, p.updated_momentums_1));
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, p.num_of_weights, p.momentums_2, p.updated_momentums_2));
+  if (p.updated_weights != nullptr) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameCUDABuffer(ctx, p.num_of_weights, p.weights, p.updated_weights));
+  }
+  if (p.updated_momentums_1 != nullptr) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameCUDABuffer(ctx, p.num_of_weights, p.momentums_1, p.updated_momentums_1));
+  }
+  if (p.updated_momentums_2 != nullptr) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameCUDABuffer(ctx, p.num_of_weights, p.momentums_2, p.updated_momentums_2));
+  }
 
   return Status::OK();
 }

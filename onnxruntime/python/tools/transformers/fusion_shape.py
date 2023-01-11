@@ -8,6 +8,7 @@ from typing import Dict, List, Union
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
+from numpy import ndarray
 from onnx import NodeProto, TensorProto
 from onnx_model import OnnxModel
 
@@ -58,7 +59,7 @@ class FusionShape(Fusion):
                 |                |
             Unsqueeze(axes=0)   Unsqueeze(axes=0)
                    \          /
-                      Concat 
+                      Concat
                         |
 
         into  (2d_input) --> Shape -->
@@ -99,12 +100,11 @@ class FusionShape(Fusion):
                     return
 
             value = self.model.get_constant_value(gather.input[1])
-            from numpy import array_equal, ndarray
 
             if not (isinstance(value, ndarray) and value.size == 1 and value.item() == i):
                 return
 
         if self.model.find_graph_output(concat_node.output[0]) is None:
             self.model.replace_input_of_all_nodes(concat_node.output[0], shape_output)
-            self.fused_count += 1
+            self.increase_counter("Reshape")
             self.prune_graph = True

@@ -25,8 +25,6 @@ limitations under the License.
 #include <chrono>
 #include <random>
 
-#include "gsl/gsl"
-
 #include "core/common/eigen_common_wrapper.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel_type_control_utils.h"
@@ -59,28 +57,18 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     int32_t, int64_t);
 }
 
-using RandomNormalOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
 using EnabledRandomNormalOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
 
-using RandomUniformOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0);
 using EnabledRandomUniformOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0);
 
-using RandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0);
 using EnabledRandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0);
 
-using RandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0);
 using EnabledRandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0);
 
-using MultinomialOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
 using EnabledMultinomialOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
 
@@ -99,7 +87,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     1,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<RandomNormalOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalOutputTypes>()),
     RandomNormal);
 
@@ -108,7 +95,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     1,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<RandomUniformOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformOutputTypes>()),
     RandomUniform);
 
@@ -118,7 +104,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<RandomNormalLikeOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalLikeOutputTypes>()),
     RandomNormalLike);
 
@@ -128,7 +113,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<RandomUniformLikeOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformLikeOutputTypes>()),
     RandomUniformLike);
 
@@ -139,7 +123,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<MultinomialOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledMultinomialOutputTypes>()),
     Multinomial);
 
@@ -224,13 +207,13 @@ template <typename T, typename IndexType = int64_t>
 using EigenVector = Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, IndexType>>;
 
 template <typename OutputType>
-static Status MultinomialCompute(OpKernelContext* ctx,
-                                 const Tensor& X,
-                                 const int64_t batch_size,
-                                 const int64_t num_classes,
-                                 const int64_t num_samples,
-                                 std::default_random_engine& generator,
-                                 Tensor& Y) {
+Status MultinomialComputeShared(AllocatorPtr& alloc,
+                                const Tensor& X,
+                                const int64_t batch_size,
+                                const int64_t num_classes,
+                                const int64_t num_samples,
+                                std::default_random_engine& generator,
+                                Tensor& Y) {
   if (!utils::HasType<EnabledMultinomialOutputTypes, OutputType>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output type not supported in this build.");
   }
@@ -244,8 +227,6 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   Matrix<OutputType> output = Matrix<OutputType>(Y.MutableData<OutputType>(), Y_dims);
 
   // BEGIN create temporary tensor
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto cdf_data = static_cast<double*>(alloc->Alloc(SafeInt<size_t>(sizeof(double)) * num_classes));
   BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(std::move(alloc)));
   Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
@@ -286,6 +267,20 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   }
 
   return Status::OK();
+}
+
+template <typename OutputType>
+static Status MultinomialCompute(OpKernelContext* ctx,
+                                 const Tensor& X,
+                                 const int64_t batch_size,
+                                 const int64_t num_classes,
+                                 const int64_t num_samples,
+                                 std::default_random_engine& generator,
+                                 Tensor& Y) {
+  // BEGIN create temporary tensor
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  return MultinomialComputeShared<OutputType>(alloc, X, batch_size, num_classes, num_samples, generator, Y);
 }
 
 Status Multinomial::Compute(OpKernelContext* ctx) const {
@@ -424,5 +419,13 @@ void GenerateData(std::default_random_engine& generator, TDistribution distribut
     ++out;
   }
 }
+
+template Status MultinomialComputeShared<int64_t>(AllocatorPtr& alloc,
+                                                  const Tensor& X,
+                                                  const int64_t batch_size,
+                                                  const int64_t num_classes,
+                                                  const int64_t num_samples,
+                                                  std::default_random_engine& generator,
+                                                  Tensor& Y);
 
 }  // namespace onnxruntime

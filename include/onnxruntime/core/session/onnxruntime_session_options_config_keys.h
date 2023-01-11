@@ -61,6 +61,22 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+#ifdef ENABLE_TRAINING
+// Specifies a list of op types for memory footprint reduction.
+// The value should be a ","-delimited list of pair of
+// <subgraph string : optimization strategy : number of subgraph to apply>.
+// For example, "Gelu+Cast+:1:0,Dropout+:1:1".
+//   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
+//   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
+//   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
+//   the memory.
+static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
+
+// Specifies the level for detecting subgraphs for memory footprint reduction.
+// The value should be an integer. The default value is 0.
+static const char* const kOrtSessionOptionsMemoryOptimizerProbeLevel = "optimization.enable_memory_probe_recompute_level";
+#endif
+
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
@@ -81,9 +97,9 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
-/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization. 
-/// Requires `session.use_ort_model_bytes_directly` to be true. 
-/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire 
+/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
+/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
@@ -142,3 +158,23 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// The file saves configuration for partitioning node among logic streams
+static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
+
+// This Option allows setting affinities for intra op threads.
+// Affinity string follows format:
+// logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id
+// Semicolon isolates configurations among threads, while comma split processors where ith thread expected to attach to.
+// e.g.1,2,3;4,5
+// specifies affinities for two threads, with the 1st thread attach to the 1st, 2nd, and 3rd processor, and 2nd thread to the 4th and 5th.
+// To ease the configuration, an "interval" is also allowed:
+// e.g. 1-8;8-16;17-24
+// orders that the 1st thread runs on first eight processors, 2nd thread runs on next eight processors, and so forth.
+// Note:
+// 1. Once set, the number of thread affinities must equal to intra_op_num_threads - 1, since ort does not set affinity on the main thread which
+//    is started and managed by the calling app;
+// 2. For windows, ort will infer the group id from a logical processor id, for example, assuming there are two groups with each has 64 logical processors,
+//    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
+//    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
+static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";

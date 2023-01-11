@@ -85,8 +85,11 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   }
 
   NodesToOptimizeIndicesBuilder builder;
-  builder.input_nodes = qdq_group->dq_nodes;
-  builder.output_nodes = qdq_group->q_nodes;
+  // TODO(edgchen1) update NodeGroup to use InlinedVector
+  builder.input_nodes.assign(qdq_group->dq_nodes.begin(), qdq_group->dq_nodes.end());
+  builder.output_nodes.assign(qdq_group->q_nodes.begin(), qdq_group->q_nodes.end());
+  //builder.input_nodes = qdq_group->dq_nodes;
+  //builder.output_nodes = qdq_group->q_nodes;
   builder.target_node = qdq_group->target_node;
 
   UpdateBuilder(builder);
@@ -304,6 +307,22 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
+}
+
+bool WhereNodeGroupSelector::Check(const GraphViewer &graph_viewer, const Node &node,
+                                   const std::vector<const Node *> &dq_nodes,
+                                   const std::vector<const Node *> &q_nodes) const {
+  // Where has 1 boolean input and 2 dq inputs
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes,2)) {
+    return false;
+  }
+
+  const int32_t  dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  return dt_input_1 == dt_input_2 &&
+         dt_input_1 == dt_output;
+
 }
 
 }  // namespace QDQ

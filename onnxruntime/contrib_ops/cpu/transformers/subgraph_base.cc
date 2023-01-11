@@ -7,7 +7,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 
@@ -26,6 +26,7 @@ Subgraph::Subgraph(
       head_size(0),
       vocab_size(0),
       num_layers(0),
+      past_present_share_buffer_(false),
       allocator_(nullptr),
       is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -77,7 +78,14 @@ Status Subgraph::Setup(const SessionState& session_state,
       const auto& location = utils::FindMemoryInfoForValue(session_state, feed_names[i]);
       feed_locations.push_back(location.device);
     } else {
-      feed_locations.push_back(default_location.device);
+      if (feed_names[i] == "past_sequence_length") {
+        // when past_sequence_length is needed in subgraph, treat it as past_present_share_buffer
+        past_present_share_buffer_ = true;
+        // past_sequence_length is on CPU memory
+        feed_locations.push_back(OrtDevice());
+      } else {
+        feed_locations.push_back(default_location.device);
+      }
     }
   }
 

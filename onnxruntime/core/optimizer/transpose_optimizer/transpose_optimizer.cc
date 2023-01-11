@@ -3,8 +3,11 @@
 
 #include "optimizer_api.h"
 
+#include "core/graph/constants.h"
+#include "core/common/make_string.h"
+
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -967,6 +970,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
 static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
@@ -996,6 +1000,7 @@ static bool HandleResize(HandlerArgs& args) {
 }
 
 constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+#endif
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1607,7 +1612,7 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto new_node = SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft");
+  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft", 1);
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
@@ -1699,7 +1704,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
 // See https://github.com/microsoft/onnxruntime/pull/10824 for
 // a similar fix applied to the CPU Resize kernel.
 // Per tests included in #10824, the ROCM EP also generates
-// incorrect results when this handler is used, so the Resize 
+// incorrect results when this handler is used, so the Resize
 // handler is not enabled even for those builds.
 #if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
@@ -1748,10 +1753,10 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
-  if (domain == "" || domain == "ai.onnx") {
+  if (domain == onnxruntime::kOnnxDomain || domain == onnxruntime::kOnnxDomainAlias) {
     key = std::string(op_type);
-  } else if (domain == "com.microsoft") {
-    key = "com.microsoft." + std::string(op_type);
+  } else if (domain == onnxruntime::kMSDomain) {
+    key = onnxruntime::MakeString(domain, ".", op_type);
   } else {
     return nullptr;
   }
@@ -2031,10 +2036,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
-  static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
-                                                                      "AveragePool", "GlobalAveragePool", "MaxPool",
-                                                                      "GlobalMaxPool", "LRN", "GridSample",
-                                                                      "DepthToSpace", "SpaceToDepth"};
+  static std::unordered_set<std::string_view> layout_sensitive_ops = {
+      "Conv", "QLinearConv", "BatchNormalization",
+      "AveragePool", "GlobalAveragePool", "MaxPool",
+      "GlobalMaxPool", "LRN", "GridSample",
+      "DepthToSpace", "SpaceToDepth", "ConvTranspose", "MaxUnpool"};
 
   return layout_sensitive_ops;
 }
@@ -2074,10 +2080,11 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
   }
 }
 
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain) {
+static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::NodeRef& node,
+                                                  std::string_view op_type, std::string_view domain,
+                                                  std::optional<int> since_version) {
   auto outputs = node.Outputs();
-  auto new_node = graph.CopyNode(node, op_type, domain);
+  auto new_node = graph.CopyNode(node, op_type, domain, since_version);
 
   for (size_t j = 0; j < outputs.size(); ++j) {
     if (outputs[j] != "") {
@@ -2086,6 +2093,17 @@ std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api:
   }
   graph.RemoveNode(node);
   return new_node;
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                      std::string_view op_type, std::string_view domain) {
+  return SwapNodeImpl(graph, node, op_type, domain, std::nullopt);
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
+                                                                  std::string_view op_type, std::string_view domain,
+                                                                  int since_version) {
+  return SwapNodeImpl(graph, node, op_type, domain, since_version);
 }
 
 }  // namespace onnx_layout_transformation

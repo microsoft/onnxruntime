@@ -121,6 +121,20 @@ public class TensorInfo implements ValueInfo {
   }
 
   /**
+   * Constructs a TensorInfo with the specified shape and native type int.
+   *
+   * <p>Called from JNI.
+   *
+   * @param shape The tensor shape.
+   * @param typeInt The native type int.
+   */
+  TensorInfo(long[] shape, int typeInt) {
+    this.shape = shape;
+    this.onnxType = OnnxTensorType.mapFromInt(typeInt);
+    this.type = OnnxJavaType.mapFromOnnxTensorType(this.onnxType);
+  }
+
+  /**
    * Get a copy of the tensor's shape.
    *
    * @return A copy of the tensor's shape.
@@ -281,6 +295,39 @@ public class TensorInfo implements ValueInfo {
 
     return new TensorInfo(
         Arrays.copyOf(shape, shape.length), type, OnnxTensorType.mapFromJavaType(type));
+  }
+
+  /**
+   * Constructs a TensorInfo from the supplied {@link OnnxSparseTensor.SparseTensor}.
+   *
+   * @param tensor The sparse tensor.
+   * @param <T> The buffer type.
+   * @return A TensorInfo for a sparse tensor.
+   * @throws OrtException If the supplied tensor has too many elements for it's shape.
+   */
+  public static <T extends Buffer> TensorInfo constructFromSparseTensor(
+      OnnxSparseTensor.SparseTensor<T> tensor) throws OrtException {
+    long[] shape = tensor.getDenseShape();
+
+    long elementCount = OrtUtil.elementCount(shape);
+
+    long bufferRemaining = tensor.getValues().remaining();
+
+    if (elementCount < bufferRemaining) {
+      throw new OrtException(
+          "Shape "
+              + Arrays.toString(shape)
+              + ", has at most "
+              + elementCount
+              + " elements but the buffer has "
+              + bufferRemaining
+              + " elements.");
+    }
+
+    return new TensorInfo(
+        Arrays.copyOf(shape, shape.length),
+        tensor.getType(),
+        OnnxTensorType.mapFromJavaType(tensor.getType()));
   }
 
   /**

@@ -12,6 +12,7 @@
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 #include "test/framework/test_utils.h"
 #include <csignal>
@@ -114,9 +115,13 @@ struct TensorCheck<uint8_t> {
       output = output_tensor.Data<uint8_t>();
     }
 
-    // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
+    // For uint8_t results, we only allow NNAPI/XNNPACK EP to have an error tolerance, see below for the reason
+    // XNNPACK EP will always round to larger. For example, 0.1 will be rounded to 1.0
     // For any other EPs, we still expect an exact match for the results
-    if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+    // TODO: Verify if DML can possibly have a ROUNDING_MODE parameter and conform to the other EPs #41968513
+    if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider ||
+         provider_type == kXnnpackExecutionProvider) &&
+        (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
                              ? *(params.absolute_error_)
                              : 0.0;
@@ -135,6 +140,47 @@ struct TensorCheck<uint8_t> {
       for (int i = 0; i < size; ++i) {
         EXPECT_EQ(expected[i], output[i]) << "i:" << i
                                           << ", provider_type: " << provider_type;
+      }
+    }
+  }
+};
+
+template <>
+struct TensorCheck<int8_t> {
+  void operator()(const Tensor& expected_tensor,
+                  const Tensor& output_tensor,
+                  const std::string& provider_type, const CheckParams& params) const {
+    Tensor expected_sorted, output_sorted;
+    const int8_t* expected;
+    const int8_t* output;
+    const auto size = output_tensor.Shape().Size();
+    if (params.sort_output_) {
+      // if order can be jumbled in the output of an operator, sort both the
+      // expected and output buffers prior to
+      // comparison this is a "best-effort" algo and should satisfy the
+      // requirement for the few ops that do require this
+      // support without investing in a more sophisticated infrastructure for the
+      // same
+      sort_expected_and_actual_buffers<int8_t>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+      expected = expected_sorted.Data<int8_t>();
+      output = output_sorted.Data<int8_t>();
+    } else {
+      expected = expected_tensor.template Data<int8_t>();
+      output = output_tensor.template Data<int8_t>();
+    }
+
+    const bool has_abs_err = params.absolute_error_.has_value();
+    if (has_abs_err) {
+      double threshold = *(params.absolute_error_);
+
+      for (int i = 0; i < size; ++i) {
+        EXPECT_NEAR(expected[i], output[i], threshold)
+            << "i:" << i << ", provider_type: " << provider_type;
+      }
+    } else {
+      for (int i = 0; i < size; ++i) {
+        EXPECT_EQ(expected[i], output[i])
+            << "i:" << i << ", provider_type: " << provider_type;
       }
     }
   }
@@ -166,7 +212,7 @@ struct TensorCheck<double> {
     }
 
     double threshold = 0.001;
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
     threshold = 0.005;
 #endif
 
@@ -223,7 +269,7 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
     output = output_tensor.Data<TypeToCheck>();
   }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
   constexpr float threshold = 0.005f;
 #else
   constexpr float threshold = 0.0001f;
@@ -289,9 +335,14 @@ struct TensorCheck<MLFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_output);
     }
 
+    const bool has_abs_err = params.absolute_error_.has_value();
+    const bool has_rel_err = params.relative_error_.has_value();
+
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
+#elif defined(USE_DML)
+    threshold = 0.008f;
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -299,9 +350,23 @@ struct TensorCheck<MLFloat16> {
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
       } else {
-        // the default for existing tests
-        EXPECT_NEAR(f_expected[i], f_output[i], threshold)
-            << "i:" << i << ", provider_type: " << provider_type;
+        if (!has_abs_err && !has_rel_err) {
+          // the default for existing tests
+          EXPECT_NEAR(f_expected[i], f_output[i], threshold)
+              << "i:" << i << ", provider_type: " << provider_type;
+        } else {
+          if (has_abs_err) {
+            EXPECT_NEAR(f_expected[i], f_output[i],
+                        *(params.absolute_error_))
+                << "i:" << i << ", provider_type: " << provider_type;
+          }
+          if (has_rel_err) {
+            EXPECT_NEAR(f_expected[i], f_output[i],
+                        *(params.relative_error_) *
+                            std::abs(expected[i]))
+                << "i:" << i << ", provider_type: " << provider_type;
+          }
+        }
       }
     }
   }
@@ -329,10 +394,12 @@ struct TensorCheck<BFloat16> {
     }
 
     /// XXX: May need to adjust threshold as BFloat is coarse
+    float abs_threshold = 0.0001f;
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
     threshold = 0.05f;  // expect at least 95% close
 #endif
+
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
@@ -342,9 +409,17 @@ struct TensorCheck<BFloat16> {
         // the default for existing tests
         const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
         if (max_value != 0) {  // max_value = 0 means output and expected are 0s.
-          const float rel_error = fabs(f_expected[i] - f_output[i]) / max_value;
-          EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
-                                               << provider_type;
+          const float abs_error = fabs(f_expected[i] - f_output[i]);
+          if (abs_error <= abs_threshold) {
+            // if the absolute error is small enough, then no need to calculate realative error
+            EXPECT_NEAR(0, abs_error, abs_threshold) << "provider_type: "
+                                                 << provider_type;
+          } else {
+            //default for existing tests.
+            const float rel_error = abs_error / max_value;
+            EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
+                                                 << provider_type;
+          }
         }
       }
     }
@@ -599,7 +674,7 @@ void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
   auto p_tensor = MakeSparseTensor(data_type, dims);
   auto mutator = p_tensor->MakeCooData(nnz, indices.size());
   CopyDataToTensor(values, mutator.Values());
-  CopyDataToTensor(indices.as_bytes(), mutator.Indices());
+  CopyDataToTensor(gsl::as_bytes(indices), mutator.Indices());
 
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
@@ -621,8 +696,8 @@ void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
   auto mutator = p_tensor->MakeCooData(nnz, indices.size());
   auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
-  std::copy(values.cbegin(), values.cend(), mutable_values.begin());
-  CopyDataToTensor(indices.as_bytes(), mutator.Indices());
+  std::copy(values.begin(), values.end(), mutable_values.begin());
+  CopyDataToTensor(gsl::as_bytes(indices), mutator.Indices());
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
@@ -645,8 +720,8 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
 
   auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
   CopyDataToTensor(values, mutator.Values());
-  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
-  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
+  CopyDataToTensor(gsl::as_bytes(inner_indices), mutator.Inner());
+  CopyDataToTensor(gsl::as_bytes(outer_indices), mutator.Outer());
 
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
@@ -670,9 +745,9 @@ void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
   auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
   auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
-  std::copy(values.cbegin(), values.cend(), mutable_values.begin());
-  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
-  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
+  std::copy(values.begin(), values.end(), mutable_values.begin());
+  CopyDataToTensor(gsl::as_bytes(inner_indices), mutator.Inner());
+  CopyDataToTensor(gsl::as_bytes(outer_indices), mutator.Outer());
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
@@ -837,9 +912,6 @@ std::vector<OrtValue> OpTester::ExecuteModel(
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches[idx];
-        if (ort_value.Fence())
-          ort_value.Fence()->BeforeUsingAsInput(
-              onnxruntime::kCpuExecutionProvider, 0);
 
         if (expected_data.def_.Exists()) {           // optional edges won't exist (so skip them)
           if (!expected_data.data_.IsAllocated()) {  // optional type output (None)
@@ -892,6 +964,95 @@ std::vector<OrtValue> OpTester::ExecuteModel(
   return fetches;
 }
 
+bool SetEpsForAllNodes(
+    Graph& graph,
+    const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
+    const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries) {
+  const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == kConstant)
+      continue;
+
+    bool found = false;
+
+    for (const auto& ep : execution_providers) {
+      auto provider_type = ep->Type();
+
+      node.SetExecutionProviderType(provider_type);
+      if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+          provider_type == onnxruntime::kTensorrtExecutionProvider ||
+          // provider_type == onnxruntime::kTvmExecutionProvider ||
+          provider_type == onnxruntime::kNnapiExecutionProvider ||
+          provider_type == onnxruntime::kCoreMLExecutionProvider ||
+          provider_type == onnxruntime::kDnnlExecutionProvider ||
+          provider_type == onnxruntime::kSnpeExecutionProvider) {
+        found = true;
+        break;
+      }
+
+      // Check the EP has an impl for the node from builtin registry.
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+        found = true;
+        break;
+      }
+
+      // Check the EP has an impl for the node from custom_registries
+      if (custom_registries != nullptr &&
+          std::any_of(custom_registries->cbegin(), custom_registries->cend(),
+                      [&](auto reg) { return KernelRegistry::HasImplementationOf(
+                                          *reg->GetKernelRegistry(),
+                                          node, ep->Type(),
+                                          kernel_type_str_resolver); })) {
+        found = true;
+        break;
+      }
+    }
+
+    // We will reach here:
+    //  - either we could not find an impl in all possible kernel registries
+    //  - or we skip the registry search and blindly assign the node to the EP due to impl details.
+    if (!found) {
+      return false;
+    }
+  }
+
+  // all nodes have been assigned an EP
+  return true;
+}
+
+OpTester& OpTester::Config(const SessionOptions& sess_options) {
+  ctx_.session_options = sess_options;
+  return *this;
+}
+
+OpTester& OpTester::Config(ExpectResult expect_result, const std::string& expected_failure_string) {
+  ctx_.expect_result = expect_result;
+  ctx_.expected_failure_string = expected_failure_string;
+  return *this;
+}
+
+OpTester& OpTester::ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types) {
+  ctx_.excluded_provider_types = excluded_provider_types;
+  return *this;
+}
+
+OpTester& OpTester::Config(const RunOptions* run_options) {
+  ctx_.run_options = run_options;
+  return *this;
+}
+
+OpTester& OpTester::ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
+  ORT_ENFORCE(execution_providers.size() > 0);
+  ctx_.run_with_specified_eps = true;
+  ctx_.execution_providers = std::move(execution_providers);
+  return *this;
+}
+
+OpTester& OpTester::Config(const Graph::ResolveOptions& resolve_options) {
+  ctx_.resolve_options = resolve_options;
+  return *this;
+}
+
 void OpTester::Run(
     ExpectResult expect_result, const std::string& expected_failure_string,
     const std::unordered_set<std::string>& excluded_provider_types,
@@ -926,6 +1087,34 @@ void OpTester::Run(
     const Graph::ResolveOptions& options,
     /*out*/ size_t* number_of_pre_packed_weights_counter,
     /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
+  if (execution_providers == nullptr) {
+    ctx_.run_with_specified_eps = false;
+    ctx_.execution_providers.clear();
+  } else {
+    this->ConfigEps(std::move(*execution_providers));
+    // NOTE: some callsites do the following:
+    //
+    //   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    //   execution_providers.push_back(DefaultCPUExecutionProvider());
+    //   test.run(..., &execution_providers, ...);
+    //   execution_providers[0] =  DefaultCUDAExecutionProvider();     //  <-- std::move cause segfault here.
+    //   test.run(..., &execution_providers, ...);
+    //
+    // So we need to restore the old vector's size.
+    execution_providers->resize(ctx_.execution_providers.size());
+  }
+
+  (*this)
+      .Config(so)
+      .Config(expect_result, expected_failure_string)
+      .Config(run_options)
+      .ConfigExcludeEps(excluded_provider_types)
+      .Config(options)
+      .RunWithConfig(number_of_pre_packed_weights_counter, number_of_shared_pre_packed_weights_counter);
+}
+
+void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
+                             size_t* number_of_shared_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
   ORT_TRY {
 #ifndef NDEBUG
@@ -954,7 +1143,7 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    const bool strict_shape_type_inference = so.config_options.GetConfigOrDefault(
+    const bool strict_shape_type_inference = ctx_.session_options.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
     const ModelOptions model_options(allow_released_onnx_opset_only,
                                      strict_shape_type_inference);
@@ -964,10 +1153,10 @@ void OpTester::Run(
     Status status = Status::OK();
     if (!cache_enabled) {
       if (add_shape_to_tensor_data_ &&
-          expect_result == ExpectResult::kExpectFailure) {
+          ctx_.expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
         ORT_TRY {
-          status = graph.Resolve(options);
+          status = graph.Resolve(ctx_.resolve_options);
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
@@ -975,14 +1164,14 @@ void OpTester::Run(
           });
         }
       } else {
-        status = graph.Resolve(options);
+        status = graph.Resolve(ctx_.resolve_options);
       }
 
       if (!status.IsOK()) {
-        if (expect_result == ExpectResult::kExpectFailure) {
+        if (ctx_.expect_result == ExpectResult::kExpectFailure) {
           EXPECT_TRUE(!status.IsOK());
           EXPECT_THAT(status.ErrorMessage(),
-                      testing::HasSubstr(expected_failure_string));
+                      testing::HasSubstr(ctx_.expected_failure_string));
         } else {
           LOGS_DEFAULT(ERROR) << "Resolve failed with status: "
                               << status.ErrorMessage();
@@ -999,99 +1188,49 @@ void OpTester::Run(
     std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
+
     // Run the model
+    if (ctx_.run_with_specified_eps) {
+      ExecuteModelForEps(
+          std::move(ctx_.execution_providers), *p_model, ctx_.session_options,
+          ctx_.expect_result, ctx_.expected_failure_string,
+          ctx_.run_options, feeds, output_names,
+          /*custom_registries=*/nullptr,
+          /*assign_ep_for_nodes=*/false,
+          allow_released_onnx_opset_only,
+          number_of_pre_packed_weights_counter,
+          number_of_shared_pre_packed_weights_counter);
+    } else {
 #ifdef USE_TENSORRT
-    // only run trt ep to reduce test time
-    static const std::string all_provider_types[] = {
-        kTensorrtExecutionProvider,
-    };
+      // only run trt ep to reduce test time
+      static const std::string all_provider_types[] = {
+          kTensorrtExecutionProvider,
+      };
 #else
-    static const std::string all_provider_types[] = {
-        kCpuExecutionProvider,
-        kCudaExecutionProvider,
-        kDnnlExecutionProvider,
-        kNupharExecutionProvider,
-        kTensorrtExecutionProvider,
-        kOpenVINOExecutionProvider,
-        kDmlExecutionProvider,
-        kAclExecutionProvider,
-        kArmNNExecutionProvider,
-        kNnapiExecutionProvider,
-        kRocmExecutionProvider,
-        kCoreMLExecutionProvider,
-        kSnpeExecutionProvider,
-        kXnnpackExecutionProvider,
-    };
+      static const std::string all_provider_types[] = {
+          kCpuExecutionProvider,
+          kCudaExecutionProvider,
+          kDnnlExecutionProvider,
+          kTensorrtExecutionProvider,
+          kOpenVINOExecutionProvider,
+          kDmlExecutionProvider,
+          kAclExecutionProvider,
+          kArmNNExecutionProvider,
+          kNnapiExecutionProvider,
+          kRocmExecutionProvider,
+          kCoreMLExecutionProvider,
+          kSnpeExecutionProvider,
+          kXnnpackExecutionProvider,
+      };
 #endif
 
-    bool has_run = false;
+      bool has_run = false;
 
-    if (execution_providers) {
-      for (auto& entry : *execution_providers) {
-        // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
-        // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
-        ASSERT_TRUE(entry) << "Execution provider entry invalid.";
-
-        if (entry->Type() == kDmlExecutionProvider) {
-          so.enable_mem_pattern = false;
-          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-          break;
-        }
-      }
-
-      InferenceSession session_object{so, GetEnvironment()};
-
-      if (add_prepacked_shared_container_to_sessions_) {
-        ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
-      }
-
-      ASSERT_TRUE(!execution_providers->empty())
-          << "Empty execution providers vector.";
-      std::string provider_types;
-
-      for (auto& entry : *execution_providers) {
-        provider_types += entry->Type() + ":";
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
-      }
-
-      fetches_ = ExecuteModel<InferenceSession>(
-          *p_model, session_object, expect_result, expected_failure_string,
-          run_options, feeds, output_names, provider_types, allow_released_onnx_opset_only);
-
-      // After the model has initialized (happens in ExecuteModel),
-      // we should be able to tell how many constant initializers were pre-packed
-      // and out of these pre-packed ones how many of them used a "cached" version
-      // from the shared container.
-      // Populate these value if the user has requested this information.
-      if (number_of_pre_packed_weights_counter) {
-        *number_of_pre_packed_weights_counter =
-            session_object.GetSessionState().GetNumberOfPrepacksCounter();
-      }
-
-      if (number_of_shared_pre_packed_weights_counter) {
-        *number_of_shared_pre_packed_weights_counter =
-            session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
-      }
-
-    } else {
       for (const std::string& provider_type : all_provider_types) {
-        if (excluded_provider_types.count(provider_type) > 0)
+        if (ctx_.excluded_provider_types.count(provider_type) > 0)
           continue;
 
         cur_provider = provider_type;
-
-        if (provider_type == kDmlExecutionProvider) {
-          so.enable_mem_pattern = false;
-          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-        }
-        InferenceSession session_object{so, GetEnvironment()};
-
-        if (add_prepacked_shared_container_to_sessions_) {
-          ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
-        }
-
-        for (auto& custom_session_registry : custom_session_registries_)
-          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -1102,8 +1241,6 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -1122,74 +1259,50 @@ void OpTester::Run(
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
+        else if (provider_type == onnxruntime::kDmlExecutionProvider)
+          execution_provider = DefaultDmlExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
 
-        bool valid = true;
+        ExecuteModelForEps(
+            [&execution_provider]() {
+              std::vector<std::unique_ptr<IExecutionProvider>> ret;
+              ret.emplace_back(std::move(execution_provider));
+              return ret;
+            }(),
+            *p_model, ctx_.session_options,
+            ctx_.expect_result, ctx_.expected_failure_string,
+            ctx_.run_options, feeds, output_names,
+            &custom_session_registries_,
+            /*try_assign_ep_for_nodes=*/true,
+            allow_released_onnx_opset_only,
+            number_of_pre_packed_weights_counter,
+            number_of_shared_pre_packed_weights_counter);
 
-        // set execution provider for all nodes in the graph
-        for (auto& node : graph.Nodes()) {
-          if (node.OpType() == kConstant)
-            continue;
+        // Run Models with subscribed run_options->config_options
+        if (ctx_.run_options != nullptr &&
+            ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp) == "true") {
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          if (provider_type == onnxruntime::kRocmExecutionProvider) {
+            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+          }
 
-          // if node is not registered for the provider, skip
-          node.SetExecutionProviderType(provider_type);
-          if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-              provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider ||
-              // provider_type == onnxruntime::kTvmExecutionProvider ||
-              provider_type == onnxruntime::kNnapiExecutionProvider ||
-              provider_type == onnxruntime::kCoreMLExecutionProvider ||
-              provider_type == onnxruntime::kDnnlExecutionProvider ||
-              provider_type == onnxruntime::kSnpeExecutionProvider)
-            continue;
-          auto reg = execution_provider->GetKernelRegistry();
-          if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
-            valid = false;
-            for (auto& custom_session_registry : custom_session_registries_) {
-              if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
-                                                      node, execution_provider->Type())) {
-                valid = true;
-                break;
-              }
-            }
-
-            if (!valid) {
-              break;
-            }
+          if (!execution_providers.empty()) {
+            ExecuteModelForEps(
+                std::move(execution_providers), *p_model, ctx_.session_options,
+                ctx_.expect_result, ctx_.expected_failure_string,
+                ctx_.run_options, feeds, output_names,
+                &custom_session_registries_,
+                /*assign_ep_for_nodes=*/true,
+                allow_released_onnx_opset_only,
+                number_of_pre_packed_weights_counter,
+                number_of_shared_pre_packed_weights_counter);
           }
         }
 
-        if (!valid)
-          continue;
-
-        for (auto& custom_session_registry : custom_session_registries_)
-          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
-
         has_run = true;
-
-        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
-        fetches_ = ExecuteModel<InferenceSession>(
-            *p_model, session_object, expect_result, expected_failure_string,
-            run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
-
-        // After the model has initialized (happens in ExecuteModel),
-        // we should be able to tell how many constant initializers were pre-packed
-        // and out of these pre-packed ones how many of them used a "cached" version
-        // from the shared container.
-        // Populate these value if the user has requested this information.
-        if (number_of_pre_packed_weights_counter) {
-          *number_of_pre_packed_weights_counter =
-              session_object.GetSessionState().GetNumberOfPrepacksCounter();
-        }
-
-        if (number_of_shared_pre_packed_weights_counter) {
-          *number_of_shared_pre_packed_weights_counter =
-              session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
-        }
-
         cur_provider = "not set";
       }
 
@@ -1212,7 +1325,84 @@ void OpTester::Run(
   }
 }
 
-void OpTester::AddReferenceOutputs(const std::string& model_path) {
+void OpTester::ExecuteModelForEps(
+    std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,
+    onnxruntime::Model& model,
+    SessionOptions sess_options,  // session options is copied to avoid the side effect in this function
+    onnxruntime::test::OpTester::ExpectResult expect_result,
+    const std::string& expected_failure_string,
+    const onnxruntime::RunOptions* run_options,
+    const std::unordered_map<std::string, OrtValue>& feeds,
+    const std::vector<std::string>& output_names,
+    const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+    bool try_assign_ep_for_nodes,
+    bool allow_released_onnx_opset_only,
+    size_t* number_of_pre_packed_weights_counter,
+    size_t* number_of_shared_pre_packed_weights_counter) {
+  for (auto& entry : execution_providers) {
+    // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
+    // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
+    ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
+    if (entry->Type() == kDmlExecutionProvider) {
+      sess_options.enable_mem_pattern = false;
+      sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+      break;
+    }
+  }
+
+  InferenceSession session_object{sess_options, GetEnvironment()};
+
+  if (add_prepacked_shared_container_to_sessions_) {
+    ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
+  }
+  ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
+  if (try_assign_ep_for_nodes && !SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries)) {
+    std::string providers;
+    for (const auto& ep : execution_providers) {
+      providers.append(ep->Type() + " ");
+    }
+    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << "were unable to run the model.";
+    return;
+  }
+
+  std::string provider_type;
+  for (auto&& ep : execution_providers) {
+    provider_type += ep->Type() + ":";
+  }
+  provider_type.resize(provider_type.size() - 1);  // remove the trailing ':'
+
+  if (custom_registries != nullptr) {
+    for (const auto& reg : *custom_registries) {
+      ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(reg));
+    }
+  }
+
+  for (auto&& entry : execution_providers) {
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
+  }
+
+  fetches_ = ExecuteModel<InferenceSession>(
+      model, session_object, expect_result, expected_failure_string,
+      run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
+
+  // After the model has initialized (happens in ExecuteModel),
+  // we should be able to tell how many constant initializers were pre-packed
+  // and out of these pre-packed ones how many of them used a "cached" version
+  // from the shared container.
+  // Populate these value if the user has requested this information.
+  if (number_of_pre_packed_weights_counter != nullptr) {
+    *number_of_pre_packed_weights_counter =
+        session_object.GetSessionState().GetNumberOfPrepacksCounter();
+  }
+
+  if (number_of_shared_pre_packed_weights_counter != nullptr) {
+    *number_of_shared_pre_packed_weights_counter =
+        session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
+  }
+};
+
+void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
@@ -1260,14 +1450,20 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
       mutable_dim->set_dim_value(i);
     }
 
-    output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
-                                std::move(subgraph_fetches[out_idx]),
-                                optional<float>(),
-                                optional<float>()));
+    if (abs_error != 0.0f) {
+      output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                  std::move(subgraph_fetches[out_idx]),
+                                  optional<float>(), optional<float>(abs_error)));
+    } else {
+      output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                  std::move(subgraph_fetches[out_idx]),
+                                  optional<float>(), optional<float>()));
+    }
   }
 }
 
 #ifdef ENABLE_TRAINING
+// Deprecated code. Remove this when training::TrainingSession is removed.
 template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,

@@ -1,7 +1,7 @@
 import io
 import os
 import warnings
-from distutils.version import LooseVersion
+from packaging.version import Version as LooseVersion
 
 import numpy as np
 import onnx
@@ -233,7 +233,7 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
         return np.int16
     elif torch_dtype == torch.bool:
-        return np.bool
+        return bool
     else:
         raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 
@@ -731,6 +731,10 @@ class ORTTrainer:
             optimized_model_filepath: path to output the optimized training graph.
                Defaults to "" (no output).
         """
+        warnings.warn(
+            "ORTTrainer is deprecated and will be removed in ort release 1.14. Please use ORTModule instead.",
+            FutureWarning,
+        )
         warnings.warn(
             "DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it"
         )

@@ -29,12 +29,13 @@
 #pragma warning(pop)
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
+#include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
@@ -45,6 +46,7 @@
 #endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
+#include "core/graph/ort_format_load_options.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -486,11 +488,11 @@ class Node {
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
-                                  bool can_use_flatbuffer_for_initializers,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
-                           bool can_use_flatbuffer_for_initializers,
+                           const OrtFormatLoadOptions& load_options,
                            const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
@@ -935,8 +937,8 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
-                   gsl::make_span(input_args.begin(), input_args.end()),
-                   gsl::make_span(output_args.begin(), output_args.end()),
+                   AsSpan(input_args),
+                   AsSpan(output_args),
                    attributes, domain);
   }
 
@@ -949,7 +951,7 @@ class Graph {
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
                    input_args,
-                   gsl::make_span(output_args.begin(), output_args.end()),
+                   AsSpan(output_args),
                    attributes, domain);
   }
 
@@ -961,7 +963,7 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
-                   gsl::make_span(input_args.begin(), input_args.end()),
+                   AsSpan(input_args),
                    output_args,
                    attributes, domain);
   }
@@ -1153,7 +1155,7 @@ class Graph {
   void SetInputs(gsl::span<const NodeArg* const> inputs);
 
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
-    SetInputs(gsl::make_span(inputs));
+    SetInputs(AsSpan(inputs));
   }
 
   const Model& GetModel() const {
@@ -1171,7 +1173,7 @@ class Graph {
   void SetOutputs(gsl::span<const NodeArg* const> outputs);
 
   void SetOutputs(std::initializer_list<const NodeArg*> outputs) {
-    SetOutputs(gsl::make_span(outputs.begin(), outputs.end()));
+    SetOutputs(AsSpan(outputs));
   }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1232,7 +1234,7 @@ class Graph {
   }
 
   void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
-    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes));
+    UpdateConsumerNodes(node_arg_name, AsSpan(nodes));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
@@ -1311,18 +1313,18 @@ class Graph {
 
   virtual ~Graph();
 
-  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
-                                          const std::unordered_map<std::string, int>& domain_to_version,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
+                                  const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-                                          IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                  IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-                                          bool can_use_flatbuffer_for_initializers,
-                                          const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                  const OrtFormatLoadOptions& load_options,
+                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
-                                  bool can_use_flatbuffer_for_initializers,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1332,20 +1334,6 @@ class Graph {
 
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
-  }
-
-  // Stores information collected during the replay of loaded runtime optimizations
-  struct RuntimeOptimizationReplayContext {
-    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
-    size_t num_replayed_optimizations{};
-  };
-
-  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
-    return runtime_optimization_replay_context_;
-  }
-
-  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
-    return runtime_optimization_replay_context_;
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1366,8 +1354,8 @@ class Graph {
         bool strict_shape_type_inference);
 
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
-                                   bool can_use_flatbuffer_for_initializers);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
+                           const OrtFormatLoadOptions& load_options);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
@@ -1588,8 +1576,6 @@ class Graph {
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
-
-  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)

@@ -71,7 +71,8 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
 
   test.AddOutput<float>("Y", dims, expected_output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  // TensorRT does not support manual seed overrides and there will be result mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {
@@ -381,7 +382,7 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     // Only one output, and mean of output values are near attribute mean.
-    ASSERT_EQ(fetches.size(), 1);
+    ASSERT_EQ(fetches.size(), 1u);
     const auto& output_tensor = FetchTensor(fetches[0]);
     if (output_dtype == TensorProto_DataType::TensorProto_DataType_FLOAT) {
       auto output_span = output_tensor.DataAsSpan<float>();
@@ -474,7 +475,7 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     // Only one output. Each value in output tensoer is between low and high.
     // Mean of output values are near attribute mean of low and high.
-    ASSERT_EQ(fetches.size(), 1);
+    ASSERT_EQ(fetches.size(), 1u);
     const auto& output_tensor = FetchTensor(fetches[0]);
     if (output_dtype == TensorProto_DataType::TensorProto_DataType_FLOAT) {
       auto output_span = output_tensor.DataAsSpan<float>();
