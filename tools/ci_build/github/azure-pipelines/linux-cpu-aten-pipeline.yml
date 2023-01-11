@@ -63,10 +63,9 @@ jobs:
           -e CCACHE_DIR=/cache \
           onnxruntimecpubuildaten \
           /bin/bash -c "
-            set -ex; \
-            ccache -z; \
-            ccache -s; \
-            onnxruntimecpubuildaten \
+              set -ex; \
+              ccache -z; \
+              ccache -s; \
               /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release \
@@ -77,7 +76,7 @@ jobs:
                 --skip_tests \
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
                 --use_cache; \
-            ccache -s"
+              ccache -s"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
