@@ -2324,8 +2324,7 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training and enable_training_apis to "
-          "retrieve the training APIs.\n");
+          "from source with the build flags enable_training_apis to retrieve the training APIs.\n");
 
   return nullptr;
 #endif

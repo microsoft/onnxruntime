@@ -345,7 +345,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
@@ -362,7 +362,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           bias = last_add_node.MutableInputDefs()[i];
@@ -423,7 +423,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
@@ -594,7 +594,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
@@ -643,7 +643,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     // add one extra output def, so we have 2 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(
         &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));

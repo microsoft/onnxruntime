@@ -21,6 +21,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
 
   std::string ToString() const override;
 #ifdef ENABLE_TRAINING
+  // Only applicable when using PartialExecutor
   bool IsBarrier() const override;
 #endif
  private:

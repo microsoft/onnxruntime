@@ -332,12 +332,19 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING_APIS)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
     )
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+      )
+  endif()
+
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
   if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
@@ -689,9 +696,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
     list(APPEND all_tests ${onnxruntime_test_training_api_src})
-  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -1292,6 +1300,53 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     else()
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
     endif()
+  endif()
+
+  # Training API Tests
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    # Only files in the trainer and common folder will be compiled into test trainer.
+    file(GLOB training_api_test_trainer_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.h"
+    )
+    onnxruntime_add_executable(onnxruntime_test_trainer ${training_api_test_trainer_src})
+
+    onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_session
+      onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
+
+    set(CXXOPTS ${cxxopts_SOURCE_DIR}/include)
+    target_include_directories(onnxruntime_test_trainer PRIVATE
+      ${CMAKE_CURRENT_BINARY_DIR}
+      ${ONNXRUNTIME_ROOT}
+      ${ORTTRAINING_ROOT}
+      ${eigen_INCLUDE_DIRS}
+      ${CXXOPTS}
+      ${extra_includes}
+      ${onnxruntime_graph_header}
+      ${onnxruntime_exec_src_dir}
+    )
+
+    set(ONNXRUNTIME_TEST_LIBS
+      onnxruntime_session
+      ${onnxruntime_libs}
+      # CUDA is dynamically loaded at runtime
+      onnxruntime_optimizer
+      onnxruntime_providers
+      onnxruntime_util
+      onnxruntime_framework
+      onnxruntime_util
+      onnxruntime_graph
+      ${ONNXRUNTIME_MLAS_LIBS}
+      onnxruntime_common
+      onnxruntime_flatbuffers
+    )
+    target_link_libraries(onnxruntime_test_trainer PRIVATE
+      ${ONNXRUNTIME_TEST_LIBS}
+      ${onnxruntime_EXTERNAL_LIBRARIES}
+    )
+    set_target_properties(onnxruntime_test_trainer PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 endif()
 

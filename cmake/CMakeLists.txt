@@ -142,7 +142,6 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable full training functionality. Includes ORTModule and ORT Training APIs" OFF)
-# For building with onnxruntime_ENABLE_TRAINING_APIS, onnxruntime_ENABLE_TRAINING must be ON.
 option(onnxruntime_ENABLE_TRAINING_APIS "Enable ort training apis." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
@@ -219,6 +218,29 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
   set(onnxruntime_ENABLE_ATEN ON)
+endif()
+
+# ENABLE_TRAINING includes all training functionality
+# The following 2 entry points
+# 1. ORTModule
+# 2. ORT Training APIs
+# It includes all the feature additions as well like
+# 1. Python OP
+# 2. Aten Fallback
+# 3. Strided Tensors
+# 4. All training ops including communication and  collectives ops
+# 5. ONNXBlock (Front end for training preparation when using training apis)
+# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
+# when using python env
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  set(onnxruntime_ENABLE_TRAINING_APIS ON)
+  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_ATEN ON)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -1285,6 +1307,7 @@ if (onnxruntime_USE_DML)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
+  add_compile_definitions(ENABLE_TRAINING_CORE)
   add_compile_definitions(ENABLE_TRAINING_APIS)
 endif()
 
@@ -1301,8 +1324,9 @@ if (onnxruntime_ENABLE_ROCM_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_CORE)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
+  add_compile_definitions(ENABLE_TRAINING)
 
   if (UNIX)
     if (EXISTS "${onnxruntime_MPI_HOME}")

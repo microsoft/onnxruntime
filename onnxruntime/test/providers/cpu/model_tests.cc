@@ -195,7 +195,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
       {"adam", "not a registered function/op", {}},                     // Op not registered.
@@ -627,17 +627,17 @@ TEST_P(ModelTest, Run) {
   }
 
   // TODO(leca): move the parallel run test list to a config file and load it in GetParameterStrings() to make the load process run only once
-  std::set<std::string> tests_run_parallel = {"test_resnet18v2", 
+  std::set<std::string> tests_run_parallel = {"test_resnet18v2",
       "test_resnet34v2",
       "test_resnet50",
-      "test_resnet50v2", 
-      "test_resnet101v2", 
-      "test_resnet152v2", 
-      "keras_lotus_resnet3D", 
-      "coreml_Resnet50_ImageNet", 
-      "mlperf_mobilenet", 
-      "mlperf_resnet", 
-      "mlperf_ssd_mobilenet_300", 
+      "test_resnet50v2",
+      "test_resnet101v2",
+      "test_resnet152v2",
+      "keras_lotus_resnet3D",
+      "coreml_Resnet50_ImageNet",
+      "mlperf_mobilenet",
+      "mlperf_resnet",
+      "mlperf_ssd_mobilenet_300",
       "mlperf_ssd_resnet34_1200"};
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
@@ -752,7 +752,7 @@ TEST_P(ModelTest, Run) {
                                                   << provider_name << ", test name:" << results->GetName() << ", result: " << res;
         }
         continue;
-      } 
+      }
 #endif // !USE_DNNL
       std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
         ortso, &OrtApis::ReleaseSessionOptions);
