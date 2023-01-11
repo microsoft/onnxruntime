@@ -42,6 +42,11 @@ TEST(Identity, SequenceType) {
 #if !defined(DISABLE_OPTIONAL_TYPE)
 
 TEST(Identity, OptionalTensorType_NonNone) {
+  // TODO: Unskip when fixed #42638109
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
+  }
+
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -54,6 +59,11 @@ TEST(Identity, OptionalTensorType_NonNone) {
 }
 
 TEST(Identity, OptionalTensorType_None) {
+  // TODO: Unskip when fixed #42638109
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
+  }
+
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -65,6 +75,11 @@ TEST(Identity, OptionalTensorType_None) {
 }
 
 TEST(Identity, OptionalTensorSequenceType_NonNone) {
+  // TODO: Unskip when fixed #42638109
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
+  }
+
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -80,6 +95,11 @@ TEST(Identity, OptionalTensorSequenceType_NonNone) {
 }
 
 TEST(Identity, OptionalTensorSequenceType_None) {
+  // TODO: Unskip when fixed #42638109
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
+  }
+
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run

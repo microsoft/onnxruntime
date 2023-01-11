@@ -11,8 +11,14 @@ import shlex
 import shutil
 import subprocess
 import sys
-from distutils.version import LooseVersion
 from pathlib import Path
+
+try:
+    from packaging.version import Version as LooseVersion
+except ImportError:
+    # This is deprecated and will be removed in Python 3.12.
+    # See https://docs.python.org/3/library/distutils.html.
+    from distutils.version import LooseVersion  # pylint: disable=W4901
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))

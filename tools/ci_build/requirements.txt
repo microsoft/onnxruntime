@@ -1,4 +1,5 @@
 # packages used by transformers tool test
+packaging
 protobuf==3.20.1
 numpy==1.23.5
 coloredlogs==15.0
