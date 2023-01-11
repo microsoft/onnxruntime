@@ -1,6 +1,6 @@
 coloredlogs
 flatbuffers
 numpy >= @Python_NumPy_VERSION@
-packaging
+packaging >=22.0
 protobuf
 sympy

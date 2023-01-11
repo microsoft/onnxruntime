@@ -7,7 +7,7 @@ jinja2
 numpy
 onnx
 onnxmltools
-packaging
+packaging>=22.0
 pandas
 parameterized>=0.8.1
 protobuf

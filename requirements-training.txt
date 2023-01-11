@@ -3,7 +3,7 @@ flatbuffers
 h5py
 numpy >= 1.16.6
 onnx
-packaging
+packaging >= 22.0
 protobuf
 sympy
 setuptools>=41.4.0
