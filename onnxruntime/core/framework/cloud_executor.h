@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifdef USE_CLOUD
+#ifdef USE_AZURE
 #include "core/framework/iexecutor.h"
 namespace onnxruntime {
 

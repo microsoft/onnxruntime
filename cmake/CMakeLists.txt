@@ -199,7 +199,7 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 # https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
-option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
+option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -679,10 +679,10 @@ if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
-if (onnxruntime_USE_CLOUD)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CLOUD=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CLOUD=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cloud)
+if (onnxruntime_USE_AZURE)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_AZURE=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)

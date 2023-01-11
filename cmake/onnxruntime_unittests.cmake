@@ -521,7 +521,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_CLOUD}
+    ${PROVIDERS_AZURE}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -598,11 +598,11 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
-if(onnxruntime_USE_CLOUD)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
+if(onnxruntime_USE_AZURE)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/azure/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_azure)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_azure)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
 endif()
 
 if(WIN32)
