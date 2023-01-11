@@ -980,7 +980,7 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
                    input_hidden_size);
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
 TEST(QAttentionTest, SharedPrepackedWeights) {
   int batch_size = 1;
   int sequence_length = 2;

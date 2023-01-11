@@ -13,7 +13,7 @@ import pytest
 from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
 
 
-def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
+def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, alpha=1.0, beta=0.0):
     assert dtype in ["float32", "float16"]
 
     a_shape = (k, m) if transa else (m, k)
@@ -22,14 +22,18 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     np.random.seed(0)
     a = (np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64")
-    ref_c = (a.T if transa else a) @ (b.T if transb else b)
+    intermediate_c = (a.T if transa else a) @ (b.T if transb else b)
+    if alpha == 1.0 and beta == 0.0:  # fast path
+        ref_c = intermediate_c
+    else:
+        ref_c = alpha * intermediate_c + beta * np.ones_like(intermediate_c)
 
-    bound = get_gemm_bound(dtype, a, b, ref_c, transa, transb)
+    bound = get_gemm_bound(dtype, a, b, ref_c, transa, transb, a_b_positive=True)
 
     a = a.astype(dtype)
     b = b.astype(dtype)
 
-    my_c = np.zeros((m, n), dtype=dtype)
+    my_c = np.ones((m, n), dtype=dtype)
     dev_a = ke.DeviceArray(a)
     dev_b = ke.DeviceArray(b)
     dev_c = ke.DeviceArray(my_c)
@@ -38,8 +42,6 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     opb = ke.blas_op.T if transb else ke.blas_op.N
     lda = a_shape[1]
     ldb = b_shape[1]
-    alpha = 1.0
-    beta = 0.0
     my_gemm = func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
 
     failures = {}
@@ -69,28 +71,52 @@ dtypes = ["float32", "float16"]
 all_transabs = list(product([True, False], repeat=2))
 
 
+@pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=True) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=True) + get_gemm_bert_sizes(full=False))
-@pytest.mark.parametrize("transab", all_transabs)
-def test_rocblas_gemm_all_cases(dtype, size, transab):
-    _test_gemm(getattr(ke, "RocblasGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
+def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k):
+    _test_gemm(getattr(ke, "RocBlasGemm_" + dtype_to_suffix(dtype)), dtype, transa, transb, m, n, k)
 
 
+@pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
-@pytest.mark.parametrize("transab", all_transabs)
-def test_ck_gemm_bert_cases(dtype, size, transab):
-    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
-    _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
+def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k):
+    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
 
 
 # Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
+@pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
-@pytest.mark.parametrize("transab", all_transabs)
-def test_gemm_tunable_bert_cases(dtype, size, transab):
-    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
-    _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
+def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k):
+    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_rocblas_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "RocBlasGemm_" + dtype_to_suffix(dtype)
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 128, 256, 768, alpha=alpha, beta=beta)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_ck_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 256, 128, 384, alpha=alpha, beta=beta)
+
+
+@pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_gemm_tunable_alpha_beta(dtype, transa, transb, alpha, beta):
+    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 128, 512, 384, alpha=alpha, beta=beta)
 
 
 @dataclass
@@ -102,16 +128,17 @@ class GemmMetric(ke.ComputeMetric):
     k: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-        if self.duration > 0:
-            return (
-                prefix
-                + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
-            )
-        return prefix + "not supported"
+        prefix = (
+            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} "
+        )
+        if self.duration <= 0:
+            return prefix + "not supported"
+
+        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
 
 
-def profile_gemm_func(f, transa: bool, transb: bool, dtype: str, m: int, n: int, k: int, sort=True):
+def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
 
@@ -141,20 +168,20 @@ def profile_gemm_func(f, transa: bool, transb: bool, dtype: str, m: int, n: int,
         ke.report(GemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k))
 
 
-def profile_with_args(transa, transb, dtype, m, n, k, sort):
+def profile_with_args(dtype, transa, transb, m, n, k, sort):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
     with ke.benchmark(sort):
-        profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), transa, transb, dtype, m, n, k)
-        profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), transa, transb, dtype, m, n, k)
-        profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), transa, transb, dtype, m, n, k)
+        profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
+        profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+        profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+    print()
 
 
 def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
-            profile_with_args(False, False, dtype, m, n, k, True)
-            print()
+            profile_with_args(dtype, False, False, m, n, k, True)
 
 
 if __name__ == "__main__":
@@ -162,9 +189,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     group = parser.add_argument_group("profile with args")
+    group.add_argument("dtype", choices=dtypes)
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
-    group.add_argument("dtype", choices=dtypes)
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
@@ -174,4 +201,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k, args.sort)
+        profile_with_args(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.sort)

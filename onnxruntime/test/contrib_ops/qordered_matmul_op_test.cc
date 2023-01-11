@@ -5,7 +5,7 @@
 
 // The "Attention_WithData_ROW_ORDER", "MatMul_COL_16x64x32", "MatMul_COL_16x64x32_perchannel", "MatMul_addC_COL_16x64x32", "MatMul_addC_COL_16x64x32_perchannel", "MatMul_COL_16x64x32_b3_1", "MatMul_addC_COL_16x64x32_b2_1", "MatMul_addC_COL_16x64x32_b2_1_perchannel", "MatMul_addC_broadcastC_COL_16x64x32_b2_1" tests fails in Windows Orttraining build with errors like:
 //"qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3 was false. qkv gemm weight and their scales, qkv gemm bias must all be constant!"
-#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING_CORE)
 
 #include <cuda.h>
 

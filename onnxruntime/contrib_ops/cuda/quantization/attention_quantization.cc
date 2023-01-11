@@ -50,12 +50,9 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* past_tensor,
                                           void* parameters) const {
   auto& device_prop = GetDeviceProp();
-  auto& weights_shape = weights->Shape();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), &weights_shape, bias->Shape(),
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
                                                  mask_index, past_tensor,
                                                  nullptr,  // extra_add_qk
-                                                 nullptr,  // key
-                                                 nullptr,  // value
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 

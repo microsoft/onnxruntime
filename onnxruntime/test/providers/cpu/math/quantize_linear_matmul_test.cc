@@ -492,7 +492,7 @@ struct PrePackTestOp {
   }
 };
 
-#ifndef ENABLE_TRAINING
+#ifndef ENABLE_TRAINING_CORE
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};

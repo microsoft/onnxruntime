@@ -2,13 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # ------------------------------------------------------------------------
+# pylint: disable=C0103
 
 import datetime
+import logging
 import platform
 import subprocess
 import sys
-from distutils import log as logger
-from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -16,11 +16,13 @@ from shutil import copyfile
 
 from packaging.tags import sys_tags
 from setuptools import Extension, setup
+from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.command.install import install as InstallCommandBase
 
 nightly_build = False
 package_name = "onnxruntime"
 wheel_name_suffix = None
+logger = logging.getLogger()
 
 
 def parse_arg_remove_boolean(argv, arg_name):
@@ -78,8 +80,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
     package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
-elif parse_arg_remove_boolean(sys.argv, "--use_cloud"):
-    package_name = "onnxruntime-cloud"
+elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
+    package_name = "onnxruntime-azure"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -162,7 +164,7 @@ try:
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def _rewrite_ld_preload_tensorrt(self, to_preload):
-            with open("onnxruntime/capi/_ld_preload.py", "a") as f:
+            with open("onnxruntime/capi/_ld_preload.py", "a", encoding="ascii") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
@@ -172,7 +174,7 @@ try:
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
 
-        def _rewrite_ld_preload_cloud(self):
+        def _rewrite_ld_preload_azure(self):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 f.write("import os\n")
                 f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
@@ -184,7 +186,7 @@ try:
                 f.write("    try:\n")
                 f.write("        LoadLib(lib_name)\n")
                 f.write("    except OSError:\n")
-                f.write('        print("Could not load ort cloud-ep dependency: " + lib_name)\n')
+                f.write('        print("Could not load ort azure-ep dependency: " + lib_name)\n')
                 f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "1"\n')
 
         def run(self):
@@ -311,8 +313,8 @@ try:
                 self._rewrite_ld_preload(to_preload_cann)
 
             else:
-                if "onnxruntime-cloud" == package_name:
-                    self._rewrite_ld_preload_cloud()
+                if "onnxruntime-azure" == package_name:
+                    self._rewrite_ld_preload_azure()
 
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
@@ -447,8 +449,8 @@ if not path.exists(README):
 
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
-with open(README) as f:
-    long_description = f.read()
+with open(README, "r", encoding="utf-8") as fdesc:
+    long_description = fdesc.read()
 
 # Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
 # line option is specified.

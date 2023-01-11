@@ -11,8 +11,14 @@ import shlex
 import shutil
 import subprocess
 import sys
-from distutils.version import LooseVersion
 from pathlib import Path
+
+try:
+    from packaging.version import Version as LooseVersion
+except ImportError:
+    # This is deprecated and will be removed in Python 3.12.
+    # See https://docs.python.org/3/library/distutils.html.
+    from distutils.version import LooseVersion  # pylint: disable=W4901
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -676,7 +682,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
-    parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
+    parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
@@ -1269,8 +1275,8 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
-    if args.use_cloud:
-        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
+    if args.use_azure:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1917,7 +1923,7 @@ def build_python_wheel(
     use_armnn,
     use_dml,
     use_cann,
-    use_cloud,
+    use_azure,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -1976,8 +1982,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
-        elif use_cloud:
-            args.append("--use_cloud")
+        elif use_azure:
+            args.append("--use_azure")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2664,7 +2670,7 @@ def main():
                 args.use_armnn,
                 args.use_dml,
                 args.use_cann,
-                args.use_cloud,
+                args.use_azure,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
