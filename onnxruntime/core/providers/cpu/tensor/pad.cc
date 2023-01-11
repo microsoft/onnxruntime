@@ -66,10 +66,24 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint8_t,
     bool);
 
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t,
+    bool);
+
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using EnabledPad2Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
@@ -78,6 +92,9 @@ using EnabledPad11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
 using EnabledPad13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
+using EnabledPad18Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0);
+
 
 using AllEnabledPadTypes =
     utils::TypeSetUnion<
@@ -106,13 +123,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         BuildKernelDefConstraintsFromTypeList<EnabledPad11Types>()),
     Pad);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Pad,
+    13, 17,
+    KernelDefBuilder().TypeConstraint(
+        "T",
+        BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
+    Pad);
+
 ONNX_CPU_OPERATOR_KERNEL(
     Pad,
-    13,
+    18,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
-            BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
+            BuildKernelDefConstraintsFromTypeList<EnabledPad18Types>()),
     Pad);
 
 
@@ -479,20 +504,52 @@ Status Pad::Compute(OpKernelContext* ctx) const {
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
     auto pads_tensor_dims = pads_tensor.Shape().GetDims();
-    ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(),
-                "Pads tensor should be an INT64 tensor");
+    ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(), "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
-                "Pads tensor should be a 1D tensor of shape [2 * input_rank] "
-                "or a 2D tensor of shape [1, 2 * input_rank]");
-
+                "Pads tensor should be a 1D tensor of shape [2 * num_axes] "
+                "or a 2D tensor of shape [1, 2 * num_axes]");
     const int64_t* pads_tensor_raw_data = pads_tensor.Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
-    ORT_ENFORCE(pads_size == 2 * data_rank,
-                "Pads tensor size should be equal to twice the input dimension count ");
-
     pads.reserve(2 * data_rank);
-    for (size_t i = 0; i < pads_size; ++i) {
-      pads.push_back(pads_tensor_raw_data[i]);
+
+    const Tensor* axes_tensor = ctx->Input<Tensor>(3);
+    if (axes_tensor) {
+      ORT_ENFORCE(axes_tensor->IsDataType<int32_t>() || axes_tensor->IsDataType<int64_t>(), "Axes tensor should be an INT32 or INT64 tensor");
+      auto axes_tensor_dims = axes_tensor->Shape().GetDims();
+      ORT_ENFORCE(axes_tensor_dims.size() == 1, "Axes tensor should be a 1D tensor ");
+      int64_t axes_size = axes_tensor_dims[0];
+      ORT_ENFORCE((int64_t)pads_size == 2 * axes_size, "Pads tensor size should be [2 * num_axes] ");
+
+      pads.resize(2 * data_rank, 0);
+      if (axes_tensor->IsDataType<int32_t>()) {
+        const int32_t* axes_tensor_raw_data = axes_tensor->Data<int32_t>();
+        for (int64_t i = 0; i < axes_size; ++i) {
+          int64_t axis = axes_tensor_raw_data[i];
+          if (axis < 0) {
+            axis = data_rank + axis;    // -1 as data_rank - 1
+          }
+          ORT_ENFORCE(axis >= 0 && axis < (int64_t)data_rank, "values in Axes should be within data_rank.");
+          pads[axis] = pads_tensor_raw_data[i];  // xi_begin
+          pads[data_rank + axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
+        }
+      } else if(axes_tensor->IsDataType<int64_t>()) {
+        const int64_t* axes_tensor_raw_data = axes_tensor->Data<int64_t>();
+        for (int64_t i = 0; i < axes_size; ++i) {
+          int64_t axis = axes_tensor_raw_data[i];
+          if (axis < 0) {
+            axis = data_rank + axis;    // -1 as data_rank - 1
+          }
+          ORT_ENFORCE(axis >= 0 && axis < (int64_t)data_rank, "values in Axes should be within data_rank.");
+          pads[axis] = pads_tensor_raw_data[i];  // xi_begin
+          pads[data_rank + axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
+        }
+      }
+    } else {
+      ORT_ENFORCE(pads_size == 2 * data_rank,
+                  "Pads tensor size should be equal to twice the input dimension count ");
+      for (size_t i = 0; i < pads_size; ++i) {
+        pads.push_back(pads_tensor_raw_data[i]);
+      }
     }
 
     // Separate out any negative pads into the slices array
@@ -525,6 +582,7 @@ Status Pad::Compute(OpKernelContext* ctx) const {
           ORT_THROW("Unsupported input data type of ", data_type);
       }
     }
+
     pads_to_use = &pads;
     slices_to_use = &slices;
   } else {
