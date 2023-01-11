@@ -1110,7 +1110,7 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
   // should be skipped if the batch normalization node has the optional training
   // outputs supplied.
   test_case(false);
-#if defined(ENABLE_TRAINING_CORE)
+#if defined(ENABLE_TRAINING)
   test_case(true);
 #endif
 }

@@ -287,7 +287,8 @@ TEST(MathOpTest, MatMul_bfloat16) {
 }
 #endif
 
-#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   OpTester test("MatMul");
 
