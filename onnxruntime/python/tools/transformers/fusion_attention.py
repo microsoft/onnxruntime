@@ -111,18 +111,18 @@ class FusionAttention(Fusion):
         Detect num_heads and hidden_size from Concat node in the following subgraph:
 
         SkipLayerNormalization or EmbedLayerNormalization
-                        /            \
-                     MatMul         Shape
-                        |             |
-                       Add       Gather(indices=0)
-                         \            |
-                          \       Unsqueeze
-                           \          |
-                            \       Concat (*, -1, 12, 64)
-                             \      /
-                              Reshape
-                                 |
-                             Transpose
+                        /        |
+                     MatMul    Shape
+                        |        |
+                       Add     Gather(indices=0)
+                        |        |
+                        |      Unsqueeze
+                        |        |
+                        |     Concat (*, -1, 12, 64)
+                        |     /
+                       Reshape
+                          |
+                       Transpose
         """
         if len(concat.input) == 4:
             num_heads = self.model.get_constant_value(concat.input[2])
@@ -335,20 +335,18 @@ class FusionAttention(Fusion):
 
         # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
         if self.use_multi_head_attention:
+            if add_qk_str is not None:
+                logger.debug("MultiHeadAttention does not support extra_add_qk: cannot fuse the attention.")
+                return None
+
             attention_inputs = [
-                q_matmul.output[0],  # query
-                k_matmul.output[0],  # key
-                v_matmul.output[0],  # value
+                q_matmul.output[0],
+                k_matmul.output[0],
+                v_matmul.output[0],
                 attention_node_name + "_qkv_bias",
             ]
             if mask_index is not None:
                 attention_inputs.append(mask_index)
-            else:
-                attention_inputs.append("")
-
-            if add_qk_str is not None:
-                logger.debug("MultiHeadAttention does not support extra_add_qk: cannot fuse the attention.")
-                return None
 
             attention_node = helper.make_node(
                 "MultiHeadAttention",
@@ -367,12 +365,9 @@ class FusionAttention(Fusion):
             else:
                 attention_inputs.append("")
 
-            attention_inputs.append("")  # no past
-
             if add_qk_str is not None:
+                attention_inputs.append("")  # no past
                 attention_inputs.append(add_qk_str)
-            else:
-                attention_inputs.append("")
 
             attention_node = helper.make_node(
                 "Attention",
