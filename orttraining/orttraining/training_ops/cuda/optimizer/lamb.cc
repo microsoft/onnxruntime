@@ -6,6 +6,7 @@
 
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 
 #include <cmath>
@@ -217,9 +218,9 @@ Status launch_lamb_compute_direction(
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
       const float alpha_correction =
-          do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+          do_bias_correction ? contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
       const float beta_correction =
-          do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
+          do_bias_correction ? contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
           stream,
@@ -262,9 +263,9 @@ Status launch_lamb_compute_direction(
 
     // For the first iteration (indexed by 0), the update count should be 1.
     const float alpha_correction =
-        do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
+        do_bias_correction ? contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
     const float beta_correction =
-        do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
+        do_bias_correction ? contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
 
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;

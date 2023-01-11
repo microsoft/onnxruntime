@@ -2,19 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <vector>
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-class AdamWOptimizer final : public CudaKernel, public contrib::AdamWOptimizerBase {
+class SGDOptimizerV2 final : public CudaKernel, public contrib::SGDOptimizerV2Base {
  public:
-  AdamWOptimizer(const OpKernelInfo& info) : CudaKernel(info), contrib::AdamWOptimizerBase(info) {
-  }
+  SGDOptimizerV2(const OpKernelInfo& info) : CudaKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
