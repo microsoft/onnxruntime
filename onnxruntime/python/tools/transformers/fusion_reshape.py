@@ -123,8 +123,8 @@ class FusionReshape(Fusion):
             if concat_2 is None:
                 return
             concat_value = numpy_helper.to_array(concat_2)
-            if isinstance(concat_value, list):
-                shape.extend(concat_value)
+            if isinstance(concat_value, np.ndarray):
+                shape.extend(concat_value.tolist())
             else:
                 shape.append(concat_value)
 
@@ -155,8 +155,8 @@ class FusionReshape(Fusion):
                 return
 
             concat_value = numpy_helper.to_array(concat_3)
-            if isinstance(concat_value, list):
-                shape.extend(concat_value)
+            if isinstance(concat_value, np.ndarray):
+                shape.extend(concat_value.tolist())
             else:
                 shape.append(concat_value)
 
