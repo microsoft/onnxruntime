@@ -273,6 +273,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     model_group.set_defaults(presence_mask=False)
 
+    model_group.add_argument(
+        "--seed",
+        required=False,
+        action="store_true",
+        help="Random seed for sampling op",
+    )
+    model_group.set_defaults(seed=False)
+
     beam_parameters_group = parser.add_argument_group(
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
@@ -1531,6 +1539,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if is_sampling and args.custom and args.presence_mask:
         inputs.append("presence_mask")
+    else:
+        inputs.append("")
+
+    if is_sampling and args.seed:
+        inputs.append("seed")
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
@@ -1708,6 +1721,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             "presence_mask", TensorProto.INT32, ["batch_size", vocab_size]
         )
         graph_inputs.append(presence_mask)
+
+    if is_sampling and args.seed:
+        seed = onnx.helper.make_tensor_value_info("seed", TensorProto.INT32, [1])
+        graph_inputs.append(seed)
 
     # graph outputs
     sequences = None
@@ -2279,11 +2296,12 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
         if args.top_p > 0.0 and args.top_p < 1.0:
             convert_generation_model(args, GenerationType.SAMPLING)
             logger.info(
-                "The test for gpt2_sampling onnx model is limited to small top_p(<=0.01) value. The result should be the same as gpt2 greedy search."
+                "The test for gpt2_sampling onnx model is limited to non-custom model with small top_p(e.g <=0.01) value. The result should be the same as gpt2 greedy search."
             )
-            if args.top_p > 0.01:
+            if args.top_p > 0.01 or args.custom or args.seed:
                 return
-        convert_generation_model(args, GenerationType.GREEDYSEARCH)
+        else:
+            convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)
 
