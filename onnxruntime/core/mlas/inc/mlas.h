@@ -90,7 +90,7 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Forward declare the thread pool implementation class.
+// Forward declare the thread pool implementation class and half precision floating point.
 //
 // N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
 // standalone MLAS test executables smaller.
@@ -100,9 +100,12 @@ namespace onnxruntime {
     namespace concurrency {
         class ThreadPool;
     };
-};
+    struct MLFloat16;
+};  // namespace onnxruntime
 
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+using MLAS_FP16 = struct onnxruntime::MLFloat16;
+
 
 //
 // Platform routines.
@@ -1365,4 +1368,99 @@ MlasQLinearMul(
     DataType* OutputC,
     size_t N,
     bool IsScalarB
+    );
+
+//
+// Half precision routines
+//
+
+class MLAS_HALF_GEMM_OUTPUT_PROCESSOR {
+public:
+    virtual
+    void
+    Process(
+        const MLAS_FP16*, // Supplies the address of matrix to process
+        size_t,           // Supplies the start row index of matrix
+        size_t,           // Supplies the start col index of matrix
+        size_t,           // Supplies the element count per row to process
+        size_t,           // Supplies the element count per col to process
+        size_t            // Supplies the leading dimension of matrix
+        ) const = 0;
+
+    virtual ~MLAS_HALF_GEMM_OUTPUT_PROCESSOR() {}
+};
+
+
+/**
+ * @brief Data parameters for half precision GEMM routine
+ *        All except C are [in] parameters
+*/
+struct MLAS_HALF_GEMM_DATA_PARAMS {
+    const MLAS_FP16* A = nullptr;     /**< address of A */
+    size_t lda = 0;                   /**< leading dimension of A */
+    const MLAS_FP16* B = nullptr;     /**< address of B */
+    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is packed*/
+    const MLAS_FP16* Bias = nullptr;  /**< address of Bias, vector size N */
+    MLAS_FP16* C = nullptr;           /**< address of result matrix */
+    size_t ldc = 0;                   /**< leading dimension of C*/
+    const MLAS_HALF_GEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
+};
+
+/**
+ * @brief Half precision Batched GEMM:  C = A * B + Bias
+ * 
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same across all parameter blocks.
+ * 
+ * @param[in]  M       row size of matrix A and C
+ * @param[in]  N       column size of matrix B and C
+ * @param[in]  K       column size of matrix A and row size of matrix B
+ * @param[in]  BatchN  number of batches
+ * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
+ * @param[in]  ThreadPool 
+ * @return 
+*/
+void
+MLASCALL
+MlasHalfGemmBatch(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool = nullptr
+    );
+
+/**
+ * @brief For half precision GEMM, returns size of the
+ *        packing buffer needed for right hand side        
+ * @param[in] N   Number of columns 
+ * @param[in] K   Number of rows
+ * @return  size of the packing buffer,
+ *          0 if operation not supported
+*/
+size_t
+MLASCALL
+MlasHalfGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+/**
+ * @brief For half precision GEMM, pack the right hand
+ *        side matrix B
+ * @param[in]  N        Number of columns
+ * @param[in]  K        Number of rows
+ * @param[in]  B        Address of matrix B 
+ * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[out] PackedB  Address of the packed matrix
+*/
+void
+MLASCALL
+MlasHalfGemmPackB(
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
     );

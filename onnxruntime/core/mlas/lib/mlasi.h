@@ -107,6 +107,8 @@ Abstract:
 #include "core/common/cpuid_info.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
+#include "core/framework/float16.h"
+
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
 class MLASCPUIDInfo
@@ -179,7 +181,99 @@ enum MlasUArch {
 
 #endif // MLAS_TARGET_ARM64
 
-#endif // BUILD_MLAS_NO_ONNXRUNTIME
+union fp32_bits {
+    uint32_t u;
+    float f;
+};
+
+namespace onnxruntime
+{
+// MLFloat16
+struct MLFloat16 {
+    uint16_t val{0};
+
+    MLFloat16() = default;
+    explicit constexpr MLFloat16(uint16_t x) : val(x) {}
+    explicit MLFloat16(float ff) {
+        constexpr fp32_bits f32infty = {255 << 23};
+        constexpr fp32_bits f16max = {(127 + 16) << 23};
+        constexpr fp32_bits denorm_magic = {((127 - 15) + (23 - 10) + 1) << 23};
+        constexpr uint32_t  sign_mask = 0x80000000u;
+
+        val = static_cast<uint16_t>(0x0u);
+        fp32_bits f;  f.f = ff;
+
+        uint32_t sign = f.u & sign_mask;
+        f.u ^= sign;
+
+        if (f.u >= f16max.u) {
+            // Inf or NaN (all exponent bits set)
+            val = (f.u > f32infty.u) ? 0x7e00 : 0x7c00;  // NaN->qNaN and Inf->Inf
+        } else {
+            if (f.u < (113 << 23)) {
+                // Subnormal or zero
+                // use a magic value to align our 10 mantissa bits at the bottom of
+                // the float. as long as FP addition is round-to-nearest-even this
+                // just works.
+                f.f += denorm_magic.f;
+
+                // and one integer subtract of the bias later, we have our final float!
+                val = static_cast<uint16_t>(f.u - denorm_magic.u);
+            } else {
+                uint32_t mant_odd = (f.u >> 13) & 1;  // resulting mantissa is odd
+
+                // update exponent, rounding bias part 1
+                f.u += ((uint32_t)(15 - 127) << 23) + 0xfff;
+                // rounding bias part 2
+                f.u += mant_odd;
+                // take the bits!
+                val = static_cast<uint16_t>(f.u >> 13);
+            }
+        }
+
+        val |= static_cast<uint16_t>(sign >> 16);
+    }
+
+    float ToFloat() const {
+        constexpr fp32_bits magic = {113 << 23};
+        constexpr uint32_t  shifted_exp = 0x7c00 << 13;  // exponent mask after shift
+        fp32_bits o;
+
+        o.u = (val & 0x7fff) << 13;            // exponent/mantissa bits
+        uint32_t exp = shifted_exp & o.u;      // just the exponent
+        o.u += (127 - 15) << 23;               // exponent adjust
+
+        // handle exponent special cases
+        if (exp == shifted_exp) {     // Inf/NaN?
+            o.u += (128 - 16) << 23;  // extra exp adjust
+        } else if (exp == 0) {        // Zero/Denormal?
+            o.u += 1 << 23;           // extra exp adjust
+            o.f -= magic.f;           // renormalize
+        }
+
+        o.u |= (val & 0x8000) << 16;  // sign bit
+        return o.f;
+    }
+
+    operator float() const { return ToFloat(); }
+};
+
+inline bool
+operator==(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val == right.val;
+}
+
+inline bool
+operator!=(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val != right.val;
+}
+
+}  // namespace onnxruntime
+
+#endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
 
 //
 // Define the maximum number of threads supported by this implementation.
