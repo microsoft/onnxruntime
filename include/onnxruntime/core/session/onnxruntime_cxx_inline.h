@@ -749,13 +749,15 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
 }
 
 template <typename T>
-inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
   ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
+  return *this;
 }
 
 template <typename T>
-inline void SessionOptionsImpl<T>::RegisterCustomOpsUsingFunction(const ORTCHAR_T* registration_function_name) {
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsUsingFunction(const char* registration_function_name) {
   ThrowOnError(GetApi().RegisterCustomOpsUsingFunction(this->p_, registration_function_name));
+  return *this;
 }
 
 /// Session

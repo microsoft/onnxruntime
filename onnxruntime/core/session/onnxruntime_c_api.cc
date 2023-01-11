@@ -634,14 +634,16 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsUsingFunction, _Inout_ OrtSessionO
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   if (!registration_func_name) {
-    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOps: Registration function name must be specified.");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "RegisterCustomOpsUsingFunction: Registration function name must be specified.");
   }
 
   RegisterCustomOpsFn RegisterCustomOps;
   ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(nullptr, registration_func_name,
                                                                       (void**)&RegisterCustomOps));
   if (!RegisterCustomOps) {
-    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOps: Registration function was not found");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "RegisterCustomOpsUsingFunction: Registration function was not found");
   }
 
   return RegisterCustomOps(options, OrtGetApiBase());

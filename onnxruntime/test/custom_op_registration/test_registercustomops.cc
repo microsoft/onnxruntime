@@ -19,11 +19,13 @@ typedef const char* PATH_TYPE;
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
+static constexpr PATH_TYPE TestModel = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+
 
 // Test OrtApi RegisterCustomOpsUsingFunction.
 // Replicate the expected mobile setup where the binary is linked against onnxruntime and a custom ops library.
 // In the test we use testdata/custom_op_library. In mobile scenarios onnxruntime-extensions would provide custom ops.
-TEST(CustomOpRegistration, TestUsingFuncName) {
+TEST(CustomOpRegistration, TestUsingFuncNameCApi) {
   Ort::SessionOptions session_options;
 
   // need to reference something in the custom ops library to prevent it being thrown away by the linker
@@ -36,8 +38,13 @@ TEST(CustomOpRegistration, TestUsingFuncName) {
   Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsUsingFunction(session_options, "RegisterCustomOpsAltName"));
 
   // load model containing nodes using the custom op/s to validate. will throw if custom op wasn't registered.
-  static constexpr PATH_TYPE model = TSTR("testdata/custom_op_library/custom_op_test.onnx");
-  Ort::Session session(*ort_env, model, session_options);
+  Ort::Session session(*ort_env, TestModel, session_options);
+}
+
+TEST(CustomOpRegistration, TestUsingFuncNameCxxApi) {
+  Ort::SessionOptions session_options;
+  session_options.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
+  Ort::Session session(*ort_env, TestModel, session_options);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

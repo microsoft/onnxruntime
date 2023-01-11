@@ -510,8 +510,8 @@ struct SessionOptionsImpl : Base<T> {
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptionsImpl& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
 
-  void RegisterCustomOpsLibrary(const ORTCHAR_T* library_name);         ///< Wraps OrtApi::RegisterCustomOpsLibrary_V2
-  void RegisterCustomOpsUsingFunction(const ORTCHAR_T* function_name);  ///< Wraps OrtApi::RegisterCustomOpsUsingFunction
+  SessionOptionsImpl& RegisterCustomOpsLibrary(const ORTCHAR_T* library_name);    ///< Wraps OrtApi::RegisterCustomOpsLibrary_V2
+  SessionOptionsImpl& RegisterCustomOpsUsingFunction(const char* function_name);  ///< Wraps OrtApi::RegisterCustomOpsUsingFunction
 };
 }  // namespace detail
 

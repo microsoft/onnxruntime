@@ -3656,22 +3656,33 @@ struct OrtApi {
    *                         on the format of library names and search paths.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
    */
   ORT_API2_STATUS(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* library_name);
 
   /** \brief Register custom ops by calling a RegisterCustomOpsFn function.
    *
-   * Searches for registration_func_name and if found calls it. The library containing the function must either be
-   * linked against or previously loaded by the executable.
-   * If you require ONNX Runtime to load the library, use RegisterCustomOpsLibrary_V2.
+   * Searches for registration_func_name and if found calls it.
+   *
+   * The library containing the function must either be linked against or previously loaded by the executable.
+   *
+   * If you want ONNX Runtime to load the library and manage its lifetime, use RegisterCustomOpsLibrary_V2.
+   *
+   * RegisterCustomOpsUsingFunction can be used in scenarios where it may not be possible for ONNX Runtime to load
+   * the library from a path. e.g. mobile platforms where the library must be linked into the app.
    *
    * The registration function must have the signature of RegisterCustomOpsFn:
    *    OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
    *
-   * \param[in] options OrtSessionOptions to pass to registration function.
+   * See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for details on how the registration
+   * function should be implemented.
+   *
+   * \param[in] options OrtSessionOptions that is passed through as the first argument in the call to the
+   *                    registration function.
    * \param[in] registration_func_name Name of registration function to use.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
    */
   ORT_API2_STATUS(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
                   _In_ const char* registration_func_name);
