@@ -2339,8 +2339,9 @@ void DeviceBasedPartitioner::Initialize() {
           node_names_by_stream_.back().push_back(node_name);
         }
       }
-      for (const std::string& device_type : json_config["devices"]) {
-        device_types_.push_back(static_cast<OrtDevice::DeviceType>(std::atoi(device_type.c_str())));
+      for (const auto& device_type : json_config["devices"]) {
+        const std::string type_str = device_type;
+        device_types_.push_back(static_cast<OrtDevice::DeviceType>(std::atoi(type_str.c_str())));
       }
     } catch (const std::exception& ex) {
       EXIT_ON_ERR(ex.what());
