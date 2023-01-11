@@ -86,9 +86,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterElements,
     16,
+    17,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
+    Scatter<EnabledScatterElementsDataTypes>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements,
+    18,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
@@ -164,6 +175,76 @@ struct Func_Mul<BFloat16> {
   void operator()(BFloat16*, const BFloat16*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
     }
+};
+
+template <class T>
+struct Func_Min {
+  void operator()(T* a, const T* b) const {
+    (*a) = (*a) < (*b) ? (*a) : (*b);
+  }
+};
+
+template <>
+struct Func_Min<bool> {
+  void operator()(bool*, const bool*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: bool data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
+  }
+};
+
+template <>
+struct Func_Min<std::string> {
+  void operator()(std::string*, const std::string*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
+  }
+};
+
+template <>
+struct Func_Min<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
+  }
+};
+
+template <>
+struct Func_Min<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
+  }
+};
+
+template <class T>
+struct Func_Max {
+  void operator()(T* a, const T* b) const {
+    (*a) = (*a) > (*b) ? (*a) : (*b);
+  }
+};
+
+template <>
+struct Func_Max<bool> {
+  void operator()(bool*, const bool*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: bool data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
+  }
+};
+
+template <>
+struct Func_Max<std::string> {
+  void operator()(std::string*, const std::string*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
+  }
+};
+
+template <>
+struct Func_Max<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
+  }
+};
+
+template <>
+struct Func_Max<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
+  }
 };
 
 template <class TIndex>
@@ -317,7 +398,13 @@ struct ScatterDataDispatchTarget {
     else if(reduction == "mul")
       return ScatterData<TData>(
           Func_Mul<TData>(), data_input, indices_data, updates_input, axis, data_output);
-    else // if (reduction == "none")
+    else if (reduction == "min")
+      return ScatterData<TData>(
+          Func_Min<TData>(), data_input, indices_data, updates_input, axis, data_output);
+    else if (reduction == "max")
+      return ScatterData<TData>(
+          Func_Max<TData>(), data_input, indices_data, updates_input, axis, data_output);
+    else  // if (reduction == "none")
       return ScatterData<TData>(
           Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
   }

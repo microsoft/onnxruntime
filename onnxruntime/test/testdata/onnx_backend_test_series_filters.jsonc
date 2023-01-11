@@ -104,8 +104,6 @@
         "^test_identity_opt",
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
-        "^test_scatternd_*",
-        "^test_scatter_elements_with_duplicate_indices",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
@@ -128,7 +126,6 @@
         "^test_edge_pad_cpu",
         "^test_reflect_pad_cpu",
         "^test_resize_*",
-        "^test_scatter_elements_*",
         "^test_softplus_example_expanded_cpu",
         "^test_softplus_expanded_cpu",
         "^test_split_*",
