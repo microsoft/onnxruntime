@@ -1825,8 +1825,10 @@ class PlannerImpl {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          // if the output node is not in the same stream, generate a trigger point
-          if (node_stream_map_[it->Index()] != i) {
+          // assign diverge_stream_from_node when current node and its output nodes are in different streams, 
+          // and current node is not in CPU stream (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
+          if (node_stream_map_[it->Index()] != i &&
+              execution_plan[i]->device_.Type() != OrtDevice::CPU) {
             diverge_stream_from_node[node_index] = num_notifications++;
             break;
           }
