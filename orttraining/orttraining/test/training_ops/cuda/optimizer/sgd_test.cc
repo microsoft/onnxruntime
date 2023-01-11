@@ -129,12 +129,12 @@ void SGDTestLoop(
 
     // Add test outputs as baseline.
     if (update_signal == nullptr || *update_signal) {
-      test.AddOutput<bool>("updated_flag", {}, {true});
+      test.AddOutput<bool>("update_completed", {}, {true});
       test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), weight_tolerance.first, weight_tolerance.second);
 
     } else {
       // No update happens.
-      test.AddOutput<bool>("updated_flag", {}, {false});
+      test.AddOutput<bool>("update_completed", {}, {false});
       test.AddSeqOutput("updated_weights", data.WeightSeq(), weight_tolerance.first, weight_tolerance.second);
     }
 

@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
@@ -164,8 +165,12 @@ void AdamOptimizerImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction.
-  const float alpha_correction = do_bias_correction ? compute_bias_correction_coefficient(alpha, update_count) : 1.f;
-  const float beta_correction = do_bias_correction ? compute_bias_correction_coefficient(beta, update_count) : 1.f;
+  const float alpha_correction = do_bias_correction
+                                     ? contrib::compute_bias_correction_coefficient(alpha, update_count)
+                                     : 1.f;
+  const float beta_correction = do_bias_correction
+                                    ? contrib::compute_bias_correction_coefficient(beta, update_count)
+                                    : 1.f;
 
   // Currently two modes of Adamw are supported:
   // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,

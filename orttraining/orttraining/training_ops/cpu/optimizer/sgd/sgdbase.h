@@ -23,7 +23,7 @@ class SGDOptimizerV2Base {
     std::vector<std::vector<void*>> grouped_tensor_pointers;
 
     // Outputs
-    Tensor* updated_flag;
+    Tensor* update_completed;
     TensorSeq* updated_weights;
   };
 

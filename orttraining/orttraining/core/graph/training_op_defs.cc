@@ -1118,6 +1118,18 @@ void RegisterTrainingOpSchemas() {
           {"float"},
           "Constrain learning rate to float");
 
+  /**
+   * SGDOptimizerV2 operator, taking multiple parameters as inputs (seq<tensor>).
+   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single SGDOptimizerV2.
+   * Implementation-wise, this bring opportunities for achieving better performance.
+   *
+   * SGDOptimizerV2 can accept multiple parameters and other states related to them as inputs (seq<tensor>).
+   * This make multi-tensor-apply applicable to the GPU implementation.
+   * SGDOptimizer takes one single parameter and its other states.
+   *
+   * SGDOptimizerV2 is recommended for new usage, SGDOptimizer is left as it is to support existing ORTTrainer
+   * solutions.
+   */
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizerV2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1125,10 +1137,10 @@ void RegisterTrainingOpSchemas() {
       .Input(1, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
       .Input(2, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
       .Input(3, "update_signal",
-             "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
-             " in mixed precision training. ",
+             "This signal indicates if weight needs to be updated, applicable to gradient infinity check"
+             " in mixed precision training. If not provided or its value is True, weights will be updated.",
              "T_BOOL", OpSchema::Optional)
-      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T_BOOL")
+      .Output(0, "update_completed", "Whether gradient is applied or not.", "T_BOOL")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .TypeConstraint(
           "T1",
