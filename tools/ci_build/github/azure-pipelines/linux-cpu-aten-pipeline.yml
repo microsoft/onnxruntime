@@ -16,6 +16,10 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: Linux-CPU-2019
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: recursive
@@ -108,4 +112,4 @@ jobs:
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/explicitly-defined-final-tasks.yml
