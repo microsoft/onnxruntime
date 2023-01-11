@@ -294,7 +294,7 @@ bool SessionState::IsSparseInitializer(int ort_value_index) const {
 }
 #endif
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 Status SessionState::GetInitializedTensors(
     const std::unordered_set<std::string>& interested_weights,
     bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
