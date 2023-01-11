@@ -67,11 +67,13 @@
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/identical_children_consolidation.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#endif
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -276,7 +278,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));

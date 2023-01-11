@@ -195,7 +195,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
       {"adam", "not a registered function/op", {}},                     // Op not registered.

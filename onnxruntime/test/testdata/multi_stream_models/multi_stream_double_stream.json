@@ -1,0 +1,5 @@
+{
+"type":"DeviceBasedPartitioner",
+"streams":[["conv_0","relu_0","add_0","transpose_0","transpose_1"],["conv_1","relu_1","add_1","transpose_2","transpose_3"]],
+"devices":["0","0"]
+}

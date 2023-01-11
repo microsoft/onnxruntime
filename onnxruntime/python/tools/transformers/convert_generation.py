@@ -1047,9 +1047,9 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
             kwargs.update({"past_present_share_buffer": 1})
             nis = []
             nis.extend(node.input)
-            while len(nis) < 8:
+            while len(nis) < 6:
                 nis.extend([""])
-            if len(nis) < 9:
+            if len(nis) < 7:
                 nis.extend(["past_sequence_length"])
             node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
         new_nodes.extend([node])

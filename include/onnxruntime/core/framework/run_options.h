@@ -32,6 +32,8 @@ struct OrtRunOptions {
   bool synchronize_execution_providers = true;
 
 #ifdef ENABLE_TRAINING
+  // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
+  // Delete training_mode when TrainingSession is deleted.
   // Set to 'true' to run in training mode.
   bool training_mode = true;
 #endif
