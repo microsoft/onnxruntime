@@ -146,8 +146,8 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kCloudExecutionProvider,
-#ifdef USE_CLOUD
+            kAzureExecutionProvider,
+#ifdef USE_AZURE
             true,
 #else
             false,

@@ -80,8 +80,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
     package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
-elif parse_arg_remove_boolean(sys.argv, "--use_cloud"):
-    package_name = "onnxruntime-cloud"
+elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
+    package_name = "onnxruntime-azure"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -174,7 +174,7 @@ try:
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
 
-        def _rewrite_ld_preload_cloud(self):
+        def _rewrite_ld_preload_azure(self):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 f.write("import os\n")
                 f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
@@ -186,7 +186,7 @@ try:
                 f.write("    try:\n")
                 f.write("        LoadLib(lib_name)\n")
                 f.write("    except OSError:\n")
-                f.write('        print("Could not load ort cloud-ep dependency: " + lib_name)\n')
+                f.write('        print("Could not load ort azure-ep dependency: " + lib_name)\n')
                 f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "1"\n')
 
         def run(self):
@@ -313,8 +313,8 @@ try:
                 self._rewrite_ld_preload(to_preload_cann)
 
             else:
-                if "onnxruntime-cloud" == package_name:
-                    self._rewrite_ld_preload_cloud()
+                if "onnxruntime-azure" == package_name:
+                    self._rewrite_ld_preload_azure()
 
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
