@@ -146,8 +146,11 @@ a.link:active .link-arrow{
 .get-started-section h2{
     font-size:34px;
 }
-.carousel, .tab-wrapper{
+.tab-wrapper{
     margin: 3rem auto;
+    padding: 0 70px;
+}
+.carousel{
     padding: 0 70px;
 }
 .carousel .item,
@@ -175,13 +178,15 @@ a.link:active .link-arrow{
     font-weight: normal;
 }
 
-.carousel-control-prev {
+.carousel .carousel-control-prev {
     width: 5%; 
     justify-content: left;
+    bottom: -40px;
 }
-.carousel-control-next {
+.carousel .carousel-control-next {
     width: 5%; 
     justify-content: right;
+    bottom: -40px;
 }
 .carousel-control-prev-icon {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='%23000' viewBox='0 0 8 8'%3e%3cpath d='M5.25 0l-4 4 4 4 1.5-1.5-2.5-2.5 2.5-2.5-1.5-1.5z'/%3e%3c/svg%3e")
