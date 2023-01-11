@@ -300,38 +300,41 @@
         "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
         "^test_maxpool_with_argmax_2d_precomputed_pads" //Disabled as it throws segfault
     ],
-    "current_failing_tests_OPENVINO_CPU_FP32": [
-        "^test_operator_permute2",
-        "^test_operator_repeat",
-        "^test_operator_repeat_dim_overflow",
-        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_max_float64.*",
-        "^test_min_float64.*",
-        "^test_gather_negative_indices.*",
-        "^test_sce.*",
-        "^test_nllloss.*",
-        "^test_upsample_nearest.*",
-        "^test_reduce_sum_do_not_keepdims*", // Does not support axes as input
-        "^test_reduce_sum_default_axes_keepdims*",
-        "^test_reduce_sum_empty_axes_input_noop*",
-        "^test_scatter_elements_with_negative_indices_cpu",
-        "^test_squeeze_*", // Does not support axes as input
-        "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_loop11",
-        "^test_loop13_seq",
-        "^test_if",
-        "^test_if_seq",
-        "^test_sequence_insert_at_back",
-        "^test_sequence_insert_at_front",
-        "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
-        "^test_maxpool_with_argmax_2d_precomputed_pads", //Disabled as it throws segfault
-        "^test_resize_downsample_scales_cubic", // Runs but there's accuracy mismatch
-        "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
-        "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
-        "^test_training_dropout_mask", // Runs but there's accuracy mismatch
-        "^test_training_dropout_default" // Runs but there's accuracy mismatch
-    ],
+  "current_failing_tests_OPENVINO_CPU_FP32": [
+    "^test_operator_permute2",
+    "^test_operator_repeat",
+    "^test_operator_repeat_dim_overflow",
+    "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+    "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+    "^test_max_float64.*",
+    "^test_min_float64.*",
+    "^test_gather_negative_indices.*",
+    "^test_sce.*",
+    "^test_nllloss.*",
+    "^test_upsample_nearest.*",
+    "^test_reduce_sum_do_not_keepdims*", // Does not support axes as input
+    "^test_reduce_sum_default_axes_keepdims*",
+    "^test_reduce_sum_empty_axes_input_noop*",
+    "^test_scatter_elements_with_negative_indices_cpu",
+    "^test_squeeze_*", // Does not support axes as input
+    "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
+    "^test_loop11",
+    "^test_loop13_seq",
+    "^test_if",
+    "^test_if_seq",
+    "^test_sequence_insert_at_back",
+    "^test_sequence_insert_at_front",
+    "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
+    "^test_maxpool_with_argmax_2d_precomputed_pads", //Disabled as it throws segfault
+    "^test_resize_downsample_scales_cubic", // Runs but there's accuracy mismatch
+    "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
+    "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
+    "^test_training_dropout_mask", // Runs but there's accuracy mismatch
+    "^test_training_dropout_default", // Runs but there's accuracy mismatch
+    "^test_scatter_elements_with_duplicate_indices_cpu", // need update with opset 18
+    "^test_scatternd_add_cpu", // need update with opset 18
+    "^test_scatternd_multiply_cpu" // need update with opset 18
+  ],
     "current_failing_tests_MIGRAPHX": [
         "^test_constant_pad_cpu",
         "^test_round_cpu",
