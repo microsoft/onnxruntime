@@ -3654,7 +3654,7 @@ TEST(AttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
   }
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
 TEST(AttentionTest, SharedPrepackedWeights) {
   int batch_size = 2;
   int sequence_length = 2;
