@@ -689,6 +689,9 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
 
 namespace cann {
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
@@ -697,8 +700,10 @@ std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const loggin
 }  // namespace cann
 #endif
 
+#if defined(USE_TENSORRT)
 void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
   return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
+#endif  // defined(USE_TENSORRT)
 
 }  // namespace onnxruntime
