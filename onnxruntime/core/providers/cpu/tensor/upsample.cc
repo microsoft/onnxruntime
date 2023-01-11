@@ -1071,9 +1071,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& scales,
                                 const gsl::span<const int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
   auto dims = X->Shape().GetDims();
-  ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
+  ORT_RETURN_IF_NOT(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);
 
@@ -1151,7 +1150,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
             height_scale = scales[2];
             width_scale = scales[3];
           } else {
-            ORT_ENFORCE(scales[3] == 1.0f, "4-D input with innermost scale (usually channel of NHWC) as 1.");
+            ORT_RETURN_IF_NOT(scales[3] == 1.0f, "4-D input with innermost scale (usually channel of NHWC) as 1.");
             is_nchw = false;
 
             batch_size = static_cast<int32_t>(dims[0]);
@@ -1320,7 +1319,6 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 template <typename T>
 Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
 
   auto input_dims = X->Shape().GetDims();
   TensorShapeVector output_dims(input_dims.size());
@@ -1334,7 +1332,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   if (!roi_cached_) {
     bool use_default_roi = true;
     if (need_roi_input_) {
-      ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
+      ORT_RETURN_IF_NOT(roi_input_idx_ > 0, "Invalid roi input index.");
       const auto* roi = context->Input<Tensor>(roi_input_idx_);
       if (roi != nullptr) {
         ParseRoiData(roi, roi_array);
@@ -1370,7 +1368,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   // Get scales data
 
   if (scales_cached_) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+    ORT_RETURN_IF_NOT(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     scales_array = scales_;
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, input_dims, output_dims);
@@ -1378,17 +1376,17 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   }
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array, input_dims.size());
+    ORT_RETURN_IF_NOT(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+    ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, input_dims.size()));
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
+    ORT_RETURN_IF_NOT(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
-    ParseSizesData(sizes, output_dims, input_dims);
+    ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_dims, input_dims));
 
-    ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array);
+    ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array));
   }
 
   return BaseCompute(context, roi_array, scales_array, output_dims);

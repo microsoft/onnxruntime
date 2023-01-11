@@ -169,14 +169,14 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array, input_dims.size());
+    ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, input_dims.size()));
     ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
     // When sizes input is available directly populate it into the output_dims array.
     ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
                 "Either scales or sizes MUST be provided as input.");
-    ParseSizesData(sizes, output_dims, input_dims);
-    ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array);
+    ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_dims, input_dims));
+    ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array));
   }
 
   return BaseCompute(context, roi, scales_array, output_dims);

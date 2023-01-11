@@ -202,8 +202,8 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     output_dims_.resize(input_dims);
     if (sizes && sizes->Shape().Size() == 4) {
       scales_.resize(input_shape.NumDimensions());
-      ParseSizesData(sizes, output_dims_, input_shape.GetDims());
-      ParseScalesDataAndAdjustOutputSize(output_dims_, input_shape.GetDims(), scales_);
+      ORT_THROW_IF_ERROR(ParseSizesData(sizes, output_dims_, input_shape.GetDims()));
+      ORT_THROW_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims_, input_shape.GetDims(), scales_));
       scales_cached_ = true;
     } else {
       ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);
@@ -301,14 +301,14 @@ Status Resize::Compute(OpKernelContext* ctx) const {
     std::vector<float> scales_array(X->Shape().GetDims().size());
 
     if (scales != nullptr && scales->Shape().Size() != 0) {
-      ParseScalesData(scales, scales_array, output_shape.size());
+      ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, output_shape.size()));
       // Compute output shape from scales and input dims
       ComputeOutputShape(scales_array, X->Shape().GetDims(), output_shape);
     } else {
       const Tensor* sizes = ctx->Input<Tensor>(sizes_input_idx_);
       // When sizes input is available directly populate it into the output_dims array.
-      ParseSizesData(sizes, output_shape, X->Shape().GetDims());
-      ParseScalesDataAndAdjustOutputSize(output_shape, X->Shape().GetDims(), scales_array);
+      ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_shape, X->Shape().GetDims()));
+      ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_shape, X->Shape().GetDims(), scales_array));
     }
   }
   output_shape[0] = X->Shape()[0];

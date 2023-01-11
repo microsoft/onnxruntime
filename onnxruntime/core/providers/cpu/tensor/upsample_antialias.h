@@ -32,30 +32,30 @@ struct FilterParamsAntiAlias {
   float support_size = 2.0f;
   float cubic_coeff_a = -0.75f;
 
-  /* Handles values form -640 to 639. */
-  uint8_t* clip8_lookups_table{nullptr};
-
   FilterParamsBaseAntiAlias<T> dim_x;
   FilterParamsBaseAntiAlias<T> dim_y;
   FilterParamsBaseAntiAlias<T> dim_z;
 
-  void init_clip_lookup() {
+  uint8_t* GetClip8LookupTable() const {
     // if we have already initialized the lookup table, just return
     // ideally we could have a global lookup table, but that account for too much space.
-    if (clip8_lookups_table[1279] == 255) {
-      return;
+    /* Handles values form -640 to 639. */
+    static uint8_t table[1280] = {0};
+    if (table[1279] == 255) {
+      return table;
     }
 
     // taken from https://github.com/python-pillow/Pillow/blob/66add095a50d76c35c7f58643461f2edf78a3f05/src/libImaging/Resample.c#L94
     //  we need to handle negative values
     //  it's equivalent to :x = np.clip(x, 0, 255) where x \in [-640, 639]
-    // we will accept a negative x for (&clip8_lookups_table[640])[x] means clip8_lookups_table +640 -x
+    // we will accept a negative x for (&table[640])[x] means table +640 -x
     for (int i = 0; i < 1280; ++i) {
-      clip8_lookups_table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
+      table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
     }
+    return table;
   }
   virtual ~FilterParamsAntiAlias() = default;
-  virtual float filter(float x) const = 0;
+  virtual float Filter(float x) const = 0;
 };
 
 template <typename T>
@@ -63,7 +63,7 @@ struct BilinearParamsAntiAlias : FilterParamsAntiAlias<T> {
   // taken from
   // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
   // src/libImaging/Resample.c#L20-L29
-  float filter(float x) const override {
+  float Filter(float x) const override {
     if (x < 0.0f) {
       x = -x;
     }
@@ -83,7 +83,7 @@ struct BiCubicParamsAntiAlias : FilterParamsAntiAlias<T> {
   // taken from
   // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
   // src/libImaging/Resample.c
-  float filter(float x) const override {
+  float Filter(float x) const override {
     /* https://en.wikipedia.org/wiki/Bicubic_interpolation#Bicubic_convolution_algorithm
      */
     if (x < 0.0f) {
@@ -101,7 +101,7 @@ struct BiCubicParamsAntiAlias : FilterParamsAntiAlias<T> {
 
 template <typename T>
 struct TriLinearParamsAntiAlias : FilterParamsAntiAlias<T> {
-  float filter(float x) const override {
+  float Filter(float x) const override {
     if (x < 0.0f) {
       x = -x;
     }
@@ -203,7 +203,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       int64_t x = 0;
       xmax -= xmin;
       for (; x < xmax; x++) {
-        float w = p.filter((x + xmin - center + 0.5f) * inv_scale);
+        float w = p.Filter((x + xmin - center + 0.5f) * inv_scale);
         scale_buffer[x] = w;
         total_weight += w;
       }
@@ -247,11 +247,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
   const size_t height_rindex = is_nchw ? 1 : 2;
   const size_t channel_rindex = is_nchw ? 2 : 2;  // only works for trilinear NC(chw)
 
-  /* Handles values form -640 to 639. */
-  static uint8_t clip8_lookups_table[1280];
-  p.clip8_lookups_table = clip8_lookups_table;
-
-  p.init_clip_lookup();
   p.dim_x.window_size = compute_weight_coefficients(p, input_h_w_c[1], output_h_w_c[1], width_rindex,
                                                     p.dim_x, scale_h_w_c[1]);
   p.dim_y.window_size = compute_weight_coefficients(p, input_h_w_c[0], output_h_w_c[0], height_rindex,
@@ -289,7 +284,7 @@ void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, in
                                   const FilterParamsAntiAlias<AccumulateType>& p,
                                   const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
                                   concurrency::ThreadPool* tp) {
-  const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
+  const uint8_t* clip8_lookups = &p.GetClip8LookupTable()[640];
 
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, narrow<std::ptrdiff_t>(num_channels),
@@ -356,7 +351,7 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
                                   const FilterParamsAntiAlias<AccumulateType>& p,
                                   const FilterParamsBaseAntiAlias<AccumulateType>& p_dim,
                                   concurrency::ThreadPool* tp) {
-  const uint8_t* clip8_lookups = &p.clip8_lookups_table[640];
+  const uint8_t* clip8_lookups = &p.GetClip8LookupTable()[640];
   // This condition is set for higher performance.
   // Observed that TrySimpleParallelFor in dim num_channels is always have higher efficiency, so I would rather
   // choose the first path as long as num_channels is 3 or bigger.
