@@ -2278,8 +2278,11 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     if args.model_type == "gpt2" and is_greedy:
         if args.top_p > 0.0 and args.top_p < 1.0:
             convert_generation_model(args, GenerationType.SAMPLING)
-            logger.info("The test for gpt2_sampling onnx model is not implemented yet")
-            return
+            logger.info(
+                "The test for gpt2_sampling onnx model is limited to small top_p(<=0.01) value. The result should be the same as gpt2 greedy search."
+            )
+            if args.top_p > 0.01:
+                return
         convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)
