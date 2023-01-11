@@ -17,7 +17,7 @@ def run(
     capture_stderr=False,
     shell=False,
     env=None,
-    check=True,
+    check=False,
     quiet=False,
 ):
     """Runs a subprocess.
