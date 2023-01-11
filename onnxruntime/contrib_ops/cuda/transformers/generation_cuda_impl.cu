@@ -498,20 +498,14 @@ __global__ void FilterLogitsKernelCustom(float* d_sorted_logits_in,
   __shared__ typename BlockScan::TempStorage temp_storage;
   BlockPrefixCallbackOp prefix_op(0);
 
-  int end = ((vocab_size + kBlockSize - 1) / kBlockSize) * kBlockSize;
-  float prop_thread_cum = 0.f;
-  for (int idx = vocab_idx; idx < end; idx += kBlockSize) {
-    float prop_thread = (idx < vocab_size) ? d_sorted_logits_in[offset + idx] : 0.f;
-    BlockScan(temp_storage).InclusiveSum(prop_thread, prop_thread_cum, prefix_op);
+  for (int idx = vocab_idx; idx < vocab_size; idx += kBlockSize) {
+    float sum = d_sorted_logits_in[offset + idx];
+    BlockScan(temp_storage).ExclusiveSum(sum, sum, prefix_op);
 
     __syncthreads();
-    if (prop_thread_cum > top_p_threshold && idx < vocab_size) {
-      // Shift the indices to the right by one according to the custom implementation.
-      int shifted_index = offset + idx + 1;
-      if (shifted_index % vocab_size != 0) {
-        int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
-        d_logits_in_out[original_index] = (T)filter_value;
-      }
+    if (sum >= top_p_threshold) {
+      int original_index = offset + d_sorted_indices[offset + idx];
+      d_logits_in_out[original_index] = (T)filter_value;
     }
   }
 }
@@ -533,18 +527,15 @@ __global__ void FilterLogitsKernel(float* d_sorted_logits_in,
   __shared__ typename BlockScan::TempStorage temp_storage;
   BlockPrefixCallbackOp prefix_op(0);
 
-  int end = ((vocab_size + kBlockSize - 1) / kBlockSize) * kBlockSize;
-  float prop_thread_cum = 0.f;
-  for (int idx = vocab_idx; idx < end; idx += kBlockSize) {
-    float prop_thread = (idx < vocab_size) ? d_sorted_logits_in[offset + idx] : 0.f;
-    BlockScan(temp_storage).InclusiveSum(prop_thread, prop_thread_cum, prefix_op);
+  for (int idx = vocab_idx; idx < vocab_size; idx += kBlockSize) {
+    float sum = d_sorted_logits_in[offset + idx];
+    BlockScan(temp_storage).InclusiveSum(sum, sum, prefix_op);
 
     __syncthreads();
-    if (prop_thread_cum <= top_p_threshold && idx < vocab_size) {
-      // Shift the indices to the right by one according to the custom implementation.
-      int shifted_index = offset + idx + 1;
-      if (shifted_index % vocab_size != 0) {
-        int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
+
+    if (sum <= top_p_threshold) {
+      if (idx + min_tokens_to_keep < vocab_size) {
+        int original_index = offset + d_sorted_indices[offset + idx];
         d_logits_in_out[original_index] = (T)filter_value;
       }
     }
@@ -737,7 +728,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
 
   int numSM = props.multiProcessorCount;
   int maxThreads = props.maxThreadsPerBlock;
-  int warp_size = 32;  //at::cuda::warp_size();
+  int warp_size = 32;  // at::cuda::warp_size();
   int requiredWarps = (vocab_size + warp_size - 1) / warp_size;
   int requiredThreads = std::min(maxThreads, requiredWarps * warp_size);
   int requiredShared = requiredThreads * sizeof(float);
