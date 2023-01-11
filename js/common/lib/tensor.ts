@@ -320,7 +320,7 @@ export interface TensorFactory {
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(imageEle: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(imageData: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
@@ -330,7 +330,7 @@ export interface TensorFactory {
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(imageEle: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(imageElement: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
@@ -340,7 +340,7 @@ export interface TensorFactory {
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(imageEle: string, options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(url: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
@@ -350,7 +350,7 @@ export interface TensorFactory {
    * Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(imageEle: ImageBitmap, options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(bitMap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

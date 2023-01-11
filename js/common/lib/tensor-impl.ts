@@ -249,18 +249,18 @@ export class Tensor implements TensorInterface {
   }
 
   // #region factory
-  static async fromImage(imageEle: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(imageEle: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(imageEle: ImageBitmap, options?: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(imageEle: string, options?: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(imageData: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(bitMap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(url: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
-  static async fromImage(imageEle: ImageData|HTMLImageElement|ImageBitmap|string, options?: TensorFromImageOptions):
+  static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, options?: TensorFromImageOptions):
       Promise<Tensor> {
     // checking the type of image object
-    const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && imageEle instanceof HTMLImageElement;
-    const isImageDataEle = typeof (ImageData) !== 'undefined' && imageEle instanceof ImageData;
-    const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && imageEle instanceof ImageBitmap;
-    const isURL = typeof (String) !== 'undefined' && (imageEle instanceof String || typeof imageEle === 'string');
+    const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
+    const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
+    const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
+    const isURL = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
 
     let data: Uint8ClampedArray|undefined;
     let tensorConfig: TensorFromImageOptions = {};
@@ -272,8 +272,8 @@ export class Tensor implements TensorInterface {
       const pixels2DContext = canvas.getContext('2d');
 
       if (pixels2DContext != null) {
-        let height = imageEle.naturalHeight;
-        let width = imageEle.naturalWidth;
+        let height = image.naturalHeight;
+        let width = image.naturalWidth;
 
         if (options !== undefined && options.tensorHeight !== undefined && options.tensorWidth !== undefined) {
           height = options.tensorHeight;
@@ -306,7 +306,7 @@ export class Tensor implements TensorInterface {
         canvas.width = width;
         canvas.height = height;
 
-        pixels2DContext.drawImage(imageEle, 0, 0, width, height);
+        pixels2DContext.drawImage(image, 0, 0, width, height);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
         throw new Error('Can not access image data');
@@ -322,8 +322,8 @@ export class Tensor implements TensorInterface {
         height = options.tensorHeight;
         width = options.tensorWidth;
       } else {
-        height = imageEle.height;
-        width = imageEle.width;
+        height = image.height;
+        width = image.width;
       }
 
       if (options !== undefined) {
@@ -349,13 +349,13 @@ export class Tensor implements TensorInterface {
         const pixels2DContext = tempCanvas.getContext('2d');
 
         if (pixels2DContext != null) {
-          pixels2DContext.putImageData(imageEle, 0, 0);
+          pixels2DContext.putImageData(image, 0, 0);
           data = pixels2DContext.getImageData(0, 0, width, height).data;
         } else {
           throw new Error('Can not access image data');
         }
       } else {
-        data = imageEle.data;
+        data = image.data;
       }
 
     } else if (isImageBitmap) {
@@ -370,9 +370,9 @@ export class Tensor implements TensorInterface {
       const pixels2DContext = document.createElement('canvas').getContext('2d');
 
       if (pixels2DContext != null) {
-        const height = imageEle.height;
-        const width = imageEle.width;
-        pixels2DContext.drawImage(imageEle, 0, 0, width, height);
+        const height = image.height;
+        const width = image.width;
+        pixels2DContext.drawImage(image, 0, 0, width, height);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
         if (options !== undefined) {
           // using square brackets to avoid TS error - type 'never'
@@ -400,12 +400,12 @@ export class Tensor implements TensorInterface {
       return new Promise((resolve, reject) => {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
-        if (!imageEle || !context) {
+        if (!image || !context) {
           return reject();
         }
         const newImage = new Image();
         newImage.crossOrigin = 'Anonymous';
-        newImage.src = imageEle as string;
+        newImage.src = image as string;
         newImage.onload = () => {
           canvas.width = newImage.width;
           canvas.height = newImage.height;
