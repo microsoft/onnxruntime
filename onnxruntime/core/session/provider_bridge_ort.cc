@@ -1029,7 +1029,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
+  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) override {
     MurmurHash3::x86_128(key, len, seed, out);
   }
 
