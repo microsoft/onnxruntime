@@ -541,10 +541,10 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       pads.resize(2 * data_rank, 0);
       if (axes_tensor->IsDataType<int32_t>()) {
         const int32_t* axes_tensor_raw_data = axes_tensor->Data<int32_t>();
-        ComputePadWithAxes(pads_tensor_raw_data, axes_tensor_raw_data, axes_size, data_rank, pads);
+        ComputePadWithAxes(pads_tensor_raw_data, axes_tensor_raw_data, (size_t)axes_size, data_rank, pads);
       } else if(axes_tensor->IsDataType<int64_t>()) {
         const int64_t* axes_tensor_raw_data = axes_tensor->Data<int64_t>();
-        ComputePadWithAxes(pads_tensor_raw_data, axes_tensor_raw_data, axes_size, data_rank, pads);
+        ComputePadWithAxes(pads_tensor_raw_data, axes_tensor_raw_data, (size_t)axes_size, data_rank, pads);
       }
     } else {
       ORT_ENFORCE(pads_size == 2 * data_rank,
