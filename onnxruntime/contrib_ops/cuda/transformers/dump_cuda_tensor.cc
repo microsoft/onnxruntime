@@ -145,6 +145,11 @@ void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, i
     DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, true);
 }
 
+void CudaTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
+  if (is_enabled_)
+    DumpGpuTensor<size_t>(name, tensor, dim0, dim1, true);
+}
+
 void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
     DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, true);
@@ -210,6 +215,9 @@ void CudaTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
