@@ -907,6 +907,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
            [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
              return model->GetParametersSize(trainable_only);
            })
+      .def("get_parameters",
+           [](onnxruntime::training::api::Module* model) {
+             return model->Parameters();
+           })
       .def("save_checkpoint",
            [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
              onnxruntime::training::api::CheckpointState state;
@@ -952,6 +956,18 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("get_learning_rate", [](PyOptimizer* optimizer) -> float {
         return optimizer->optimizer_->GetLearningRate();
+      });
+
+  py::class_<onnxruntime::training::api::Parameter> parameter(m, "Parameter", R"pbdoc(Parameter.)pbdoc");
+  parameter
+      .def("get_data", [](onnxruntime::training::api::Parameter* parameter) -> OrtValue {
+        return parameter->Data();
+      })
+      .def("get_gradient", [](onnxruntime::training::api::Parameter* parameter) -> OrtValue {
+        return parameter->Gradient();
+      })
+      .def("get_name", [](onnxruntime::training::api::Parameter* parameter) -> std::string {
+        return parameter->Name();
       });
   py::class_<onnxruntime::training::api::LinearLRScheduler>
       lr_scheduler(m, "LinearLRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");

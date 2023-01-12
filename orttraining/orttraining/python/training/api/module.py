@@ -125,6 +125,9 @@ class Module:
         """
         self._model.copy_buffer_to_parameters(buffer)
 
+    def get_parameters(self):
+        return self._model.get_parameters()
+
     def export_model_for_inferencing(self, inference_model_uri: str, graph_output_names: list[str]) -> None:
         """
         Exports the model for inferencing.

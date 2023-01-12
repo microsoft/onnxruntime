@@ -311,3 +311,24 @@ def test_cuda_execution_provider():
 
         # Check if parameters are moved to cuda.
         assert params.device_name() == "Cuda"
+
+
+def test_get_parameters():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
+
+    # Generating random data for testing.
+    inputs = torch.randn(64, 784).numpy()
+    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
+    forward_inputs = [inputs, labels]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
+        )
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, state)
+        params = model.get_parameters()
