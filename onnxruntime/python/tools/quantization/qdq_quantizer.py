@@ -305,13 +305,15 @@ class QDQQuantizer(ONNXQuantizer):
                 postfix = f"_{i + 1}"
                 tensor_name_quant_output_postfix = add_quant_output_suffix(tensor_name) + postfix
                 tensor_name_dequant_output_postfix = add_dequant_output_suffix(tensor_name) + postfix
+                quant_node_name_postfix = add_quant_suffix(tensor_name) + postfix
+                dequant_node_name_postfix = add_dequant_suffix(tensor_name) + postfix
                 self._create_qdq_nodes(
                     tensor_name,
                     tensor_name_quant_output_postfix,
-                    add_quant_suffix(tensor_name),
+                    quant_node_name_postfix,
                     tensor_name_quant_output_postfix,
                     tensor_name_dequant_output_postfix,
-                    add_dequant_suffix(tensor_name),
+                    dequant_node_name_postfix,
                     scale_name,
                     zp_name,
                 )
