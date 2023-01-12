@@ -10,9 +10,10 @@ template <typename T>
 void filter_scores(std::vector<size_t>& sorted_indice,
                    gsl::span<T>& next_token_score,
                    const transformers::IGenerationParameters* parameters,
-                   size_t index) {
-  size_t real_index = sorted_indice[index];
-  next_token_score[real_index] = (T)parameters->filter_value;
+                   size_t chunk_offset,
+                   size_t offset) {
+  size_t real_index = sorted_indice[chunk_offset + offset];
+  next_token_score[chunk_offset + real_index] = (T)parameters->filter_value;
 }
 
 template <typename T>
@@ -23,12 +24,12 @@ void cumulate_and_filter_custom(gsl::span<T>& next_token_scores,
   for (size_t i = 0; i < static_cast<size_t>(parameters->batch_size); i++) {
     size_t offset = i * parameters->vocab_size;
     if (cumulative_probs[offset] > parameters->top_p) {
-      filter_scores(sorted_indices, next_token_scores, parameters, 1 + offset);
+      filter_scores(sorted_indices, next_token_scores, parameters, offset, 1);
     }
     for (size_t j = 1; j < static_cast<size_t>(parameters->vocab_size) - 1; j++) {
       cumulative_probs[j + offset] += cumulative_probs[j + offset - 1];
       if (cumulative_probs[j + offset] > parameters->top_p) {
-        filter_scores(sorted_indices, next_token_scores, parameters, j + offset + 1);
+        filter_scores(sorted_indices, next_token_scores, parameters, offset, j + 1);
       }
     }
   }
@@ -42,12 +43,12 @@ void cumulate_and_filter(gsl::span<T>& next_token_scores,
   for (size_t i = 0; i < static_cast<size_t>(parameters->batch_size); i++) {
     size_t offset = i * parameters->vocab_size;
     if (cumulative_probs[offset] <= 1 - parameters->top_p) {
-      filter_scores(sorted_indices, next_token_scores, parameters, offset);
+      filter_scores(sorted_indices, next_token_scores, parameters, offset, 0);
     }
     for (size_t j = 1; j < static_cast<size_t>(parameters->vocab_size) - static_cast<size_t>(parameters->min_tokens_to_keep); j++) {
       cumulative_probs[j + offset] += cumulative_probs[j + offset - 1];
       if (cumulative_probs[j + offset] <= 1 - parameters->top_p) {
-        filter_scores(sorted_indices, next_token_scores, parameters, j + offset);
+        filter_scores(sorted_indices, next_token_scores, parameters, offset, j);
       }
     }
   }
@@ -78,16 +79,22 @@ Status Sample(AllocatorPtr& allocator,
   for (size_t i = 0; i < static_cast<size_t>(parameters->batch_size); i++) {
     auto indices_begin = sorted_indices.begin() + i * parameters->vocab_size;
     auto indices_end = sorted_indices.begin() + (i + 1) * parameters->vocab_size;
+    gsl::span<T> next_token_score = next_token_scores.subspan(i * parameters->vocab_size, parameters->vocab_size);
     std::iota(indices_begin, indices_end, 0);
     std::sort(indices_begin, indices_end,
-              [&next_token_scores, &predicator](size_t i1, size_t i2) {
-                return !predicator(next_token_scores[i1], next_token_scores[i2]);
+              [&next_token_score, &predicator](size_t i1, size_t i2) {
+                return predicator(next_token_score[i1], next_token_score[i2]);
               });
 
     std::sort(sorted_scores.begin() + i * parameters->vocab_size,
               sorted_scores.begin() + (i + 1) * parameters->vocab_size,
               predicator);
   }
+
+#ifdef DEBUG_GENERATION
+  dumper->Print("sorted_scores", sorted_scores.data(), parameters->batch_size, parameters->vocab_size);
+  dumper->Print("sorted_indices", sorted_indices.data(), parameters->batch_size, parameters->vocab_size);
+#endif
 
   gsl::span<T>& cumulative_probs = sampling_state->cumulative_probs;
 
@@ -104,6 +111,11 @@ Status Sample(AllocatorPtr& allocator,
     cumulate_and_filter(next_token_scores, cumulative_probs, parameters, sorted_indices);
   }
 
+#ifdef DEBUG_GENERATION
+  dumper->Print("cumulative_probs after filtering", cumulative_probs.data(), parameters->batch_size, parameters->vocab_size);
+  dumper->Print("next_token_scores after filtering", next_token_scores.data(), parameters->batch_size, parameters->vocab_size);
+#endif
+
   gsl::span<T>& next_token_probs = sampling_state->h_softmaxed_score;
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters->batch_size,
                                     parameters->vocab_size,
@@ -111,6 +123,10 @@ Status Sample(AllocatorPtr& allocator,
                                     next_token_probs.data(),
                                     false,
                                     thread_pool));
+
+#ifdef DEBUG_GENERATION
+  dumper->Print("next_token_probs", next_token_probs.data(), parameters->batch_size, parameters->vocab_size);
+#endif
 
   // torch.multinomial()
   int64_t next_token_probs_dims[] = {static_cast<int64_t>(parameters->batch_size), parameters->vocab_size};
