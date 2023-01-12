@@ -18,6 +18,7 @@ class ConcatBase_InlinedTensorsVector;
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 class contrib__AdamWOptimizerBase__Prepare;
+class contrib__SGDOptimizerV2Base__Prepare;
 
 struct ProviderHostCPU {
   // From cpu/tensor/gatherbase.h
@@ -191,8 +192,8 @@ struct ProviderHostCPU {
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   // From cpu/optimizer/adamwbase.h
   virtual Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx, contrib__AdamWOptimizerBase__Prepare& prepare) = 0;
-  virtual Status contrib__AdamWOptimizerBase__GenerateOutputs(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx, size_t number_of_values,
-                                                              const TensorSeq* values, TensorSeq* updated_values) = 0;
+  // From cpu/optimizer/sgdbase.h
+  virtual Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx, contrib__SGDOptimizerV2Base__Prepare& prepare) = 0;
 #endif
 
 #ifdef ENABLE_TRAINING
