@@ -33,19 +33,12 @@ MlasHalfGemmBatch(
     )
 {
     const MLAS_HALF_GEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();
-    MLAS_HALF_GEMM_OPERATION* operation;
-    if (DataParams->ldb == 0) {
-        // B is packed
-        operation = dispatch->PackedOperation;
-    }
-    else {
-        operation = dispatch->Operation;
-    }
+    MLAS_HALF_GEMM_OPERATION* operation = dispatch->Operation;
 
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             auto Data = &DataParams[gemm_i];
-            operation(K, Data, 0, M, 0, N);
+            operation(N, K, Data, 0, M, 0, N);
         }
         return;
     }
@@ -103,25 +96,32 @@ MlasHalfGemmBatch(
         const size_t RangeStartN = ThreadIdN * StrideN;
         const size_t RangeCountN = std::min(N - RangeStartN, (size_t)StrideN);
 
-        operation(K, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+        operation(N, K, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
     });
 }
-
 
 
 size_t
 MLASCALL
 MlasHalfGemmPackBSize(
     size_t N,
-    size_t K
+    size_t K,
+    bool float2half
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-
-    return 0;
+    const auto* dispatch = MlasHalfGemmGetDispatch();
+    const auto PackedK = dispatch->PackededK;
+    if (!float2half && dispatch->CopyPackBRoutine == nullptr) {
+        // No packing routine provided
+        return 0;
+    }
+    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
+    const size_t BytesRequired = N * AlignedK * sizeof(MLAS_FP16);
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    const size_t AlignedBytesRequired =
+        (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
+    return AlignedBytesRequired;
 }
-
 
 void
 MLASCALL
@@ -133,13 +133,22 @@ MlasHalfGemmPackB(
     void* PackedB
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(PackedB);
+    const auto* dispatch = MlasHalfGemmGetDispatch();
+    dispatch->CopyPackBRoutine((MLAS_FP16*)PackedB, B, ldb, N, K);
+}
 
-    throw std::exception("HalfGemmPacking should not be called, when MlasHalfGemmPackBSize returns 0!");
+void
+MLASCALL
+MlasHalfGemmConvertPackB(
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    )
+{
+    const auto* dispatch = MlasHalfGemmGetDispatch();
+    dispatch->ConvertPackBRoutine((MLAS_FP16*)PackedB, B, ldb, N, K);
 }
 
 
@@ -154,7 +163,6 @@ struct MLAS_HALF_GEMM_KERNEL_DEFAULT {
     static constexpr size_t PackedK = 1;
 
     static constexpr MLAS_HALF_GEMM_STRIDES Strides{128, 128, 128};
-    static constexpr MLAS_HALF_GEMM_STRIDES PackedStrides{0, 0, 0};
 };
 
 template<>
@@ -173,41 +181,101 @@ MlasHalfGemmCopyPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
     MLAS_UNREFERENCED_PARAMETER(ldb);
     MLAS_UNREFERENCED_PARAMETER(CountN);
     MLAS_UNREFERENCED_PARAMETER(CountK);
+    // No packing for fp16 B. leave it alone
 }
 
 template<>
 MLAS_FORCEINLINE
 void
+MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
+    MLAS_FP16* D,
+    const float* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK
+)
+{
+    for (size_t m = 0; m < CountM; m++) {
+        for (size_t k = 0; k < CountK; k++) {
+            new (D) MLAS_FP16(*(A + m * lda + k));
+            D++;
+        }
+    }
+}
+
+template<>
+MLAS_FORCEINLINE
+void
+MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
+    MLAS_FP16* D,
+    const float* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK
+)
+{
+    for (size_t k = 0; k < CountK; k++) {
+        for (size_t n = 0; n < CountN; n++) {
+            new (D) MLAS_FP16(*(B + k * ldb + n));
+            D++;
+        }
+    }
+}
+
+
+template<>
+MLAS_FORCEINLINE
+void
 MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
-    const size_t CountM,
-    const size_t CountN,
-    const size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
     const MLAS_FP16* A,
-    const size_t lda,
+    size_t lda,
     const MLAS_FP16* B,
-    const size_t ldb,
+    size_t ldb,
     MLAS_FP16* C,
     size_t ldc,
     const MLAS_FP16* Bias,
     const bool ZeroMode)
 {
-    MLAS_UNREFERENCED_PARAMETER(CountM);
-    MLAS_UNREFERENCED_PARAMETER(CountN);
-    MLAS_UNREFERENCED_PARAMETER(CountK);
-    MLAS_UNREFERENCED_PARAMETER(A);
-    MLAS_UNREFERENCED_PARAMETER(lda);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(C);
-    MLAS_UNREFERENCED_PARAMETER(ldc);
-    MLAS_UNREFERENCED_PARAMETER(Bias);
-    MLAS_UNREFERENCED_PARAMETER(ZeroMode);
+    CountM = std::min(CountM, MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM);
+    while (CountM-- > 0) {
+        //
+        // Process a single column of matrix B in a loop.
+        //
+        const MLAS_FP16* bias = Bias;
+        const auto* b_col = B;
+        auto* c = C;
+        while (CountN-- > 0) {
+            const auto* a = A;
+            const auto* b = b_col;
+
+            float Accumulator = bias->ToFloat();
+            bias++;
+            for (size_t k = 0; k < CountK; k++) {
+                Accumulator += a->ToFloat() * b->ToFloat();
+                a++;
+                b += ldb;
+            }
+            if (!ZeroMode) {
+                Accumulator += c->ToFloat();
+            }
+            new (c) MLAS_FP16(Accumulator);
+
+            c++;
+            b_col++;
+        }
+        A += lda;
+        C += ldc;
+    }
 }
 
 
 const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
-    nullptr,
-    nullptr,
-    128
+    nullptr, 
+    MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
+    MLAS_HALF_GEMM_KERNEL_DEFAULT::PackedK,
+    MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM
 };

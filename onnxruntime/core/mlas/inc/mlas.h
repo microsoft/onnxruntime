@@ -1396,18 +1396,21 @@ public:
  *        All except C are [in] parameters
 */
 struct MLAS_HALF_GEMM_DATA_PARAMS {
-    const MLAS_FP16* A = nullptr;     /**< address of A */
-    size_t lda = 0;                   /**< leading dimension of A */
-    const MLAS_FP16* B = nullptr;     /**< address of B */
-    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is packed*/
+    const void* A = nullptr;          /**< address of A */
+    const void* B = nullptr;          /**< address of B */
     const MLAS_FP16* Bias = nullptr;  /**< address of Bias, vector size N */
     MLAS_FP16* C = nullptr;           /**< address of result matrix */
+    size_t lda = 0;                   /**< leading dimension of A */
+    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is packed*/
     size_t ldc = 0;                   /**< leading dimension of C*/
     const MLAS_HALF_GEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
+    bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
+    bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
 };
 
 /**
  * @brief Half precision Batched GEMM:  C = A * B + Bias
+ *        Either A or B can be fp32 or fp16
  * 
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
@@ -1433,9 +1436,11 @@ MlasHalfGemmBatch(
 
 /**
  * @brief For half precision GEMM, returns size of the
- *        packing buffer needed for right hand side        
+ *        packing buffer needed for right hand side
  * @param[in] N   Number of columns 
  * @param[in] K   Number of rows
+ * @param[in] float2half  Whether the input is float that
+ *                        needs to be converted to half precision
  * @return  size of the packing buffer,
  *          0 if operation not supported
 */
@@ -1443,12 +1448,14 @@ size_t
 MLASCALL
 MlasHalfGemmPackBSize(
     size_t N,
-    size_t K
+    size_t K,
+    bool float2half
     );
 
 /**
  * @brief For half precision GEMM, pack the right hand
  *        side matrix B
+ * 
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
  * @param[in]  B        Address of matrix B 
@@ -1461,6 +1468,26 @@ MlasHalfGemmPackB(
     size_t N,
     size_t K,
     const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+/**
+ * @brief For half precision GEMM, convert the float matrix B
+ *        to half precision and pack it into a packing buffer
+ * 
+ * @param[in]  N        Number of columns
+ * @param[in]  K        Number of rows
+ * @param[in]  B        Address of matrix B 
+ * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[out] PackedB  Address of the packed matrix
+*/
+void
+MLASCALL
+MlasHalfGemmConvertPackB(
+    size_t N,
+    size_t K,
+    const float* B,
     size_t ldb,
     void* PackedB
     );
