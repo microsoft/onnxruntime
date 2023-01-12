@@ -1143,6 +1143,25 @@ Serialized model format will default to ONNX unless:
 
 )pbdoc")
       .def_property(
+          "optimized_external_initializer_filepath",
+          [](const PySessionOptions* options) -> std::basic_string<ORTCHAR_T> {
+            return options->value.optimized_external_initializer_filepath;
+          },
+          [](PySessionOptions* options, std::basic_string<ORTCHAR_T> optimized_external_initializer_filepath) -> void {
+            options->value.optimized_external_initializer_filepath = std::move(optimized_external_initializer_filepath);
+          },
+          R"pbdoc(Non empty filepath enables serialization large initializers into external files.)pbdoc")
+      .def_property(
+          "optimized_external_initializer_threshold_num_bytes",
+          [](const PySessionOptions* options) -> size_t {
+            return options->value.optimized_external_initializer_threshold_num_bytes;
+          },
+          [](PySessionOptions* options, size_t optimized_external_initializer_threshold_num_bytes) -> void {
+            options->value.optimized_external_initializer_threshold_num_bytes =
+                optimized_external_initializer_threshold_num_bytes;
+          },
+          R"pbdoc(Size threshold for offloading initializers to external files. Default is 1024.)pbdoc")
+      .def_property(
           "enable_mem_pattern",
           [](const PySessionOptions* options) -> bool { return options->value.enable_mem_pattern; },
           [](PySessionOptions* options, bool enable_mem_pattern) -> void {
@@ -1333,7 +1352,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-      
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,

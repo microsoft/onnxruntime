@@ -1497,7 +1497,17 @@ common::Status InferenceSession::Initialize() {
       if (saving_ort_format) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
-        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+        if (!session_options_.optimized_external_initializer_filepath.empty()) {
+          ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(
+              *model_,
+              session_options_.optimized_model_filepath,
+              session_options_.optimized_external_initializer_filepath,
+              session_options_.optimized_external_initializer_threshold_num_bytes));
+        } else {
+          ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(
+              *model_,
+              session_options_.optimized_model_filepath));
+        }
       }
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
