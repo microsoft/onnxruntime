@@ -26,7 +26,7 @@ PYBIND11_MODULE(_kernel_explorer, m) {
   InitGemmFastGelu(m);
 #endif
 
-  m.def("IsComposableKernelAvailable", []() {
+  m.def("is_composable_kernel_available", []() {
 #ifdef USE_COMPOSABLE_KERNEL
     return true;
 #else

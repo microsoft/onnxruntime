@@ -98,7 +98,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
     _test_strided_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
 
 
-@pytest.mark.skipif(not ke.IsComposableKernelAvailable(), reason="ck is not enabled")
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize("batch", [1, 64])
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
@@ -128,7 +128,7 @@ def test_rocblas_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
     )
 
 
-@pytest.mark.skipif(not ke.IsComposableKernelAvailable(), reason="ck is not enabled")
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize("alpha, beta", [(0.5, 0.5)])
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
