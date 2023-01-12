@@ -368,6 +368,45 @@ inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial
   ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
 
+inline ThreadingOptions::ThreadingOptions() {
+  ThrowOnError(GetApi().CreateThreadingOptions(&p_));
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalIntraOpNumThreads(int intra_op_num_threads) {
+  ThrowOnError(GetApi().SetGlobalIntraOpNumThreads(p_, intra_op_num_threads));
+  return *this;
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalInterOpNumThreads(int inter_op_num_threads) {
+  ThrowOnError(GetApi().SetGlobalInterOpNumThreads(p_, inter_op_num_threads));
+  return *this;
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalSpinControl(int allow_spinning) {
+  ThrowOnError(GetApi().SetGlobalSpinControl(p_, allow_spinning));
+  return *this;
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalDenormalAsZero() {
+  ThrowOnError(GetApi().SetGlobalDenormalAsZero(p_));
+  return *this;
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
+  ThrowOnError(GetApi().SetGlobalCustomCreateThreadFn(p_, ort_custom_create_thread_fn));
+  return *this;
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalCustomThreadCreationOptions(void* ort_custom_thread_creation_options) {
+  ThrowOnError(GetApi().SetGlobalCustomThreadCreationOptions(p_, ort_custom_thread_creation_options));
+  return *this;
+}
+
+inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
+  ThrowOnError(GetApi().SetGlobalCustomJoinThreadFn(p_, ort_custom_join_thread_fn));
+  return *this;
+}
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -710,8 +749,15 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
 }
 
 template <typename T>
-inline void SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
   ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsUsingFunction(const char* registration_function_name) {
+  ThrowOnError(GetApi().RegisterCustomOpsUsingFunction(this->p_, registration_function_name));
+  return *this;
 }
 
 /// Session

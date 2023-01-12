@@ -189,6 +189,7 @@ namespace detail {
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
+ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
@@ -340,6 +341,36 @@ struct Status : detail::Base<OrtStatus> {
   OrtErrorCode GetErrorCode() const;
 };
 
+/** \brief The ThreadingOptions
+ *
+ * The ThreadingOptions used for set global threadpools' options of The Env.
+ */
+struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
+  /// \brief Wraps OrtApi::CreateThreadingOptions
+  ThreadingOptions();
+
+  /// \brief Wraps OrtApi::SetGlobalIntraOpNumThreads
+  ThreadingOptions& SetGlobalIntraOpNumThreads(int intra_op_num_threads);
+
+  /// \brief Wraps OrtApi::SetGlobalInterOpNumThreads
+  ThreadingOptions& SetGlobalInterOpNumThreads(int inter_op_num_threads);
+
+  /// \brief Wraps OrtApi::SetGlobalSpinControl
+  ThreadingOptions& SetGlobalSpinControl(int allow_spinning);
+
+  /// \brief Wraps OrtApi::SetGlobalDenormalAsZero
+  ThreadingOptions& SetGlobalDenormalAsZero();
+
+  /// \brief Wraps OrtApi::SetGlobalCustomCreateThreadFn
+  ThreadingOptions& SetGlobalCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);
+
+  /// \brief Wraps OrtApi::SetGlobalCustomThreadCreationOptions
+  ThreadingOptions& SetGlobalCustomThreadCreationOptions(void* ort_custom_thread_creation_options);
+
+  /// \brief Wraps OrtApi::SetGlobalCustomJoinThreadFn
+  ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
+};
+
 /** \brief The Env (Environment)
  *
  * The Env holds the logging state used by all other objects.
@@ -366,9 +397,9 @@ struct Env : detail::Base<OrtEnv> {
 
   Env& EnableTelemetryEvents();   ///< Wraps OrtApi::EnableTelemetryEvents
   Env& DisableTelemetryEvents();  ///< Wraps OrtApi::DisableTelemetryEvents
-  
-  Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel 
-  
+
+  Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel
+
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
@@ -479,7 +510,8 @@ struct SessionOptionsImpl : Base<T> {
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptionsImpl& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
 
-  void RegisterCustomOpsLibrary(const ORTCHAR_T* library_name);  ///< Wraps OrtApi::RegisterCustomOpsLibrary_V2
+  SessionOptionsImpl& RegisterCustomOpsLibrary(const ORTCHAR_T* library_name);    ///< Wraps OrtApi::RegisterCustomOpsLibrary_V2
+  SessionOptionsImpl& RegisterCustomOpsUsingFunction(const char* function_name);  ///< Wraps OrtApi::RegisterCustomOpsUsingFunction
 };
 }  // namespace detail
 
@@ -607,8 +639,8 @@ struct ConstSessionImpl : Base<T> {
    */
   AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
 
-  uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
-  ModelMetadata GetModelMetadata() const;                                   ///< Wraps OrtApi::SessionGetModelMetadata
+  uint64_t GetProfilingStartTimeNs() const;  ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
+  ModelMetadata GetModelMetadata() const;    ///< Wraps OrtApi::SessionGetModelMetadata
 
   TypeInfo GetInputTypeInfo(size_t index) const;                   ///< Wraps OrtApi::SessionGetInputTypeInfo
   TypeInfo GetOutputTypeInfo(size_t index) const;                  ///< Wraps OrtApi::SessionGetOutputTypeInfo
@@ -1654,7 +1686,7 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputType(index); };
-    OrtCustomOp::GetInputMemoryType= [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputMemoryType(index); };
+    OrtCustomOp::GetInputMemoryType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputMemoryType(index); };
 
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };

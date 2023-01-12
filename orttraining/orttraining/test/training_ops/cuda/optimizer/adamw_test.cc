@@ -15,17 +15,10 @@ namespace optimizer {
 using json = nlohmann::json;
 namespace {
 
-// key: weight name; value: multiple steps of weight/grad/momentums values.
-typedef std::unordered_map<std::string, std::vector<std::vector<float>>> WeightDictType;
-
 constexpr const char* kParamName = "Parameters";
 constexpr const char* kGradientName = "Gradients";
 constexpr const char* kMomentum1Name = "Momentum1s";
 constexpr const char* kMomentum2Name = "Momentum2s";
-
-// key: name of data, e.g. one of kParamName, kGradientName, etc.
-// value: weight dicts.
-typedef std::unordered_map<std::string, WeightDictType> TestDataDictType;
 
 const PathString ADAM_TEST_DATA_FOLDER = ORT_TSTR("testdata/test_data_generation/adamw_test/");
 

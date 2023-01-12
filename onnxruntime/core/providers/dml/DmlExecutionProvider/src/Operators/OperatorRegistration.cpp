@@ -274,6 +274,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
 DML_OP_EXTERN_QUERY_FUNCTION(Resize);
+DML_OP_EXTERN_QUERY_FUNCTION(Scatter);
 DML_OP_EXTERN_QUERY_FUNCTION(EinSum);
 DML_OP_EXTERN_QUERY_FUNCTION(RecurrentNeuralNetwork);
 DML_OP_EXTERN_QUERY_FUNCTION(BatchNormalization);
@@ -488,6 +489,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported)},
     {REG_INFO(     13,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported)},
+    {REG_INFO(     16,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported,     requiredConstantCpuInputs(), std::nullopt, QueryScatter)},
     {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListEyeLike,               DmlGraphSupport::Supported)},
     {REG_INFO(     14,  Trilu,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
 
@@ -495,6 +497,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_COPY( 7,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(14,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(16,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},

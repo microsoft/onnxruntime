@@ -190,6 +190,7 @@ class SymbolicShapeInference:
             # contrib ops:
             "Attention": self._infer_Attention,
             "BiasGelu": self._infer_BiasGelu,
+            "MultiHeadAttention": self._infer_MultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
@@ -1992,6 +1993,22 @@ class SymbolicShapeInference:
 
     def _infer_BiasGelu(self, node):
         self._propagate_shape_and_type(node)
+
+    def _infer_MultiHeadAttention(self, node):
+        # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+        # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+        # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+        query_shape = self._get_shape(node, 0)
+        value_shape = self._get_shape(node, 2)
+
+        assert len(query_shape) == 3 and len(value_shape) == 3
+        output_shape = query_shape
+        output_shape[2] = value_shape[2]
+
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
