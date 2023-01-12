@@ -19,6 +19,32 @@ namespace ConstValue {
 constexpr int32_t mag_factor = 1 << (22 - 1);
 }
 
+namespace {
+const uint8_t* GetLookupTableShared() {
+  // initialized once
+  static const auto* lookup_table = []() {
+    // if we have already initialized the lookup table, just return
+    // ideally we could have a global lookup table, but that account for too much space.
+    /* Handles values form -640 to 639. */
+    static uint8_t table[1280] = {0};
+    // if we have already initialized the lookup table, just return.
+    /* Handles values form -640 to 639. */
+    if (table[1279] == 255) {
+      return table;
+    }
+
+    // taken from https://github.com/python-pillow/Pillow/blob/66add095a50d76c35c7f58643461f2edf78a3f05/src/libImaging/Resample.c#L94
+    //  we need to handle negative values
+    //  it's equivalent to :x = np.clip(x, 0, 255) where x \in [-640, 639]
+    // we will accept a negative x for (&table[640])[x] means table +640 -x
+    for (int i = 0; i < 1280; ++i) {
+      table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
+    }
+    return table;
+  }();
+  return lookup_table;
+}
+}  // namespace
 template <typename T>
 struct FilterParamsBaseAntiAlias {
   std::vector<int64_t> bound;
@@ -36,23 +62,8 @@ struct FilterParamsAntiAlias {
   FilterParamsBaseAntiAlias<T> dim_y;
   FilterParamsBaseAntiAlias<T> dim_z;
 
-  uint8_t* GetClip8LookupTable() const {
-    // if we have already initialized the lookup table, just return
-    // ideally we could have a global lookup table, but that account for too much space.
-    /* Handles values form -640 to 639. */
-    static uint8_t table[1280] = {0};
-    if (table[1279] == 255) {
-      return table;
-    }
-
-    // taken from https://github.com/python-pillow/Pillow/blob/66add095a50d76c35c7f58643461f2edf78a3f05/src/libImaging/Resample.c#L94
-    //  we need to handle negative values
-    //  it's equivalent to :x = np.clip(x, 0, 255) where x \in [-640, 639]
-    // we will accept a negative x for (&table[640])[x] means table +640 -x
-    for (int i = 0; i < 1280; ++i) {
-      table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
-    }
-    return table;
+  const uint8_t* GetClip8LookupTable() const {
+    return GetLookupTableShared();
   }
   virtual ~FilterParamsAntiAlias() = default;
   virtual float Filter(float x) const = 0;
