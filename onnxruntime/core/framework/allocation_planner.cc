@@ -1766,39 +1766,6 @@ class PlannerImpl {
     num_logic_streams_ = stream_nodes_.size();
   }
 
-  // Construct WaitOnEPStep if has EP registered it.
-  // <param name="node">Current node to inspect</param>
-  // <param name="producer_node">producer node of the current node</param>
-  // <param name="notification_owner_index">index to find the corresponding stream owns the notification</param>
-  // <param name="stream_handle_registry">stream handle registry to get the wait handler</param>
-  // <param name="execution_plan">execution plan</param>
-  // <param name="stream_index">index to get current logic stream</param>
-  void ConstructWaitOnEPStep(const Node* node, const Node& producer_node, size_t notification_owner_index, const IStreamCommandHandleRegistry& stream_handle_registry, 
-                             InlinedVector<std::unique_ptr<SequentialExecutionPlan::LogicStream>>& execution_plan, size_t stream_index) {
-    // find which tensor we consumed to decide which wait handle to use
-    // if there are multiple tensors consumed on different devices, need to wait on all of them
-    // for example, if a cuda kernel A produce a cpu tensor C and a gpu tensor C', cuda kernel B
-    // depends on both C and C', we need to wait on both GPU and CPU.
-    for (auto* input : node->InputDefs()) {
-      if (input->Exists()) {
-        if (std::find(producer_node.OutputDefs().begin(), producer_node.OutputDefs().end(), input) != producer_node.OutputDefs().end()) {
-          OrtValueIndex input_arg_idx;
-          ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input->Name(), input_arg_idx));
-          auto& consumer_device = plan_.allocation_plan[input_arg_idx].location.device;
-          auto wait_handle = stream_handle_registry.GetWaitHandle(
-              execution_plan[plan_.notification_owners[notification_owner_index]]->device_.Type(),
-              consumer_device.Type());
-          if (wait_handle) {
-            execution_plan[stream_index]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_owner_index));
-#ifdef ENABLE_TRAINING
-            execution_plan[stream_index]->step_pc.push_back(node->Index());
-#endif
-          }
-        }
-      }
-    }
-  }
-
   // build each logic streams
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
@@ -1819,57 +1786,58 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
-    // 2. determing which nodes to generate notification and/or trigger downstream
-    // diverge_stream_from_node[i] = j means node i and its consumer nodes are splitted into different streams
-    // node_to_notification[i] = j means node i and its consumer nodes are in the same stream, but still need notification for some special cases
-    // j is the index to determine the corresponding notification owner in the following calculation.
-    InlinedHashMap<NodeIndex, size_t> diverge_stream_from_node;
+    // 2. determing following things:
+    //    a. which node need to generate notification
+    //    b. which node need to trigger downstream
+    size_t num_trigger_points = 0;
+    InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     size_t num_notifications = 0;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          // assign diverge_stream_from_node when current node and its output nodes are in different streams, 
-          // and current node is not in CPU stream (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
-          if (node_stream_map_[it->Index()] != i &&
-              execution_plan[i]->device_.Type() != OrtDevice::CPU) {
-            diverge_stream_from_node[node_index] = num_notifications++;
+          // if the output node is not in the same stream, generate a trigger point
+          if (node_stream_map_[it->Index()] != i) {
+            node_to_trigger_points[node_index] = num_trigger_points++;
             break;
           }
         }
       }
     }
-
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          // !! special case, Shape op's output is ready for all the EPs, so don't need notification
-          if (node->OpType() != "Shape") {
+        // Do not trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), AND
+        // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
+        if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
+          bool notification_recorded = false;
+          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
                 if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
                   OrtValueIndex output_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
-                  // the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
-                  // for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
-                  // in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  if ((node_stream_map_[it->Index()] == i &&
-                       execution_plan[i]->device_.Type() != OrtDevice::CPU &&
-                       plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
+                  // there are two cases we need notification:
+                  // 1. the consumer is not in the same stream
+                  // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
+                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                  //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
+                  if (node_stream_map_[it->Index()] != i || plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU) {
                     node_to_notification[node_index] = num_notifications++;
+                    notification_recorded = true;
                     break;
                   }
                 }
               }
             }
+            if (notification_recorded) break;   // notification is stream based property, as long as one notification is filed, end the loop for current node
           }
         }
       }
     }
 
-    // 3. Check the nodes in each logical stream, confirm it aligned with the device in the logic stream;
+    // 3. Check the nodes in each logical stream, confirm it aligned with the device  in the logic stream;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       std::set<const IExecutionProvider*> providers;
       for (auto node_index : stream_nodes_[i]) {
@@ -1880,17 +1848,12 @@ class PlannerImpl {
         ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.device.Type());
       }
     }
-    // 4. set notification owners. Notice that both diverge_stream_from_node and node_to_notification will contribute to notification_owners
+    // 4. set notification owners
     plan_.notification_owners.resize(num_notifications);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-      auto it = diverge_stream_from_node.find(node_index);
-      if (it != diverge_stream_from_node.end()) {
-        plan_.notification_owners[it->second] = node_stream_map_[node_index];
-      }
-
-      it = node_to_notification.find(node_index);
+      auto it = node_to_notification.find(node_index);
       if (it != node_to_notification.end()) {
-        // notification owned by the stream who produced it.
+        // notification owned by the node who produced it.
         plan_.notification_owners[it->second] = node_stream_map_[node_index];
       }
     }
@@ -1904,12 +1867,11 @@ class PlannerImpl {
         }
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-          InlinedHashMap<NodeIndex, NotificationIndex>::iterator notification_it;
-          if (node_stream_map_[it->Index()] != i && execution_plan[node_stream_map_[it->Index()]]->device_.Type() != OrtDevice::CPU) {
-            // If the current node and its input node are in different streams, We need to launch both BarrierStep and WaitOnEPStep
-            // before LaunchKernelStep on the current node.
-            auto trigger_point_it = diverge_stream_from_node.find(it->Index());
-            ORT_ENFORCE(trigger_point_it != diverge_stream_from_node.end());
+          //  check whether we need to add barrier
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
+            // find the trigger_point_id
+            auto trigger_point_it = node_to_trigger_points.find(it->Index());
+            ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
             size_t trigger_point_index = trigger_point_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
@@ -1920,11 +1882,40 @@ class PlannerImpl {
             // keep node index first, will turn it to pc index later
             execution_plan[i]->step_pc.push_back(node_index);
 #endif
-            ConstructWaitOnEPStep(node, *it, trigger_point_it->second, stream_handle_registry, execution_plan, i);
-          } else if ((notification_it = node_to_notification.find(it->Index())) != node_to_notification.end()) {
-            // Else the current node and its input node are in the same stream, but we can still find input node in node_to_notification,
-            // which means we will launch WaitOnEPStep only before LaunchKernelStep.
-            ConstructWaitOnEPStep(node, *it, notification_it->second, stream_handle_registry, execution_plan, i);
+          }
+          // check whether we need to wait on notification
+          auto notification_it = node_to_notification.find(it->Index());
+          if (notification_it != node_to_notification.end()) {
+            // push a wait command if has EP registered it.
+            // find which tensor we consumed to decide which wait handle to use
+            // if there are multiple tensors consumed on different devices, need to wait on all of them
+            // for example, if a cuda kernel A produce a cpu tensor C and a gpu tensor C', cuda kernel B
+            // depends on both C and C', we need to wait on both GPU and CPU.
+            for (auto* inputs : node->InputDefs()) {
+              if (inputs->Exists()) {
+                if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), inputs) != it->OutputDefs().end()) {
+                  OrtValueIndex input_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(inputs->Name(), input_arg_idx));
+                  auto& consumer_device = plan_.allocation_plan[input_arg_idx].location.device;
+
+                  // launch WaitOnEPStep only when (same condition when initializing node_to_notification)
+                  // 1. input node and current node are in different streams, Or
+                  // 2. current node consumes a CPU tensor from an non-shape op.
+                  size_t inputNodeStream = node_stream_map_[it->Index()];
+                  if ((node_stream_map_[it->Index()] != i || (consumer_device.Type() == OrtDevice::CPU))) {
+                    auto wait_handle = stream_handle_registry.GetWaitHandle(
+                      execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
+                      consumer_device.Type());
+                    if (wait_handle) {
+                      execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
+#ifdef ENABLE_TRAINING
+                      execution_plan[i]->step_pc.push_back(node_index);
+#endif
+                    }
+                  }
+                }
+              }
+            }
           }
         }
 
@@ -1937,23 +1928,22 @@ class PlannerImpl {
 #ifdef ENABLE_TRAINING
         execution_plan[i]->step_pc.push_back(node_index);
 #endif
-        
-        InlinedHashMap<NodeIndex, size_t>::iterator diverge_stream_from_node_it;
-        InlinedHashMap<NodeIndex, NotificationIndex>::iterator same_stream_notification_it;
-        if ((diverge_stream_from_node_it = diverge_stream_from_node.find(node_index)) != diverge_stream_from_node.end()) {
-          // If current node and its consumer nodes are in different streams, we need launch both ActivateNotificationStep and TriggerDownstreamStep
-          // after LaunchKernelStep on the current node
-          execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(diverge_stream_from_node_it->second));
-          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(diverge_stream_from_node_it->second));
+        // check if any notification generated by this node, if yes, push a activate
+        auto notification_it = node_to_notification.find(node_index);
+        if (notification_it != node_to_notification.end()) {
+          NotificationIndex notification_index = notification_it->second;
+          execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index));
 #ifdef ENABLE_TRAINING
-          execution_plan[i]->step_pc.push_back(node_index);
           execution_plan[i]->step_pc.push_back(node_index);
 #endif
-        } else if ((same_stream_notification_it = node_to_notification.find(node_index)) != node_to_notification.end()) {
-          // Else current node and its consumer nodes are in the same stream, but we can still find the current node in node_to_notification,
-          // which means we will launch ActivateNotificationStep only after LaunchKernelStep
-          execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(same_stream_notification_it->second));
+        }
+        // check if any trigger point generated by this node, if yes, push a trigger
+        auto trigger_point_it = node_to_trigger_points.find(node_index);
+        if (trigger_point_it != node_to_trigger_points.end()) {
+          // notify downstreams
+          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second));
 #ifdef ENABLE_TRAINING
+          // set the notification step as the triggering part of next node.
           execution_plan[i]->step_pc.push_back(node_index);
 #endif
         }
