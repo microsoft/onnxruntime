@@ -708,7 +708,7 @@ public class OrtSession implements AutoCloseable {
      *
      * <p>The registration function must have the signature:
      *
-     * <p>&emsp;<OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
+     * <p>&emsp;OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
      *
      * <p>See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more
      * information on custom ops. See
