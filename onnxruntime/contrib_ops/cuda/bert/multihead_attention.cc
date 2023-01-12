@@ -35,6 +35,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : CudaKernel
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 
+  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", std::numeric_limits<float>::lowest());
+
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
@@ -53,13 +55,14 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
-                                                                  key,
-                                                                  value,
-                                                                  bias,
-                                                                  key_padding_mask,
-                                                                  &parameters,
-                                                                  num_heads_,
-                                                                  device_prop.maxThreadsPerBlock));
+                                                                      key,
+                                                                      value,
+                                                                      bias,
+                                                                      key_padding_mask,
+                                                                      &parameters,
+                                                                      num_heads_,
+                                                                      mask_filter_value_,
+                                                                      device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;
 

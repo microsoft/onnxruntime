@@ -21,6 +21,7 @@ class MultiHeadAttention final : public CudaKernel {
 
  protected:
   int num_heads_;  // number of attention heads
+  float mask_filter_value_;
   bool disable_fused_runner_;
   bool enable_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;

@@ -195,7 +195,7 @@ Status LaunchLongformerSoftmaxSimpleKernel(
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
-    const void* attention_mask,   // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 masked.
+    const void* attention_mask,   // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 or torch.finfo(dtype).min masked.
     const void* global_q,         // Q for global tokens with shape (B, N, S, H)
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)

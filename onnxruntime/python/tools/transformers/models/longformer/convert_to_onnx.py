@@ -185,6 +185,7 @@ def my_longformer_self_attention_forward_4(
     )
 
     input_mask = is_index_masked.float()
+    # TODO: The filtering value may be -10000.0 or -inf. Check the huggingface implementation.
     input_mask = input_mask.masked_fill(is_index_masked, -10000.0)
     # Yet another way to generate input_mask = torch.masked_fill(attention_mask, is_index_global_attn, 0.0)
 
