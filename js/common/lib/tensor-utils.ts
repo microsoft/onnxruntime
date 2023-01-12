@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TypedTensor} from './tensor';
+import {Tensor, TensorToImageDataOptions, TypedTensor} from './tensor';
 
 interface Properties {
   /**
@@ -20,4 +20,13 @@ export interface TypedShapeUtils<T extends Tensor.Type> {
 }
 
 // TODO: add more tensor utilities
-export interface TypedTensorUtils<T extends Tensor.Type> extends Properties, TypedShapeUtils<T> {}
+export interface TypedTensorUtils<T extends Tensor.Type> extends Properties, TypedShapeUtils<T> {
+  /**
+   * creates an ImageData instance from tensor
+   *
+   * @param tensorFormat - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
+   * 0-255, NHWC
+   * @returns An ImageData instance which can be used to draw on canvas
+   */
+  toImageData(options?: TensorToImageDataOptions): ImageData;
+}
