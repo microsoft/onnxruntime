@@ -40,8 +40,7 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       const Node& node1,
       const Node& node2,
       float& new_scale,
-      int& new_zero_point,
-      TensorProto_DataType& zp_type);
+      int& new_zero_point);
 
   template <typename T>
   static void ApplyNewInputValue(Graph& graph, Node& node, const InputIndex& index, T value);

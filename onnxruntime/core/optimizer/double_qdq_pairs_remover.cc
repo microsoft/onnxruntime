@@ -21,12 +21,13 @@ Status DoubleQDQPairsRemover::ApplyImpl(
     NodeIndex child_index = 0;
     NodeIndex grandchild_index = 0;
     if (IsNodeRemovable(graph, self_index, parent_index, child_index, grandchild_index)) {
+      graph.RemoveEdge(parent_index, self_index, 0, 0);
       graph.RemoveEdge(self_index, child_index, 0, 0);
       graph.RemoveEdge(child_index, grandchild_index, 0, 0);
-      graph_utils::ReplaceDownstreamNodeInput(graph, *graph.GetNode(grandchild_index), 0, *graph.GetNode(self_index), 0);
+      graph_utils::ReplaceNodeInput(*graph.GetNode(grandchild_index), 0, *graph.GetNode(self_index)->MutableInputDefs()[0]);
+      graph.AddEdge(parent_index, grandchild_index, 0, 0);
       graph.RemoveNode(child_index);
-      graph.RemoveNode(grandchild_index);
-
+      graph.RemoveNode(self_index);
       modified = true;
     }
   }
@@ -39,70 +40,71 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
     NodeIndex& parent_index,
     NodeIndex& child_index,
     NodeIndex& grandchild_index) {
-  // Check if the self is a DQ self
+  // Check if the self is a DQ, and have one parent and one child, and cannot be a graph output
   Node* self = graph.GetNode(self_index);
   if (self == nullptr ||
       self->OpType() != "DequantizeLinear" ||
-      self->GetInputEdgesCount() != 1 ||
-      self->GetOutputEdgesCount() != 1) {
+      self->GetInputEdgesCount() != 1||
+      self->GetOutputEdgesCount() != 1||
+      graph.NodeProducesGraphOutput(*self)) {
     return false;
   }
 
-  // parent should be a Q self, and have only one perent
-  parent_index = self->InputEdgesBegin()->GetNode().Index();
-  Node* parent = graph.GetNode(parent_index);
-  if (parent == nullptr ||
-      parent->OpType() != "QuantizeLinear") {
-    return false;
-  }
-
-  // child should be a Q self, and have only one child
+  //Type is either "tensor(uint8)" or  "tensor(int8)"
+  const auto self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
+  // child should be a Q, and have only one child, have the same type as self, and cannot be a graph output
   child_index = self->OutputEdgesBegin()->GetNode().Index();
   const Node* child = graph.GetNode(child_index);
   if (child == nullptr ||
       child->OpType() != "QuantizeLinear" ||
+      *child->InputDefs()[InputIndex::ZERO_POINT_ID]->Type() != self_zp_type ||
       child->GetOutputEdgesCount() != 1 ||
       graph.NodeProducesGraphOutput(*child)) {
     return false;
   }
 
-  // grandchild should be a DQ self, and have only one grandchild
+  // parent should be a Q, and have only one output, and cannot be a graph output
+  parent_index = self->InputEdgesBegin()->GetNode().Index();
+  Node* parent = graph.GetNode(parent_index);
+  if (parent == nullptr ||
+      parent->GetOutputEdgesCount() != 1||
+      parent->OpType() != "QuantizeLinear"||
+      graph.NodeProducesGraphOutput(*parent)) {
+    return false;
+  }
+
+  // grandchild should be a DQ
   grandchild_index = child->OutputEdgesBegin()->GetNode().Index();
   Node* grandchild = graph.GetNode(grandchild_index);
   if (grandchild == nullptr ||
-      grandchild->OpType() != "DequantizeLinear" ||
-      graph.NodeProducesGraphOutput(*grandchild)) {
+      grandchild->OpType() != "DequantizeLinear" ) {
     return false;
   }
-
+  const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
+    return graph.GetConstantInitializer(initializer_name, true);
+  };
+  if(!QDQ::IsQDQPairSupported( *parent, *self, get_constant_initializer,graph.ModelPath()) ||
+          !QDQ::IsQDQPairSupported( *child, *grandchild, get_constant_initializer,graph.ModelPath())){
+    return false;
+  }
   float new_scale = 0.0f;
   int new_zero_point = 0;
-  TensorProto_DataType type = ONNX_NAMESPACE::TensorProto_DataType_INT8;
-
-  if (!FindNewZeroPointAndScale(graph, *self, *grandchild, new_scale, new_zero_point, type)) {
+  if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point)) {
     return false;
   }
-  ApplyNewInputValue(graph, *self, InputIndex::SCALE_ID, new_scale);
+  ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
   ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
-  if (type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    ApplyNewInputValue(graph, *self, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<int8_t>(new_zero_point));
-    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<int8_t>(new_zero_point));
-  } else {
-    ApplyNewInputValue(graph, *self, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<uint8_t>(new_zero_point));
+  if (self_zp_type == "tensor(uint8)") {
+    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<uint8_t>(new_zero_point));
     ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<uint8_t>(new_zero_point));
+  } else {
+    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<int8_t>(new_zero_point));
+    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<int8_t>(new_zero_point));
   }
   return true;
 }
 
-bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2, float& new_scale, int& new_zero_point, TensorProto_DataType& type) {
-  if (node1.InputDefs().size() != InputIndex::TOTAL_COUNT ||
-      node2.InputDefs().size() != InputIndex::TOTAL_COUNT ||
-      !optimizer_utils::IsScalar(*node1.InputDefs()[InputIndex::SCALE_ID]) ||
-      !optimizer_utils::IsScalar(*node1.InputDefs()[InputIndex::ZERO_POINT_ID]) ||
-      !optimizer_utils::IsScalar(*node2.InputDefs()[InputIndex::SCALE_ID]) ||
-      !optimizer_utils::IsScalar(*node2.InputDefs()[InputIndex::ZERO_POINT_ID])) {
-    return false;
-  }
+bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2, float& new_scale, int& new_zero_point) {
   // if Q/DQ scale and zero point are not constant, return false
   const ONNX_NAMESPACE::TensorProto* node1_scale_tensor_proto =
       graph_utils::GetConstantInitializer(graph, node1.InputDefs()[InputIndex::SCALE_ID]->Name());
@@ -112,18 +114,11 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
       graph_utils::GetConstantInitializer(graph, node1.InputDefs()[InputIndex::ZERO_POINT_ID]->Name());
   const ONNX_NAMESPACE::TensorProto* node2_zp_tensor_proto =
       graph_utils::GetConstantInitializer(graph, node2.InputDefs()[InputIndex::ZERO_POINT_ID]->Name());
-  if (nullptr == node2_zp_tensor_proto ||
-      nullptr == node1_zp_tensor_proto ||
-      nullptr == node2_scale_tensor_proto ||
-      nullptr == node1_scale_tensor_proto) {
-    return false;
-  }
   Initializer zero_point_init_1{*node1_zp_tensor_proto, graph.ModelPath()};
   Initializer zero_point_init_2{*node2_zp_tensor_proto, graph.ModelPath()};
   if (zero_point_init_1.data_type() != zero_point_init_2.data_type()) {
     return false;
   }
-
   Initializer scale_init_1{*node1_scale_tensor_proto, graph.ModelPath()};
   Initializer scale_init_2{*node2_scale_tensor_proto, graph.ModelPath()};
   if (scale_init_1.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
@@ -167,7 +162,6 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   const float real_max = std::min(real_max1, real_max2);
   new_scale = (real_max - real_min) / (q_max_1 - q_min_1);
   new_zero_point = gsl::narrow_cast<int>((q_min_1 - real_min) / new_scale);
-  type = static_cast<TensorProto_DataType>(zero_point_init_1.data_type());
   return true;
 }
 
