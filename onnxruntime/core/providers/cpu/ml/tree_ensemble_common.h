@@ -394,6 +394,16 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       }
       agg.FinalizeScores1(z_data, score, label_data);
     } else if (N <= parallel_N_ || max_num_threads == 1) { /* section C: 1 output, 2+ rows but not enough rows to parallelize */
+      // Not enough data to parallelize but the computation is split into batches of 128 rows,
+      // and then loop on trees to evaluate every tree on this batch.
+      // This change was introduced by PR: https://github.com/microsoft/onnxruntime/pull/13835.
+      // The input tensor (2D) is stored in a contiguous array. Therefore, it is faster
+      // to loop on tree first and inside that loop evaluate a tree on the input tensor (inner loop).
+      // The processor is faster when it has to move chunks of a contiguous array (branching).
+      // However, if the input tensor is too big, the data does not hold on caches (L1, L2, L3).
+      // In that case, looping first on tree or on data is almost the same. That's why the first loop
+      // split into batch so that every batch holds on caches, then loop on trees and finally loop
+      // on the batch rows.
       std::vector<ScoreValue<ThresholdType>> scores(parallel_tree_N_);
       size_t j;
       int64_t i, batch, batch_end;
