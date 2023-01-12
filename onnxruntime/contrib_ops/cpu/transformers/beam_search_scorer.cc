@@ -238,6 +238,12 @@ void BeamSearchScorer::Finalize(ISequences* sequences,
       auto final_tokens = sequences->GetSequence(batch_beam_index);
       beam_hyp.Add(final_tokens, final_score);
     }
+
+    for (size_t beam_index = num_beams_; beam_index < num_beam_hyps_to_keep_; beam_index++) {
+      size_t batch_beam_index = batch_index * num_beams_ + beam_index;
+      auto final_tokens = sequences->GetSequence(batch_beam_index);
+      beam_hyp.Add(final_tokens, 0.0f);
+    }
   }
 
   // Word IDs of each sequence, with shape (batch_size * num_return_sequences, max_sequence_length).

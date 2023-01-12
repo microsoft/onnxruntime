@@ -57,8 +57,8 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   num_return_sequences = num_return_sequences_tensor ? *num_return_sequences_tensor->Data<int32_t>() : 1;
   ORT_ENFORCE(num_return_sequences >= 1,
               "num_return_sequences shall be a positive integer, got ", num_return_sequences);
-  ORT_ENFORCE(num_beams >= num_return_sequences,
-              "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
+  ORT_ENFORCE(2 * num_beams >= num_return_sequences,
+              "num_return_sequences (", num_return_sequences, ") shall be be no more than double num_beams (", num_beams, ")");
 
   auto* length_penalty_tensor = context->Input<Tensor>(5);
   length_penalty = length_penalty_tensor ? static_cast<float>(*length_penalty_tensor->Data<float>()) : 1;

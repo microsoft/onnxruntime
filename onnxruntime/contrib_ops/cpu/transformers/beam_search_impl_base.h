@@ -207,8 +207,8 @@ Status BeamSearchBase<T>::Initialize() {
   ORT_RETURN_IF_ERROR(CheckScalarInput("num_return_sequences", 4, true));
   ORT_RETURN_IF_ERROR(CheckScalarInput("length_penalty", 5, true));
 
-  ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams,
-                "'num_return_sequences' has to be smaller or equal to 'num_beams'.");
+  ORT_RETURN_IF(parameters_->num_return_sequences > 2 * parameters_->num_beams,
+                "'num_return_sequences' has to be smaller or equal to '2 * num_beams'.");
 
   ORT_RETURN_IF_ERROR(CheckInputs(this->context_));
 
