@@ -129,10 +129,10 @@ Status Sample(AllocatorPtr& allocator,
   int64_t sampled_idx_dims[] = {static_cast<int64_t>(parameters->batch_size), 1};
   TensorShape sampled_idx_shape(&sampled_idx_dims[0], 2);
 
-  gsl::span<int64_t>& next_token_idx = greedy_state->next_tokens_cpu;
+  gsl::span<int32_t>& next_token_idx = greedy_state->next_tokens;
 
   OrtValue sampled_idx_ov;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(),
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(),
                        sampled_idx_shape,
                        next_token_idx.data(),
                        allocator->Info(),
@@ -141,7 +141,7 @@ Status Sample(AllocatorPtr& allocator,
 
   // Copy the allocator because MultinomialComputeShared() uses move(allocator)
   AllocatorPtr allocatortemp = allocator;
-  ORT_RETURN_IF_ERROR(MultinomialComputeShared<int64_t>(allocatortemp,
+  ORT_RETURN_IF_ERROR(MultinomialComputeShared<int32_t>(allocatortemp,
                                                         input,
                                                         parameters->batch_size,
                                                         parameters->vocab_size,

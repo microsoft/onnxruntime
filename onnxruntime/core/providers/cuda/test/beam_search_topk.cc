@@ -127,6 +127,8 @@ bool TestBeamSearchTopK() {
     }
   }
 
+  CUDA_CALL_THROW(cudaFree(cuda_buffer));
+
   return true;
 }
 

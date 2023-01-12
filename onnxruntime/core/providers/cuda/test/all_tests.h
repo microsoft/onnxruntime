@@ -9,6 +9,7 @@ namespace test {
 bool TestDeferredRelease();
 bool TestDeferredReleaseWithoutArena();
 bool TestBeamSearchTopK();
+bool TestGreedySearchTopOne();
 
 }  // namespace test
 }  // namespace cuda

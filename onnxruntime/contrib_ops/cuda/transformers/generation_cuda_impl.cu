@@ -598,7 +598,7 @@ template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
 
 // Ref: https://github.com/pytorch/pytorch/blob/release/1.13/aten/src/ATen/native/cuda/MultinomialKernel.cu
 template <typename scalar_t, typename accscalar_t>
-__global__ void sampleMultinomialOnce(int64_t* dest,
+__global__ void sampleMultinomialOnce(int32_t* dest,
                                       int distributions,
                                       int categories,
                                       scalar_t* sampled,
@@ -714,7 +714,7 @@ __global__ void sampleMultinomialOnce(int64_t* dest,
 // Only support n_sample = 1
 void TorchMultinomialKernelLauncher(float* d_input,
                                     float* d_sampled,
-                                    int64_t* d_output,
+                                    int32_t* d_output,
                                     int batch_size,
                                     int vocab_size,
                                     int* d_presence_mask,

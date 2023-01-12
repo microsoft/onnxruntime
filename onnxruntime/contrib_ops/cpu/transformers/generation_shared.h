@@ -57,13 +57,16 @@ struct IBeamSearchCpuState {
 
 template <typename T>
 struct IGreedySearchState {
-  gsl::span<int64_t> next_tokens_cpu;   // shape (batch_size)
-  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, max_length)
-  gsl::span<int32_t> sequence_lengths;  // shape (batch_size)
-  gsl::span<int32_t> next_positions;    // shape (batch_size, num_beams). Next position value for position_ids.
-  gsl::span<bool> eos_meet;             // shape (batch_size)
-  gsl::span<T> next_token_scores;       // shape (batch_size, vocab_size)
-  gsl::span<int32_t> next_tokens;       // shape (batch_size)
+  gsl::span<int32_t> sequences_space;         // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths;        // shape (batch_size)
+  gsl::span<int32_t> next_positions;          // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;                   // shape (batch_size)
+  gsl::span<T> next_token_scores;             // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;             // shape (batch_size)
+  gsl::span<T> temp_topk_scores_buffer;       // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1 (GPU only)
+  gsl::span<int32_t> temp_topk_tokens_buffer; // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
+  gsl::span<T> topk_scores_buffer;             // shape (batch_size), output buffer for topk stage 2 (GPU only)
+  gsl::span<int32_t> topk_tokens_buffer;       // shape (batch_size), output buffer for topk stage 2 (GPU only)
 };
 
 template <typename T>
@@ -77,7 +80,7 @@ struct ISamplingState {
   gsl::span<float> h_softmaxed_score;
   gsl::span<float> d_sampled;
   gsl::span<float> h_sampled_all;
-  gsl::span<int64_t> d_indices;
+  gsl::span<int32_t> d_indices;
   gsl::span<int> d_presence_mask;
 
   BufferUniquePtr storage_buffer;
