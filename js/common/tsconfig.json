@@ -4,7 +4,6 @@
     "outDir": "dist/lib",
     "esModuleInterop": false,
     "noUnusedParameters": true,
-    "lib": ["dom"],
   },
   "include": ["lib"]
 }

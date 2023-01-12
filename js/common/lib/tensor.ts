@@ -296,11 +296,11 @@ export interface TensorFromImageOptions {
    */
   width?: number;
   /**
-   * Describes Tensor resized height - can be accessed via tensor dimensions as well
+   * Describes resized height - can be accessed via tensor dimensions as well
    */
   resizedHeight?: number;
   /**
-   * Describes Tensor resized width - can be accessed via tensor dimensions as well
+   * Describes resized width - can be accessed via tensor dimensions as well
    */
   resizedWidth?: number;
   /**
