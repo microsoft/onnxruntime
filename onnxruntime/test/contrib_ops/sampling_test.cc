@@ -96,6 +96,7 @@ TEST(SamplingTest, Gpt2Sampling_CUDA) {
 }
 #endif
 
+#ifdef __linux__
 TEST(SamplingTest, Gpt2Sampling_CPU) {
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
@@ -113,6 +114,9 @@ TEST(SamplingTest, Gpt2Sampling_CPU) {
 
   GPT2WithSamplingTest(input_ids, max_length, min_length, repetition_penalty, 3, 12, expected_output, false);
 }
+#endif
+
+}  // namespace transformers
 
 }  // namespace test
 }  // namespace onnxruntime
