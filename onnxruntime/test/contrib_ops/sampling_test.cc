@@ -115,8 +115,5 @@ TEST(SamplingTest, Gpt2Sampling_CPU) {
   GPT2WithSamplingTest(input_ids, max_length, min_length, repetition_penalty, 3, 12, expected_output, false);
 }
 #endif
-
-}  // namespace transformers
-
 }  // namespace test
 }  // namespace onnxruntime
