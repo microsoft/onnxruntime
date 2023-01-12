@@ -16,16 +16,15 @@ from abc import ABC, abstractmethod
 from typing import Callable, List
 
 import numpy as np
+import onnx
+from onnx import helper, numpy_helper
+from onnx.onnx_ml_pb2 import GraphProto, ModelProto, NodeProto
 from tensorboard.compat.proto.attr_value_pb2 import AttrValue
 from tensorboard.compat.proto.graph_pb2 import GraphDef
 from tensorboard.compat.proto.node_def_pb2 import NodeDef
 from tensorboard.compat.proto.tensor_shape_pb2 import TensorShapeProto
 from tensorboard.compat.proto.versions_pb2 import VersionDef
 from torch.utils.tensorboard import SummaryWriter
-
-import onnx
-from onnx import helper, numpy_helper
-from onnx.onnx_ml_pb2 import ModelProto, GraphProto, NodeProto
 
 _DTYPE_ONNX_TO_TF = {
     1: 1,  # FLOAT
@@ -63,8 +62,7 @@ def get_node_by_input(graph: GraphProto, input_name: str) -> NodeProto:
 
 
 def get_prefix(name: str) -> str:
-    pos = name.rfind("/")
-    return name[: pos + 1] if pos >= 0 else ""
+    return name[: name.rfind("/") + 1]
 
 
 def parse(graph: GraphProto) -> GraphDef:
@@ -217,7 +215,7 @@ class HierarchicalNameTransformer(TransformerBase):
 
     def _transform_name(self, name: str) -> str:
         if "/" in name:
-            if name.startswith("/" + self.original_module_name + "/"):
+            if name.startswith(f"/{self.original_module_name}/"):
                 name = name[len(self.original_module_name) + 2 :]
             if name.startswith("/"):
                 name = name[1:]
@@ -330,7 +328,7 @@ class ListUnpackTransformer(TransformerBase):
             if len([output for output in node.output if len(output) > 0]) > 1:
                 idx = self.ops.get(node.op_type, 0)
                 self.ops[node.op_type] = idx + 1
-                new_output = get_prefix(node.output[0]) + node.op_type + "_" + str(idx) + "_output"
+                new_output = f"{get_prefix(node.output[0])}{node.op_type}_{str(idx)}_output"
                 for output in node.output:
                     if len(output) > 0:
                         new_nodes.append(helper.make_node("ListUnpack", [new_output], [output]))
@@ -349,7 +347,7 @@ class AppendOpTypeTransformer(ReplaceNameTransformer):
     def _generate_new_names(self, graph: GraphProto) -> None:
         for node in graph.node:
             pos = node.output[0].rfind("/")
-            self.new_names[node.output[0]] = node.output[0][: pos + 1] + node.op_type + "::" + node.output[0][pos + 1 :]
+            self.new_names[node.output[0]] = f"{node.output[0][: pos + 1]}{node.op_type}::{node.output[0][pos + 1 :]}"
 
 
 def main():
