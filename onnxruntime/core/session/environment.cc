@@ -269,7 +269,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
       // <training schemas>
-      // This was added for Apollo and is most probably no longer in use.
+      // This was added for a partner team and is most probably no longer in use.
       // Can be removed once we have the confirmation.
       training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif

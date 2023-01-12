@@ -1387,9 +1387,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SetMemoryProfiler(mem_profiler.release());
 #endif
 
-  const auto disable_prepacking =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
-
+  // Note: For Training Prepacking should be always disabled.
+  // For inference it is enabled by default, but users can choose to disable it via session options.
+  const bool disable_prepacking =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
   // Further more, in training scenarios NCCL kernels require initializers to be allocated
@@ -1405,7 +1406,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   //  and let the kernel tells us whether the initializer needs to be traced.
   //
   std::unique_ptr<ITensorAllocator> tensor_allocator = nullptr;
-  if (disable_prepacking == "1") {
+  if (disable_prepacking) {
     tensor_allocator = ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_);
   } else {
     tensor_allocator = ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_);
@@ -1472,7 +1473,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-  if (disable_prepacking != "1") {
+  if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }
