@@ -1088,16 +1088,37 @@ public class InferenceTest {
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
       try (SessionOptions options = new SessionOptions()) {
-        // manually load the library. typically we'd expect the user to link against the library,
-        // but doing that here would conflict with testLoadCustomLibrary needing to test ORT loading
-        // the library.
-        System.load(customLibraryName);
-        options.registerCustomOpsUsingFunction("RegisterCustomOps");
-        if (OnnxRuntime.extractCUDA()) {
-          options.addCUDA();
-        }
-        try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
-          // if model was loaded the op registration was successful
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
+
+        // on Windows, Java.System.load will make the symbols from the loaded library available.
+        // on other platforms the dlsym uses RTLD_LOCAL so they're not. Would need to use something
+        // like
+        // https://github.com/java-native-access/jna to achieve that.
+        // As we have unit tests that validate the custom op registration across all platforms, we
+        // settle for just
+        // making sure the ORT API function can be called and behaves as expected.
+        try {
+          // manually load the library. typically we'd expect the user to link against the library,
+          // but doing that here would conflict with testLoadCustomLibrary needing to test ORT
+          // loading
+          // the library.
+          System.load(customLibraryName);
+          options.registerCustomOpsUsingFunction("RegisterCustomOps");
+
+          if (isWindows) {
+            if (OnnxRuntime.extractCUDA()) {
+              options.addCUDA();
+            }
+            try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
+              // if model was loaded the op registration was successful
+            }
+          } else {
+            fail("Expected to throw OrtException due System.load not using RTLD_GLOBAL");
+          }
+        } catch (OrtException e) {
+          System.out.println(e.getMessage());
+          assertTrue(!isWindows, "Expected to not throw OrtException on Windows");
+          assertTrue(e.getMessage().contains("Failed to get symbol RegisterCustomOps"));
         }
       }
     }
