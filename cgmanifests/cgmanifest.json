@@ -11,11 +11,15 @@
          }
       },
       {
-        "component": {
-          "Type": "maven",
-          "maven": { "GroupId": "org.junit.platform", "ArtifactId": "junit-platform-console-standalone", "Version": "1.6.2" },
-          "DevelopmentDependency": true
-        }
+         "component": {
+            "Type": "maven",
+            "maven": {
+               "GroupId": "org.junit.platform",
+               "ArtifactId": "junit-platform-console-standalone",
+               "Version": "1.6.2"
+            },
+            "DevelopmentDependency": true
+         }
       },
       {
         "component": {
@@ -540,12 +544,22 @@
          "component": {
             "type": "git",
             "git": {
+               "commitHash": "9d0ef119d9fcb9139f831adc224857b791c81140",
+               "repositoryUrl": "https://github.com/dlfcn-win32/dlfcn-win32.git"
+            },
+            "comments": "dlfcn-win32"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
                "commitHash": "6812205f18ca4ef54372e87e1a13ce4a859434df",
                "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
             },
             "comments": "python-pillow"
          }
-      },
+      }
    ],
    "Version": 1
 }
