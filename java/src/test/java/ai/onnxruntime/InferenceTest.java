@@ -687,6 +687,24 @@ public class InferenceTest {
     return skipModels;
   }
 
+  private static String getCustomOpLibraryName() {
+    String customLibraryName = "";
+    String osName = System.getProperty("os.name").toLowerCase();
+    if (osName.contains("windows")) {
+      // In windows we start in the wrong working directory relative to the custom_op_library.dll
+      // So we look it up as a classpath resource and resolve it to a real path
+      customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
+    } else if (osName.contains("mac")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
+    } else if (osName.contains("linux")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
+    } else {
+      fail("Unknown os/platform '" + osName + "'");
+    }
+
+    return customLibraryName;
+  }
+
   public static List<String[]> getModelsForTest() throws IOException {
     File modelsDir = getTestModelsDir();
     Map<String, String> skipModels = getSkippedModels();
@@ -1016,19 +1034,7 @@ public class InferenceTest {
   public void testLoadCustomLibrary() throws OrtException {
     // This test is disabled on Android.
     if (!OnnxRuntime.isAndroid()) {
-      String customLibraryName = "";
-      String osName = System.getProperty("os.name").toLowerCase();
-      if (osName.contains("windows")) {
-        // In windows we start in the wrong working directory relative to the custom_op_library.dll
-        // So we look it up as a classpath resource and resolve it to a real path
-        customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
-      } else if (osName.contains("mac")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
-      } else if (osName.contains("linux")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
-      } else {
-        fail("Unknown os/platform '" + osName + "'");
-      }
+      String customLibraryName = getCustomOpLibraryName();
       String customOpLibraryTestModel =
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
@@ -1068,6 +1074,30 @@ public class InferenceTest {
             assertArrayEquals(flatOutput, resultArray);
           }
           OnnxValue.close(container);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testLoadCustomOpsUsingFunction() throws OrtException {
+    // This test is disabled on Android.
+    if (!OnnxRuntime.isAndroid()) {
+      String customLibraryName = getCustomOpLibraryName();
+      String customOpLibraryTestModel =
+          TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
+
+      try (SessionOptions options = new SessionOptions()) {
+        // manually load the library. typically we'd expect the user to link against the library,
+        // but doing that here would conflict with testLoadCustomLibrary needing to test ORT loading
+        // the library.
+        System.load(customLibraryName);
+        options.registerCustomOpsUsingFunction("RegisterCustomOps");
+        if (OnnxRuntime.extractCUDA()) {
+          options.addCUDA();
+        }
+        try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
+          // if model was loaded the op registration was successful
         }
       }
     }
