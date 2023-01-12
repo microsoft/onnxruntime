@@ -369,7 +369,7 @@ stages:
   # because coverage report is hard to support in cross machines.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
-  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
@@ -377,7 +377,7 @@ stages:
     timeoutInMinutes: 180
     workspace:
       clean: all
-    condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
     steps:
       - script: |
           set -ex
@@ -477,7 +477,7 @@ stages:
     - name: skipComponentGovernanceDetection
       value: true
     pool: 'Linux-CPU-2019'
-    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     dependsOn:
     - NNAPI_EP_MASTER
     steps:
