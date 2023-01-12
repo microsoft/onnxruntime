@@ -108,6 +108,40 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
 #pragma warning(pop)
 #endif
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_Log, _In_ const OrtKernelContext* context,
+                    OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
+                    _In_z_ const char* func_name) {
+  API_IMPL_BEGIN
+  const auto& logger = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->Logger();
+  const auto severity = static_cast<onnxruntime::logging::Severity>(log_severity_level);
+  const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
+
+  if (logger.OutputIsEnabled(severity, log_data_type)) {
+    onnxruntime::CodeLocation location(file_path, line_number, func_name);
+
+    onnxruntime::logging::Capture(
+        logger,
+        severity,
+        onnxruntime::logging::Category::onnxruntime,
+        log_data_type,
+        location)
+            .Stream()
+        << message;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLoggingSeverityLevel, _In_ const OrtKernelContext* context,
+                    _Out_ OrtLoggingLevel* out) {
+  API_IMPL_BEGIN
+  const auto& logger = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->Logger();
+  *out = static_cast<OrtLoggingLevel>(logger.GetSeverity());
+  return nullptr;
+  API_IMPL_END
+};
+
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
 static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
   if (out == nullptr) {  // User is querying the true size of the attribute

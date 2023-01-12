@@ -148,29 +148,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtLog, OrtLoggingLevel log_severity_level, _In_z_ const char* message,
-                    _In_z_ const char* file_path, int line_number, _In_z_ const char* func_name) {
-  API_IMPL_BEGIN
-  const auto& logger = onnxruntime::logging::LoggingManager::DefaultLogger();  // Throws if no default logger exists.
-  const Severity severity = static_cast<Severity>(log_severity_level);
-  const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
-
-  if (logger.OutputIsEnabled(severity, log_data_type)) {
-    onnxruntime::CodeLocation location(file_path, line_number, func_name);
-
-    onnxruntime::logging::Capture(
-        logger,
-        severity,
-        onnxruntime::logging::Category::onnxruntime,
-        log_data_type,
-        location
-    ).Stream() << message;
-  }
-
-  return nullptr;
-  API_IMPL_END
-}
-
 // enable platform telemetry
 ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
@@ -2674,7 +2651,8 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::SetGlobalIntraOpThreadAffinity,
     &OrtApis::RegisterCustomOpsLibrary_V2,
     &OrtApis::RegisterCustomOpsUsingFunction,
-    &OrtApis::OrtLog,
+    &OrtApis::KernelContext_Log,
+    &OrtApis::KernelContext_GetLoggingSeverityLevel,
     &OrtApis::KernelInfo_GetInputCount,
     &OrtApis::KernelInfo_GetOutputCount,
     &OrtApis::KernelInfo_GetInputName,

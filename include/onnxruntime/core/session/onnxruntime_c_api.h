@@ -3686,14 +3686,20 @@ struct OrtApi {
    */
   ORT_API2_STATUS(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
                   _In_ const char* registration_func_name);
+  /// @}
+  /// \name OrtKernelContext
+  /// @{
 
-  /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
+  /** \brief Logs a message at the given severity level using ::OrtKernelContext's logger.
    *
-   * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
-   * are logged.
+   * Only messages with a severity level equal or greater than the ::OrtKernelContext's logging severity level
+   * are logged. Use OrtApi::KernelContext_GetLoggingSeverityLevel to get the ::OrtKernelContext's logging severity
+   * level.
    *
-   * Can be used in custom operators to log information in manner consistent with built-in operators.
+   * Can be used in custom operators to log information during kernel computation in manner consistent with built-in
+   * operators.
    *
+   * \param[in] context The ::OrtKernelContext instance.
    * \param[in] log_severity_level The message's severity level.
    * \param[in] message The message to log.
    * \param[in] file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
@@ -3703,8 +3709,22 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(OrtLog, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
-                  int line_number, _In_z_ const char* func_name);
+  ORT_API2_STATUS(KernelContext_Log, _In_ const OrtKernelContext* context, OrtLoggingLevel log_severity_level,
+                  _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
+                  _In_z_ const char* func_name);
+
+  /** \brief Get the logging severity level of the ::OrtKernelContext's logger.
+   *
+   * Can be used in custom operators to get the current logging serverity level during kernel computation.
+   *
+   * \param[in] context The ::OrtKernelContext instance.
+   * \param[out] out Pointer to variable assigned with the logging severity level on success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelContext_GetLoggingSeverityLevel, _In_ const OrtKernelContext* context,
+                  _Out_ OrtLoggingLevel* out);
 
   /// @}
   /// \name OrtKernelInfo

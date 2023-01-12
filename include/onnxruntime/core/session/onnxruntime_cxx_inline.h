@@ -464,12 +464,6 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
-inline Status detail::LogImpl(OrtLoggingLevel severity, const char* message, const char* file_path, int line_number,
-                              const char* func_name) noexcept {
-  OrtStatus* status = GetApi().OrtLog(severity, message, file_path, line_number, func_name);
-  return Status{status};
-}
-
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
@@ -1430,38 +1424,51 @@ inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
 }
 
 inline size_t KernelContext::GetInputCount() const {
-  size_t out;
+  size_t out = 0;
   Ort::ThrowOnError(GetApi().KernelContext_GetInputCount(ctx_, &out));
   return out;
 }
 
 inline size_t KernelContext::GetOutputCount() const {
-  size_t out;
+  size_t out = 0;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutputCount(ctx_, &out));
   return out;
 }
 
 inline ConstValue KernelContext::GetInput(size_t index) const {
-  const OrtValue* out;
+  const OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetInput(ctx_, index, &out));
   return ConstValue{out};
 }
 
 inline UnownedValue KernelContext::GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const {
-  OrtValue* out;
+  OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dim_values, dim_count, &out));
   return UnownedValue(out);
 }
 
 inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
-  OrtValue* out;
+  OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dims.data(), dims.size(), &out));
   return UnownedValue(out);
 }
 
 inline void* KernelContext::GetGPUComputeStream() const {
-  void* out;
+  void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
+  return out;
+}
+
+
+inline Status KernelContext::Log(OrtLoggingLevel severity, const char* message, const char* file_path, int line_number,
+                                 const char* func_name) const noexcept {
+  OrtStatus* status = GetApi().KernelContext_Log(ctx_, severity, message, file_path, line_number, func_name);
+  return Status{status};
+}
+
+inline OrtLoggingLevel KernelContext::GetLoggingSeverityLevel() const {
+  OrtLoggingLevel out{};
+  Ort::ThrowOnError(GetApi().KernelContext_GetLoggingSeverityLevel(ctx_, &out));
   return out;
 }
 
