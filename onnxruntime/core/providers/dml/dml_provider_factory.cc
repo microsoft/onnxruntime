@@ -129,7 +129,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   // anyway) such as operation kernel registry enumeration for documentation purposes.
   if (!skip_software_device_check)
   {
-    ORT_THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
+    ORT_THROW_HR_IF(ERROR_GRAPHICS_INVALID_DISPLAY_ADAPTER, IsSoftwareAdapter(adapter.Get()));
   }
 
   ComPtr<ID3D12Device> d3d12_device;
