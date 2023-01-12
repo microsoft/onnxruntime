@@ -720,8 +720,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void registerCustomOpsUsingFunction(String registrationFuncName) throws OrtException {
       checkClosed();
-      registerCustomOpsUsingFunction(
-          OnnxRuntime.ortApiHandle, nativeHandle, registrationFuncName);
+      registerCustomOpsUsingFunction(OnnxRuntime.ortApiHandle, nativeHandle, registrationFuncName);
     }
 
     /**
