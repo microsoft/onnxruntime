@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#ifdef USE_COMPOSABLE_KERNEL
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/batched_gemm.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm.hpp"
@@ -14,6 +15,7 @@
 #include "ck/tensor_operation/gpu/device/device_batched_gemm.hpp"
 #include "ck/tensor_operation/gpu/device/device_gemm.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
+#endif
 
 #include "core/providers/rocm/tunable/gemm_common.h"
 
@@ -22,6 +24,8 @@ namespace rocm {
 namespace tunable {
 namespace blas {
 namespace internal {
+
+#ifdef USE_COMPOSABLE_KERNEL
 
 template <typename T>
 struct DataTypeAdaptor {
@@ -127,6 +131,10 @@ auto GetCKStridedBatchedGemmTypeStringAndOps() {
   }
   return ret;
 }
+#else
+struct Row {};
+struct Col {};
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace internal
 }  // namespace blas
