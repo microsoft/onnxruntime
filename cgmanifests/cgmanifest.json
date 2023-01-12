@@ -22,11 +22,15 @@
          }
       },
       {
-        "component": {
-          "Type": "maven",
-          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.21.7" },
-          "DevelopmentDependency": true
-        }
+         "component": {
+            "Type": "maven",
+            "maven": {
+               "GroupId": "com.google.protobuf",
+               "ArtifactId": "protobuf-java",
+               "Version": "3.21.7"
+            },
+            "DevelopmentDependency": true
+         }
       },
       {
          "component": {
