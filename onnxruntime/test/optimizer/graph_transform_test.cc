@@ -84,7 +84,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -4270,7 +4270,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
                                      const int add_count, const int dropout_count, const int bitmask_dropout_count,
                                      const int bias_dropout_count, const int bitmask_bias_dropout_count,
@@ -4311,6 +4311,120 @@ TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
                            0, 1);
   TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
                            1, 0, 1);
+}
+
+/*
+This test build a graph like:
+	     input0  input1
+                  \ /
+                  Add
+ -----------------|
+ |                |
+ |             Shape
+ |             /   \
+ |        Gather0  Gather1
+ |           /       \
+ |     Unsqueeze0  Unsqueeze1  (Constant Initializer) (Constant Initializer)
+ |          \        /               /                  /
+ |     	     \      /               /                  /
+ |         ConcatTraining   -------       ------------
+  \	       /
+   \	      /
+     Reshape
+
+
+After fusion, the graph become:
+             input0  input1
+	          \ /
+                  Add     (Constant Initializer)
+                   \       /
+                    Reshape
+
+*/
+TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
+  constexpr const int batch_size = 64;
+  constexpr const int seq_lenth = 1024;
+  constexpr const int hidden_size = 1024;
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 2);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.ConcatTraining"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.ConcatTraining"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  const std::vector<int> opsets{11, 12, 13, 14, 15, 15};
+  bool shape_test_for_opset15 = false;
+
+  for (auto& opset_version : opsets) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg0 = builder.MakeInput<float>({{batch_size, seq_lenth, hidden_size}});
+      auto* input_arg1 = builder.MakeInput<float>({{hidden_size}});
+      auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+      auto* scalar_int_1 = builder.MakeInitializer<int64_t>({}, {1});
+      auto* single_value_1d_int_0 = builder.MakeInitializer<int64_t>({1}, {0});
+      auto* single_value_1d_int_16 = builder.MakeInitializer<int64_t>({1}, {16});
+      auto* single_value_1d_int_64 = builder.MakeInitializer<int64_t>({1}, {64});
+      auto* add_out = builder.MakeIntermediate();
+      auto* shape_out = builder.MakeIntermediate();
+      auto* gather_out_0 = builder.MakeIntermediate();
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* unsqueeze_out_0 = builder.MakeIntermediate();
+
+      auto* unsqueeze_out_1 = builder.MakeIntermediate();
+      auto* concattraining1_out = builder.MakeIntermediate();
+      auto* concattraining1_length = builder.MakeIntermediate();
+      auto* out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
+      if (opset_version == 15) {
+        if (shape_test_for_opset15) {
+          auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
+          shape_1.AddAttribute("start", (int64_t)1);
+          shape_1.AddAttribute("end", (int64_t)2);
+        } else {
+          builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
+          shape_test_for_opset15 = true;
+        }
+      } else {
+        builder.AddNode("Shape", {add_out}, {shape_out});
+      }
+      builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out_0});
+      builder.AddNode("Gather", {shape_out, scalar_int_1}, {gather_out_1});
+      if (opset_version >= 13) {
+        builder.AddNode("Unsqueeze", {gather_out_0, single_value_1d_int_0}, {unsqueeze_out_0});
+        builder.AddNode("Unsqueeze", {gather_out_1, single_value_1d_int_0}, {unsqueeze_out_1});
+      } else {
+        builder.AddNode("Unsqueeze", {gather_out_0}, {unsqueeze_out_0}).AddAttribute("axes", std::vector<int64_t>{0});
+        builder.AddNode("Unsqueeze", {gather_out_1}, {unsqueeze_out_1}).AddAttribute("axes", std::vector<int64_t>{0});
+      }
+      builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64},
+                      {concattraining1_out, concattraining1_length}, "com.microsoft").AddAttribute("axis", static_cast<int64_t>(0));
+      builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+    if (opset_version == 15 && shape_test_for_opset15) {
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                                pre_graph_checker, pre_graph_checker));
+    } else{
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                            pre_graph_checker, post_graph_checker));
+    }
+  }
 }
 #endif
 
@@ -4361,7 +4475,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   ASSERT_TRUE(op_to_count["Cast"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
 #else
@@ -4667,7 +4781,7 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
 
       // check outputs
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
       EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
 #else
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
@@ -5515,7 +5629,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   }
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
   {

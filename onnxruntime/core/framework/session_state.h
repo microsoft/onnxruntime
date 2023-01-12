@@ -161,7 +161,7 @@ class SessionState {
   bool IsSparseInitializer(int ort_value_index) const;
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -516,6 +516,7 @@ class SessionState {
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #ifdef ENABLE_TRAINING
+// Needed for ORTTrainer. Should be removed along with ORTTrainer code
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else

@@ -1,4 +1,0 @@
-DeviceBasedPartitioner
-Devices:1
-CpuExecutionProvider:1
-conv_0,relu_0,add_0,transpose_0,transpose_1

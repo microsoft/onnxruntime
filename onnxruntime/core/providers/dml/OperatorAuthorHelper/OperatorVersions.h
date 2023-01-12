@@ -372,11 +372,13 @@ namespace OperatorHelper
 
     namespace OnnxOperatorSet16
     {
+        static const int sc_sinceVer_Identity = 16;
         static const int sc_sinceVer_LeakyRelu = 16;
         static const int sc_sinceVer_PRelu = 16;
         static const int sc_sinceVer_Where = 16;
         static const int sc_sinceVer_GreaterOrEqual = 16;
         static const int sc_sinceVer_LessOrEqual = 16;
+        static const int sc_sinceVer_ScatterND = 16;
     } // namespace OnnxOperatorSet16
 
     namespace OnnxOperatorSet17

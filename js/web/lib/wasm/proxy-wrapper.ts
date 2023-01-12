@@ -115,7 +115,7 @@ export const initWasm = async(): Promise<void> => {
     // overwrite wasm filepaths
     if (env.wasm.wasmPaths === undefined) {
       if (scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
-        env.wasm.wasmPaths = scriptSrc.substr(0, (scriptSrc as string).lastIndexOf('/') + 1);
+        env.wasm.wasmPaths = scriptSrc.substr(0, +(scriptSrc).lastIndexOf('/') + 1);
       }
     }
 
