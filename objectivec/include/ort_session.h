@@ -106,9 +106,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
 
 /**
+ * Appends an execution provider to the session options to enable the execution provider to be used when running
+ * the model.
+ *
  * Available since 1.14.
- * Appends an execution provider to the session configuration options.
- * The execution provider list is ordered by decreasing priority
+ *
+ * The execution provider list is ordered by decreasing priority.
+ * i.e. the first provider registered has the highest priority.
+ *
  * @param providerName Provider name. For example, "xnnpack".
  * @param providerOptions Provider-specific options. For example, for provider "xnnpack", {"intra_op_num_threads": "2"}.
  * @param error Optional error information set if an error occurs.
@@ -184,9 +189,11 @@ NS_ASSUME_NONNULL_BEGIN
                         error:(NSError**)error;
 
 /**
- * Registers custom ops for use with {@link ORTSession}s using this SessionOptions by calling the specified
+ * Registers custom ops for use with `ORTSession`s using this SessionOptions by calling the specified
  * native function name. The custom ops library must either be linked against, or have previously been loaded
  * by the user.
+ *
+ * Available since 1.14.
  *
  * The registration function must have the signature:
  *    OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);

@@ -715,13 +715,13 @@ public class OrtSession implements AutoCloseable {
      * https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
      * for an example of a custom op library registration function.
      *
-     * @param registration_func_name The name of the registration function to call.
+     * @param registrationFuncName The name of the registration function to call.
      * @throws OrtException If there was an error finding or calling the registration function.
      */
-    public void registerCustomOpsUsingFunction(String registration_func_name) throws OrtException {
+    public void registerCustomOpsUsingFunction(String registrationFuncName) throws OrtException {
       checkClosed();
       registerCustomOpsUsingFunction(
-          OnnxRuntime.ortApiHandle, nativeHandle, registration_func_name);
+          OnnxRuntime.ortApiHandle, nativeHandle, registrationFuncName);
     }
 
     /**
@@ -1063,7 +1063,7 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void registerCustomOpsUsingFunction(
-        long apiHandle, long nativeHandle, String func_name) throws OrtException;
+        long apiHandle, long nativeHandle, String registrationFuncName) throws OrtException;
 
     private native void closeCustomLibraries(long[] nativeHandle);
 
