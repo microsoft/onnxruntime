@@ -146,6 +146,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
+  virtual int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) const; 
+
  private:
   TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
@@ -222,5 +224,16 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+
+  // Helper class to generate engine id via model name/model content/env metadata
+  class TRTModelIdGenerator {
+   public:
+    int TRTGenerateId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash);
+
+   private:
+    std::unordered_map<HashValue, int> trt_model_id_;  // current unique id for model
+  };
+
+  std::unique_ptr<TRTModelIdGenerator> trt_model_id_generator_ = std::make_unique<TRTModelIdGenerator>();
 };
 }  // namespace onnxruntime
