@@ -1,6 +1,12 @@
 // Copyright c Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/*
+ * Pillow 's Resize is corresponding to ONNX op with exclude_outside equaling 1.
+ * And, for cubic mode, PIllow has a default value of 0.5 for "cubic_coeff_a",
+ * while ONNX op has a default value of 0.75.
+ */
+
 #pragma once
 
 #include <algorithm>
@@ -27,11 +33,6 @@ const uint8_t* GetLookupTableShared() {
     // ideally we could have a global lookup table, but that account for too much space.
     /* Handles values form -640 to 639. */
     static uint8_t table[1280] = {0};
-    // if we have already initialized the lookup table, just return.
-    /* Handles values form -640 to 639. */
-    if (table[1279] == 255) {
-      return table;
-    }
 
     // taken from https://github.com/python-pillow/Pillow/blob/66add095a50d76c35c7f58643461f2edf78a3f05/src/libImaging/Resample.c#L94
     //  we need to handle negative values
@@ -45,6 +46,7 @@ const uint8_t* GetLookupTableShared() {
   return lookup_table;
 }
 }  // namespace
+
 template <typename T>
 struct FilterParamsBaseAntiAlias {
   std::vector<int64_t> bound;
@@ -72,8 +74,7 @@ struct FilterParamsAntiAlias {
 template <typename T>
 struct BilinearParamsAntiAlias : FilterParamsAntiAlias<T> {
   // taken from
-  // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
-  // src/libImaging/Resample.c#L20-L29
+  // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/src/libImaging/Resample.c#L20-L29
   float Filter(float x) const override {
     if (x < 0.0f) {
       x = -x;

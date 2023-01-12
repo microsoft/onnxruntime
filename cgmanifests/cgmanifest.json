@@ -23,7 +23,7 @@
           "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.21.7" },
           "DevelopmentDependency": true
         }
-      },      
+      },
       {
          "component": {
             "type": "git",
@@ -535,7 +535,17 @@
                "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
             }
          }
-      }      
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "6812205f18ca4ef54372e87e1a13ce4a859434df",
+               "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
+            },
+            "comments": "python-pillow"
+         }
+      },
    ],
    "Version": 1
 }

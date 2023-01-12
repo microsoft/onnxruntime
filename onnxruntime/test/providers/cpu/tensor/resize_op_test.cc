@@ -1770,6 +1770,12 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
 }
 
+/*
+ * Most of TestCase against Anti-aliasing will have the attribute of "exclude_outside" as 1.
+ * It's as Pillow 's Resize is corresponding to ONNX op with exclude_outside equaling 1.
+ * Besides, for cubic mode, PIllow's one has a default value of 0.5 for "cubic_coeff_a",
+ * while ONNX op has a default value of 0.75.
+ */
 template <typename T, typename T1 = int64_t>
 void TestAntialiasing(std::map<std::string, std::string> attributes,
                       std::vector<int64_t> input_shape,
