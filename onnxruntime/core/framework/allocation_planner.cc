@@ -1901,7 +1901,6 @@ class PlannerImpl {
                   // launch WaitOnEPStep only when (same condition when initializing node_to_notification)
                   // 1. input node and current node are in different streams, Or
                   // 2. current node consumes a CPU tensor from an non-shape op.
-                  size_t inputNodeStream = node_stream_map_[it->Index()];
                   if ((node_stream_map_[it->Index()] != i || (consumer_device.Type() == OrtDevice::CPU))) {
                     auto wait_handle = stream_handle_registry.GetWaitHandle(
                       execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
