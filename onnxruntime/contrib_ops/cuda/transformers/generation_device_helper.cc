@@ -526,6 +526,7 @@ Status GreedySearchProcessLogits(
 #endif
 
   ORT_UNUSED_PARAMETER(logits_processors);
+  ORT_UNUSED_PARAMETER(thread_pool);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
