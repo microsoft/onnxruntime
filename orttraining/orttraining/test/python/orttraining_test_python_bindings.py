@@ -137,9 +137,13 @@ def test_optimizer_step():
         optimizer = Optimizer(optimizer_file_path, model)
 
         model.train()
+        old_params = model.get_contiguous_parameters()
         model(forward_inputs)
+
         optimizer.step()
-        # TODO : Check if parameters changed from before and after optimizer step.
+        new_params = model.get_contiguous_parameters()
+        # Assert that the parameters are updated.
+        assert not np.array_equal(old_params.numpy(), new_params.numpy())
 
 
 def test_get_and_set_lr():
@@ -226,9 +230,18 @@ def test_training_module_checkpoint():
         checkpoint_save_path = os.path.join(temp_dir, "checkpoint_export.ckpt")
 
         model.save_checkpoint(checkpoint_save_path)
+        old_params = model.get_contiguous_parameters()
 
-        # TODO : Load checkpoint to a zeroed model and assert parameters are different.
+        # Assert the checkpoint was saved.
         assert os.path.exists(checkpoint_save_path)
+
+        # Assert the checkpoint parameters remains after saving.
+        state = CheckpointState(checkpoint_save_path)
+        new_model = Module(model_file_path, state)
+
+        new_params = new_model.get_contiguous_parameters()
+
+        assert np.array_equal(old_params.numpy(), new_params.numpy())
 
 
 def test_copy_buffer_to_parameters():
