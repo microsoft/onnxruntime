@@ -46,6 +46,7 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
       self->OpType() != "DequantizeLinear" ||
       self->GetInputEdgesCount() != 1||
       self->GetOutputEdgesCount() != 1||
+      self->InputDefs().size() != InputIndex::TOTAL_COUNT ||
       graph.NodeProducesGraphOutput(*self)) {
     return false;
   }
@@ -57,8 +58,9 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   const Node* child = graph.GetNode(child_index);
   if (child == nullptr ||
       child->OpType() != "QuantizeLinear" ||
-      *child->InputDefs()[InputIndex::ZERO_POINT_ID]->Type() != self_zp_type ||
       child->GetOutputEdgesCount() != 1 ||
+      child->InputDefs().size() != InputIndex::TOTAL_COUNT ||
+      *child->InputDefs()[InputIndex::ZERO_POINT_ID]->Type() != self_zp_type ||
       graph.NodeProducesGraphOutput(*child)) {
     return false;
   }

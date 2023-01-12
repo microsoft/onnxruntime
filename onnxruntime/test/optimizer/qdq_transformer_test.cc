@@ -2585,13 +2585,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
     auto check_graph = [&](const InferenceSessionWrapper& session) {
       const auto ops_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       const auto expected_ops_in_order = [&]() -> std::vector<std::string> {
-        if (use_matching_qdq_params) {
-          // DQ/Q cleanup removes middle DQ/Q
-          return {"QuantizeLinear", "DequantizeLinear"};
-        }
-
-        // removes nothing
-        return {"QuantizeLinear", "DequantizeLinear", "QuantizeLinear", "DequantizeLinear"};
+        // In either case both DQ and Q will be removed and fused due to DoubleQDQPairsRemover
+        return {"QuantizeLinear", "DequantizeLinear"};
       }();
 
       EXPECT_EQ(ops_in_order, expected_ops_in_order);
