@@ -1,4 +1,4 @@
-# Copyright(c) Microsoft Corporation.All rights reserved.
+# Copyright(c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
 """
@@ -49,10 +49,10 @@ def register():
         align_corners = int(symbolic_helper._maybe_get_const(align_corners, "b"))
 
         # From opset v13 onward, the output shape can be specified with
-        # (N, C, H, W)(N, H_out, W_out, 2) =>(N, C, H_out, W_out)
+        # (N, C, H, W) (N, H_out, W_out, 2) => (N, C, H_out, W_out)
         # input_shape = input.type().sizes()
         # gird_shape = grid.type().sizes()
-        # output_shape = input_shape[ : 2] + gird_shape[1 : 3]
+        # output_shape = input_shape[:2] + gird_shape[1:3]
         # g.op(...).setType(input.type().with_sizes(output_shape))
 
         return g.op(
@@ -73,7 +73,7 @@ def register():
 
     @torch.onnx.symbolic_helper.parse_args("v", "s")
     def gelu(g, self: torch._C.Value, approximate: str = "none"):
-        # Use microsoft::Gelu for performance if possible.It only supports approximate == "none"
+        # Use microsoft::Gelu for performance if possible. It only supports approximate == "none"
         if approximate == "none":
             return g.op("com.microsoft::Gelu", self).setType(self.type())
         return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
@@ -89,11 +89,6 @@ def register():
         return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
 
     _reg(tril)
-
-    def col2im(g, self: torch._C.Value, image_shape, block_shape):
-        return g.op("com.microsoft::Col2Im", self, image_shape, block_shape)
-
-    _reg(col2im)
 
 
 def unregister():
