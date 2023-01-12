@@ -60,6 +60,12 @@ struct SessionOptions {
   // unless the filepath ends in '.ort' (case insensitive).
   std::basic_string<ORTCHAR_T> optimized_model_filepath;
 
+  // Non empty filepath enables serialization large initializers into external files.
+  std::basic_string<ORTCHAR_T> optimized_external_initializer_filepath;
+
+  // Size threshold for offloading initializers to external files.
+  size_t optimized_external_initializer_threshold_num_bytes = 1024;
+
   // enable the memory pattern optimization.
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation

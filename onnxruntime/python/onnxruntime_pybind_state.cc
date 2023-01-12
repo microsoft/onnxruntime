@@ -1151,6 +1151,12 @@ Serialized model format will default to ONNX unless:
 - there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
 
 )pbdoc")
+      .def_readwrite("optimized_external_initializer_filepath",
+                     &PySessionOptions::optimized_external_initializer_filepath,
+                     R"pbdoc(foo)pbdoc")
+      .def_readwrite("optimized_external_initializer_threshold_num_bytes",
+                     &PySessionOptions::optimized_external_initializer_threshold_num_bytes,
+                     R"pbdoc(bar)pbdoc")
       .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("enable_mem_reuse", &PySessionOptions::enable_mem_reuse,
