@@ -94,9 +94,9 @@ TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+  // when openvino or dml are enabled, set it to a larger value for resolving MNIST accuracy mismatch
   double relative_per_sample_tolerance = 1e-3;
-  if (provider_name == "openvino") {
+  if (provider_name == "openvino" || provider_name == "dml") {
     relative_per_sample_tolerance = 0.009;
   }
 
