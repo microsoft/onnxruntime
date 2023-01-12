@@ -245,7 +245,7 @@ TEST(CApiTest, dim_param) {
   dim_value = 0;
   dims = out0_ttsi.GetShape();
   if (!dims.empty()) dim_value = dims[0];
-  
+
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
@@ -434,7 +434,6 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
                        custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
-
 }
 #endif
 
@@ -1486,7 +1485,6 @@ TEST(CApiTest, io_binding) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, io_binding_cuda) {
-
   Ort::SessionOptions session_options;
 #ifdef USE_TENSORRT
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
@@ -1617,7 +1615,7 @@ TEST(CApiTest, cuda_graph) {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
-  
+
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1628,7 +1626,7 @@ TEST(CApiTest, cuda_graph) {
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
-  
+
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
