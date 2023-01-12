@@ -72,7 +72,7 @@ class RocBlasGemm : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = GemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasGemmOp<T>};
@@ -130,7 +130,7 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = BatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasBatchedGemmOp<T>};
@@ -190,7 +190,7 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = StridedBatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasStridedBatchedGemmOp<T>};

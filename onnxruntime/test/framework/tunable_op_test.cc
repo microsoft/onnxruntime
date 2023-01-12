@@ -17,9 +17,9 @@ namespace {
 // test on CPU and it does not use stream
 using StreamT = void*;
 
-class Timer : public ::onnxruntime::tunable::Timer<StreamT> {
+class Timer : public ITimer<StreamT> {
  public:
-  using TimerBase = ::onnxruntime::tunable::Timer<StreamT>;
+  using TimerBase = ITimer<StreamT>;
 
   explicit Timer(StreamT stream) : TimerBase{stream} {}
   ~Timer() = default;
@@ -43,19 +43,19 @@ class Timer : public ::onnxruntime::tunable::Timer<StreamT> {
   TimePoint end_;
 };
 
-using OpParams = ::onnxruntime::tunable::OpParams<StreamT>;
+using OpParams = OpParams<StreamT>;
 
 template <typename ParamsT>
-using Op = ::onnxruntime::tunable::Op<ParamsT>;
+using Op = Op<ParamsT>;
 
 template <typename ParamsT>
-using TunableOp = ::onnxruntime::tunable::TunableOp<ParamsT, Timer>;
+using TunableOp = TunableOp<ParamsT, Timer>;
 
 }  // namespace
 
-struct VecAddParams : ::onnxruntime::tunable::OpParams<StreamT> {
+struct VecAddParams : OpParams {
   VecAddParams(const int* a_buf, const int* b_buf, int* c_buf, int num_elem, int beta)
-      : ::onnxruntime::tunable::OpParams<StreamT>(nullptr),
+      : OpParams(nullptr),
         a(a_buf),
         b(b_buf),
         c(c_buf),
@@ -93,7 +93,7 @@ TEST(TunableOp, OpWrapsFunction) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddFunc);
+  Op<VecAddParams> vec_add(VecAddFunc);
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -112,7 +112,7 @@ TEST(TunableOp, OpWrapsLambda) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add([](const VecAddParams* params) {
+  Op<VecAddParams> vec_add([](const VecAddParams* params) {
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
     return Status::OK();
   });
@@ -129,7 +129,7 @@ TEST(TunableOp, OpWrapsMoveOnlyLambda) {
   VecAddParams params(&a, &b, &c, 1, 0);
 
   auto non_copyable = std::make_unique<int>(0);
-  tunable::Op<VecAddParams> vec_add([non_copyable = std::move(non_copyable)](const VecAddParams* params) {
+  Op<VecAddParams> vec_add([non_copyable = std::move(non_copyable)](const VecAddParams* params) {
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
     return Status::OK();
   });
@@ -153,7 +153,7 @@ TEST(TunableOp, OpWrapsConstFunctor) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddConstFunctor{});
+  Op<VecAddParams> vec_add(VecAddConstFunctor{});
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -174,7 +174,7 @@ TEST(TunableOp, OpWrapsMutableFunctor) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddMutableFunctor{});
+  Op<VecAddParams> vec_add(VecAddMutableFunctor{});
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -199,7 +199,7 @@ TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
+  Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -232,7 +232,7 @@ TEST(TunableOp, OpWrapsFunctorWithExtendedIsSupported) {
 
   // Test Op::IsSupported will have correct fallback if user does not implement it in its functor.
   {
-    tunable::Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
+    Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
     VecAddParams params(a, b, nullptr, 1, 0);
     status = vec_add.IsSupported(&params);
     ASSERT_EQ(status.Category(), common::StatusCategory::NONE);
@@ -246,7 +246,7 @@ TEST(TunableOp, OpWrapsFunctorWithExtendedIsSupported) {
 
   // Test Op::IsSupported will use user provided one if they implemented it.
   {
-    tunable::Op<VecAddParams> vec_add(VecAddWithIsSupportedMethod{});
+    Op<VecAddParams> vec_add(VecAddWithIsSupportedMethod{});
 
     VecAddParams params(a, b, c, 4, 0);
     status = vec_add.IsSupported(&params);

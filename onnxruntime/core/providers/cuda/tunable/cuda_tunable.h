@@ -15,16 +15,26 @@ namespace onnxruntime {
 namespace cuda {
 namespace tunable {
 
-using OpParams = ::onnxruntime::tunable::OpParams<cudaStream_t>;
+using OpParams = OpParams<cudaStream_t>;
 
 template <typename ParamsT>
-using Op = ::onnxruntime::tunable::Op<ParamsT>;
+using Op = Op<ParamsT>;
 
 class Timer;
 
 template <typename ParamsT>
-using TunableOp = ::onnxruntime::tunable::TunableOp<ParamsT, ::onnxruntime::cuda::tunable::Timer>;
+using TunableOp = TunableOp<ParamsT, Timer>;
 
 }  // namespace tunable
 }  // namespace cuda
+
+// As a convenience for authoring TunableOp in contrib namespace
+namespace contrib {
+namespace cuda {
+using onnxruntime::cuda::tunable::Op;
+using onnxruntime::cuda::tunable::OpParams;
+using onnxruntime::cuda::tunable::TunableOp;
+}  // namespace cuda
+}  // namespace contrib
+
 }  // namespace onnxruntime

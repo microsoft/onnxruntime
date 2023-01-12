@@ -6,9 +6,7 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 
-// solving ODR violation due to provider_api.h
-#include "core/providers/shared_library/provider_api.h"
-
+#include "core/providers/rocm/rocm_common.h"  // avoid provider_api.h ODR violation
 #include "core/framework/tunable.h"
 #include "core/providers/rocm/tunable/util.h"
 
@@ -16,16 +14,26 @@ namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
-using OpParams = ::onnxruntime::tunable::OpParams<hipStream_t>;
+using OpParams = OpParams<hipStream_t>;
 
 template <typename ParamsT>
-using Op = ::onnxruntime::tunable::Op<ParamsT>;
+using Op = Op<ParamsT>;
 
 class Timer;
 
 template <typename ParamsT>
-using TunableOp = ::onnxruntime::tunable::TunableOp<ParamsT, ::onnxruntime::rocm::tunable::Timer>;
+using TunableOp = TunableOp<ParamsT, Timer>;
 
 }  // namespace tunable
 }  // namespace rocm
+
+// As a convenience for authoring TunableOp in contrib namespace
+namespace contrib {
+namespace rocm {
+using onnxruntime::rocm::tunable::Op;
+using onnxruntime::rocm::tunable::OpParams;
+using onnxruntime::rocm::tunable::TunableOp;
+}  // namespace rocm
+}  // namespace contrib
+
 }  // namespace onnxruntime

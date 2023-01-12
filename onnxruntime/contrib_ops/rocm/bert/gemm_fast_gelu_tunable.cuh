@@ -51,7 +51,7 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
 }
 
 template <typename T, typename ALayout, typename BLayout>
-class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
+class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
     this->RegisterOp(GemmFastGeluUnfused<T>);

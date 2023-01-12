@@ -19,7 +19,7 @@ namespace rocm {
 namespace blas {
 
 template <typename T>
-struct GemmFastGeluParams : onnxruntime::rocm::tunable::OpParams {
+struct GemmFastGeluParams : OpParams {
   std::string Signature() const override {
     bool has_bias = (nullptr != bias) ? 0 : 1;
     return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k, '_', has_bias);

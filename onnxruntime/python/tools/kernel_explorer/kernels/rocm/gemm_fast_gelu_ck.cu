@@ -91,7 +91,7 @@ class CKGemmFastGelu : public IKernelExplorer {
 
  private:
   using ParamsT = GemmFastGeluParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;

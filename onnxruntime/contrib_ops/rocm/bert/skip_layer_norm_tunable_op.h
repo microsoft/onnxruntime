@@ -19,7 +19,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
+struct SkipLayerNormParams : OpParams {
   SkipLayerNormParams(hipStream_t stream, T* output, const T* input,
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, int ld, int element_count)
@@ -160,7 +160,7 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
   ADD_OP_FOR_ALL_VEC_SIZE(name, 384)
 
 template <typename T>
-class SkipLayerNormTunableOp : public onnxruntime::rocm::tunable::TunableOp<SkipLayerNormParams<T>> {
+class SkipLayerNormTunableOp : public TunableOp<SkipLayerNormParams<T>> {
  public:
   SkipLayerNormTunableOp() {
     this->RegisterOp(SkipLayerNormStaticSelection<T>);

@@ -19,7 +19,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-struct FastGeluParams : onnxruntime::rocm::tunable::OpParams {
+struct FastGeluParams : OpParams {
   FastGeluParams(hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) :
     OpParams(stream), input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length) {}
 
@@ -119,7 +119,7 @@ Status FastGeluStaticSelection(const FastGeluParams<half>* params) {
   this->RegisterOp(FastGeluOp<T, threads_per_block, 16>{});
 
 template <typename T>
-class FastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<FastGeluParams<T>> {
+class FastGeluTunableOp : public TunableOp<FastGeluParams<T>> {
  public:
   FastGeluTunableOp() {
     this->RegisterOp(FastGeluStaticSelection<T>);

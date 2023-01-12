@@ -25,7 +25,6 @@
 #endif
 
 namespace onnxruntime {
-namespace tunable {
 
 template <typename StreamT>
 struct OpParams {
@@ -38,10 +37,10 @@ struct OpParams {
 };
 
 template <typename StreamT>
-class Timer {
+class ITimer {
  public:
-  explicit Timer(StreamT stream) : stream_{stream} {}
-  virtual ~Timer() = default;
+  explicit ITimer(StreamT stream) : stream_{stream} {}
+  virtual ~ITimer() = default;
 
   virtual void Start() = 0;
   virtual void End() = 0;
@@ -287,5 +286,4 @@ class TunableOp {
   std::unordered_set<TunableOp<ParamsT, TimerT>*> nested_tunable_ops_;
 };
 
-}  // namespace tunable
 }  // namespace onnxruntime
