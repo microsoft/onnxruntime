@@ -28,20 +28,18 @@
 namespace onnxruntime {
 
 struct Col2ImAttributes {
-  using Col2ImPadVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
-
   explicit Col2ImAttributes(const OpKernelInfo& info) {
-    // Make sure empty strides, pads or dilations are defaulted to 1 if necessary
-    ORT_THROW_IF_ERROR(info.GetAttrs("strides", strides));
-    gsl::span<const int64_t> pads_span;
-    ORT_THROW_IF_ERROR(info.GetAttrsAsSpan("pads", pads_span));
-    pads.assign(pads_span.cbegin(), pads_span.cend());
-    ORT_THROW_IF_ERROR(info.GetAttrs("dilations", dilations));
+    if (!info.GetAttrs("strides", strides).IsOK())
+      ORT_ENFORCE(strides.empty());
+    if (!info.GetAttrs("dilations", dilations).IsOK())
+      ORT_ENFORCE(dilations.empty());
+    if (!info.GetAttrs("pads", pads).IsOK())
+      ORT_ENFORCE(pads.empty());
   }
 
   ~Col2ImAttributes() = default;
 
-  Col2ImPadVector pads;
+  TensorShapeVector pads;
   TensorShapeVector dilations;
   TensorShapeVector strides;
 };

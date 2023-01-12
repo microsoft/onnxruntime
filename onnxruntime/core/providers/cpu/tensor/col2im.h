@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/col2im_attributes.h"
 
 namespace onnxruntime {

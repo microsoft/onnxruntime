@@ -1,5 +1,5 @@
-#Copyright(c) Microsoft Corporation.All rights reserved.
-#Licensed under the MIT License.
+# Copyright(c) Microsoft Corporation.All rights reserved.
+# Licensed under the MIT License.
 
 """
 Support for registering ONNX Runtime's built-in contrib ops with
@@ -8,7 +8,7 @@ PyTorch-ONNX exporter (torch.onnx.export).
 import typing
 
 try:
-O(justinchuby) : Create a function to alert users when torch is not installed
+    # TODO(justinchuby): Create a function to alert users when torch is not installed
     import torch
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
@@ -48,12 +48,12 @@ def register():
         padding_mode_str = ["zeros", "border", "reflection"][padding_mode]
         align_corners = int(symbolic_helper._maybe_get_const(align_corners, "b"))
 
-#From opset v13 onward, the output shape can be specified with
-#(N, C, H, W)(N, H_out, W_out, 2) =>(N, C, H_out, W_out)
-#input_shape = input.type().sizes()
-#gird_shape = grid.type().sizes()
-#output_shape = input_shape[ : 2] + gird_shape[1 : 3]
-#g.op(...).setType(input.type().with_sizes(output_shape))
+        # From opset v13 onward, the output shape can be specified with
+        # (N, C, H, W)(N, H_out, W_out, 2) =>(N, C, H_out, W_out)
+        # input_shape = input.type().sizes()
+        # gird_shape = grid.type().sizes()
+        # output_shape = input_shape[ : 2] + gird_shape[1 : 3]
+        # g.op(...).setType(input.type().with_sizes(output_shape))
 
         return g.op(
             "com.microsoft::GridSample",
@@ -73,7 +73,7 @@ def register():
 
     @torch.onnx.symbolic_helper.parse_args("v", "s")
     def gelu(g, self: torch._C.Value, approximate: str = "none"):
-#Use microsoft::Gelu for performance if possible.It only supports approximate == "none"
+        # Use microsoft::Gelu for performance if possible.It only supports approximate == "none"
         if approximate == "none":
             return g.op("com.microsoft::Gelu", self).setType(self.type())
         return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
