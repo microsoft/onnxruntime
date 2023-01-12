@@ -13,6 +13,7 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
+#if defined(__linux__) && !defined(__ANDROID__)
 #ifdef USE_CUDA
 TEST(SamplingTest, Gpt2Sampling_CUDA) {
   std::vector<int32_t> input_ids{
@@ -86,7 +87,6 @@ TEST(SamplingTest, Gpt2Sampling_CUDA) {
 }
 #endif
 
-#ifdef __linux__
 TEST(SamplingTest, Gpt2Sampling_CPU) {
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
