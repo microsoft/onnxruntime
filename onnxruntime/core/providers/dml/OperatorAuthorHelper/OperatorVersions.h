@@ -378,6 +378,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Where = 16;
         static const int sc_sinceVer_GreaterOrEqual = 16;
         static const int sc_sinceVer_LessOrEqual = 16;
+        static const int sc_sinceVer_ScatterND = 16;
     } // namespace OnnxOperatorSet16
 
     namespace OnnxOperatorSet17

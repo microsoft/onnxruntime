@@ -1604,46 +1604,48 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
                 run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
+
             # run shared_lib_test if necessary
             if args.build_shared_lib:
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
                 adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
+                adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
+                adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
                 adb_shell("chmod +x {}/onnxruntime_shared_lib_test".format(device_dir))
+                adb_shell("chmod +x {}/onnxruntime_customopregistration_test".format(device_dir))
                 run_adb_shell("LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test".format(device_dir))
+                run_adb_shell(
+                    "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_customopregistration_test".format(device_dir)
+                )
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    run_subprocess(
-        [
-            "xcodebuild",
-            "test-without-building",
-            "-project",
-            "./onnxruntime.xcodeproj",
-            "-configuration",
-            config,
-            "-scheme",
-            "onnxruntime_test_all_xc",
-            "-destination",
-            "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-        ],
-        cwd=cwd,
-    )
+    xc_test_schemes = [
+        "onnxruntime_test_all_xc",
+    ]
 
-    run_subprocess(
-        [
-            "xcodebuild",
-            "test-without-building",
-            "-project",
-            "./onnxruntime.xcodeproj",
-            "-configuration",
-            config,
-            "-scheme",
+    if args.build_shared_lib:
+        xc_test_schemes += [
             "onnxruntime_shared_lib_test_xc",
-            "-destination",
-            "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-        ],
-        cwd=cwd,
-    )
+            "onnxruntime_customopregistration_test_xc",
+        ]
+
+    for xc_test_scheme in xc_test_schemes:
+        run_subprocess(
+            [
+                "xcodebuild",
+                "test-without-building",
+                "-project",
+                "./onnxruntime.xcodeproj",
+                "-configuration",
+                config,
+                "-scheme",
+                xc_test_scheme,
+                "-destination",
+                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+            ],
+            cwd=cwd,
+        )
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
@@ -1724,6 +1726,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_shared_lib_test.exe")
                     executables.append("onnxruntime_global_thread_pools_test.exe")
                     executables.append("onnxruntime_api_tests_without_env.exe")
+                    executables.append("onnxruntime_customopregistration_test")
+
                 run_subprocess(
                     [
                         "vstest.console.exe",
@@ -1744,6 +1748,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_shared_lib_test")
                     executables.append("onnxruntime_global_thread_pools_test")
                     executables.append("onnxruntime_api_tests_without_env")
+                    executables.append("onnxruntime_customopregistration_test")
+
                 for exe in executables:
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 

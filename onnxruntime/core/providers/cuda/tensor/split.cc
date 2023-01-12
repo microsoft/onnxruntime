@@ -13,7 +13,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   2, 10,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                                  Split);
+                                  Split_2_13);
 
 // explicitly supports negative axis
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
@@ -21,19 +21,28 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   11, 12,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                                  Split);
+                                  Split_2_13);
 
 // explicitly supports 'split' as optional input
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
+                                  kOnnxDomain,
+                                  13, 17,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Split_2_13);
+
 ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
-                        13,
+                        18,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        Split);
+                        Split_18);
 
-Status Split::ComputeInternal(OpKernelContext* ctx) const {
+Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor);
   auto& input_shape = input_tensor->Shape();
