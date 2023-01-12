@@ -124,9 +124,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_Log, _In_ const OrtKernelContext* con
         severity,
         onnxruntime::logging::Category::onnxruntime,
         log_data_type,
-        location)
-            .Stream()
-        << message;
+        location
+    ).Stream() << message;
   }
 
   return nullptr;
