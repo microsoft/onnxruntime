@@ -4,20 +4,27 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/tensor/col2im_attributes.h"
 
 namespace onnxruntime {
 
 template <typename T>
 class Col2Im final : public OpKernel {
  public:
-  explicit Col2Im(const OpKernelInfo& info) : OpKernel(info), col2im_attrs_(info) {
+  explicit Col2Im(const OpKernelInfo& info) : OpKernel(info) {
+    if (!info.GetAttrs("strides", strides_).IsOK())
+      ORT_ENFORCE(strides_.empty());
+    if (!info.GetAttrs("dilations", dilations_).IsOK())
+      ORT_ENFORCE(dilations_.empty());
+    if (!info.GetAttrs("pads", pads_).IsOK())
+      ORT_ENFORCE(pads_.empty());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Col2ImAttributes col2im_attrs_;
+  TensorShapeVector pads_;
+  TensorShapeVector dilations_;
+  TensorShapeVector strides_;
 };
 
 }  // namespace onnxruntime

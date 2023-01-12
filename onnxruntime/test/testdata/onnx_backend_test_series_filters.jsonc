@@ -122,7 +122,6 @@
         "^test_center_crop_pad_*",
         "^test_clip_default_int8_max_expanded_cpu",
         "^test_clip_default_int8_min_expanded_cpu",
-        "^test_col2im_*",
         "^test_constant_pad_axes_cpu",
         "^test_constant_pad_cpu",
         "^test_edge_pad_cpu",
