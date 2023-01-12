@@ -25,7 +25,7 @@ VERSION=`ls $ARTIFACT_DIR/onnxruntime-linux-x64-gpu | sed 's/onnxruntime-linux-x
 mv $ARTIFACT_DIR/onnxruntime-linux-x64-gpu/* $ARTIFACT_DIR/onnxruntime-linux-x64-gpu/onnxruntime-linux-x64-gpu-$VERSION
 rm $ARTIFACT_DIR/onnxruntime-linux-x64-cuda-*.tgz
 
-\cp -f onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime.so* onnxruntime-linux-x64-gpu/*/lib
-\cp -f onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_tensorrt.so onnxruntime-linux-x64-gpu/*/lib
-\cp -f onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_shared.so onnxruntime-linux-x64-gpu/*/lib
-\cp -f onnxruntime-linux-x64-tensorrt/*/include/*tensorrt* onnxruntime-linux-x64-gpu/*/include
+cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime.so* onnxruntime-linux-x64-gpu/*/lib
+cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_tensorrt.so onnxruntime-linux-x64-gpu/*/lib
+cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_shared.so onnxruntime-linux-x64-gpu/*/lib
+cp onnxruntime-linux-x64-tensorrt/*/include/*tensorrt* onnxruntime-linux-x64-gpu/*/include
