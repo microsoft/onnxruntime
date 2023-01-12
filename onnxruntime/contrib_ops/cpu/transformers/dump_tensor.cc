@@ -186,6 +186,9 @@ void CpuTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
 }
 
+void CpuTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
+}
+
 void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
 }
 

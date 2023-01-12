@@ -116,18 +116,6 @@ Status Sample(AllocatorPtr& allocator,
   dumper->Print("next_token_scores after filtering", next_token_scores.data(), parameters->batch_size, parameters->vocab_size);
 #endif
 
-  gsl::span<T>& next_token_probs = sampling_state->h_softmaxed_score;
-  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters->batch_size,
-                                    parameters->vocab_size,
-                                    next_token_scores.data(),
-                                    next_token_probs.data(),
-                                    false,
-                                    thread_pool));
-
-#ifdef DEBUG_GENERATION
-  dumper->Print("next_token_probs", next_token_probs.data(), parameters->batch_size, parameters->vocab_size);
-#endif
-
   // torch.multinomial()
   int64_t next_token_probs_dims[] = {static_cast<int64_t>(parameters->batch_size), parameters->vocab_size};
   TensorShape next_token_probs_shape(&next_token_probs_dims[0], 2);
@@ -135,7 +123,7 @@ Status Sample(AllocatorPtr& allocator,
   OrtValue next_token_probs_value;
   Tensor::InitOrtValue(element_type,
                        next_token_probs_shape,
-                       next_token_probs.data(),
+                       next_token_scores.data(),
                        allocator->Info(),
                        next_token_probs_value);
   const Tensor& input = next_token_probs_value.Get<Tensor>();
