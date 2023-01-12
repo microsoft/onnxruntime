@@ -168,6 +168,10 @@ a.link:active .link-arrow{
 .carousel .testimonial, .tab-wrapper .testimonial{
     position: relative;
 }
+.video{
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+}
 .carousel p, .tab-wrapper p{
     font-size:26px;
     font-weight: bold;
