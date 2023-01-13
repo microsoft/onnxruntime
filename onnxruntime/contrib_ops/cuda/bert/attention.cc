@@ -89,12 +89,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
 
   if (is_unidirectional_) {  // GPT
-    // Fused kernels requires left side padding (The mask shall be sequence lengths or no mask)
+    // GPT fused kernels requires left side padding. mask can be:
+    //     none (no padding), 1D sequence lengths or 2d mask.
     // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
     // where past state is empty.
+    bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
     bool use_causal_fused_runner = !disable_fused_runner_ &&
                                    (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
                                    nullptr == extra_add_qk &&
