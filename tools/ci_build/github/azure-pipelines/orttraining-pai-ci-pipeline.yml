@@ -84,7 +84,7 @@ jobs:
     inputs:
       script: |-
         export KERNEL_EXPLORER_BUILD_DIR=./build/Release
-        pytest ./onnxruntime/python/tools/kernel_explorer/
+        pytest ./onnxruntime/python/tools/kernel_explorer/ -n 16 --reruns 1
     displayName: 'Run kernel explorer tests'
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
