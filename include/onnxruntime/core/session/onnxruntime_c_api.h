@@ -3690,11 +3690,10 @@ struct OrtApi {
   /** \brief Logs a message at the given severity level using ::OrtEnv's logger.
    *
    * Must create an ::OrtEnv before using this function, otherwise an error status is returned.
-   *
    * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
    * are logged.
    *
-   * Can be used in custom operators to log information when the ::OrtKernelContext's logger is unavailable.
+   * Can be used in custom operators to log messages when the ::OrtKernelContext's logger is unavailable.
    *
    * \param[in] log_severity_level The message's severity level.
    * \param[in] message The message to log.
@@ -3708,11 +3707,9 @@ struct OrtApi {
   ORT_API2_STATUS(LogMessage, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
                   int line_number, _In_z_ const char* func_name);
 
-  /** \brief Get the logging severity level of the ::Env's logger.
+  /** \brief Get the logging severity level of the ::OrtEnv's logger.
    *
    * Must create an ::OrtEnv before using this function, otherwise an error status is returned.
-   *
-   * Can be used in custom operators to get the ::OrtEnv's loggging security level.
    *
    * \param[out] out Pointer to variable assigned with the logging severity level on success.
    *
