@@ -727,7 +727,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
       ActType const** worker_indirection_buffer = nullptr;
       if (indirection_buffer) {
-        size_t offset = (image_id * output_image_size + output_start) * kernel_size;
+        size_t offset = SafeInt<size_t>(image_id * output_image_size + output_start) * kernel_size;
         assert(offset < ind_buf_length);
         worker_indirection_buffer = static_cast<ActType const**>(indirection_buffer.get()) + offset;
 
