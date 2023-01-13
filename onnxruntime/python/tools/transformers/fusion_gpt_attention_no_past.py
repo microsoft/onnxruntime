@@ -180,7 +180,9 @@ class FusionGptAttentionNoPast(Fusion):
                 logger.debug("fuse_attention: skip since div_qk != div_mask")
                 return
             if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
-                _, self.mask_filter_value = self.model.get_constant_input(mask_nodes[0])
+                _, mul_val = self.model.get_constant_input(mask_nodes[0])
+                if mul_val != -10000:
+                    self.mask_filter_value = mul_val
 
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.

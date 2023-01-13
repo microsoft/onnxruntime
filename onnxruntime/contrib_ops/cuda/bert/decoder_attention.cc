@@ -168,7 +168,7 @@ DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(inf
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 
-  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", std::numeric_limits<float>::lowest());
+  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 }
 
 template <typename T>

@@ -368,7 +368,7 @@ Status LaunchLongformerSoftmaxKernel(
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
-    const void* attention_mask,   // attention mask with shape (B, S), with value 0 not masked and -10000 or torch.finfo(dtype).min masked.
+    const void* attention_mask,   // attention mask with shape (B, S), with value 0 not masked and value of mask_filter_value.
     int max_num_global,           // maximum number of global tokens (G)
     const bool compact_global_q,  // whether global_q has shape (B, N, G, H) instead of (B, N, S, H)
     const void* global_q,         // Q for global tokens with shape (B, N, S, H).

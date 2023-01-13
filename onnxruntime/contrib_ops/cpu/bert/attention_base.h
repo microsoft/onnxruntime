@@ -37,7 +37,7 @@ class AttentionBase {
     num_heads_ = static_cast<int>(num_heads);
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-    mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", std::numeric_limits<float>::lowest());
+    mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
     if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
       qkv_hidden_sizes_.clear();

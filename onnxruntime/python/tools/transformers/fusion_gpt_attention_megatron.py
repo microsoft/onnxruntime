@@ -84,7 +84,9 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
         (mul_mask, sub_mask, last_slice_mask, slice_mask) = mask_nodes
 
         if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
-            _, self.mask_filter_value = self.model.get_constant_input(mask_nodes[0])
+            _, mul_val = self.model.get_constant_input(mask_nodes[0])
+            if mul_val != -10000:
+                self.mask_filter_value = mul_val
 
         if mul_qk.input[1] != last_slice_mask.output[0]:
             logger.debug("fuse_attention failed: mul_qk.input[1] != last_slice_mask.output[0]")
