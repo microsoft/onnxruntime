@@ -1088,9 +1088,12 @@ public class InferenceTest {
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
       try (SessionOptions options = new SessionOptions()) {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
+        String osName = System.getProperty("os.name").toLowerCase();
+        boolean isWindows = osName.contains("windows");
+        boolean isMac = osName.contains("mac");
 
-        // on Windows, Java.System.load will make the symbols from the loaded library available.
+        // on Windows and mac, Java.System.load will make the symbols from the loaded library
+        // available.
         // on other platforms the dlsym uses RTLD_LOCAL so they're not. Would need to use something
         // like
         // https://github.com/java-native-access/jna to achieve that.
@@ -1105,7 +1108,7 @@ public class InferenceTest {
           System.load(customLibraryName);
           options.registerCustomOpsUsingFunction("RegisterCustomOps");
 
-          if (isWindows) {
+          if (isWindows || isMac) {
             if (OnnxRuntime.extractCUDA()) {
               options.addCUDA();
             }
@@ -1117,7 +1120,8 @@ public class InferenceTest {
           }
         } catch (OrtException e) {
           System.out.println(e.getMessage());
-          assertTrue(!isWindows, "Expected to not throw OrtException on Windows");
+          assertTrue(
+              !(isWindows || isMac), "Expected to not throw OrtException on Windows or macOS");
           assertTrue(e.getMessage().contains("Failed to get symbol RegisterCustomOps"));
         }
       }
