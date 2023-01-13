@@ -2684,7 +2684,7 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::RegisterCustomOpsUsingFunction,
     &OrtApis::LogMessage,
     &OrtApis::GetLoggingSeverityLevel,
-    &OrtApis::KernelContext_Log,
+    &OrtApis::KernelContext_LogMessage,
     &OrtApis::KernelContext_GetLoggingSeverityLevel,
     &OrtApis::KernelInfo_GetInputCount,
     &OrtApis::KernelInfo_GetOutputCount,

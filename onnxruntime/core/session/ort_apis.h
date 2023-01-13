@@ -417,7 +417,7 @@ ORT_API_STATUS_IMPL(LogMessage, OrtLoggingLevel log_severity_level, _In_z_ const
                     int line_number, _In_z_ const char* func_name);
 ORT_API_STATUS_IMPL(GetLoggingSeverityLevel, _Out_ OrtLoggingLevel* out);
 
-ORT_API_STATUS_IMPL(KernelContext_Log, _In_ const OrtKernelContext* context, OrtLoggingLevel log_severity_level,
+ORT_API_STATUS_IMPL(KernelContext_LogMessage, _In_ const OrtKernelContext* context, OrtLoggingLevel log_severity_level,
                     _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
                     _In_z_ const char* func_name);
 ORT_API_STATUS_IMPL(KernelContext_GetLoggingSeverityLevel, _In_ const OrtKernelContext* context,

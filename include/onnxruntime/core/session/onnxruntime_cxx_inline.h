@@ -1472,9 +1472,9 @@ inline void* KernelContext::GetGPUComputeStream() const {
 }
 
 
-inline Status KernelContext::Log(OrtLoggingLevel severity, const char* message, const char* file_path, int line_number,
-                                 const char* func_name) const noexcept {
-  OrtStatus* status = GetApi().KernelContext_Log(ctx_, severity, message, file_path, line_number, func_name);
+inline Status KernelContext::LogMessage(OrtLoggingLevel severity, const char* message, const char* file_path,
+                                        int line_number, const char* func_name) const noexcept {
+  OrtStatus* status = GetApi().KernelContext_LogMessage(ctx_, severity, message, file_path, line_number, func_name);
   return Status{status};
 }
 

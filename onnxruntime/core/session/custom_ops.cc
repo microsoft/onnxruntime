@@ -108,7 +108,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
 #pragma warning(pop)
 #endif
 
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_Log, _In_ const OrtKernelContext* context,
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_LogMessage, _In_ const OrtKernelContext* context,
                     OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
                     _In_z_ const char* func_name) {
   API_IMPL_BEGIN

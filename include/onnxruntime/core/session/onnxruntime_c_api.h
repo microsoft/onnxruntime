@@ -3693,7 +3693,7 @@ struct OrtApi {
    * Only messages with a severity level equal or greater than the ::OrtEnv's logging severity level
    * are logged.
    *
-   * Can be used in custom operators to log messages when the ::OrtKernelContext's logger is unavailable.
+   * Can be used to log messages in custom operator libraries.
    *
    * \param[in] log_severity_level The message's severity level.
    * \param[in] message The message to log.
@@ -3728,8 +3728,7 @@ struct OrtApi {
    * are logged. Use OrtApi::KernelContext_GetLoggingSeverityLevel to get the ::OrtKernelContext's logging severity
    * level.
    *
-   * Can be used in custom operators to log information during kernel computation in manner consistent with built-in
-   * operators.
+   * Can be used in custom operators to log messages within a kernel's compute function.
    *
    * \param[in] context The ::OrtKernelContext instance.
    * \param[in] log_severity_level The message's severity level.
@@ -3741,13 +3740,13 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelContext_Log, _In_ const OrtKernelContext* context, OrtLoggingLevel log_severity_level,
+  ORT_API2_STATUS(KernelContext_LogMessage, _In_ const OrtKernelContext* context, OrtLoggingLevel log_severity_level,
                   _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
                   _In_z_ const char* func_name);
 
   /** \brief Get the logging severity level of the ::OrtKernelContext's logger.
    *
-   * Can be used in custom operators to get the current logging serverity level during kernel computation.
+   * Can be used in a custom operator's kernel compute function to get the ::OrtKernelContext's logging serverity level.
    *
    * \param[in] context The ::OrtKernelContext instance.
    * \param[out] out Pointer to variable assigned with the logging severity level on success.
