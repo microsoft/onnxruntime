@@ -176,8 +176,8 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
 
   auto normalize_factor_data = GetScratchBuffer<T>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::SUM) {
-    const T normalize_factor = static_cast<T>(1);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
+    constexpr T normalize_factor_one = static_cast<T>(1);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor_one, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
   } else if (reduction_ == ReductionType::MEAN) {
     if (weight_data == nullptr) {
       const T normalize_factor = static_cast<T>(N);
@@ -246,8 +246,8 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
 
   auto normalize_factor_data = GetScratchBuffer<T>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::SUM) {
-    const T normalize_factor = static_cast<T>(1);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
+    constexpr T normalize_factor_one = static_cast<T>(1);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor_one, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
   } else if (reduction_ == ReductionType::MEAN) {
     if (weight_data == nullptr) {
       const T normalize_factor = static_cast<T>(N);
