@@ -147,7 +147,7 @@ async function loadTensors(
 }
 
 async function initializeSession(
-    modelFilePath: string, backendHint: string, profile: boolean,
+    modelFilePath: string, backendHint: string, profile: boolean, sessionOptions: ort.InferenceSession.SessionOptions,
     fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
@@ -157,7 +157,8 @@ async function initializeSession(
           preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
 
   const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
-  const sessionConfig = {executionProviders: [backendHint], profiler: profilerConfig, enableProfiling: profile};
+  const sessionConfig =
+      {...sessionOptions, executionProviders: [backendHint], profiler: profilerConfig, enableProfiling: profile};
   let session: ort.InferenceSession;
 
   try {
@@ -230,7 +231,9 @@ export class ModelTestContext {
   /**
    * create a ModelTestContext object that used in every test cases in the given ModelTest.
    */
-  static async create(modelTest: Test.ModelTest, profile: boolean): Promise<ModelTestContext> {
+  static async create(
+      modelTest: Test.ModelTest, profile: boolean,
+      sessionOptions?: ort.InferenceSession.SessionOptions): Promise<ModelTestContext> {
     if (this.initializing) {
       throw new Error('cannot create a ModelTestContext object when the previous creation is not done');
     }
@@ -239,7 +242,8 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
-      const session = await initializeSession(modelTest.modelUrl, modelTest.backend!, profile, this.cache);
+      const session =
+          await initializeSession(modelTest.modelUrl, modelTest.backend!, profile, sessionOptions || {}, this.cache);
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
