@@ -413,16 +413,6 @@ ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* opti
 ORT_API_STATUS_IMPL(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
                     _In_ const char* registration_func_name);
 
-ORT_API_STATUS_IMPL(LogMessage, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const char* file_path,
-                    int line_number, _In_z_ const char* func_name);
-ORT_API_STATUS_IMPL(GetLoggingSeverityLevel, _Out_ OrtLoggingLevel* out);
-
-ORT_API_STATUS_IMPL(KernelContext_LogMessage, _In_ const OrtKernelContext* context, OrtLoggingLevel log_severity_level,
-                    _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
-                    _In_z_ const char* func_name);
-ORT_API_STATUS_IMPL(KernelContext_GetLoggingSeverityLevel, _In_ const OrtKernelContext* context,
-                    _Out_ OrtLoggingLevel* out);
-
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,

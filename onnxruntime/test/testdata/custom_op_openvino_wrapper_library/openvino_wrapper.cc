@@ -159,8 +159,6 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
   auto device_type_it = session_configs.find("device_type");
 
   if ((device_type_it == session_configs.end()) || device_type_it->second.empty()) {
-    OrtLoggingLevel log_level = Ort::GetLoggingSeverityLevel();
-    ORT_CXX_LOG(log_level, "Did not provide an OpenVINO device type. Using 'CPU'.");
     this->device_type_ = "CPU";
   } else {
     this->device_type_ = device_type_it->second;
@@ -172,10 +170,6 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
 
 void KernelOpenVINO::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
-
-  // Test logging.
-  OrtLoggingLevel log_level = kcontext.GetLoggingSeverityLevel();
-  ORT_KERNEL_CONTEXT_LOG(kcontext, log_level, "KernelOpenVINO::Compute() - Test KernelContext logging API");
 
   // Create inference request.
   ov::InferRequest infer_req = this->compiled_model_.create_infer_request();

@@ -419,21 +419,6 @@ struct Env : detail::Base<OrtEnv> {
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 };
 
-// Logs a message at the specified severity level via Ort::Env's logger. Wraps Ort::LogMessageImpl.
-#define ORT_CXX_LOG(severity, message) \
-  Ort::detail::LogMessageImpl(severity, message, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__))
-
-namespace detail {
-
-// Logs a message at the given severity level via Ort::Env's logger. Wraps OrtApi::LogMessage.
-// Typically called via the ORT_CXX_LOG macro.
-Status LogMessageImpl(OrtLoggingLevel log_severity_level, const char* message, const char* file_path, int line_number,
-                      const char* func_name) noexcept;
-}  // namespace detail
-
-// Gets the logging severity level for Ort::Env's logger. Wraps OrtApi::GetLoggingSeverityLevel.
-OrtLoggingLevel GetLoggingSeverityLevel();
-
 /** \brief Custom Op Domain
  *
  */
@@ -1519,15 +1504,6 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
 
-// Logs a message at the specified severity level. Wraps Ort::KernelContext::LogMessage.
-#define ORT_KERNEL_CONTEXT_LOG(context, severity, message) \
-  context.LogMessage(severity, message, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__))
-
-  // Logs a message at the given severity level. Wraps OrtApi::KernelContext_LogMessage.
-  // Typically called via the ORT_KERNEL_CONTEXT_LOG macro.
-  Status LogMessage(OrtLoggingLevel log_severity_level, const char* message, const char* file_path, int line_number,
-                    const char* func_name) const noexcept;
-  OrtLoggingLevel GetLoggingSeverityLevel() const;  //< Wraps OrtApi::KernelContext_GetLoggingSeverityLevel.
  private:
   OrtKernelContext* ctx_;
 };

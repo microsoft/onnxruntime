@@ -464,18 +464,6 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
-inline Status detail::LogMessageImpl(OrtLoggingLevel severity, const char* message, const char* file_path, int line_number,
-                                     const char* func_name) noexcept {
-  OrtStatus* status = GetApi().LogMessage(severity, message, file_path, line_number, func_name);
-  return Status{status};
-}
-
-inline OrtLoggingLevel GetLoggingSeverityLevel() {
-  OrtLoggingLevel out{};
-  Ort::ThrowOnError(GetApi().GetLoggingSeverityLevel(&out));
-  return out;
-}
-
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
@@ -1468,19 +1456,6 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int
 inline void* KernelContext::GetGPUComputeStream() const {
   void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
-  return out;
-}
-
-
-inline Status KernelContext::LogMessage(OrtLoggingLevel severity, const char* message, const char* file_path,
-                                        int line_number, const char* func_name) const noexcept {
-  OrtStatus* status = GetApi().KernelContext_LogMessage(ctx_, severity, message, file_path, line_number, func_name);
-  return Status{status};
-}
-
-inline OrtLoggingLevel KernelContext::GetLoggingSeverityLevel() const {
-  OrtLoggingLevel out{};
-  Ort::ThrowOnError(GetApi().KernelContext_GetLoggingSeverityLevel(ctx_, &out));
   return out;
 }
 
