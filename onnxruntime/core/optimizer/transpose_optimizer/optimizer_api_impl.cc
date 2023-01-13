@@ -646,6 +646,12 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
     graph.UpdateProducerNode(arg->Name(), node.Index());
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // add schema if available.
+  // not guaranteed to be (compiling EP doesn't need schemas, not available in minimal build
+  graph.SetOpSchemaFromRegistryForNode(node);
+#endif
+
   return node;
 }
 
@@ -909,18 +915,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      [[maybe_unused]] auto new_node_ref =
-        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
-
-#if !defined(ORT_MINIMAL_BUILD)
-      // Set the schema if one is available. This keeps the node equivalent with the state of the original ONNX
-      // node (if possible - some replacement nodes do not have a schema).
-      //
-      Node& new_node = NodeFromApiNode(*new_node_ref);
-      // add schema if available.
-      // not guaranteed to be (compiling EP doesn't need schemas, not available in minimal build
-      graph.SetOpSchemaFromRegistryForNode(new_node);
-#endif
+      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
     }
   }
