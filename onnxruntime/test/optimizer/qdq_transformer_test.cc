@@ -764,6 +764,85 @@ TEST(QDQTransformerTests, Gather) {
   test_case({12, 37}, {24, 12});
 }
 
+TEST(QDQTransformerTests, DoubleQDQ) {
+  std::function<void(InferenceSessionWrapper & session)> expect_succeed = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+  };
+  std::function<void(InferenceSessionWrapper & session)> expect_fail = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+  };
+
+  auto test_case_all_s8 = [&](bool succeed,
+                              int8_t zp_1, int8_t zp_2, int8_t zp_3, int8_t zp_4,
+                              float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        succeed ? expect_succeed : expect_fail,
+        TransformerLevel::Level1,
+        TransformerLevel::Level2);
+  };
+  auto test_case_all_u8 = [&](bool succeed,
+                              uint8_t zp_1, uint8_t zp_2, uint8_t zp_3, uint8_t zp_4,
+                              float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        succeed ? expect_succeed : expect_fail,
+        TransformerLevel::Level1,
+        TransformerLevel::Level2);
+  };
+  auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
+                                      float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        expect_fail,
+        TransformerLevel::Level1,
+        TransformerLevel::Level2);
+  };
+  
+  // all signed type
+  test_case_all_s8(true, -20, -20, 23, 23, .003f, .003f, .003f, .003f);
+  // different zero point within a pair
+  test_case_all_s8(false, -20, 20, 23, 23, .003f, .003f, .003f, .003f);
+  test_case_all_s8(false, -20, -20, -23, 23, .003f, .003f, .003f, .003f);
+  // different scale within a pair
+  test_case_all_s8(false, -20, -20, 23, 23, .003f, .03f, .003f, .003f);
+  test_case_all_s8(false, -20, -20, 23, 23, .003f, .003f, .03f, .003f);
+
+  // all unsigned type
+  test_case_all_u8(true, 40, 40, 23, 23, .003f, .003f, .003f, .003f);
+  // different zero point within a pair
+  test_case_all_u8(false, 40, 20, 23, 23, .003f, .003f, .003f, .003f);
+  test_case_all_u8(false, 40, 40, 43, 23, .003f, .003f, .003f, .003f);
+  // different scale within a pair
+  test_case_all_u8(false, 40, 40, 23, 23, .003f, .03f, .003f, .003f);
+  test_case_all_u8(false, 40, 40, 23, 23, .003f, .003f, .03f, .003f);
+
+  // 2 signed, 2 unsigned
+  test_case_2u8_2s8_failed(40, 40, 23, 23, .003f, .003f, .003f, .003f);
+}
+
+TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
+  auto test_case = [&](int output_index, size_t expected_Q_count, size_t expected_DQ_count) {
+    auto graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], expected_Q_count);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_DQ_count);
+    };
+    TransformerTester(
+        BuildDoubleQDQWithoutLastOutput<uint8_t>(output_index),
+        graph,
+        TransformerLevel::Level1,
+        TransformerLevel::Level2);
+  };
+  test_case(0, 1, 1);  // Because of QDQFinalCleanupTransformer
+  test_case(1, 2, 2);
+  test_case(2, 2, 2);
+  test_case(3, 1, 1);
+}
 // Because split isn't one the supported ops, this will stay the same
 TEST(QDQTransformerTests, Split) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
