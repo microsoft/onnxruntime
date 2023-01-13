@@ -561,7 +561,7 @@
                "commitHash": "6812205f18ca4ef54372e87e1a13ce4a859434df",
                "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
             },
-            "comments": "python-pillow"
+            "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
          }
       }
    ],
