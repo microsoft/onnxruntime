@@ -39,6 +39,7 @@ Status LaunchAttentionKernel(
     bool is_unidirectional,                    // Whether there is unidirectional mask.
     const void* input,                         // Input tensor
     const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
+    const float mask_filter_value,             // Mask value for filtered out positions
     gsl::span<const int64_t> mask_index_dims,  // Mask index shape
     const void* past,                          // Past state input
     const void* extra_add_qk,                  // Additional Add
