@@ -25,7 +25,6 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
 
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, num_heads)
-        self.mask_filter_value = None
 
     def fuse_attention_node(
         self,
