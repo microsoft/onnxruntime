@@ -1,0 +1,136 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/common.h"
+#include "core/providers/shared/utils/utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/cpu/tensor/slice_helper.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/common/safeint.h"
+
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+
+namespace onnxruntime {
+namespace qnn {
+class TileOpBuilder : public BaseOpBuilder {
+ public:
+  TileOpBuilder() : BaseOpBuilder("TileOpBuilder") {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TileOpBuilder);
+
+ protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       bool is_quantized_model,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
+                                     bool is_quantized_model,
+                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+};
+
+Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     const logging::Logger& logger,
+                                     bool is_quantized_model,
+                                     std::vector<std::string>& input_names,
+                                     bool do_op_validation) const {
+  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+  InitializeQuantizeParam(quantize_param, is_quantized_model);
+  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
+
+  auto inputs = node_unit.Inputs();
+  // QNN Tile only support 1 input, the 2nd input need to be initialier
+  if (do_op_validation) {
+    auto& repeats_input_name = inputs[1].node_arg.Name();
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(repeats_input_name),
+                      "Qnn doesn't support dynamic repeats input");
+  }
+
+  auto& input_name = inputs[0].node_arg.Name();
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
+    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
+    input_names.push_back(input_name);
+    return Status::OK();
+  }
+
+  const auto* type_proto = inputs[0].node_arg.TypeAsProto();
+  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[0].quant_param,
+                                                                   quantize_param.scaleOffsetEncoding.scale,
+                                                                   quantize_param.scaleOffsetEncoding.offset),
+                    "Cannot get quantization parameter");
+
+  std::vector<uint8_t> unpacked_tensor;
+  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
+  if (is_initializer_input) {
+    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+  }
+
+  input_names.push_back(input_name);
+  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
+
+  QnnTensorWrapper input_tensorwrapper(input_name,
+                                       tensor_type,
+                                       qnn_data_type,
+                                       quantize_param,
+                                       std::move(input_shape),
+                                       std::move(unpacked_tensor));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+
+  return Status::OK();
+}
+
+Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                   const NodeUnit& node_unit,
+                                                   std::vector<std::string>&& input_names,
+                                                   const logging::Logger& logger,
+                                                   bool is_quantized_model,
+                                                   bool do_op_validation) const {
+  std::vector<std::string> param_tensor_names;
+  // Already confirmed repeats input is initailizer in ProcessInputs()
+  auto& repeats_input_name = node_unit.Inputs()[1].node_arg.Name();
+
+  std::vector<uint8_t> unpacked_tensor;
+  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(repeats_input_name);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+  // Onnx repeats are int64, Qnn use uint32
+  const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  size_t tensor_byte_size = unpacked_tensor.size();
+  size_t size = tensor_byte_size / sizeof(int64_t);
+
+  std::vector<uint32_t> multiples;
+  std::transform(tensor_data, tensor_data + size, std::back_inserter(multiples),
+                 [](int64_t item) { return SafeInt<uint32_t>(item); });
+
+  uint32_t multiples_size = static_cast<uint32_t>(multiples.size());
+  std::vector<uint32_t> multiples_dim{multiples_size};
+  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), qnn_def::multiples, std::move(multiples_dim),
+                              std::move(multiples));
+  param_tensor_names.push_back(multiples_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
+
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                     std::move(input_names),
+                                     std::move(param_tensor_names),
+                                     logger, is_quantized_model, do_op_validation));
+
+  return Status::OK();
+}
+
+void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.AddOpBuilder(op_type, std::make_unique<TileOpBuilder>());
+}
+
+}  // namespace qnn
+}  // namespace onnxruntime

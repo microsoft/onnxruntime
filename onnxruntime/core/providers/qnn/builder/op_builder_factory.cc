@@ -116,6 +116,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateTopKOpBuilder("TopK", *this);
   }
+
+  {
+    CreateTileOpBuilder("Tile", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

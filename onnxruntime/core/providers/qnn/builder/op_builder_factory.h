@@ -74,5 +74,7 @@ void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 
 void CreateTopKOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -425,6 +425,7 @@ const std::string interpolation_mode = "interpolation_mode";
 const std::string nearest_mode = "nearest_mode";
 const std::string rounding_mode = "rounding_mode";
 const std::string topk = "k";
+const std::string multiples = "multiples";
 }  // namespace qnn_def
 
 }  // namespace qnn
