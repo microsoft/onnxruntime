@@ -671,10 +671,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   if (use_indirection_buffer) {
     // Allocate indirection buffer pointers and prepare a padding vector for
     // the im2col transform.
-    ind_buf_length = SafeInt<size_t>(kernel_size) * output_image_size;
+    ind_buf_length = SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size;
     if (parallel_batch)
       ind_buf_length *= SafeInt<size_t>(N); // ind buffer per each image in the batch
-    auto* indirection_data = alloc->Alloc(SafeInt<size_t>(sizeof(const ActType*)) * ind_buf_length);
+    auto* indirection_data = alloc->Alloc(ind_buf_length);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
   }
