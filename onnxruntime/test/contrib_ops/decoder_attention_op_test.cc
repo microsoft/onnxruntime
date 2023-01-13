@@ -42,6 +42,7 @@ static void RunAttentionTest(
   if (enable_cpu || enable_cuda || enable_rocm) {
     OpTester tester("DecoderAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+    tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
 
     int head_size = hidden_size / num_heads;
     std::vector<int64_t> query_dims = {sequence_length, batch_size, hidden_size};

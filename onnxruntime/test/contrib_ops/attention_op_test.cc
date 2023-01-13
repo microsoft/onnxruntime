@@ -76,6 +76,7 @@ static void RunAttentionTest(
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
     tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
     tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(past_present_share_buffer ? 1 : 0));
+    tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
 
     int32_t qkv_hidden_size_sum;
     int32_t v_hidden_size;
@@ -3688,6 +3689,7 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   OpTester tester("Attention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
   tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(0));
+  tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
