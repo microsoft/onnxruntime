@@ -219,12 +219,12 @@ NS_ASSUME_NONNULL_BEGIN
   try {
     std::unordered_map<std::string, std::string> options;
     NSArray* keys = [providerOptions allKeys];
-  
+
     for (NSString* key in keys) {
       NSString* value = [providerOptions objectForKey:key];
       options.emplace(key.UTF8String, value.UTF8String);
     }
-  
+
     _sessionOptions->AppendExecutionProvider(providerName.UTF8String, options);
     return YES;
   }
@@ -282,6 +282,15 @@ NS_ASSUME_NONNULL_BEGIN
                         error:(NSError**)error {
   try {
     _sessionOptions->AddConfigEntry(key.UTF8String, value.UTF8String);
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)registerCustomOpsUsingFunction:(NSString*)registrationFuncName
+                                 error:(NSError**)error {
+  try {
+    _sessionOptions->RegisterCustomOpsUsingFunction(registrationFuncName.UTF8String);
     return YES;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
