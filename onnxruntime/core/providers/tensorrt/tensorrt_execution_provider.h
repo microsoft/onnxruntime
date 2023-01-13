@@ -146,7 +146,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
-  virtual int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) const; 
+  static int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash); 
 
  private:
   TensorrtExecutionProviderInfo info_;

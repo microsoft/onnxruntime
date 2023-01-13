@@ -2263,7 +2263,7 @@ int TensorrtExecutionProvider::TRTModelIdGenerator::TRTGenerateId(const GraphVie
 }
 
 // Call TRTGenerateModelId to generate hash id for TRT engine cache
-int TensorrtExecutionProvider::TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) const {
+static int TensorrtExecutionProvider::TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;

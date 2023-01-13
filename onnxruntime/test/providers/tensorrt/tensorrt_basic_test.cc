@@ -288,7 +288,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
 
   // get the hash for the model when loaded from file
   HashValue model_hash;
-  int id = TRTGenerateModelId(viewer, model_hash);
+  int id = TensorrtExecutionProvider::TRTGenerateModelId(viewer, model_hash);
   ASSERT_EQ(id, 0);
   ASSERT_NE(model_hash, 0);
 
@@ -305,7 +305,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   GraphViewer viewer2(graph2);
 
   HashValue model_hash2;
-  int id2 = TRTGenerateModelId(viewer2, model_hash2);
+  int id2 = TensorrtExecutionProvider::TRTGenerateModelId(viewer2, model_hash2);
 
   // test comparing model 1 & 2
   ASSERT_EQ(id2, 0) << "id2 should be 0";
@@ -317,7 +317,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   Graph& graph3 = model3->MainGraph();
   GraphViewer viewer3(graph3);
   HashValue model_hash3;
-  int id3 = TRTGenerateModelId(viewer3, model_hash3);
+  int id3 = TensorrtExecutionProvider::TRTGenerateModelId(viewer3, model_hash3);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
   ASSERT_EQ(id3, 1) << "id3 should be 1 as model 1 & 3 have same hash";
 }
@@ -334,7 +334,7 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
   HashValue model_hash;
 
   // Graph id acquired
-  int graph_id = TRTGenerateModelId(graph, model_hash);
+  int graph_id = TensorrtExecutionProvider::TRTGenerateModelId(graph, model_hash);
   int asserted_subgraph_id = graph_id + 1;
 
   // mock fetching subgraphs and generate id by calling TRTGenerateModelId repeatedly
@@ -348,7 +348,7 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
     std::cout << "->" << node->Name(); 
 
     // Check if id increment each time TRTGenerateModelId is called
-    int subgraph_id = TRTGenerateModelId(graph, model_hash);
+    int subgraph_id = TensorrtExecutionProvider::TRTGenerateModelId(graph, model_hash);
     ASSERT_EQ(subgraph_id, asserted_subgraph_id) << "id will increment as TRTGenerateModelId is repeatedly called";
     asserted_subgraph_id++;
   }
