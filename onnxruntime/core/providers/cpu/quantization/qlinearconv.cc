@@ -774,7 +774,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       }
     };
 
-    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count * N, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count * N), conv_worker);
 
     return Status::OK();
   }
