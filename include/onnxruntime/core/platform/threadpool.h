@@ -26,6 +26,16 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#ifdef USE_TBB
+#include <oneapi/tbb.h>
+#endif
+
+#ifdef _WIN32
+using NAME_CHAR_TYPE = wchar_t;
+#else
+using NAME_CHAR_TYPE = char;
+#endif
+
 // ORT thread pool overview
 // ------------------------
 //
@@ -127,8 +137,101 @@ struct TensorOpCost {
   double compute_cycles;
 };
 
-
 namespace concurrency {
+
+#ifdef USE_TBB
+
+using FN = std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>;
+using SimpleFN = std::function<void(std::ptrdiff_t)>;
+
+class ThreadPool {
+ public:
+  ThreadPool(Env* env,
+             const ThreadOptions& thread_options,
+             const NAME_CHAR_TYPE* name,
+             int degree_of_parallelism,
+             bool low_latency_hint,
+             bool force_hybrid = false);
+
+  ~ThreadPool();
+
+  class ParallelSection {
+   public:
+    explicit ParallelSection(ThreadPool* /*tp*/) {}
+    ~ParallelSection() {}
+  };
+
+  void EnableSpinning() {}
+
+  void DisableSpinning() {}
+
+  static void Schedule(ThreadPool* tp,
+                       std::function<void()> fn) {
+    if (tp) {
+      tp->Schedule(fn);
+    } else {
+      fn();
+    }
+  }
+
+  static void TryParallelFor(ThreadPool* tp,
+                             std::ptrdiff_t total,
+                             double cost_per_unit,
+                             const FN& fn);
+
+  static void TryParallelFor(ThreadPool* tp,
+                             std::ptrdiff_t total,
+                             const TensorOpCost& cost_per_unit,
+                             const FN& fn);
+
+  static void TrySimpleParallelFor(ThreadPool* tp,
+                                   std::ptrdiff_t total,
+                                   const SimpleFN& simple_fn);
+
+  static void TryBatchParallelFor(ThreadPool* tp,
+                                  std::ptrdiff_t total,
+                                  const SimpleFN& fn,
+                                  std::ptrdiff_t num_batches);
+
+  struct WorkInfo {
+    std::ptrdiff_t start{0};
+    std::ptrdiff_t end{0};
+  };
+
+  constexpr static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+    const std::ptrdiff_t work_per_batch = total_work / num_batches;
+    const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
+    WorkInfo info;
+    if (batch_idx < work_per_batch_extra) {
+      info.start = (work_per_batch + 1) * batch_idx;
+      info.end = info.start + work_per_batch + 1;
+    } else {
+      info.start = work_per_batch * batch_idx + work_per_batch_extra;
+      info.end = info.start + work_per_batch;
+    }
+    return info;
+  }
+
+  static bool ShouldParallelize(const ThreadPool* tp) { return tp && tp->dop_ > 1; }
+
+  static int DegreeOfParallelism(const ThreadPool* tp) { return tp ? tp->dop_ : 1; }
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
+
+  // StartProfiling and StopProfiling are not to be consumed as public-facing API
+  static void StartProfiling(ThreadPool* /*tp*/) {}
+
+  static std::string StopProfiling(ThreadPool* /*tp*/) { return ""; }
+
+ private:
+  void Schedule(std::function<void()> fn);
+  void ParallelFor(std::ptrdiff_t total, const FN& fn);
+
+  std::unique_ptr<oneapi::tbb::global_control> tbb_global_;
+  int dop_ = 1;
+};
+
+#else
 
 template <typename Environment>
 class ThreadPoolTempl;
@@ -139,11 +242,6 @@ class ThreadPoolParallelSection;
 
 class ThreadPool {
  public:
-#ifdef _WIN32
-  using NAME_CHAR_TYPE = wchar_t;
-#else
-  using NAME_CHAR_TYPE = char;
-#endif
   // Constructs a pool for running with with "degree_of_parallelism" threads with
   // specified "name". env->StartThread() is used to create individual threads
   // with the given ThreadOptions. If "low_latency_hint" is true the thread pool
@@ -197,11 +295,11 @@ class ThreadPool {
   // parallel loops.
 
   class ParallelSection {
-  public:
-    explicit ParallelSection(ThreadPool *tp);
+   public:
+    explicit ParallelSection(ThreadPool* tp);
     ~ParallelSection();
 
-  private:
+   private:
     friend class ThreadPool;
 
     // Owning reference for the underlying ThreadPoolParallelSection
@@ -210,7 +308,7 @@ class ThreadPool {
     // ThreadPoolParallelSection does not need to be available at this
     // point to avoid a dependence on the Eigen headers.
     ThreadPoolParallelSection* ps_{nullptr};
-    ThreadPool *tp_;
+    ThreadPool* tp_;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
   };
 
@@ -430,6 +528,8 @@ class ThreadPool {
   // Force the thread pool to run in hybrid mode on a normal cpu.
   bool force_hybrid_ = false;
 };
+
+#endif
 
 }  // namespace concurrency
 }  // namespace onnxruntime

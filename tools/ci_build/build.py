@@ -685,6 +685,7 @@ def parse_arguments():
     parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
+    parser.add_argument("--use_tbb", action="store_true", help="Use intel tbb for multi-threading")
 
     args = parser.parse_args()
     if args.android_sdk_path:
@@ -1277,6 +1278,9 @@ def generate_build_tree(
 
     if args.use_cloud:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
+
+    if args.use_tbb:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_TBB", "ON")
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 

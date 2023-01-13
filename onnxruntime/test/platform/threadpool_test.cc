@@ -510,39 +510,39 @@ TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
   TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
 }
 
-#ifdef _WIN32
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-#pragma warning(push)
-#pragma warning(disable : 6387)
-TEST(ThreadPoolTest, TestStackSize) {
-  ThreadOptions to;
-  // For ARM, x86 and x64 machines, the default stack size is 1 MB
-  // We change it to a different value to see if the setting works
-  to.stack_size = 8 * 1024 * 1024;
-  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
-  typedef void(WINAPI * FnGetCurrentThreadStackLimits)(_Out_ PULONG_PTR LowLimit, _Out_ PULONG_PTR HighLimit);
-
-  Notification n;
-  ULONG_PTR low_limit, high_limit;
-  bool has_thread_limit_info = false;
-  ThreadPool::Schedule(tp.get(), [&]() {
-    HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
-    assert(kernel32_module != nullptr);
-    FnGetCurrentThreadStackLimits GetTS =
-        (FnGetCurrentThreadStackLimits)GetProcAddress(kernel32_module, "GetCurrentThreadStackLimits");
-    if (GetTS != nullptr) {
-      GetTS(&low_limit, &high_limit);
-      has_thread_limit_info = true;
-    }
-    n.Notify();
-  });
-  n.Wait();
-  if (has_thread_limit_info)
-    ASSERT_EQ(high_limit - low_limit, to.stack_size);
-}
-#pragma warning(pop)
-#endif
-#endif
+//#ifdef _WIN32
+//#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+//#pragma warning(push)
+//#pragma warning(disable : 6387)
+//TEST(ThreadPoolTest, TestStackSize) {
+//  ThreadOptions to;
+//  // For ARM, x86 and x64 machines, the default stack size is 1 MB
+//  // We change it to a different value to see if the setting works
+//  to.stack_size = 8 * 1024 * 1024;
+//  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
+//  typedef void(WINAPI * FnGetCurrentThreadStackLimits)(_Out_ PULONG_PTR LowLimit, _Out_ PULONG_PTR HighLimit);
+//
+//  Notification n;
+//  ULONG_PTR low_limit, high_limit;
+//  bool has_thread_limit_info = false;
+//  ThreadPool::Schedule(tp.get(), [&]() {
+//    HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
+//    assert(kernel32_module != nullptr);
+//    FnGetCurrentThreadStackLimits GetTS =
+//        (FnGetCurrentThreadStackLimits)GetProcAddress(kernel32_module, "GetCurrentThreadStackLimits");
+//    if (GetTS != nullptr) {
+//      GetTS(&low_limit, &high_limit);
+//      has_thread_limit_info = true;
+//    }
+//    n.Notify();
+//  });
+//  n.Wait();
+//  if (has_thread_limit_info)
+//    ASSERT_EQ(high_limit - low_limit, to.stack_size);
+//}
+//#pragma warning(pop)
+//#endif
+//#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 

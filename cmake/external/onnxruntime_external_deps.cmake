@@ -472,3 +472,7 @@ FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
 if (onnxruntime_USE_CLOUD)
     include(triton)
 endif()
+
+if (onnxruntime_USE_TBB)
+    include(tbb)
+endif()

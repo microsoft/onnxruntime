@@ -266,7 +266,7 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
 };
 
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
- 
+
 class alignas(CACHE_LINE_BYTES) LoopCounter {
  public:
   LoopCounter(uint64_t num_iterations,
@@ -365,6 +365,101 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   const unsigned _num_shards;
 };
 
+#ifdef USE_TBB
+
+ThreadPool::ThreadPool(Env* /*env*/,
+                       const ThreadOptions& /*thread_options*/,
+                       const NAME_CHAR_TYPE* /*name*/,
+                       int degree_of_parallelism,
+                       bool /*low_latency_hint*/,
+                       bool /*force_hybrid*/) : dop_(degree_of_parallelism) {
+  ORT_ENFORCE(dop_ > 0, "dop must be a positive integer!");
+  tbb_global_ = std::make_unique<oneapi::tbb::global_control>(oneapi::tbb::global_control::max_allowed_parallelism, degree_of_parallelism);
+}
+
+ThreadPool::~ThreadPool() {}
+
+void ThreadPool::Schedule(std::function<void()> fn) {
+  fn();
+}
+
+void ThreadPool::TryParallelFor(ThreadPool* tp,
+                                std::ptrdiff_t total,
+                                double /*cost_per_unit*/,
+                                const FN& fn) {
+  if (tp && total) {
+    tp->ParallelFor(total, fn);
+  } else {
+    fn(0, total);
+  }
+}
+
+void ThreadPool::TryParallelFor(ThreadPool* tp,
+                                std::ptrdiff_t total,
+                                const TensorOpCost& /*cost_per_unit*/,
+                                const FN& fn) {
+  if (tp && total) {
+    tp->ParallelFor(total, fn);
+  } else {
+    fn(0, total);
+  }
+}
+
+void ThreadPool::TrySimpleParallelFor(ThreadPool* tp,
+                                      std::ptrdiff_t total,
+                                      const SimpleFN& simple_fn) {
+  if (tp && total) {
+    FN fn = [simple_fn](std::ptrdiff_t first, std::ptrdiff_t last) {
+      for (std::ptrdiff_t i = first; i < last; ++i) {
+        simple_fn(i);
+      }
+    };
+    tp->ParallelFor(total, fn);
+  } else {
+    for (std::ptrdiff_t i = 0; i < total; ++i) {
+      simple_fn(i);
+    }
+  }
+}
+
+void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
+                                     std::ptrdiff_t total,
+                                     const SimpleFN& simple_fn,
+                                     std::ptrdiff_t num_batches) {
+  if (tp && total && num_batches) {
+    auto batch_size = std::max(static_cast<std::ptrdiff_t>(std::ceil(static_cast<double>(total) / num_batches)), 1LL);
+    SimpleFN simple_fn_wrapper = [batch_size, total, simple_fn](std::ptrdiff_t ith_batch) {
+      auto from = ith_batch * batch_size;
+      auto to = std::min(total, from + batch_size);
+      for (std::ptrdiff_t i = from; i < to; ++i) {
+        simple_fn(i);
+      }
+    };
+    TrySimpleParallelFor(tp, num_batches, simple_fn_wrapper);
+  } else {
+    for (std::ptrdiff_t i = 0; i < total; ++i) {
+      simple_fn(i);
+    }
+  }
+}
+
+struct TbbTask {
+  TbbTask(const FN& fn) : fn_(fn) {}
+  void operator()(const oneapi::tbb::blocked_range<std::ptrdiff_t>& r) const {
+    auto begin = r.begin();
+    auto end = r.end();
+    fn_(begin, end);
+  }
+  const FN& fn_;
+};
+
+void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
+  TbbTask tbb_task(fn);
+  oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::ptrdiff_t>(0, total, 1), tbb_task);
+}
+
+#else
+
 #ifdef _MSC_VER
 #pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
 #endif
@@ -457,7 +552,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
         }
       }
     };
-    // Distribute task among all threads in the pool, reduce number of work items if 
+    // Distribute task among all threads in the pool, reduce number of work items if
     // num_of_blocks is smaller than number of threads.
     RunInParallel(run_work, std::min(NumThreads() + 1, num_of_blocks), base_block_size);
   }
@@ -702,6 +797,8 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
   }
   tp->ParallelFor(total, cost_per_unit, fn);
 }
+
+#endif
 
 }  // namespace concurrency
 }  // namespace onnxruntime

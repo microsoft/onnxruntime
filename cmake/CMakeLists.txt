@@ -201,6 +201,8 @@ cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when usi
 
 option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
 
+option(onnxruntime_USE_TBB "Build with intel tbb for multi-threading" OFF)
+
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
 # 1. ORTModule
@@ -354,6 +356,10 @@ endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
+
+if (onnxruntime_USE_TBB)
+  add_definitions(-DUSE_TBB=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)

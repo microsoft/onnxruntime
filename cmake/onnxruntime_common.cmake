@@ -97,6 +97,12 @@ if (onnxruntime_USE_MIMALLOC)
   target_link_libraries(onnxruntime_common PRIVATE onnxruntime_mimalloc_shim)
 endif()
 
+if (onnxruntime_USE_TBB)
+  #message(STATUS "TBB INC:" ${TBB_INC})
+  #target_include_directories(onnxruntime_common PRIVATE ${TBB_INC})
+  target_link_libraries(onnxruntime_common PRIVATE tbb12)
+endif()
+
 if(NOT onnxruntime_DISABLE_ABSEIL)
   target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
   if (MSVC)
