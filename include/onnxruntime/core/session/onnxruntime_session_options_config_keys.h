@@ -178,10 +178,3 @@ static const char* const kNodePartitionConfigFile = "session.node_partition_conf
 //    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
 //    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
 static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";
-
-// Configuration entry prefix for custom operators. Entry keys for custom operators are built
-// at runtime with the following structure:
-// "custom_op.[CustomOpName].[Keyname]"
-// Ex: "custom_op.MyCustomOp.device_type"
-static const char* const kOrtSessionOptionsConfigCustomOpConfigPrefix = "custom_op.";
-
