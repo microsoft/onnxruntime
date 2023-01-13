@@ -464,6 +464,18 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
+inline Status detail::LogMessageImpl(OrtLoggingLevel severity, const char* message, const char* file_path, int line_number,
+                                     const char* func_name) noexcept {
+  OrtStatus* status = GetApi().LogMessage(severity, message, file_path, line_number, func_name);
+  return Status{status};
+}
+
+inline OrtLoggingLevel GetLoggingSeverityLevel() {
+  OrtLoggingLevel out{};
+  Ort::ThrowOnError(GetApi().GetLoggingSeverityLevel(&out));
+  return out;
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
