@@ -4,6 +4,7 @@
 #include "core/framework/allocation_planner.h"
 #include <list>
 #include <algorithm>
+#include <deque>
 #include <sstream>
 #include <ctime>
 #include <iomanip>
@@ -2116,7 +2117,7 @@ Status PlannerImpl::CreatePlan(
     const PathString& partition_config_file,
     const logging::Logger& logger) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers_, partition_config_file);
+  PartitionIntoStreams(logger, execution_providers_, PathToUTF8String(partition_config_file));
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
