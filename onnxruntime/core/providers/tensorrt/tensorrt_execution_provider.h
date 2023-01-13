@@ -9,6 +9,9 @@
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
 #include "tensorrt_execution_provider_info.h"
+#include <NvInferVersion.h>
+#include "core/providers/cuda/cuda_pch.h"
+#include "murmurhash3.h"
 
 namespace onnxruntime {
 

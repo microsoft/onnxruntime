@@ -8,6 +8,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
 #include <thread>
