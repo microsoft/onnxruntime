@@ -36,7 +36,6 @@ jobs:
           clean: false
       - name: Move API docs into target area
         run: |
-          ls docs/api
           rm -rf docs/api/python
           mv build/docs/inference/html docs/api/python
       - name: Create Pull Request
