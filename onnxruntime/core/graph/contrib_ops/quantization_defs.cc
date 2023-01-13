@@ -951,7 +951,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
-              AttributeProto::INT, static_cast<int64_t>(0))
+              AttributeProto::INT, OPTIONAL_VALUE)
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T1")
         .Input(1, "weight",
                "2D input tensor with shape (input_hidden_size, 3 * hidden_size), hidden_size = num_heads * head_size",
