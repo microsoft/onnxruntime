@@ -2177,7 +2177,7 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
   RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
 }
 
-static int TensorrtExecutionProvider::TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
+int TensorrtExecutionProvider::TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   model_hash = 0;
 
   // find the top level graph
@@ -2260,5 +2260,14 @@ static int TensorrtExecutionProvider::TRTGenerateId(const GraphViewer& graph_vie
 
   // return the current unique id, and increment to update
   return trt_model_id_[model_hash]++;
+}
+
+// Call TRTGenerateModelId to generate hash id for TRT engine cache
+int TensorrtExecutionProvider::TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
+  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
+  // use a lock when generating an id to be paranoid
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
+  return TRTGenerateId(graph_viewer, model_hash);
 }
 }  // namespace onnxruntime
