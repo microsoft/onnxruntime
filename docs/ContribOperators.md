@@ -2402,6 +2402,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>past_present_share_buffer</tt> : int</dt>
+<dd>Corresponding past and present are same tensor, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
