@@ -417,7 +417,7 @@ GetQDQTestCaseFn BuildDoubleQDQWithoutLastOutput(int output_index) {
     T zp = 128;
     float scale = 0.003f;
     std::vector<NodeArg*> outputs(4);
-    for (auto i = 0; i < outputs.size(); i++) {
+    for (auto i = 0; i < 4; i++) {
       if (output_index == i) {
         outputs[i] = builder.MakeOutput();
       } else {
