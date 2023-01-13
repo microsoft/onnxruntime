@@ -2118,7 +2118,7 @@ Status PlannerImpl::CreatePlan(
     const logging::Logger& logger) {
 
   // 1. partition graph into streams
-#if ORT_ENABLE_STREAM
+#ifndef ORT_ENABLE_STREAM
   PartitionIntoStreams(logger, execution_providers_, PathToUTF8String(partition_config_file));
 #else
   PartitionIntoStreams(logger, execution_providers_, partition_config_file);
