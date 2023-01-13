@@ -122,6 +122,14 @@ void RoctracerManager::FlushActivities() {
   roctracer_flush_activity();
 }
 
+uint64_t RoctracerManager::GetGPUTimestampInNanoseconds() {
+  uint64_t result;
+  if (roctracer_get_timestamp(&result) != ROCTRACER_STATUS_SUCCESS) {
+    ORT_THROW("Could not retrieve timestamp from GPU!");
+  }
+  return result;
+}
+
 static inline std::string MemcpyKindToString(hipMemcpyKind kind) {
   switch (kind) {
     case hipMemcpyHostToHost:
