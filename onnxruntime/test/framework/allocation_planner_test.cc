@@ -1269,7 +1269,7 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
 // stream 0: node1 (MemcpyToHost, CUDA EP) -> node3 (Transpose, CUDA EP)
 // stream 1: node2 (CPU EP)
 // node1's output, which is consumed by both node2 and node3, is in CPU.
-TEST_F(PlannerTest, MultiStreamOneStreamWaitFor32) {
+TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("MemcpyToHost").Provider(kCudaExecutionProvider).SetDefaultOutputMemoryType(OrtMemTypeCPUOutput).Build();
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernelTrans = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3");
