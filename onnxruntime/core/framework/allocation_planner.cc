@@ -1808,7 +1808,7 @@ class PlannerImpl {
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-        // Do not trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), AND
+        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor 
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
         if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
           bool notification_recorded = false;
@@ -1837,7 +1837,7 @@ class PlannerImpl {
       }
     }
 
-    // 3. Check the nodes in each logical stream, confirm it aligned with the device  in the logic stream;
+    // 3. Check the nodes in each logical stream, confirm it aligned with the device in the logic stream;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       std::set<const IExecutionProvider*> providers;
       for (auto node_index : stream_nodes_[i]) {
@@ -1901,7 +1901,7 @@ class PlannerImpl {
                   // launch WaitOnEPStep only when (same condition when initializing node_to_notification)
                   // 1. input node and current node are in different streams, Or
                   // 2. current node consumes a CPU tensor from an non-shape op.
-                  if ((node_stream_map_[it->Index()] != i || (consumer_device.Type() == OrtDevice::CPU))) {
+                  if (node_stream_map_[it->Index()] != i || consumer_device.Type() == OrtDevice::CPU) {
                     auto wait_handle = stream_handle_registry.GetWaitHandle(
                       execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
                       consumer_device.Type());
