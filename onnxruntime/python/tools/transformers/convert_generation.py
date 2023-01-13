@@ -1537,13 +1537,14 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     else:
         inputs.append("")
 
-    if is_sampling and args.custom and args.presence_mask:
-        inputs.append("presence_mask")
-    else:
-        inputs.append("")
+    if is_sampling:
+        if args.custom and args.presence_mask:
+            inputs.append("presence_mask")
+        else:
+            inputs.append("")
 
-    if is_sampling and args.seed:
-        inputs.append("seed")
+        if args.seed:
+            inputs.append("seed")
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
