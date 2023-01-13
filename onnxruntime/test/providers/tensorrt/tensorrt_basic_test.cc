@@ -8,7 +8,6 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
 #include <thread>
@@ -289,7 +288,8 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
 
   // get the hash for the model when loaded from file
   HashValue model_hash;
-  int id = TensorrtExecutionProvider::TRTGenerateModelId(viewer, model_hash);
+  std::unordered_map<HashValue, int> test_model_id_;  
+  int id = TRTGenerateModelId(viewer, model_hash, test_model_id_);
   ASSERT_EQ(id, 0);
   ASSERT_NE(model_hash, 0);
 
@@ -306,7 +306,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   GraphViewer viewer2(graph2);
 
   HashValue model_hash2;
-  int id2 = TensorrtExecutionProvider::TRTGenerateModelId(viewer2, model_hash2);
+  int id2 = TRTGenerateModelId(viewer2, model_hash2, test_model_id_);
 
   // test comparing model 1 & 2
   ASSERT_EQ(id2, 0) << "id2 should be 0";
@@ -318,12 +318,12 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   Graph& graph3 = model3->MainGraph();
   GraphViewer viewer3(graph3);
   HashValue model_hash3;
-  int id3 = TensorrtExecutionProvider::TRTGenerateModelId(viewer3, model_hash3);
+  int id3 = TRTGenerateModelId(viewer3, model_hash3, test_model_id_);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
   ASSERT_EQ(id3, 1) << "id3 should be 1 as model 1 & 3 have same hash";
 }
 
-// Compare on TRT subgraph id when repeatedly calling TRTGenerateId
+// Compare on TRT subgraph id when repeatedly calling TRTGenerateModelId
 TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
   // Load model
   auto model_path = ORT_TSTR("testdata/mnist.onnx");
@@ -335,10 +335,11 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
   HashValue model_hash;
 
   // Graph id acquired
-  int graph_id = TensorrtExecutionProvider::TRTGenerateModelId(graph, model_hash);
+  std::unordered_map<HashValue, int> test_model_id_;  
+  int graph_id = TRTGenerateModelId(graph, model_hash, test_model_id_);
   int asserted_subgraph_id = graph_id + 1;
 
-  // mock fetching subgraphs and generate id by calling TRTGenerateId repeatedly
+  // mock fetching subgraphs and generate id by calling TRTGenerateModelId repeatedly
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
@@ -348,9 +349,9 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
     const auto& node = graph.GetNode(node_index[index]);
     std::cout << "->" << node->Name(); 
 
-    // Check if id increment each time TRTGenerateId is called
-    int subgraph_id = TensorrtExecutionProvider::TRTGenerateModelId(graph, model_hash);
-    ASSERT_EQ(subgraph_id, asserted_subgraph_id) << "id will increment as TRTGenerateId is repeatedly called";
+    // Check if id increment each time TRTGenerateModelId is called
+    int subgraph_id = TRTGenerateModelId(graph, model_hash, test_model_id_);
+    ASSERT_EQ(subgraph_id, asserted_subgraph_id) << "id will increment as TRTGenerateModelId is repeatedly called";
     asserted_subgraph_id++;
   }
 }

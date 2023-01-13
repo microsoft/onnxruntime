@@ -232,6 +232,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
-  static std::unordered_map<HashValue, int> trt_model_id_;  // current unique id for model
+  std::unordered_map<HashValue, int> trt_model_id_;  // current unique id for model
 };
 }  // namespace onnxruntime
