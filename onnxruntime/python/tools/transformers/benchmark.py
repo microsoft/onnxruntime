@@ -779,6 +779,10 @@ def main():
     enable_onnxruntime = "onnxruntime" in args.engines
     enable_tensorflow = "tensorflow" in args.engines
 
+    if enable_torch2 and torch.__version__ < "2.0.0":
+        logger.error(f"PyTorch version must be >=2.0.0 and you are using {torch.__version__}")
+        return
+
     config_modifier = ConfigModifier(args.force_num_layers)
 
     results = []
