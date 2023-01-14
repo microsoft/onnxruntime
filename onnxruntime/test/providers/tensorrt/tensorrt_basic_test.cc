@@ -307,7 +307,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   TRTGenerateModelId(viewer2, model_hash2);
 
   // test comparing model 1 & 2
-  ASSERT_NEQ(model_hash, model_hash2) << "model 1&2 are different because one is loaded from file, other from bytestream";
+  ASSERT_NE(model_hash, model_hash2) << "model 1&2 are different because one is loaded from file, other from bytestream";
 
   // Test loading same model from different path, see if hash values are same as well
   model_path = ORT_TSTR("testdata/TRTEP_test_model/mnist.onnx");
