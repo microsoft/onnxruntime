@@ -799,8 +799,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
     TransformerTester(
         BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         expect_fail,
-        TransformerLevel::Level1,
-        TransformerLevel::Level2);
+        TransformerLevel::Default,
+        TransformerLevel::Level1);
   };
   
   // all signed type
@@ -835,8 +835,8 @@ TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
     TransformerTester(
         BuildDoubleQDQWithoutLastOutput<uint8_t>(output_index),
         graph,
-        TransformerLevel::Level1,
-        TransformerLevel::Level2);
+        TransformerLevel::Default,
+        TransformerLevel::Level1);
   };
   test_case(0, 1, 1);  // Because of QDQFinalCleanupTransformer
   test_case(1, 2, 2);
