@@ -838,7 +838,7 @@ TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
         TransformerLevel::Default,
         TransformerLevel::Level1);
   };
-  test_case(0, 2, 2);  // Because of QDQFinalCleanupTransformer
+  test_case(0, 2, 2);
   test_case(1, 2, 2);
   test_case(2, 2, 2);
   test_case(3, 1, 1);
