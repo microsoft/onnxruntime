@@ -89,24 +89,32 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
           !QDQ::IsQDQPairSupported( *child, *grandchild, get_constant_initializer,graph.ModelPath())){
     return false;
   }
+
   float new_scale = 0.0f;
-  int new_zero_point = 0;
-  if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point)) {
-    return false;
-  }
-  ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
-  ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
   if (self_zp_type == "tensor(uint8)") {
-    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<uint8_t>(new_zero_point));
-    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<uint8_t>(new_zero_point));
+    uint8_t new_zero_point = 0;
+    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point)) {
+      return false;
+    }
+    ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
+    ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
+    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, new_zero_point);
+    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, new_zero_point);
   } else {
-    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<int8_t>(new_zero_point));
-    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, gsl::narrow_cast<int8_t>(new_zero_point));
+    int8_t new_zero_point = 0;
+    if (!FindNewZeroPointAndScale(graph, *self, *child, new_scale, new_zero_point)) {
+      return false;
+    }
+    ApplyNewInputValue(graph, *grandchild, InputIndex::SCALE_ID, new_scale);
+    ApplyNewInputValue(graph, *parent, InputIndex::SCALE_ID, new_scale);
+    ApplyNewInputValue(graph, *grandchild, InputIndex::ZERO_POINT_ID, new_zero_point);
+    ApplyNewInputValue(graph, *parent, InputIndex::ZERO_POINT_ID, new_zero_point);
   }
   return true;
 }
 
-bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2, float& new_scale, int& new_zero_point) {
+template <typename T>
+bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2, float& new_scale, T& new_zero_point) {
   // if Q/DQ scale and zero point are not constant, return false
   const ONNX_NAMESPACE::TensorProto* node1_scale_tensor_proto =
       graph_utils::GetConstantInitializer(graph, node1.InputDefs()[InputIndex::SCALE_ID]->Name());
@@ -134,15 +142,8 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   float real_min1 = 0.0;
   float real_max2 = 0.0;
   float real_min2 = 0.0;
-  int zero_point_1 = 0;
+  T zero_point_1 = zero_point_init_1.data<T>()[0];
   int zero_point_2 = 0;
-  if (zero_point_init_1.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    zero_point_1 = zero_point_init_1.data<uint8_t>()[0];
-  } else if (zero_point_init_1.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    zero_point_1 = zero_point_init_1.data<int8_t>()[0];
-  } else {
-    return false;
-  }
   if (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     zero_point_2 = zero_point_init_2.data<uint8_t>()[0];
   } else if (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
@@ -155,6 +156,7 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   const int q_min_2 = (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::min() : std::numeric_limits<int8_t>::min();
   const int q_max_2 = (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::max() : std::numeric_limits<int8_t>::max();
 
+
   real_min1 = (q_min_1 - zero_point_1) * scale_1;
   real_min2 = (q_min_2 - zero_point_2) * scale_2;
   real_max1 = (q_max_1 - zero_point_1) * scale_1;
@@ -163,7 +165,7 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   const float real_min = std::max(real_min1, real_min2);
   const float real_max = std::min(real_max1, real_max2);
   new_scale = (real_max - real_min) / (q_max_1 - q_min_1);
-  new_zero_point = gsl::narrow_cast<int>((q_min_1 - real_min) / new_scale);
+  new_zero_point = gsl::narrow_cast<T>(std::round(q_min_1 - real_min / new_scale));
   return true;
 }
 

@@ -35,14 +35,19 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       NodeIndex& child_index,
       NodeIndex& grandchild_index);
 
+  template <typename T>
   static bool FindNewZeroPointAndScale(
       const Graph& graph,
       const Node& node1,
       const Node& node2,
       float& new_scale,
-      int& new_zero_point);
+      T& new_zero_point);
 
   template <typename T>
-  static void ApplyNewInputValue(Graph& graph, Node& node, const InputIndex& index, T value);
+  static void ApplyNewInputValue(
+      Graph& graph,
+      Node& node,
+      const InputIndex& index,
+      T value);
 };
 }  // namespace onnxruntime
