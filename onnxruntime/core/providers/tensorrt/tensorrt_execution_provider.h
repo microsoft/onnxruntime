@@ -9,9 +9,6 @@
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
 #include "tensorrt_execution_provider_info.h"
-#include <NvInferVersion.h>
-#include "core/providers/cuda/cuda_pch.h"
-#include "murmurhash3.h"
 
 namespace onnxruntime {
 
@@ -225,6 +222,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
-
 };
 }  // namespace onnxruntime

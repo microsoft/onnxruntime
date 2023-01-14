@@ -280,5 +280,4 @@ void TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) 
 
   model_hash = hash[0] | (uint64_t(hash[1]) << 32);
 }
-
 }
