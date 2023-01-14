@@ -826,7 +826,7 @@ TEST(QDQTransformerTests, DoubleQDQ) {
 }
 
 TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
-  auto test_case = [&](int output_index, size_t expected_Q_count, size_t expected_DQ_count) {
+  auto test_case = [&](int output_index, int expected_Q_count, int expected_DQ_count) {
     auto graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QuantizeLinear"], expected_Q_count);
