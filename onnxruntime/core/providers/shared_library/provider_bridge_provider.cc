@@ -700,4 +700,10 @@ std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const loggin
 }
 }  // namespace cann
 #endif
+
+#ifdef _WIN32
+std::string ToUTF8String(const std::wstring& s) {
+  return g_host->ToUTF8String(s);
+}
+#endif
 }  // namespace onnxruntime

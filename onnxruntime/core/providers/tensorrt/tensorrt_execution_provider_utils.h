@@ -10,6 +10,7 @@
 #include "ort_trt_int8_cal_table.fbs.h"
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
+#include "core/common/path_string.h"
 #include "murmurhash3.h"
 
 namespace fs = std::experimental::filesystem;
@@ -221,27 +222,7 @@ class TRTModelIdGenerator {
     const auto& model_path_components = main_graph.ModelPath().GetComponents();
 
     if (!model_path_components.empty()) {
-      const PathString& path_string = model_path_components.back();
-
-#ifdef _WIN32
-      std::string model_name;
-
-      // Convert wide model name to multibyte characters.
-      {
-        // Query the required buffer size (including '\0') by passing nullptr for the destination.
-        size_t total_bytes = 0;
-        ORT_IGNORE_RETURN_VALUE(wcstombs_s(&total_bytes, nullptr, 0, path_string.c_str(), _TRUNCATE));
-
-        // Resize the destination buffer and convert.
-        model_name.resize(total_bytes);
-        auto err = wcstombs_s(&total_bytes, &model_name[0], total_bytes, path_string.c_str(), _TRUNCATE);
-        ORT_ENFORCE(err == 0, "TRTGenerateId: Failed to convert wide model name to bytes. wcstombs_s returned ", err);
-
-        model_name.resize(total_bytes - 1);  // Remove the duplicate terminating '\0'
-      }
-#else
-      std::string model_name(path_string);
-#endif
+      std::string model_name = PathToUTF8String(model_path_components.back());
 
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
       // Ensure enough characters are hashed in case model names are too short

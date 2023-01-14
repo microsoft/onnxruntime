@@ -1033,6 +1033,10 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
+#ifdef _WIN32
+  std::string ToUTF8String(const std::wstring& s) override { return onnxruntime::ToUTF8String(s); }
+#endif
+
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)

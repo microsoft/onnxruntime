@@ -884,6 +884,10 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) = 0;
 #endif
 
+#ifdef _WIN32
+  virtual std::string ToUTF8String(const std::wstring& s) = 0;
+#endif
+
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
 
