@@ -28,23 +28,23 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
 }
 
 /*
- * Read calibration table for INT8 quantization
- * Two kind of calibration tables are supported,
- * 1. ORT generated calibration table
- * The table is pre-serialized by flatbuffers.
- * Each entry in the table is a key-value pair,
- * key: tensor name, value: maximum absolute value in floating point
- * For example,
- *   data_0 2.008338
- *   ...
- * 2. Native TensorRT generated calibration table
- * Data format is defined by TensorRT as,
- * tensor name : scale in 32-bit single precision IEEE754 format
- * For example,
- *   TRT-7103-EntropyCalibration2
- *   data_0: 4000889d
- *   ...
- */
+* Read calibration table for INT8 quantization
+* Two kind of calibration tables are supported,
+* 1. ORT generated calibration table
+* The table is pre-serialized by flatbuffers.
+* Each entry in the table is a key-value pair,
+* key: tensor name, value: maximum absolute value in floating point
+* For example,
+*   data_0 2.008338
+*   ...
+* 2. Native TensorRT generated calibration table
+* Data format is defined by TensorRT as,
+* tensor name : scale in 32-bit single precision IEEE754 format
+* For example,
+*   TRT-7103-EntropyCalibration2
+*   data_0: 4000889d
+*   ...
+*/
 bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
@@ -95,13 +95,13 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
 }
 
 /*
- * Seralize engine profile
- * The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
- * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
- * has one dynamic shape dimension: dim_1. The data in profile will be,
- * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
- * key: tensor_b, value: dim_1 min_shape max_shape
- */
+* Seralize engine profile
+* The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
+* For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+* has one dynamic shape dimension: dim_1. The data in profile will be,
+* key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
+* key: tensor_b, value: dim_1 min_shape max_shape
+*/
 void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
@@ -170,15 +170,15 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
 /*
  * Get cache by type
  *
- * \param root root path of the cache
+ * \param root root path of the cache  
  * \param file_extension It could be ".engine", ".profile" or ".timing"
- */
+*/
 std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_extension) {
   std::vector<fs::path> cache_files;
-  for (const auto& entry : fs::directory_iterator(root)) {
-    if (fs::path(file_extension) == fs::path(entry).extension()) {
-      cache_files.push_back(fs::path(entry));
-    }
+  for (const auto & entry : fs::directory_iterator(root)) {
+      if (fs::path(file_extension) == fs::path(entry).extension()) {
+        cache_files.push_back(fs::path(entry));
+      }
   }
   return cache_files;
 }
@@ -186,20 +186,20 @@ std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_
 bool IsCacheExistedByType(const std::string& root, std::string file_extension) {
   auto cache_files = GetCachesByType(root, file_extension);
   if (cache_files.size() == 0) {
-    return false;
+          return false;
   }
   return true;
 }
 
 void RemoveCachesByType(const std::string& root, std::string file_extension) {
   auto cache_files = GetCachesByType(root, file_extension);
-  for (const auto& entry : cache_files) {
+  for (const auto & entry : cache_files) {
     fs::remove(entry);
   }
 }
 
-// Helper  to generate engine id via model name/model content/env metadata
-int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash, std::unordered_map<HashValue, int>& trt_model_id_) {
+// Helper to generate engine id via model name/model content/env metadata
+int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash, const std::unordered_map<HashValue, int> trt_model_id_) {
   model_hash = 0;
 
   // find the top level graph
@@ -282,14 +282,14 @@ int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash, std::u
 
   // return the current unique id, and increment to update
   return trt_model_id_[model_hash]++;
-};
+}
 
 // Calll TRTGenerateModelId to generate hash id for TRT engine cache
-int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash, std::unordered_map<HashValue, int>& trt_model_id_) {
+int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash, const std::unordered_map<HashValue, int> trt_model_id_) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
   return TRTGenerateId(graph_viewer, model_hash, trt_model_id_);
 }
-}  // namespace onnxruntime
+}

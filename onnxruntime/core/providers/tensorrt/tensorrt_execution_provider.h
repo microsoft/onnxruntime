@@ -149,12 +149,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
-  // Helper to generate engine id via model name/model content/env metadata
-  static int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash);
-
-  // Call TRTGenerateModelId to generate hash id for TRT engine cache
-  static int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash);
-
  private:
   TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
