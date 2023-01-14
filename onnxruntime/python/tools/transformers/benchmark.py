@@ -46,6 +46,7 @@ import os
 import timeit
 from datetime import datetime
 from enum import Enum
+from packaging import version
 
 import numpy
 import onnx
@@ -779,7 +780,7 @@ def main():
     enable_onnxruntime = "onnxruntime" in args.engines
     enable_tensorflow = "tensorflow" in args.engines
 
-    if enable_torch2 and torch.__version__ < "2.0.0":
+    if enable_torch2 and version.parse(torch.__version__) < version.parse("2.0.0"):
         logger.error(f"PyTorch version must be >=2.0.0 and you are using {torch.__version__}")
         return
 
