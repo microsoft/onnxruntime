@@ -782,8 +782,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
     TransformerTester(
         BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         succeed ? expect_succeed : expect_fail,
-        TransformerLevel::Level1,
-        TransformerLevel::Level2);
+        TransformerLevel::Default,
+        TransformerLevel::Level1);
   };
   auto test_case_all_u8 = [&](bool succeed,
                               uint8_t zp_1, uint8_t zp_2, uint8_t zp_3, uint8_t zp_4,
@@ -791,8 +791,8 @@ TEST(QDQTransformerTests, DoubleQDQ) {
     TransformerTester(
         BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         succeed ? expect_succeed : expect_fail,
-        TransformerLevel::Level1,
-        TransformerLevel::Level2);
+        TransformerLevel::Default,
+        TransformerLevel::Level1);
   };
   auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
                                       float scale_1, float scale_2, float scale_3, float scale_4) {
