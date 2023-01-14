@@ -199,7 +199,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 }
 
 // Helper to generate engine id via model name/model content/env metadata
-int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash, std::unordered_map<HashValue, int>& trt_model_id_) {
+void TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   model_hash = 0;
 
   // find the top level graph
@@ -279,17 +279,6 @@ int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash, std::u
 #endif
 
   model_hash = hash[0] | (uint64_t(hash[1]) << 32);
-
-  // return the current unique id, and increment to update
-  return trt_model_id_[model_hash]++;
 }
 
-// Calll TRTGenerateModelId to generate hash id for TRT engine cache           
-int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash, std::unordered_map<HashValue, int>& trt_model_id_) {
-  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
-  // use a lock when generating an id to be paranoid
-  static OrtMutex mutex;
-  std::lock_guard<OrtMutex> lock(mutex);
-  return TRTGenerateId(graph_viewer, model_hash, trt_model_id_);
-}
 }
