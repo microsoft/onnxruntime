@@ -199,7 +199,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 }
 
 // Helper to generate engine id via model name/model content/env metadata
-void TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
+void TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   model_hash = 0;
 
   // find the top level graph
