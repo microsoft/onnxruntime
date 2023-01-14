@@ -155,10 +155,10 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
   const int q_min_2 = (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::min() : std::numeric_limits<int8_t>::min();
   const int q_max_2 = (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::max() : std::numeric_limits<int8_t>::max();
 
-  real_min1 = q_min_1 - zero_point_1 * scale_1;
-  real_min2 = q_min_2 - zero_point_2 * scale_2;
-  real_max1 = (q_max_1 - q_min_1 + zero_point_1) * scale_1 - q_min_1;
-  real_max2 = (q_max_2 - q_min_2 + zero_point_2) * scale_2 - q_min_1;
+  real_min1 = (q_min_1 - zero_point_1) * scale_1;
+  real_min2 = (q_min_2 - zero_point_2) * scale_2;
+  real_max1 = (q_max_1 - zero_point_1) * scale_1;
+  real_max2 = (q_max_2 - zero_point_2) * scale_2;
 
   const float real_min = std::max(real_min1, real_min2);
   const float real_max = std::min(real_max1, real_max2);
