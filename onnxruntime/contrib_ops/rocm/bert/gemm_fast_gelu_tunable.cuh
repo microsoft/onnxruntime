@@ -55,6 +55,7 @@ class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmF
  public:
   GemmFastGeluTunableOp() {
     this->RegisterOp(GemmFastGeluUnfused<T>);
+#ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
@@ -63,6 +64,7 @@ class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmF
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
+#endif
   }
 };
 

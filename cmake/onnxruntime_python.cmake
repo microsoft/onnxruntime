@@ -211,7 +211,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_CLOUD}
+    ${PROVIDERS_AZURE}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

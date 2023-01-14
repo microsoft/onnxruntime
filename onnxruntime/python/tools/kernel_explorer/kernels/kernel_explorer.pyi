@@ -5,3 +5,5 @@ class DeviceArray:
 class blas_op:
     T: int
     N: int
+
+def is_composable_kernel_available(*args, **kwargs): ...
