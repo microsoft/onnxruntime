@@ -307,7 +307,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   TRTGenerateModelId(viewer2, model_hash2);
 
   // test comparing model 1 & 2
-  ASSERT_EQ(model_hash, model_hash2) << "model 1&3 are same models and they have same hash whether loaded from file or bytestream";
+  ASSERT_NEQ(model_hash, model_hash2) << "model 1&2 are different because one is loaded from file, other from bytestream";
 
   // Test loading same model from different path, see if hash values are same as well
   model_path = ORT_TSTR("testdata/TRTEP_test_model/mnist.onnx");
@@ -317,7 +317,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   GraphViewer viewer3(graph3);
   HashValue model_hash3;
   TRTGenerateModelId(viewer3, model_hash3);
-  ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
+  ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter which path they are loaded from";
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
