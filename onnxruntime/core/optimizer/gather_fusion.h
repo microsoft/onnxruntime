@@ -10,7 +10,7 @@ namespace onnxruntime {
 /**
 @Class GatherToSplitFusion
 
-Fuse multiple Gather nodes that comsuming one output to one Split node.
+Fuse multiple Gather nodes that consuming one output to one Split node.
 */
 class GatherToSplitFusion : public GraphTransformer {
  public:
