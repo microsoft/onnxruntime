@@ -623,7 +623,7 @@ bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t su
   return number_of_trt_nodes == number_of_ort_nodes;
 }
 
-std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
+std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph, const HashValue& model_hash) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
@@ -742,8 +742,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   }
 
   // Generate unique kernel name for TRT subgraph
-  HashValue model_hash = 0;
-  int id = TRTGenerateModelId(graph, model_hash);
+  int id = trt_model_id_[model_hash]++;
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
@@ -945,7 +944,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 }
 
 // Detect and remove cycles from supported node list
-bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles) const {
+bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, const HashValue& model_hash, bool remove_cycles) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   bool trt_cycle = true, cycle_detected = false;
   while (trt_cycle) {
@@ -958,7 +957,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
-        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash);
 
         // Create node to inputs/outputs/index maps
         const auto& meta_def = sub_graph->GetMetaDef();
@@ -1070,6 +1069,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   strcpy(model_path_, path_string.c_str());
 #endif
 
+  // Generate unique kernel name for TRT graph
+  HashValue model_hash = TRTGenerateId(graph);
+
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -1124,7 +1126,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   // Detect and remove cycles from supported node list
-  DetectTensorRTGraphCycles(supported_nodes_vector, graph);
+  DetectTensorRTGraphCycles(supported_nodes_vector, graph, model_hash);
 
   // Consolidate supported node list
   if (supported_nodes_vector.size() > 1) {
@@ -1192,9 +1194,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   int number_of_trt_nodes = 0;
+  trt_model_id_.clear();
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       number_of_trt_nodes += static_cast<int>(group.first.size());
     }
@@ -1264,7 +1267,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow";
           layer->setPrecision(nvinfer1::DataType::kFLOAT);
-          next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
+          next_layer->setPrecision(nvinfer1::DataType::kFLOAT);
           layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
           next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
         }
