@@ -4,7 +4,6 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
@@ -44,14 +43,14 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   Node* self = graph.GetNode(self_index);
   if (self == nullptr ||
       self->OpType() != "DequantizeLinear" ||
-      self->GetInputEdgesCount() != 1||
-      self->GetOutputEdgesCount() != 1||
+      self->GetInputEdgesCount() != 1 ||
+      self->GetOutputEdgesCount() != 1 ||
       self->InputDefs().size() != InputIndex::TOTAL_COUNT ||
       graph.NodeProducesGraphOutput(*self)) {
     return false;
   }
 
-  //Type is either "tensor(uint8)" or  "tensor(int8)"
+  // Type is either "tensor(uint8)" or  "tensor(int8)"
   const auto self_zp_type = *self->InputDefs()[InputIndex::ZERO_POINT_ID]->Type();
   // child should be a Q, and have only one child, have the same type as self, and cannot be a graph output
   child_index = self->OutputEdgesBegin()->GetNode().Index();
@@ -69,8 +68,8 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   parent_index = self->InputEdgesBegin()->GetNode().Index();
   Node* parent = graph.GetNode(parent_index);
   if (parent == nullptr ||
-      parent->GetOutputEdgesCount() != 1||
-      parent->OpType() != "QuantizeLinear"||
+      parent->GetOutputEdgesCount() != 1 ||
+      parent->OpType() != "QuantizeLinear" ||
       graph.NodeProducesGraphOutput(*parent)) {
     return false;
   }
@@ -79,17 +78,16 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
   grandchild_index = child->OutputEdgesBegin()->GetNode().Index();
   Node* grandchild = graph.GetNode(grandchild_index);
   if (grandchild == nullptr ||
-      grandchild->OpType() != "DequantizeLinear" ) {
+      grandchild->OpType() != "DequantizeLinear") {
     return false;
   }
   const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
     return graph.GetConstantInitializer(initializer_name, true);
   };
-  if(!QDQ::IsQDQPairSupported( *parent, *self, get_constant_initializer,graph.ModelPath()) ||
-          !QDQ::IsQDQPairSupported( *child, *grandchild, get_constant_initializer,graph.ModelPath())){
+  if (!QDQ::IsQDQPairSupported(*parent, *self, get_constant_initializer, graph.ModelPath()) ||
+      !QDQ::IsQDQPairSupported(*child, *grandchild, get_constant_initializer, graph.ModelPath())) {
     return false;
   }
-
   float new_scale = 0.0f;
   if (self_zp_type == "tensor(uint8)") {
     uint8_t new_zero_point = 0;
@@ -126,46 +124,31 @@ bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const N
       graph_utils::GetConstantInitializer(graph, node2.InputDefs()[InputIndex::ZERO_POINT_ID]->Name());
   Initializer zero_point_init_1{*node1_zp_tensor_proto, graph.ModelPath()};
   Initializer zero_point_init_2{*node2_zp_tensor_proto, graph.ModelPath()};
-  if (zero_point_init_1.data_type() != zero_point_init_2.data_type()) {
-    return false;
-  }
   Initializer scale_init_1{*node1_scale_tensor_proto, graph.ModelPath()};
   Initializer scale_init_2{*node2_scale_tensor_proto, graph.ModelPath()};
-  if (scale_init_1.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+  if (zero_point_init_1.data_type() != zero_point_init_2.data_type() ||
+      scale_init_1.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
       scale_init_2.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return false;
   }
+
+  T zero_point_1 = zero_point_init_1.data<T>()[0];
+  T zero_point_2 = zero_point_init_2.data<T>()[0];
   const float scale_1 = scale_init_1.data<float>()[0];
   const float scale_2 = scale_init_2.data<float>()[0];
+  T q_min = std::numeric_limits<T>::min();
+  T q_max = std::numeric_limits<T>::max();
 
-  float real_max1 = 0.0;
-  float real_min1 = 0.0;
-  float real_max2 = 0.0;
-  float real_min2 = 0.0;
-  T zero_point_1 = zero_point_init_1.data<T>()[0];
-  int zero_point_2 = 0;
-  if (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    zero_point_2 = zero_point_init_2.data<uint8_t>()[0];
-  } else if (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    zero_point_2 = zero_point_init_2.data<int8_t>()[0];
-  } else {
-    return false;
-  }
-  const int q_min_1 = (zero_point_init_1.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::min() : std::numeric_limits<int8_t>::min();
-  const int q_max_1 = (zero_point_init_1.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::max() : std::numeric_limits<int8_t>::max();
-  const int q_min_2 = (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::min() : std::numeric_limits<int8_t>::min();
-  const int q_max_2 = (zero_point_init_2.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) ? std::numeric_limits<uint8_t>::max() : std::numeric_limits<int8_t>::max();
-
-
-  real_min1 = (q_min_1 - zero_point_1) * scale_1;
-  real_min2 = (q_min_2 - zero_point_2) * scale_2;
-  real_max1 = (q_max_1 - zero_point_1) * scale_1;
-  real_max2 = (q_max_2 - zero_point_2) * scale_2;
+  float real_min1 = gsl::narrow_cast<float>(q_min - zero_point_1) * scale_1;
+  float real_max1 = gsl::narrow_cast<float>(q_max - zero_point_1) * scale_1;
+  float real_min2 = gsl::narrow_cast<float>(q_min - zero_point_2) * scale_2;
+  float real_max2 = gsl::narrow_cast<float>(q_max - zero_point_2) * scale_2;
 
   const float real_min = std::max(real_min1, real_min2);
   const float real_max = std::min(real_max1, real_max2);
-  new_scale = (real_max - real_min) / (q_max_1 - q_min_1);
-  new_zero_point = gsl::narrow_cast<T>(std::round(q_min_1 - real_min / new_scale));
+
+  new_scale = (real_max - real_min) / gsl::narrow_cast<float>(q_max - q_min);
+  new_zero_point = gsl::narrow_cast<T>(std::round(gsl::narrow_cast<float>(q_min) - real_min / new_scale));
   return true;
 }
 

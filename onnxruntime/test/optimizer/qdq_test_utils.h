@@ -399,7 +399,10 @@ template <typename Type1, typename Type2, typename Type3, typename Type4>
 GetQDQTestCaseFn BuildDoubleQDQTestCases(Type1 zp_1, Type2 zp_2, Type3 zp_3, Type4 zp_4,
                                          float scale_1, float scale_2, float scale_3, float scale_4) {
   return [=](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>({1, 2, 3}, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+    auto* input_arg = builder.MakeInput<float>(
+        {11, 22, 33, 44},
+        std::numeric_limits<Type1>::min() * (scale_1 + scale_3) / 2,
+        std::numeric_limits<Type1>::max() * (scale_1 + scale_3) / 2);
     NodeArg* q1_output = builder.MakeIntermediate();
     NodeArg* dq1_output = builder.MakeIntermediate();
     NodeArg* q2_output = builder.MakeIntermediate();
@@ -410,11 +413,12 @@ GetQDQTestCaseFn BuildDoubleQDQTestCases(Type1 zp_1, Type2 zp_2, Type3 zp_3, Typ
     builder.AddDequantizeLinearNode<Type4>(q2_output, scale_4, zp_4, dq2_output);
   };
 }
+
 template <typename T>
 GetQDQTestCaseFn BuildDoubleQDQWithoutLastOutput(int output_index) {
   return [=](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>({1, 2, 3}, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
-    T zp = 128;
+    auto* input_arg = builder.MakeInput<float>({2, 3, 4}, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+    T zp = (std::numeric_limits<T>::max() - std::numeric_limits<T>::min()) / 2;
     float scale = 0.003f;
     std::vector<NodeArg*> outputs(4);
     for (auto i = 0; i < 4; i++) {

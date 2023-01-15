@@ -9,6 +9,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/utils.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
@@ -765,6 +766,18 @@ TEST(QDQTransformerTests, Gather) {
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
+  const uint8_t good_u8_1 = 80;
+  const uint8_t good_u8_2 = 40;
+  const uint8_t bad_u8 = 13;
+
+  const int8_t good_s8_1 = 99;
+  const int8_t good_s8_2 = -112;
+  const int8_t bad_s8 = 42;
+
+  const float good_float_point_1 = 4.0;
+  const float good_float_point_2 = 8.0;
+  const float bad_float_point = 1.11;
+
   std::function<void(InferenceSessionWrapper & session)> expect_succeed = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
@@ -776,15 +789,6 @@ TEST(QDQTransformerTests, DoubleQDQ) {
     EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
   };
 
-  auto test_case_all_s8 = [&](bool succeed,
-                              int8_t zp_1, int8_t zp_2, int8_t zp_3, int8_t zp_4,
-                              float scale_1, float scale_2, float scale_3, float scale_4) {
-    TransformerTester(
-        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
-        succeed ? expect_succeed : expect_fail,
-        TransformerLevel::Default,
-        TransformerLevel::Level1);
-  };
   auto test_case_all_u8 = [&](bool succeed,
                               uint8_t zp_1, uint8_t zp_2, uint8_t zp_3, uint8_t zp_4,
                               float scale_1, float scale_2, float scale_3, float scale_4) {
@@ -792,8 +796,25 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         succeed ? expect_succeed : expect_fail,
         TransformerLevel::Default,
-        TransformerLevel::Level1);
+        TransformerLevel::Level1,
+        12,
+        (scale_1 + scale_3) / 2,
+        10.0);
   };
+
+  auto test_case_all_s8 = [&](bool succeed,
+                              int8_t zp_1, int8_t zp_2, int8_t zp_3, int8_t zp_4,
+                              float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        succeed ? expect_succeed : expect_fail,
+        TransformerLevel::Default,
+        TransformerLevel::Level1,
+        12,
+        (scale_1 + scale_3) / 2,
+        10.0);
+  };
+
   auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
                                       float scale_1, float scale_2, float scale_3, float scale_4) {
     TransformerTester(
@@ -802,27 +823,21 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         TransformerLevel::Default,
         TransformerLevel::Level1);
   };
-  
-  // all signed type
-  test_case_all_s8(true, -20, -20, 23, 23, .003f, .003f, .003f, .003f);
-  // different zero point within a pair
-  test_case_all_s8(false, -20, 20, 23, 23, .003f, .003f, .003f, .003f);
-  test_case_all_s8(false, -20, -20, -23, 23, .003f, .003f, .003f, .003f);
-  // different scale within a pair
-  test_case_all_s8(false, -20, -20, 23, 23, .003f, .03f, .003f, .003f);
-  test_case_all_s8(false, -20, -20, 23, 23, .003f, .003f, .03f, .003f);
 
   // all unsigned type
-  test_case_all_u8(true, 40, 40, 23, 23, .003f, .003f, .003f, .003f);
-  // different zero point within a pair
-  test_case_all_u8(false, 40, 20, 23, 23, .003f, .003f, .003f, .003f);
-  test_case_all_u8(false, 40, 40, 43, 23, .003f, .003f, .003f, .003f);
-  // different scale within a pair
-  test_case_all_u8(false, 40, 40, 23, 23, .003f, .03f, .003f, .003f);
-  test_case_all_u8(false, 40, 40, 23, 23, .003f, .003f, .03f, .003f);
-
+  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  // all signed type
+  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
   // 2 signed, 2 unsigned
-  test_case_2u8_2s8_failed(40, 40, 23, 23, .003f, .003f, .003f, .003f);
+  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  //  different zero point within a pair
+  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  // different scale within a pair
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, bad_float_point, good_float_point_2);
 }
 
 TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
