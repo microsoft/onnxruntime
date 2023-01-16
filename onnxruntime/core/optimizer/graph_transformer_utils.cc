@@ -199,7 +199,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
-      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableDoubleQDQRemover, "0") == "0"){
+      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0"){
         transformers.emplace_back(std::make_unique<IdenticalChildrenConsolidation>());
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       }
