@@ -6,6 +6,7 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tunable/gemm.h"
+#include<iostream>
 
 using namespace onnxruntime::rocm;
 using namespace ::onnxruntime::common;
@@ -110,7 +111,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size,
                                                    sequence_length, past_sequence_length);
-
+  std::cout << "mask_filter_value_" << mask_filter_value_ << std::endl;
+  std::cout << "this->mask_filter_value_" << this->mask_filter_value_ << std::endl;
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
       device_prop,
