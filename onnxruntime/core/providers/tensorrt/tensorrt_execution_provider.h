@@ -191,11 +191,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cudnnHandle_t external_cudnn_handle_ = nullptr;
   cublasHandle_t external_cublas_handle_ = nullptr;
 
-  mutable std::unordered_map<HashValue, int> trt_model_id_;
-
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
-                                               const GraphViewer& graph, const HashValue& model_hash) const;
+                                               const GraphViewer& graph, const HashValue& model_hash, int subgraph_index) const;
 
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser

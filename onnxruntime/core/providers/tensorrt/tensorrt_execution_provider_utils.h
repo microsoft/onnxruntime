@@ -245,6 +245,11 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
     hash_str(node_arg->Name());
   }
 
+  // fingerprint current graph by hashing graph inputs
+  for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
+    hash_str(node_arg->Name());
+  }
+
   // hashing output of each node
   const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
