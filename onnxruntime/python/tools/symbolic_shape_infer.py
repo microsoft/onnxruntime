@@ -1778,8 +1778,15 @@ class SymbolicShapeInference:
     def _infer_Split_Common(self, node, make_value_info_func):
         input_sympy_shape = self._get_sympy_shape(node, 0)
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(input_sympy_shape))
-        split = get_attribute(node, "split")
-        if not split:
+        split = None
+        # Depending on op-version 'split' is provided as attribute or via 2nd input
+        if get_opset(self.out_mp_) < 13:
+            split = get_attribute(node, "split")
+        elif len(node.input) == 2:
+            split = self._try_get_value(node, 1)
+            assert split is not None, f"{node.name}: only constant tensors are supported for Split second input"
+
+        if split is None:
             num_outputs = len(node.output)
             split = [input_sympy_shape[axis] / sympy.Integer(num_outputs)] * num_outputs
             self._update_computed_dims(split)
