@@ -13,7 +13,7 @@ def _demangle(name, demangler="c++filt"):
         with sp.Popen([demangler, name], stdin=sp.PIPE, stdout=sp.PIPE) as proc:
             out, _ = proc.communicate()
             return out.decode("utf-8").strip()
-    except:
+    except Exception:
         return name
 
 

@@ -53,6 +53,11 @@ exclude_patterns = [
     'orttraining/**',
     # FIXME(#7032): ignore server code for now
     'server/**',
+    # FIXME: DUO106
+    'tools/nuget/generate_nuspec_for_native_nuget.py',
+    # FIXME: DUO116
+    'js/scripts/build_web.py',
+
 ]
 command = [
     'python3',

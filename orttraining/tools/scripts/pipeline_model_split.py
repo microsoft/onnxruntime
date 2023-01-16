@@ -286,7 +286,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         try:
             if i in identity_node_index:
                 del main_graph.graph.node[i]
-        except:
+        except Exception:
             print("error deleting identity node", i)
 
     all_visited_nodes = []
@@ -337,7 +337,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.node[i]
                 else:
                     del main_graph.graph.node[i]
-            except:
+            except Exception:
                 print("error deleting node", i)
 
         for i in reversed(range(len(main_graph.graph.input))):
@@ -346,7 +346,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.input[i]
                 else:
                     del main_graph.graph.input[i]
-            except:
+            except Exception:
                 print("error deleting inputs", i)
 
         for i in reversed(range(len(main_graph.graph.output))):
@@ -355,7 +355,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.output[i]
                 else:
                     del main_graph.graph.output[i]
-            except:
+            except Exception:
                 print("error deleting outputs ", i)
 
         print("model", str(model_count), " length ", len(subgraph.graph.node))

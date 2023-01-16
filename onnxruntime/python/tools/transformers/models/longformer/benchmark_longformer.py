@@ -647,7 +647,7 @@ def run_tests(
                         latency_results = launch_test(args)
                     except KeyboardInterrupt as exc:
                         raise RuntimeError("Keyboard Interrupted") from exc
-                    except:
+                    except Exception:
                         traceback.print_exc()
                         continue
 

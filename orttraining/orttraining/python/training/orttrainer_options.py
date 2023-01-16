@@ -536,7 +536,7 @@ def _check_is_callable(field, value, error):
     try:
         # Python 3
         result = value is None or callable(value)
-    except:
+    except Exception:
         # Python 3 but < 3.2
         if hasattr(value, "__call__"):
             result = True

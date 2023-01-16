@@ -621,7 +621,7 @@ if nightly_build:
             try:
                 datetime.datetime.strptime(date_str, "%Y%m%d")
                 return True
-            except:  # noqa
+            except Exception:
                 return False
 
         def reformat_run_count(count_str):
@@ -632,7 +632,7 @@ if nightly_build:
                 elif count >= 1000:
                     raise RuntimeError(f"Too many builds for the same day: {count}")
                 return ""
-            except:  # noqa
+            except Exception:
                 return ""
 
         build_suffix_is_date_format = check_date_format(build_suffix[:8])

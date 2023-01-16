@@ -600,7 +600,7 @@ def export_onnx_model_from_tf(
         # Use no past state for these models
         if config.use_cache:
             config.use_cache = False
-    except:
+    except Exception:
         pass
 
     example_outputs = model(example_inputs, training=False)

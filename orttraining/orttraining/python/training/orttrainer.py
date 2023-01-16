@@ -931,7 +931,7 @@ class ORTTrainer(object):
             # so output will be on the same device as input.
             try:
                 test_pt_device = torch.device(target_device)
-            except:
+            except Exception:
                 # in this case, input/output must on CPU
                 assert input.device.type == "cpu"
                 target_device = "cpu"

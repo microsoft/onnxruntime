@@ -120,7 +120,7 @@ class ParityTask:
             )
             if result:
                 self.results.append(result)
-        except:
+        except Exception:
             logger.exception(f"Failed to run experiment {experiment_name}")
             result = None
 
@@ -511,7 +511,7 @@ if __name__ == "__main__":
 
     try:
         rows = load_results_from_csv(task.csv_path)
-    except:
+    except Exception:
         logger.exception(f"Failed to load csv {task.csv_path}")
         rows = task.results
 

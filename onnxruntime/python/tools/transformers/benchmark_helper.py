@@ -134,7 +134,7 @@ def create_onnxruntime_session(
             providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
-    except:
+    except Exception:
         logger.error("Exception", exc_info=True)
 
     return session

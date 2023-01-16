@@ -776,7 +776,7 @@ class ORTGen:
                 try:
                     op_namespace = op_name[0 : op_name.index("::")]
                     op_namewithoutnamespace = op_name[len(op_namespace) + 2 :]
-                except:
+                except Exception:
                     op_namespace = None
                     op_namewithoutnamespace = op_name
 

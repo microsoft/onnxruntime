@@ -316,7 +316,7 @@ def get_exception_as_string(exception):
 
     try:
         raise exception
-    except:
+    except Exception:
         return traceback.format_exc()
 
 

@@ -860,7 +860,7 @@ def main():
                     args.model_source,
                     args,
                 )
-            except:
+            except Exception:
                 logger.error("Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")

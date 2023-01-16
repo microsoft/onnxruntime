@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-
 from typing import Dict, Optional, Set
 
 import ort_flatbuffers_py.fbs as fbs
