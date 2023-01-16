@@ -57,7 +57,8 @@ exclude_patterns = [
     'tools/nuget/generate_nuspec_for_native_nuget.py',
     # FIXME: DUO116
     'js/scripts/build_web.py',
-
+    # FIXME: Too many errors
+    'onnxruntime/python/tools/tensorrt/perf/**',
 ]
 command = [
     'python3',

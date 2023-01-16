@@ -11,6 +11,8 @@ from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -118,12 +120,12 @@ class FusionTnlrAttention(FusionAttention):
             [1, 1, 1, 0, 0, 0],
         )
         if qkv_nodes is not None:
-            (_, _, matmul_below, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+            (_, _, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for input in start_node.input:
             if input not in output_name_to_node:
                 continue
 
