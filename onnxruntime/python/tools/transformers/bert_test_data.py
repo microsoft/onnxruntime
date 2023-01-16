@@ -99,7 +99,7 @@ def fake_input_mask_data(
     ]
 
     if random_mask_length:
-        actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)  # noqa: DUO102
+        actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
         data = np.zeros((batch_size, sequence_length), dtype=np.int32)
         temp = np.ones((batch_size, actual_seq_len), dtype=np.int32)
         data[: temp.shape[0], : temp.shape[1]] = temp
@@ -172,7 +172,7 @@ def fake_test_data(
     assert input_ids is not None
 
     np.random.seed(random_seed)
-    random.seed(random_seed)  # noqa: DUO102
+    random.seed(random_seed)
 
     all_inputs = []
     for _ in range(test_cases):

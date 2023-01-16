@@ -3,4 +3,7 @@ max-line-length = 120
 per-file-ignores =
     __init__.py:F401
 # NOTE: Edit exclude list in .lintrunner.toml
-ignore = W503, E203, E501
+
+# Ignored codes:
+# DUO102: We use random only for math
+ignore = W503, E203, E501, DUO102
