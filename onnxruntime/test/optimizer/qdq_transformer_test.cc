@@ -799,7 +799,7 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         TransformerLevel::Level1,
         12,
         (scale_1 + scale_3) / 2,
-        10.0);
+        0.01);
   };
 
   auto test_case_all_s8 = [&](bool succeed,
@@ -812,7 +812,7 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         TransformerLevel::Level1,
         12,
         (scale_1 + scale_3) / 2,
-        10.0);
+        0.01);
   };
 
   auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
