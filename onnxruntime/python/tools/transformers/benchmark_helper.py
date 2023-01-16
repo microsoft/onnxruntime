@@ -81,8 +81,9 @@ def create_onnxruntime_session(
     num_threads=-1,
     enable_profiling=False,
     verbose=False,
-    provider_options={},  # map execution provider name to its option
+    provider_options: Optional[dict] = None,  # map execution provider name to its option
 ):
+    provider_options = provider_options or {}
     session = None
     try:
         sess_options = onnxruntime.SessionOptions()
