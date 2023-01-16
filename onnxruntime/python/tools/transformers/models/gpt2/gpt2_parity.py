@@ -26,7 +26,7 @@ from onnx_model import OnnxModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import get_ort_environment_variables, setup_logger
+from benchmark_helper import get_ort_environment_variables, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 

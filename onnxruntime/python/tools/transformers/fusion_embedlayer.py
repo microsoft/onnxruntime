@@ -112,7 +112,7 @@ class FusionEmbedLayerNoMask(Fusion):
                 logger.debug("No Attention like subgraph in children of LayerNormalization")
                 return False
         else:
-            if children_types != ["Add", "MatMul", "MatMul", "MatMul",] and children_types != [
+            if children_types != ["Add", "MatMul", "MatMul", "MatMul"] and children_types != [
                 "MatMul",
                 "MatMul",
                 "MatMul",
@@ -233,7 +233,7 @@ class FusionEmbedLayerNoMask(Fusion):
         return False
 
     def match_position_embedding_bert(self, position_embedding_gather, input_ids, output_name_to_node):
-        """  Match position embedding path from input_ids to Gather for BERT.
+        r"""Match position embedding path from input_ids to Gather for BERT.
 
         BERT Embedding Layer Pattern:
                                     (input_ids)

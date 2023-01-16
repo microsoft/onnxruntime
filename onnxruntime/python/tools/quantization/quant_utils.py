@@ -265,7 +265,7 @@ class QuantizedInitializer:
 
 class QuantizedValue:
     """
-    Represents a linearly quantized value (input\output\intializer)
+    Represents a linearly quantized value (input/output/intializer)
     """
 
     def __init__(

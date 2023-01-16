@@ -205,7 +205,7 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
     avg_latency_match = re.search("mean = (.*?) ms", target)
     if avg_latency_match:
         result["average_latency_ms"] = avg_latency_match.group(1)  # extract number
-    percentile_match = re.search("percentile\(90%\) = (.*?) ms", target)
+    percentile_match = re.search(r"percentile\(90%\) = (.*?) ms", target)
     if percentile_match:
         result["latency_90_percentile"] = percentile_match.group(1)  # extract number
     if mem_usage:

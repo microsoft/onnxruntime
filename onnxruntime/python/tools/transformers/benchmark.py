@@ -43,6 +43,7 @@
 import argparse
 import logging
 import os
+import random
 import timeit
 from datetime import datetime
 
@@ -72,7 +73,7 @@ from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
 
-from huggingface_models import MODEL_CLASSES, MODELS
+from huggingface_models import MODEL_CLASSES, MODELS  # noqa: E402
 
 cpu_count = psutil.cpu_count(logical=False)
 
@@ -80,8 +81,8 @@ cpu_count = psutil.cpu_count(logical=False)
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
-import torch
-from transformers import AutoConfig, AutoTokenizer, LxmertConfig
+import torch  # noqa: E402
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig  # noqa: E402
 
 
 def run_onnxruntime(
@@ -366,7 +367,7 @@ def run_pytorch(
                     inference = torch.jit.trace(model, input_ids) if torchscript else model
                     inference(input_ids)
 
-                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
                         "engine": "torchscript" if torchscript else "torch",
@@ -488,9 +489,7 @@ def run_tensorflow(
                     "Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length])
                 )
 
-                import random
-
-                rng = random.Random()
+                rng = random.Random()  # noqa: D102
                 values = [rng.randint(0, config.vocab_size - 1) for i in range(batch_size * sequence_length)]
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
@@ -498,18 +497,18 @@ def run_tensorflow(
                     # Disable both for better inference perf
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_forward():
-                        return model(input_ids, training=False)
+                        return model(input_ids, training=False)  # noqa: B023
 
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
-                        return model(input_ids, decoder_input_ids=input_ids, training=False)
+                        return model(input_ids, decoder_input_ids=input_ids, training=False)  # noqa: B023
 
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def lxmert_forward():
-                        feats = tf.random.normal([1, 1, config.visual_feat_dim])
-                        pos = tf.random.normal([1, 1, config.visual_pos_dim])
-                        return model(
-                            input_ids,
+                        feats = tf.random.normal([1, 1, config.visual_feat_dim])  # noqa: B023
+                        pos = tf.random.normal([1, 1, config.visual_pos_dim])  # noqa: B023
+                        return model(  # noqa: B023
+                            input_ids,  # noqa: B023
                             visual_feats=feats,
                             visual_pos=pos,
                             training=False,
@@ -523,7 +522,7 @@ def run_tensorflow(
 
                     inference()
 
-                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
                         "engine": "tensorflow",

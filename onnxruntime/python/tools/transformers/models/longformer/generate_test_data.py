@@ -15,8 +15,8 @@ import numpy as np
 from onnx import ModelProto, TensorProto
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
-from onnx_model import OnnxModel
+from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
 
 
 def parse_arguments():

@@ -51,7 +51,7 @@ from transformers import LongformerModel
 import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-import benchmark_helper
+import benchmark_helper  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -80,7 +80,7 @@ def test_torch_latency(
                 input_list = inputs.to_list()
 
                 _ = model(*input_list)
-                runtimes = timeit.repeat(lambda: model(*input_list), repeat=test_times, number=1)
+                runtimes = timeit.repeat(lambda: model(*input_list), repeat=test_times, number=1)  # noqa: B023
                 result = {
                     "engine": "torch",  # TODO: test torchscript
                     "version": torch.__version__,

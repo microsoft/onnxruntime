@@ -113,7 +113,7 @@ def run_model(
                 sys.exit(-1)
 
     start = timer()
-    for i in range(num_iters):
+    for _ in range(num_iters):
         outputs = sess.run([], feeds)  # fetch all outputs
     end = timer()
 

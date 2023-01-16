@@ -89,7 +89,7 @@ def check_if_dlls_are_present(
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list()
-        for (dirpath, dirnames, filenames) in os.walk(package_path):
+        for (dirpath, _, filenames) in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
         file_list_in_package = zip_file.namelist()
@@ -194,7 +194,7 @@ def validate_tarball(args):
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
     print("tar zxvf " + package_name)
-    os.system("tar zxvf " + package_name)
+    os.system("tar zxvf " + package_name)  # noqa: DUO106
 
     is_windows_ai_package = False
     zip_file = None
@@ -276,7 +276,7 @@ def validate_nuget(args):
 
         # Make a copy of the Nuget package
         print("Copying [" + full_nuget_path + "] -> [" + nupkg_copy_name + "], and extracting its contents")
-        os.system("copy " + full_nuget_path + " " + nupkg_copy_name)
+        os.system("copy " + full_nuget_path + " " + nupkg_copy_name)  # noqa: DUO106
 
         # Convert nupkg to zip
         os.rename(nupkg_copy_name, zip_copy_name)
