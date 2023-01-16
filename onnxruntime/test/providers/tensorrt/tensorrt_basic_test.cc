@@ -299,8 +299,11 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr,
                                DefaultLoggingManager().DefaultLogger()));
 
+  // Test loading same model from file and byte steam. Hash values should be different
   Graph& graph2 = model2->MainGraph();
   GraphViewer viewer2(graph2);
+  HashValue model_hash2= TRTGenerateId(viewer2);
+  ASSERT_NE(model_hash, model_hash2);
 
   // Test loading same model from different path, see if hash values are same as well
   model_path = ORT_TSTR("testdata/TRTEP_test_model/mnist.onnx");

@@ -954,7 +954,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
     size_t id = 0;
-	int subgraph_index = 0;
+    int subgraph_index = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
