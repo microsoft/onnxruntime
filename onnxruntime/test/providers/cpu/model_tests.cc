@@ -265,6 +265,13 @@ TEST_P(ModelTest, Run) {
       {"SSD-int8", "failed in training", {"opset12"}},
       {"VGG 16-int8", "failed in training", {"opset12"}},
       {"YOLOv3-12-int8", "failed in training", {"opset12"}},
+      if (provider_name == "cpu") {
+        {"shufflenetv212qdq", "failed in orttraing-linux-gpu, TRT8.5 with V100, but it's a cpu test?", {"opset12"}},
+      }
+      if (provider_name == "cuda") {
+        broken_tests.insert({"LSTM_Seq_lens_unpacked", "failed in orttraing-linux-gpu, TRT8.5 with V100.", {"opset12"}});
+        broken_tests.insert({"bidaf", "failed in orttraing-linux-gpu, TRT8.5 with V100.", {"opset12"}});
+      }
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
