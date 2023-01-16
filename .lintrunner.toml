@@ -39,6 +39,20 @@ include_patterns = [
     '**/*.py',
 ]
 exclude_patterns = [
+    'build/**',
+    'cmake/external/**',
+    # TODO enable
+    'docs/python/**',
+    # ignore generated flatbuffers code
+    'onnxruntime/core/flatbuffers/ort_flatbuffers_py/**',
+    # TODO enable
+    './onnxruntime/python/tools/**',
+    # FIXME(#7032): ignore test code for now
+    'onnxruntime/test/**',
+    # TODO enable
+    'orttraining/**',
+    # FIXME(#7032): ignore server code for now
+    'server/**',
 ]
 command = [
     'python3',
