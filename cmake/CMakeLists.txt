@@ -1071,12 +1071,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-
-# onnxruntime-extensions
-if (onnxruntime_USE_EXTENSIONS)
-  include(extensions)
-endif()
-
 #Dependencies end. In the next we'll enable "treat warning as error"
 
 #Adjust warning flags
