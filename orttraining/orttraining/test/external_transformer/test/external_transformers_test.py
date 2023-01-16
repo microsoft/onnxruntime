@@ -81,13 +81,11 @@ class OutputGrabber(object):
 import os
 import unittest
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from onnxruntime.capi import _pybind_state as torch_ort_eager
-from onnxruntime.training import optim, orttrainer, orttrainer_options
+from onnxruntime.training import optim, orttrainer
 
 
 def my_loss(x, target):
@@ -136,7 +134,7 @@ class OrtEPTests(unittest.TestCase):
         target = torch.randint(0, 10, (batch_size,))
 
         with OutputGrabber() as out:
-            loss = model.train_step(data, target)
+            model.train_step(data, target)
         assert "******************Trigger Customized Graph Transformer:  MyGraphTransformer!" in out.capturedtext
 
 

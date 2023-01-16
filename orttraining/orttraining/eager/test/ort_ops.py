@@ -5,7 +5,6 @@
 
 import unittest
 
-import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
 from parameterized import param, parameterized
@@ -643,7 +642,7 @@ class OrtOpTests(unittest.TestCase):
             self.skipTest(f" {test_name}_output Fails - skipping for now")
         device = self.get_device()
         cpu_tensor = tensor_test
-        ort_tensor = cpu_tensor.to(device)
+        cpu_tensor.to(device)
 
         cpu_out_tensor = torch.tensor([], dtype=tensor_test.dtype)
         ort_out_tensor = cpu_out_tensor.to(device)
@@ -663,9 +662,9 @@ class OrtOpTests(unittest.TestCase):
     def test_op_tensor(self, math_sign_ops):
         device = self.get_device()
         cpu_a = torch.Tensor([1.0, 1.5, 2.0, 3.5])
-        ort_a = cpu_a.to(device)
+        cpu_a.to(device)
         cpu_b = torch.Tensor([1.0, 1.4, 2.1, 2.4])
-        ort_b = cpu_b.to(device)
+        cpu_b.to(device)
 
         for tensor_type in {torch.float, torch.bool}:
             cpu_out_tensor = torch.tensor([], dtype=tensor_type)
@@ -687,13 +686,11 @@ class OrtOpTests(unittest.TestCase):
         cpu_scalar_int_lt = torch.scalar_tensor(2, dtype=torch.int)
         cpu_scalar_int_gt = torch.scalar_tensor(0, dtype=torch.int)
         cpu_tensor_float = torch.tensor([1.1, 1.1], dtype=torch.float32)
-        float_lt = 1.0
-        float_gt = 1.2
 
-        ort_tensor_int = cpu_tensor_int.to(device)
-        ort_scalar_int_lt = cpu_scalar_int_lt.to(device)
-        ort_scalar_int_gt = cpu_scalar_int_gt.to(device)
-        ort_tensor_float = cpu_tensor_float.to(device)
+        cpu_tensor_int.to(device)
+        cpu_scalar_int_lt.to(device)
+        cpu_scalar_int_gt.to(device)
+        cpu_tensor_float.to(device)
 
         # compare int to int, float to float - ort only supports same type at the moment
         cpu_out_tensor = torch.tensor([], dtype=torch.bool)
@@ -746,9 +743,9 @@ class OrtOpTests(unittest.TestCase):
     def test_op_binary_tensor(self, binary_op, op_sign, alpha_supported):
         device = self.get_device()
         cpu_input = torch.rand(3, 1)  # use broadcasting in the second dim.
-        ort_input = cpu_input.to(device)
+        cpu_input.to(device)
         cpu_other = torch.rand(3, 3)
-        ort_other = cpu_other.to(device)
+        cpu_other.to(device)
 
         # verify op_sign works
         cpu_result = eval(compile("cpu_input " + op_sign + " cpu_other", "<string>", "eval"))
@@ -785,9 +782,7 @@ class OrtOpTests(unittest.TestCase):
     def test_op_binary_scalar(self, binary_op, op_sign, alpha_supported):
         device = self.get_device()
         cpu_input = torch.ones(3, 3)
-        ort_input = cpu_input.to(device)
-        cpu_other = 3.1
-        ort_other = 3.1
+        cpu_input.to(device)
 
         # verify op_sign works
         cpu_result = eval(compile("cpu_input " + op_sign + " cpu_other", "<string>", "eval"))

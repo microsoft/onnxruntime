@@ -2,7 +2,6 @@
 
 # This file is copied and adapted from https://github.com/onnx/onnx repository.
 # There was no copyright statement on the file at the time of copying.
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
 import io
@@ -10,9 +9,9 @@ import os
 import pathlib
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Sequence, Set, Text, Tuple
+from typing import Any, DefaultDict, List, Sequence, Set, Text, Tuple
 
-import numpy as np  # type: ignore
+import numpy as np
 from onnx import AttributeProto, FunctionProto
 
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
@@ -29,13 +28,13 @@ else:
     ext = ".md"
 
 
-def display_number(v):  # type: (int) -> Text
+def display_number(v: int) -> str:
     if OpSchema.is_infinite(v):
         return "&#8734;"
     return Text(v)
 
 
-def should_render_domain(domain, domain_filter):  # type: (Text) -> bool
+def should_render_domain(domain, domain_filter) -> bool:
     if domain == ONNX_DOMAIN or domain == "" or domain == ONNX_ML_DOMAIN or domain == "ai.onnx.ml":
         return False
 
@@ -45,18 +44,18 @@ def should_render_domain(domain, domain_filter):  # type: (Text) -> bool
     return True
 
 
-def format_name_with_domain(domain, schema_name):  # type: (Text, Text) -> Text
+def format_name_with_domain(domain: str, schema_name: str) -> str:
     if domain:
         return "{}.{}".format(domain, schema_name)
     else:
         return schema_name
 
 
-def format_name_with_version(schema_name, version):  # type: (Text, Text) -> Text
+def format_name_with_version(schema_name: str, version: str) -> str:
     return "{}-{}".format(schema_name, version)
 
 
-def display_attr_type(v):  # type: (OpSchema.AttrType) -> Text
+def display_attr_type(v: OpSchema.AttrType) -> str:
     assert isinstance(v, OpSchema.AttrType)
     s = Text(v)
     s = s[s.rfind(".") + 1 :].lower()
@@ -65,33 +64,33 @@ def display_attr_type(v):  # type: (OpSchema.AttrType) -> Text
     return s
 
 
-def display_domain(domain):  # type: (Text) -> Text
+def display_domain(domain: str) -> str:
     if domain:
         return "the '{}' operator set".format(domain)
     else:
         return "the default ONNX operator set"
 
 
-def display_domain_short(domain):  # type: (Text) -> Text
+def display_domain_short(domain: str) -> str:
     if domain:
         return domain
     else:
         return "ai.onnx (default)"
 
 
-def display_version_link(name, version):  # type: (Text, int) -> Text
+def display_version_link(name: str, version: int) -> str:
     changelog_md = "Changelog" + ext
     name_with_ver = "{}-{}".format(name, version)
     return '<a href="{}#{}">{}</a>'.format(changelog_md, name_with_ver, name_with_ver)
 
 
-def display_function_version_link(name, version):  # type: (Text, int) -> Text
+def display_function_version_link(name: str, version: int) -> str:
     changelog_md = "FunctionsChangelog" + ext
     name_with_ver = "{}-{}".format(name, version)
     return '<a href="{}#{}">{}</a>'.format(changelog_md, name_with_ver, name_with_ver)
 
 
-def get_attribute_value(attr):  # type: (AttributeProto) -> Any
+def get_attribute_value(attr: AttributeProto) -> Any:
     if attr.HasField("f"):
         return attr.f
     elif attr.HasField("i"):
@@ -116,7 +115,7 @@ def get_attribute_value(attr):  # type: (AttributeProto) -> Any
         raise ValueError("Unsupported ONNX attribute: {}".format(attr))
 
 
-def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) -> Text
+def display_schema(schema: OpSchema, versions: Sequence[OpSchema]) -> str:
     s = ""
 
     # doc
@@ -163,7 +162,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
             elif hasattr(attr, "default_value") and attr.default_value.name:
                 default_value = get_attribute_value(attr.default_value)
 
-                def format_value(value):  # type: (Any) -> Text
+                def format_value(value: Any) -> str:
                     if isinstance(value, float):
                         value = np.round(value, 5)
                     if isinstance(value, (bytes, bytearray)) and sys.version_info[0] == 3:
@@ -247,7 +246,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
     return s
 
 
-def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (FunctionProto, List[int], Text) -> Text
+def display_function(function: FunctionProto, versions: List[int], domain: str = ONNX_DOMAIN) -> str:
     s = ""
 
     if domain:
@@ -303,13 +302,8 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
     return s
 
 
-def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
+def support_level_str(level: OpSchema.SupportType) -> str:
     return "<sub>experimental</sub> " if level == OpSchema.SupportType.EXPERIMENTAL else ""
-
-
-# def function_status_str(status=OperatorStatus.Value("EXPERIMENTAL")):  # type: ignore
-#     return \
-#         "<sub>experimental</sub> " if status == OperatorStatus.Value('EXPERIMENTAL') else ""  # type: ignore
 
 
 def main(output_path: str, domain_filter: [str]):
@@ -323,9 +317,9 @@ def main(output_path: str, domain_filter: [str]):
         )
 
         # domain -> support level -> name -> [schema]
-        index = defaultdict(
+        index: DefaultDict[Text, DefaultDict[int, DefaultDict[Text, List[OpSchema]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(list))
-        )  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]  # noqa: E501
+        )
 
         for schema in rtpy.get_all_operator_schema():
             index[schema.domain][int(schema.support_level)][schema.name].append(schema)
@@ -334,10 +328,8 @@ def main(output_path: str, domain_filter: [str]):
 
         # Preprocess the Operator Schemas
         # [(domain, [(support_level, [(schema name, current schema, all versions schemas)])])]
-        operator_schemas = (
-            list()
-        )  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]  # noqa: E501
-        exsting_ops = set()  # type: Set[Text]
+        operator_schemas: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]] = []
+        exsting_ops: Set[str] = set()
         for domain, _supportmap in sorted(index.items()):
             if not should_render_domain(domain, domain_filter):
                 continue

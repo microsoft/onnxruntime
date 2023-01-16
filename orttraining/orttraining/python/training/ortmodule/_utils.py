@@ -12,7 +12,6 @@ import random
 import traceback
 import types
 import warnings
-from typing import List
 
 import numpy as np
 import torch

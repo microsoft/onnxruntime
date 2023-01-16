@@ -1,6 +1,5 @@
 # adapted from run_glue.py of huggingface transformers
 
-import dataclasses
 import logging
 import os
 import unittest
@@ -24,15 +23,9 @@ from transformers import (
 )
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
 
 try:
-    from onnxruntime.capi._pybind_state import (
-        get_mpi_context_local_rank,
-        get_mpi_context_local_size,
-        get_mpi_context_world_rank,
-        get_mpi_context_world_size,
-    )
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_world_size
 
     has_get_mpi_context_internal_api = True
 except ImportError:
@@ -40,7 +33,6 @@ except ImportError:
     pass
 
 
-import torch
 from orttraining_transformer_trainer import ORTTransformerTrainer
 
 logger = logging.getLogger(__name__)

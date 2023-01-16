@@ -3,7 +3,6 @@
 import os
 import subprocess
 import sys
-from subprocess import CalledProcessError
 
 import onnx
 import pybind11

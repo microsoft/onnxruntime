@@ -1,7 +1,5 @@
-import os
 import unittest
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -62,7 +60,7 @@ class OrtModuleEagerTest(unittest.TestCase):
 
         with torch.no_grad():
             data = torch.rand(batch_size, input_size)
-            y = model(data.to(device))
+            model(data.to(device))
         print("Done")
 
     @unittest.skip("Test fails with newest pytorch version.")

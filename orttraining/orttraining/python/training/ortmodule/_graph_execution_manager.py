@@ -8,7 +8,7 @@ import inspect
 import io
 import os
 import warnings
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from enum import IntFlag
 from functools import reduce
 
@@ -236,7 +236,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             run_info: A _RunStateInfo which contains extra information about the execution of the graph
         """
 
-        raise NotImplemented
+        raise NotImplementedError
 
     @abstractmethod
     def forward(self):

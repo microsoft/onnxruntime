@@ -557,7 +557,7 @@ def test_forward_call_positional_and_keyword_arguments():
     ],
 )
 def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_statement):
-    one = torch.FloatTensor([1])
+    torch.FloatTensor([1])
 
     model = NeuralNetSimplePositionalAndKeywordArguments()
     pytorch_result = eval(forward_statement + ".item()")
@@ -679,7 +679,7 @@ def test_model_with_different_devices_same_session():
 
         model.to(device)
         x = torch.randn(N, D_in, device=device)
-        y = model(x)
+        model(x)
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
@@ -1661,8 +1661,6 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
 
 @pytest.mark.parametrize("input_shape", ([4, 2],))
 def test_aten_argmax(input_shape):
-    import torch.nn.functional as F
-
     class TopKGate(torch.nn.Module):
         def forward(self, input: torch.Tensor):
             indices = torch.argmax(input, dim=1)
@@ -2046,7 +2044,7 @@ def test_multiple_ortmodules_common_backbone_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
 
         # Run task 2
-        x2 = torch.randn(N, D_in, device=device)
+        torch.randn(N, D_in, device=device)
         pt_prediction = run_step(pt_model0, pt_model2, x1)
         ort_prediction = run_step(ort_model0, ort_model2, x1)
 
@@ -2286,11 +2284,11 @@ def test_model_output_with_inplace_update(device):
     ort_x1 = pt_x1.clone()
 
     with pytest.raises(Exception) as ex_info:
-        pt_y1 = run_step(pt_model, pt_x1)
+        run_step(pt_model, pt_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
 
     with pytest.raises(Exception) as ex_info:
-        ort_y1 = run_step(ort_model, ort_x1)
+        run_step(ort_model, ort_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
 
 
@@ -2643,7 +2641,7 @@ def test_model_with_multiple_devices_cpu_cuda():
         ort_model = ORTModule(copy.deepcopy(pt_model))
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model(x)
-        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(
+        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
             runtime_error.value
         )
     else:
@@ -2674,7 +2672,7 @@ def test_model_with_multiple_devices_to_to():
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model = ORTModule(copy.deepcopy(pt_model))
             ort_model(x)
-        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(
+        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
             runtime_error.value
         )
     else:
@@ -2705,7 +2703,7 @@ def test_model_with_multiple_devices_to_cpu():
         ort_model = ORTModule(copy.deepcopy(pt_model))
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model(x)
-        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(
+        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
             runtime_error.value
         )
     else:
@@ -2736,7 +2734,7 @@ def test_model_with_multiple_devices_to_cuda():
         ort_model = ORTModule(copy.deepcopy(pt_model))
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model(x)
-        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(
+        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
             runtime_error.value
         )
     else:
@@ -2913,7 +2911,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
     ort_model = ORTModule(model)
     # When exporting the model, ensure device is same between input data and model (else pytorch will raise while exporting)
     x = torch.randn(N, D_in, device=model_device)
-    output = ort_model(x)
+    ort_model(x)
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
@@ -2923,7 +2921,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
         # Fallback
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model(x)
-        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(
+        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
             runtime_error.value
         )
     else:
@@ -3035,7 +3033,7 @@ def test_model_wrapped_inside_torch_no_grad():
 
     # Make sure no exception is raised
     with torch.no_grad():
-        output = model(x)
+        model(x)
 
 
 def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
@@ -3179,7 +3177,7 @@ def test_state_dict():
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
-    y = x.clone()
+    x.clone()
 
     state_dict_ort = ort_model.state_dict()
     state_dict_pt = pt_model.state_dict()
@@ -3208,7 +3206,7 @@ def test_load_state_dict():
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
-    y = x.clone()
+    x.clone()
 
     state_dict_pt = pt_model.state_dict()
     list(next(iter(state_dict_pt.items())))[1] += 10
@@ -3608,12 +3606,12 @@ def test_forward_call_kwargs_input(forward_statement):
     model = ORTModule(model)
 
     # Dummy inputs used
-    pos_0 = torch.randn(N, D_in, device=device)
-    pos_1 = torch.randn(N, D_in, device=device)
-    kw_0 = torch.randn(N, D_in, device=device)
-    kw_1 = torch.randn(N, D_in, device=device)
-    args = [torch.randn(N, D_in, device=device)] * 2
-    kwargs = {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}
+    torch.randn(N, D_in, device=device)
+    torch.randn(N, D_in, device=device)
+    torch.randn(N, D_in, device=device)
+    torch.randn(N, D_in, device=device)
+    [torch.randn(N, D_in, device=device)] * 2
+    {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}
 
     # Training step
     prediction = eval(forward_statement)
@@ -3989,7 +3987,7 @@ def test_model_with_registered_buffer_and_dropped_parameters():
     x = torch.randn(N, D_in, device=device)
 
     # Ensure that no exceptions are raised
-    out = model(bool_argument, x)
+    model(bool_argument, x)
 
 
 @pytest.mark.parametrize(
@@ -4252,7 +4250,7 @@ def test_ortmodule_list_input_with_unused_values():
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
-            a = batch[0]
+            batch[0]
             b = batch[1]
             return self.dummy + b
 
@@ -4384,7 +4382,7 @@ def test_debug_options_save_onnx_models_validate_fail_on_non_str_prefix():
 def test_debug_options_save_onnx_models_validate_fail_on_no_prefix():
     with pytest.raises(Exception) as ex_info:
         _ = DebugOptions(save_onnx=True)
-    assert f"onnx_prefix must be provided when save_onnx is set." in str(ex_info.value)
+    assert "onnx_prefix must be provided when save_onnx is set." in str(ex_info.value)
 
 
 def test_debug_options_log_level():
@@ -4507,7 +4505,7 @@ def test_ortmodule_dict_input_with_unused_values():
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
-            b = batch["b"]
+            batch["b"]
             a = batch["a"]
             return self.dummy + a
 
@@ -4760,7 +4758,7 @@ def test_ortmodule_setattr_ortmodule_attribute():
 
     assert not hasattr(pt_model, "_torch_module")
     assert "_torch_module" in ort_model.__dict__
-    assert ort_model._torch_module == True
+    assert ort_model._torch_module is True
 
 
 def test_ortmodule_setattr_signals_model_changed():
@@ -4788,11 +4786,11 @@ def test_ortmodule_setattr_signals_model_changed():
     exported_model1 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed == False
+        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is False
     ort_model.input_flag = False
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed == True
+        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is True
 
     _ = ort_model(torch.randn(N, D_in, device=device))
     exported_model2 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
@@ -4818,7 +4816,7 @@ def test_ortmodule_attribute_name_collision_warning():
     device = "cuda"
     pt_model = UserNet().to(device)
     with pytest.warns(UserWarning) as warning_record:
-        ort_model = ORTModule(pt_model)
+        ORTModule(pt_model)
 
     # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
     # Please annotate treat the first argument (g) as GraphContext and use context information from the object

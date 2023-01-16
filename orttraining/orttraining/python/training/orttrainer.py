@@ -298,7 +298,7 @@ class ORTTrainer(object):
 
     def _check_model_export(self, input):
         from numpy.testing import assert_allclose
-        from onnx import TensorProto, helper, numpy_helper
+        from onnx import numpy_helper
 
         onnx_model_copy = copy.deepcopy(self._onnx_model)
 
@@ -930,7 +930,7 @@ class ORTTrainer(object):
             # to move the data between device and host.
             # so output will be on the same device as input.
             try:
-                test_pt_device = torch.device(target_device)
+                torch.device(target_device)
             except Exception:
                 # in this case, input/output must on CPU
                 assert input.device.type == "cpu"

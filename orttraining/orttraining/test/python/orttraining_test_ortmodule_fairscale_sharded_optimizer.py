@@ -203,9 +203,7 @@ def train(rank: int, args, world_size: int, epochs: int):
     train_dataloader, test_dataloader = get_dataloader(args, rank, args.batch_size)
     loss_fn = my_loss
     base_optimizer = torch.optim.SGD  # pick any pytorch compliant optimizer here
-    base_optimizer_arguments = (
-        {}
-    )  # pass any optimizer specific arguments here, or directly below when instantiating OSS
+    # pass any optimizer specific arguments here, or directly below when instantiating OSS
     if args.use_sharded_optimizer:
         # Wrap the optimizer in its state sharding brethren
         optimizer = OSS(params=model.parameters(), optim=base_optimizer, lr=args.lr)

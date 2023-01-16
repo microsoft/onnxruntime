@@ -19,10 +19,7 @@
 import argparse
 
 # ==================
-import csv
 import logging
-import math
-import multiprocessing
 import os
 import random
 import time
@@ -37,14 +34,10 @@ from apex import amp
 from apex.amp import _amp_state
 from apex.parallel import DistributedDataParallel as DDP
 from apex.parallel.distributed import flat_dist_call
-from file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 from modeling import BertConfig, BertForPreTraining
 from optimization import BertLAMB
-from schedulers import LinearWarmUpScheduler
-from tokenization import BertTokenizer
-from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm, trange
+from torch.utils.data import DataLoader, Dataset, RandomSampler
+from tqdm import tqdm
 from utils import is_main_process
 
 logging.basicConfig(
@@ -454,7 +447,6 @@ def main():
 
         # Note: We loop infinitely over epochs, termination is handled via iteration count
         while True:
-            thread = None
             if not args.resume_from_checkpoint or epoch > 0 or args.phase2:
                 files = [
                     os.path.join(args.input_dir, f)

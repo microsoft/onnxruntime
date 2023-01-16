@@ -6,7 +6,7 @@ import pytest
 import torch
 from _test_commons import _load_pytorch_transformer_model
 
-from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer
+from onnxruntime.training import _checkpoint_storage, checkpoint, optim, orttrainer
 
 # Helper functions
 
@@ -627,7 +627,7 @@ def test_checkpoint_aggregation(load_mock):
     assert (state_dict["optimizer"]["non_sharded"]["Moment_2"] == np.array([6666, 5555, 4444])).all()
     assert (state_dict["optimizer"]["non_sharded"]["Step"] == np.array([55])).all()
 
-    assert state_dict["trainer_options"]["mixed_precision"] == False
+    assert state_dict["trainer_options"]["mixed_precision"] is False
     assert state_dict["trainer_options"]["world_rank"] == 0
     assert state_dict["trainer_options"]["world_size"] == 1
     assert state_dict["trainer_options"]["horizontal_parallel_size"] == 1
@@ -713,7 +713,7 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
     assert (state_dict["optimizer"]["non_sharded"]["Moment_2"] == np.array([6666, 5555, 4444])).all()
     assert (state_dict["optimizer"]["non_sharded"]["Step"] == np.array([55])).all()
 
-    assert state_dict["trainer_options"]["mixed_precision"] == True
+    assert state_dict["trainer_options"]["mixed_precision"] is True
     assert state_dict["trainer_options"]["world_rank"] == 0
     assert state_dict["trainer_options"]["world_size"] == 1
     assert state_dict["trainer_options"]["horizontal_parallel_size"] == 1

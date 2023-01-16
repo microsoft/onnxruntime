@@ -13,11 +13,9 @@ from numpy.testing import assert_allclose
 from packaging.version import Version as StrictVersion
 
 from onnxruntime import SessionOptions, set_seed
-from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
 from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
-from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint
+from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp
 from onnxruntime.training import model_desc_validation as md_val
 from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
@@ -61,8 +59,6 @@ def testORTTrainerOptionsDefaultValues(test_input):
                 "sliced_tensor_names": [],
             },
             "allreduce_post_accumulation": False,
-            "data_parallel_size": 1,
-            "horizontal_parallel_size": 1,
             "deepspeed_zero_optimization": {
                 "stage": 0,
             },
@@ -316,7 +312,7 @@ def testDynamicLossScalerCustomValues():
     scaler = amp.loss_scaler.DynamicLossScaler(
         automatic_update=False, loss_scale=3, up_scale_window=7, min_loss_scale=5, max_loss_scale=10
     )
-    assert scaler.automatic_update == False
+    assert scaler.automatic_update is False
     assert_allclose(scaler.loss_scale, 3, rtol=rtol, err_msg="loss scale mismatch")
     assert_allclose(scaler.min_loss_scale, 5, rtol=rtol, err_msg="min loss scale mismatch")
     assert_allclose(scaler.max_loss_scale, 10, rtol=rtol, err_msg="max loss scale mismatch")
@@ -332,14 +328,14 @@ def testTrainStepInfo():
         optimizer_config=optimizer_config, all_finite=False, fetches=fetches, optimization_step=123, step=456
     )
     assert step_info.optimizer_config == optimizer_config
-    assert step_info.all_finite == False
+    assert step_info.all_finite is False
     assert step_info.fetches == fetches
     assert step_info.optimization_step == 123
     assert step_info.step == 456
 
     step_info = orttrainer.TrainStepInfo(optimizer_config)
     assert step_info.optimizer_config == optimizer_config
-    assert step_info.all_finite == True
+    assert step_info.all_finite is True
     assert step_info.fetches == []
     assert step_info.optimization_step == 0
     assert step_info.step == 0
@@ -459,7 +455,7 @@ def testOptimizerConfigAdam():
     assert_allclose(0.0, cfg.lambda_coef, rtol=rtol, err_msg="lambda_coef mismatch")
     assert_allclose(1e-8, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
     assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
-    assert cfg.do_bias_correction == True, "lambda_coef mismatch"
+    assert cfg.do_bias_correction is True, "lambda_coef mismatch"
     assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
 
@@ -476,7 +472,7 @@ def testOptimizerConfigLamb():
     assert cfg.ratio_max == float("inf"), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
     assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
-    assert cfg.do_bias_correction == False, "do_bias_correction mismatch"
+    assert cfg.do_bias_correction is False, "do_bias_correction mismatch"
 
 
 @pytest.mark.parametrize("optim_name", [("Adam"), ("Lamb")])
@@ -1045,7 +1041,7 @@ def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
     # Training loop
     data, targets = batcher_fn(train_data, 0)
     if not enable_onnx_contrib_ops and not pytorch_110:
-        with pytest.raises(Exception) as e_info:
+        with pytest.raises(Exception):
             _, _ = trainer.train_step(data, targets)
     else:
         _, _ = trainer.train_step(data, targets)
@@ -1592,7 +1588,7 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
 
 
 def testLossScalerLegacyAndExperimentalFullCycle():
-    info = orttrainer.TrainStepInfo(
+    orttrainer.TrainStepInfo(
         optimizer_config=optim.LambConfig(lr=0.001), all_finite=True, fetches=[], optimization_step=0, step=0
     )
     new_ls = amp.DynamicLossScaler()
@@ -1758,7 +1754,7 @@ def testORTTrainerOptionsEnabledAdasumFlag(test_input):
     """Test the enabled_adasum flag values when set enabled"""
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
-    assert actual_values.distributed.enable_adasum == True
+    assert actual_values.distributed.enable_adasum is True
 
 
 @pytest.mark.parametrize(
@@ -1775,7 +1771,7 @@ def testORTTrainerOptionsDisabledAdasumFlag(test_input):
     """Test the enabled_adasum flag values when set disabled"""
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
-    assert actual_values.distributed.enable_adasum == False
+    assert actual_values.distributed.enable_adasum is False
 
 
 def testORTTrainerUnusedInput():

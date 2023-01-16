@@ -1,10 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import argparse
 import collections
 import csv
-import re
 import sys
 
 Comparison = collections.namedtuple("Comparison", ["name", "fn"])

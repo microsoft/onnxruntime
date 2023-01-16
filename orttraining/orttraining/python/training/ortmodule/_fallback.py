@@ -18,7 +18,6 @@ from ._fallback_exceptions import (
     ORTModuleIOError,
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
-    wrap_exception,
 )
 
 

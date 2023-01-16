@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import os
-import sys
 import unittest
 
 import onnxruntime_pybind11_state as torch_ort
@@ -16,7 +15,6 @@ def is_windows():
 import sys
 import threading
 import time
-from io import StringIO
 
 
 class OutputGrabber(object):
@@ -108,22 +106,22 @@ class OrtEPTests(unittest.TestCase):
         # capture std out
         with OutputGrabber() as out:
             torch_ort.set_device(1, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 0, some_option: val" in out.capturedtext
         with OutputGrabber() as out:
             torch_ort.set_device(2, "TestExecutionProvider", {"device_id": "1", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 1, some_option: val" in out.capturedtext
         # test the reusing EP instance
         with OutputGrabber() as out:
             torch_ort.set_device(3, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 0, some_option: val" not in out.capturedtext
         # test clear training ep instance pool
         torch_ort.clear_training_ep_instances()
         with OutputGrabber() as out:
             torch_ort.set_device(3, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 0, some_option: val" in out.capturedtext
 
     @unittest.skip("Test fails with newest pytorch version.")

@@ -440,7 +440,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
     if is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR):
         warnings.warn(
             "Skipping test_ortmodule_fallback_init__missing_cpp_extensions."
-            f" It requires PyTorch CPP extensions to be missing"
+            " It requires PyTorch CPP extensions to be missing"
         )
     else:
 
@@ -647,7 +647,7 @@ def test_ortmodule_fallback_non_contiguous_tensors(is_training, persist_fallback
     for epoch in range(1, 2):
         model.train()  # turn on train mode
 
-        num_batches = len(train_data) // bptt
+        len(train_data) // bptt
         for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
             data, targets = get_batch(train_data, i)
             batch_size = data.size(0)

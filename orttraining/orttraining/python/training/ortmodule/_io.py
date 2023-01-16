@@ -11,7 +11,7 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._utils import warn_of_constant_inputs
 
 
@@ -298,7 +298,7 @@ class _TensorStub(object):
         if not other:
             return False
         elif not isinstance(other, _TensorStub):
-            raise NotImplemented("_TensorStub must only be compared to another _TensorStub instance!")
+            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:

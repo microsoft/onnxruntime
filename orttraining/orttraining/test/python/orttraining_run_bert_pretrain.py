@@ -31,7 +31,7 @@ import onnxruntime as ort
 import onnxruntime.capi.pt_patch
 from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.checkpoint import aggregate_checkpoints
-from onnxruntime.training.optim import LinearWarmupLRScheduler, PolyWarmupLRScheduler
+from onnxruntime.training.optim import LinearWarmupLRScheduler
 
 # we cannot make full convergence run in nightly pipeling because of its timeout limit,
 # max_steps is still needed to calculate learning rate. force_to_stop_max_steps is used to
@@ -486,7 +486,6 @@ def do_pretrain(args):
 
     logger.info("Running training: Batch size = %d, initial LR = %f", args.train_batch_size, args.learning_rate)
 
-    most_recent_ckpts_paths = []
     average_loss = 0.0
     epoch = 0
     training_steps = 0
@@ -689,7 +688,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             deepspeed_zero_stage=self.deepspeed_zero_stage,
             save_checkpoint=True,
         )
-        train_loss = do_pretrain(args)
+        do_pretrain(args)
 
         # ensure all workers reach this point before loading the checkpointed state
         torch.distributed.barrier()
@@ -726,12 +725,7 @@ if __name__ == "__main__":
     # calling unpublished get_mpi_context_xxx to get rank/size numbers.
     try:
         # In case ORT is not built with MPI/NCCL, there are no get_mpi_context_xxx internal apis.
-        from onnxruntime.capi._pybind_state import (
-            get_mpi_context_local_rank,
-            get_mpi_context_local_size,
-            get_mpi_context_world_rank,
-            get_mpi_context_world_size,
-        )
+        from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_world_size
 
         has_get_mpi_context_internal_api = True
     except ImportError:

@@ -3,11 +3,10 @@ import argparse
 import deepspeed
 import torch
 import torch.distributed as dist
-from deepspeed.pipe import LayerSpec, PipelineModule
-from deepspeed.utils import RepeatingLoader
-from torch import nn, optim
+from deepspeed.pipe import PipelineModule
+from torch import nn
 
-from onnxruntime.training.ortmodule import ORTModule, _utils
+from onnxruntime.training.ortmodule import ORTModule
 
 # USAGE:
 # pip install deepspeed

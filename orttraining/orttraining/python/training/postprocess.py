@@ -1,11 +1,8 @@
-import os.path
 import struct
-import sys
 
-import numpy as np
 import onnx
 from onnx import *
-from onnx import helper, numpy_helper
+from onnx import helper
 
 
 def run_postprocess(model):
@@ -168,7 +165,7 @@ def fix_expand_shape_pt_1_5(model):
             if n_shape.op_type != "Shape" or n_constant_g.op_type != "Constant":
                 break
             n_input = n_shape.input[0]
-            if not n_input in model_inputs_names:
+            if n_input not in model_inputs_names:
                 break
             n_input_candidates.append(n_input)
 

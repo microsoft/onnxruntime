@@ -47,7 +47,7 @@ with open(out_file, "wt") as fp:
     def writeline(s=""):
         fp.write(s + "\n")
 
-    writeline(f"# AUTO-GENERATED CODE! - DO NOT EDIT!")
+    writeline("# AUTO-GENERATED CODE! - DO NOT EDIT!")
     writeline(f'# $ python {" ".join(argv)}')
     writeline()
 
@@ -56,11 +56,11 @@ with open(out_file, "wt") as fp:
 
     for op_name, schema in sorted(onnx_ops.items()):
         writeline(f"class {schema.name}(ONNXOp):")
-        writeline(f'  """')
+        writeline('  """')
         doc_str = schema.doc.strip("\r\n")
         for doc_line in str.splitlines(doc_str, keepends=False):
             writeline(f"  {doc_line}")
-        writeline(f'  """')
+        writeline('  """')
         writeline()
         write("  def __init__(self")
 

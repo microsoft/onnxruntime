@@ -15,7 +15,6 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Tenso
 from transformers import (
     AdamW,
     AutoConfig,
-    BertConfig,
     BertForSequenceClassification,
     BertTokenizer,
     get_linear_schedule_with_warmup,

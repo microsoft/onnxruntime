@@ -16,7 +16,6 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
-from ._torch_module_pytorch import TorchModulePytorch
 from .debug_options import DebugOptions
 
 # Needed to override PyTorch methods

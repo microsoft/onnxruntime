@@ -6,9 +6,7 @@
 
 
 import argparse
-import os
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -84,7 +82,7 @@ def main():
     )
 
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    not args.no_cuda and torch.cuda.is_available()
 
     torch.manual_seed(args.seed)
 
@@ -100,7 +98,7 @@ def main():
         shuffle=True,
         **kwargs,
     )
-    test_loader = torch.utils.data.DataLoader(
+    torch.utils.data.DataLoader(
         datasets.MNIST(
             "./data",
             train=False,

@@ -643,7 +643,7 @@ def test_EvalTest():
 
         @staticmethod
         def backward(ctx, grad_output):
-            x = ctx.saved_tensors
+            ctx.saved_tensors
             return None
 
     class EvalTestModel(torch.nn.Module):
@@ -1176,7 +1176,7 @@ def test_skipped_autograd_function():
 
         @staticmethod
         def backward(ctx, grad_output):
-            x = ctx.saved_tensors
+            ctx.saved_tensors
             return None
 
     class TestSkippedModel(torch.nn.Module):

@@ -1,7 +1,6 @@
 # adapted from run_multiple_choice.py of huggingface transformers
 # https://github.com/huggingface/transformers/blob/master/examples/multiple-choice/run_multiple_choice.py
 
-import dataclasses
 import logging
 import os
 import unittest
@@ -9,24 +8,18 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 import numpy as np
-import torch
-from numpy.testing import assert_allclose
-from orttraining_run_glue import verify_old_and_new_api_are_equal
 from orttraining_transformer_trainer import ORTTransformerTrainer
 from transformers import (
     AutoConfig,
     AutoModelForMultipleChoice,
     AutoTokenizer,
     EvalPrediction,
-    HfArgumentParser,
-    Trainer,
     TrainingArguments,
     set_seed,
 )
 from utils_multiple_choice import MultipleChoiceDataset, Split, SwagProcessor
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
 
 logger = logging.getLogger(__name__)
 

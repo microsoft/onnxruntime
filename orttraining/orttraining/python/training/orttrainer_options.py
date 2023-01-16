@@ -1,5 +1,4 @@
 import cerberus
-import torch
 
 import onnxruntime as ort
 

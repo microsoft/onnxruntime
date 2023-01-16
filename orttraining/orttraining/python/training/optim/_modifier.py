@@ -34,7 +34,7 @@ class FP16OptimizerModifier(object):
                 from apex import amp
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
-        except Exception as _:
+        except Exception:
             warnings.warn("Skip modifying optimizer because of Apex or torch_non_finite_check not found.", UserWarning)
             return False
 

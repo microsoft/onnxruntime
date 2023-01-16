@@ -1,8 +1,7 @@
 import os
-import sys
 
 import onnx
-from onnx import OperatorSetIdProto, TensorProto, helper
+from onnx import TensorProto, helper
 
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,
@@ -300,7 +299,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         outputs0 = []
         while stack0:
             node = stack0.pop()
-            if not node in visited0:
+            if node not in visited0:
                 tranversed_node += 1
                 visited0.append(node)
                 all_visited_nodes.append(node)

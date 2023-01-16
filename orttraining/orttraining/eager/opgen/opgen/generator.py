@@ -17,7 +17,7 @@ class Outputs:
         self.name = None
 
     def __str__(self):
-        return self.name if self.name else f"<unbound output>"
+        return self.name if self.name else "<unbound output>"
 
 
 class AttrType:
@@ -282,7 +282,7 @@ class ORTGen:
             if attr.type.startswith("at::ScalarType::"):
                 writer.write(f", {attr.type}")
             elif attr.type == AttrType.TENSOR:
-                writer.write(f", true")
+                writer.write(", true")
             elif attr.type != AttrType.STRING:
                 raise FunctionGenerationError(
                     cpp_func,
@@ -432,7 +432,7 @@ class ORTGen:
             isinstance(cpp_func.return_type, ast.TemplateType)
             and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
         ):
-            raise Exception(f"")
+            raise Exception("")
         tensorRef = "Tensor&," * len(in_place_params)
         tensorRef = tensorRef[: len(tensorRef) - 1]
         writer.write(f"return std::tuple<{tensorRef}>(")

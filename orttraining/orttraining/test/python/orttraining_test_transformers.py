@@ -1,18 +1,15 @@
-import os
 import random
-import shutil
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from numpy.testing import assert_allclose
 from orttraining_test_data_loader import BatchArgsOption, ids_tensor
 from orttraining_test_utils import get_lr, run_test
-from transformers import BertConfig, BertForPreTraining, BertModel
+from transformers import BertConfig, BertForPreTraining
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription
 
 
 class BertModelTest(unittest.TestCase):

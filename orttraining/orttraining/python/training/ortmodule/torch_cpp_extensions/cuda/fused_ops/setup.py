@@ -3,9 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import fileinput
 import os
-import sys
 
 from setuptools import setup
 from torch.utils import cpp_extension

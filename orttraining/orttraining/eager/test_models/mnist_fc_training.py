@@ -98,7 +98,7 @@ def main():
         shuffle=True,
         **kwargs,
     )
-    test_loader = torch.utils.data.DataLoader(
+    torch.utils.data.DataLoader(
         datasets.MNIST(
             dataset_root_dir,
             train=False,

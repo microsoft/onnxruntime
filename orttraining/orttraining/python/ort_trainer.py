@@ -264,7 +264,6 @@ class WrapModel(torch.nn.Module):
         # *inputs is given by torch trace. It is in the order of input_names.
         # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
         sig = inspect.signature(self.model_.forward)
-        ordered_list_keys = list(sig.parameters.keys())
 
         input_dict = {}
         for key in sig.parameters.keys():
@@ -556,7 +555,7 @@ def create_ort_training_session_with_optimizer(
 def save_checkpoint(
     model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True
 ):
-    if checkpoint_state_dict == None:
+    if checkpoint_state_dict is None:
         checkpoint_state_dict = {"model": model.state_dict(include_optimizer_state)}
     else:
         checkpoint_state_dict.update({"model": model.state_dict(include_optimizer_state)})

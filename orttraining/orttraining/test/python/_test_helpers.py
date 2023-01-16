@@ -11,7 +11,6 @@ from onnxruntime.training import orttrainer
 try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
-    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
@@ -61,7 +60,7 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
         )
 
     # for idx in range(len(output_a)):
-    assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg=f"Model output value mismatch")
+    assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg="Model output value mismatch")
 
 
 def assert_onnx_weights(model_a, model_b, verbose=False, rtol=1e-7, atol=0):

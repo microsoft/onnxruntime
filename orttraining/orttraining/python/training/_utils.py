@@ -6,11 +6,9 @@
 import importlib.util
 import os
 import sys
-from functools import wraps
 
 import numpy as np
 import torch
-from onnx import TensorProto
 from packaging.version import Version
 
 

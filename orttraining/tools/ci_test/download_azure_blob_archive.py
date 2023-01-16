@@ -9,8 +9,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.request
-import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))

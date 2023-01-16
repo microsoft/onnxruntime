@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 import torch
 from opgen.generator import MakeTorchFallback, ONNXOp, SignatureOnly
 from opgen.onnxops import *

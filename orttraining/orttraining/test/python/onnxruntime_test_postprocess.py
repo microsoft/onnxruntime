@@ -1,21 +1,15 @@
-import copy
 import os
-import sys
 import unittest
 
-import onnx
-import pytest
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from numpy.testing import assert_allclose, assert_array_equal
 from orttraining_test_bert_postprocess import postprocess_model
 from orttraining_test_data_loader import create_ort_test_dataloader
 from orttraining_test_transformers import BertForPreTraining, BertModelTest
 from orttraining_test_utils import map_optimizer_attributes
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer, generate_sample
+from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -47,7 +41,7 @@ class Test_PostPasses(unittest.TestCase):
             _extra_postprocess=_extra_postprocess,
         )
 
-        train_output = model.train_step(*inputs)
+        model.train_step(*inputs)
         return model.onnx_model_
 
     def count_all_nodes(self, model):

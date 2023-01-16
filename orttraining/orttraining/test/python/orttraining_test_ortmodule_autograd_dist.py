@@ -4,7 +4,6 @@
 
 import copy
 import os
-import sys
 
 import _test_helpers
 import torch
@@ -15,7 +14,6 @@ from torch.nn.parameter import Parameter
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)

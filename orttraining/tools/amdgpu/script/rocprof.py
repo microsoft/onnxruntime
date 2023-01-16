@@ -1,8 +1,5 @@
 import argparse
 import csv
-import os
-
-import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input", type=str)
