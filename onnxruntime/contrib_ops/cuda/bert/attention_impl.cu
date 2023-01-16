@@ -261,6 +261,7 @@ Status QkvToContext(
 
   bool use_fused_kernel = (nullptr != fused_runner && data.bias != nullptr && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
+  T* qkv_add_bias = nullptr;
 
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
@@ -273,7 +274,7 @@ Status QkvToContext(
     } else {
       // For fused TRT attention, transpose qkv to BxSxNx3xH. For fused causal kernel, transpose to 3xBxNxSxH.
       const int format = (use_fused_kernel ? 2 : 1);
-      T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
+      qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
       int matrix_to_transpose = ((!use_fused_kernel && past_present_share_buffer) ? 1 : 3);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
@@ -374,7 +375,7 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
         stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
         batch_size, qk_head_size, num_heads, max_threads_per_block,
-        data.bias, data.gemm_buffer, data.present));
+        qkv_add_bias == nullptr ? data.bias : nullptr, data.gemm_buffer, data.present));
 
     present_size_per_batch_k = present_size_per_batch_v = parameters.max_sequence_length * qk_head_size;
     k = data.present;
