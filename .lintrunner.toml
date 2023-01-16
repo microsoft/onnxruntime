@@ -82,6 +82,9 @@ include_patterns = [
     '**/*.py',
 ]
 exclude_patterns = [
+    'cmake/*',
+    'orttraining/*',
+    'onnxruntime/core/flatbuffers/*',
 ]
 command = [
     'python3',
