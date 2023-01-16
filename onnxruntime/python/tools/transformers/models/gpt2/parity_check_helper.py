@@ -19,7 +19,7 @@ from onnx import TensorProto, numpy_helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import create_onnxruntime_session
+from benchmark_helper import create_onnxruntime_session  # noqa: E402
 
 NON_ZERO_VALUE = str(1)
 ZERO_VALUE = str(0)
@@ -137,8 +137,8 @@ if __name__ == "__main__":
     dummy_inputs_fp32 = dummy_inputs_fp16.to_fp32()
 
     # Get GPT-2 model from huggingface using convert_to_onnx.py
-    os.system("python convert_to_onnx.py -m gpt2 --output gpt2_fp32.onnx -o -p fp32 --use_gpu")
-    os.system("python convert_to_onnx.py -m gpt2 --output gpt2_fp16.onnx -o -p fp16 --use_gpu")
+    os.system("python convert_to_onnx.py -m gpt2 --output gpt2_fp32.onnx -o -p fp32 --use_gpu")  # noqa: DUO106
+    os.system("python convert_to_onnx.py -m gpt2 --output gpt2_fp16.onnx -o -p fp16 --use_gpu")  # noqa: DUO106
 
     # Specify the directory to dump the node's I/O
     outputs_path_fp32_gpu = "./fp32_gpu"

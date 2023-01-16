@@ -46,7 +46,7 @@ def run(
     def output(is_stream_captured):
         return subprocess.PIPE if is_stream_captured else (subprocess.DEVNULL if quiet else None)
 
-    completed_process = subprocess.run(
+    completed_process = subprocess.run(  # noqa: DUO116
         cmd,
         cwd=cwd,
         check=check,

@@ -13,7 +13,7 @@ def rename_folder(root):
     Returns the list of renamed folders.
     """
     found = []
-    for r, dirs, files in os.walk(root):
+    for r, dirs, _ in os.walk(root):
         for name in dirs:
             if name.startswith("_"):
                 found.append((r, name))
@@ -35,7 +35,7 @@ def replace_files(root, renamed):
     subs = {r[1]: r[2] for r in renamed}
     reg = re.compile('(\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}' '([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\")')
 
-    for r, dirs, files in os.walk(root):
+    for r, _, files in os.walk(root):
         for name in files:
             if os.path.splitext(name)[-1] != ".html":
                 continue

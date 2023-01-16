@@ -4,9 +4,9 @@
 # --------------------------------------------------------------------------
 
 import torch
+from packaging.version import Version
 
 TrainingMode = torch.onnx.TrainingMode
-from packaging.version import Version
 
 
 def torch_onnx_export(

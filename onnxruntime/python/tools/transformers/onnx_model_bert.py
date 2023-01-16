@@ -235,7 +235,6 @@ class BertOnnxModel(OnnxModel):
             casted=True
         ) + self.get_graph_inputs_from_fused_nodes(casted=False)
 
-        {}
         for input in self.model.graph.input:
             if input.name in bert_graph_inputs:
                 dim_proto = input.type.tensor_type.shape.dim[0]

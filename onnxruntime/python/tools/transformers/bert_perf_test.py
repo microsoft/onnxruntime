@@ -173,7 +173,7 @@ def onnxruntime_inference_with_io_binding(session, all_inputs, output_names, tes
     results = []
     latency_list = []
     device = "cuda" if test_setting.use_gpu else "cpu"
-    for test_case_id, inputs in enumerate(all_inputs):
+    for inputs in all_inputs:
         result = session.run(output_names, inputs)
         results.append(result)
         outputs = {}
@@ -201,7 +201,7 @@ def onnxruntime_inference(session, all_inputs, output_names):
 
     results = []
     latency_list = []
-    for test_case_id, inputs in enumerate(all_inputs):
+    for inputs in all_inputs:
         start_time = timeit.default_timer()
         result = session.run(output_names, inputs)
         latency = timeit.default_timer() - start_time
@@ -240,14 +240,12 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
 
     all_latency_list = []
     if test_setting.use_io_binding:
-        for i in range(test_setting.test_times):
-            results, latency_list = onnxruntime_inference_with_io_binding(
-                session, all_inputs, output_names, test_setting
-            )
+        for _ in range(test_setting.test_times):
+            _, latency_list = onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting)
             all_latency_list.extend(latency_list)
     else:
-        for i in range(test_setting.test_times):
-            results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
+        for _ in range(test_setting.test_times):
+            _, latency_list = onnxruntime_inference(session, all_inputs, output_names)
             all_latency_list.extend(latency_list)
 
     # latency in miliseconds

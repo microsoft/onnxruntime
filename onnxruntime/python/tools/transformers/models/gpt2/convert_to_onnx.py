@@ -30,14 +30,14 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import (
+from benchmark_helper import (  # noqa: E402
     Precision,
     create_onnxruntime_session,
     get_ort_environment_variables,
     prepare_environment,
     setup_logger,
 )
-from quantize_helper import QuantizeHelper
+from quantize_helper import QuantizeHelper  # noqa: E402
 
 logger = logging.getLogger("")
 

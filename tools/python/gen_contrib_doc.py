@@ -361,7 +361,7 @@ def main(output_path: str, domain_filter: [str]):
             fout.write(s)
 
             for _, namemap in supportmap:
-                for n, schema, versions in namemap:
+                for n, schema, _ in namemap:
                     s = '  * {}<a href="#{}">{}</a>\n'.format(
                         support_level_str(schema.support_level),
                         format_name_with_domain(domain, n),

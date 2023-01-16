@@ -17,7 +17,7 @@ from gpt2_helper import Gpt2Helper, Gpt2Inputs
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision
+from benchmark_helper import Precision  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ class Gpt2Tester:
             0,
             hidden_size // num_attention_heads,
         ]
-        for i in range(num_layer):
+        for _ in range(num_layer):
             empty_past = torch.empty(past_shape).type(torch.float16 if is_fp16 else torch.float32)
             self.past.append(empty_past.to(device))
 
@@ -194,7 +194,7 @@ class Gpt2Tester:
                 f.write(tensor.SerializeToString())
 
         output_names = [output.name for output in session.get_outputs()]
-        for i, name in enumerate(output_names):
+        for i, _ in enumerate(output_names):
             tensor = numpy_helper.from_array(
                 output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy()
             )

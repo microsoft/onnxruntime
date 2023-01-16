@@ -99,7 +99,7 @@ def run_perf_tests(model_path, num_threads=1):
         # run the model and measure time after 'iters' calls
         while total < num_seconds:
             start = time.time_ns()
-            for i in range(iters):
+            for _ in range(iters):
                 # ignore the outputs as we're not validating them in a performance test
                 sess.run(None, inputs)
             end = time.time_ns()

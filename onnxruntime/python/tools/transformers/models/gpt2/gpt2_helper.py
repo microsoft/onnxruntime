@@ -13,7 +13,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Collection, Dict, List, Tuple, Union
 
 import numpy
 import onnx
@@ -22,12 +22,12 @@ from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision
-from float16 import float_to_float16_max_diff
-from fusion_options import AttentionMaskFormat
-from io_binding_helper import IOBindingHelper
-from onnx_model import OnnxModel
-from torch_onnx_export_helper import torch_onnx_export
+from benchmark_helper import Precision  # noqa: E402
+from float16 import float_to_float16_max_diff  # noqa: E402
+from fusion_options import AttentionMaskFormat  # noqa: E402
+from io_binding_helper import IOBindingHelper  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -551,24 +551,26 @@ class Gpt2Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = [
-            "Add",
-            "LayerNormalization",
-            "SkipLayerNormalization",
-            "FastGelu",
-            "EmbedLayerNormalization",
-        ],
+        op_block_list: Collection[str] = frozenset(
+            (
+                "Add",
+                "LayerNormalization",
+                "SkipLayerNormalization",
+                "FastGelu",
+                "EmbedLayerNormalization",
+            )
+        ),
     ):
         """Convert GPT-2 model to mixed precision.
            It detects whether original model has fp16 weights, and set parameters for float16 conversion automatically.
         Args:
-            onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): operators to compute in fp32. Defaults to ["Add", "LayerNormalization",
-                                                 "SkipLayerNormalization", "FastGelu", "EmbedLayerNormalization"]
+            onnx_model: Optimized ONNX model
+            op_block_list: Operators to compute in fp32. Defaults to {"Add", "LayerNormalization",
+                "SkipLayerNormalization", "FastGelu", "EmbedLayerNormalization"}.
         Returns:
-            parameters(dict): a dictionary of parameters used in float16 conversion
+            A dictionary of parameters used in float16 conversion.
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = set(node.op_type for node in onnx_model.nodes())
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
