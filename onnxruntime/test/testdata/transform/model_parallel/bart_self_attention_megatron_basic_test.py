@@ -1,4 +1,3 @@
-
 import numpy as np
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper, numpy_helper

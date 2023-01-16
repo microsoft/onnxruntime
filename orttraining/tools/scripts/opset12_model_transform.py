@@ -13,11 +13,10 @@
 #   bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12.onnx
 
 import sys
-import onnx
-from onnx import helper, shape_inference
-from onnx import TensorProto
+
 import numpy as np
-from onnx import numpy_helper
+import onnx
+from onnx import TensorProto, helper, numpy_helper, shape_inference
 
 if len(sys.argv) < 2:
     print("Please give model path...")

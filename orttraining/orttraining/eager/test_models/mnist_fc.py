@@ -1,11 +1,11 @@
-from __future__ import print_function
 import argparse
+import os
+
+import numpy as np
+import onnxruntime_pybind11_state as torch_ort
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import os
-import onnxruntime_pybind11_state as torch_ort
 
 
 class NeuralNet(nn.Module):

@@ -2,7 +2,7 @@ import inspect
 import os
 import tempfile
 from functools import partial
-from packaging.version import Version as StrictVersion
+
 import _test_commons
 import _test_helpers
 import onnx
@@ -10,6 +10,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 from numpy.testing import assert_allclose
+from packaging.version import Version as StrictVersion
 
 from onnxruntime import SessionOptions, set_seed
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription

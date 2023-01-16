@@ -16,38 +16,36 @@
 """BERT finetuning runner."""
 
 
+import argparse
+
 # ==================
 import csv
-import os
-import time
 import logging
-import argparse
-import random
-import h5py
-from tqdm import tqdm, trange
-import os
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Dataset
-from torch.utils.data.distributed import DistributedSampler
 import math
-from apex import amp
 import multiprocessing
+import os
+import random
+import time
+from concurrent.futures import ProcessPoolExecutor
 
-from tokenization import BertTokenizer
-from modeling import BertForPreTraining, BertConfig
-from optimization import BertLAMB
-
-from file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-from utils import is_main_process
-from apex.parallel import DistributedDataParallel as DDP
-from schedulers import LinearWarmUpScheduler
-from apex.parallel.distributed import flat_dist_call
 import amp_C
 import apex_C
+import h5py
+import numpy as np
+import torch
+from apex import amp
 from apex.amp import _amp_state
-
-from concurrent.futures import ProcessPoolExecutor
+from apex.parallel import DistributedDataParallel as DDP
+from apex.parallel.distributed import flat_dist_call
+from file_utils import PYTORCH_PRETRAINED_BERT_CACHE
+from modeling import BertConfig, BertForPreTraining
+from optimization import BertLAMB
+from schedulers import LinearWarmUpScheduler
+from tokenization import BertTokenizer
+from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
+from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm, trange
+from utils import is_main_process
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO

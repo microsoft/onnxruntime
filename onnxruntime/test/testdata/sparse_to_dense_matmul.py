@@ -3,11 +3,7 @@ import sys
 import traceback
 
 import onnx
-from onnx import (
-    TensorProto,
-    ValueInfoProto,
-    helper,
-)
+from onnx import TensorProto, ValueInfoProto, helper
 from onnx.helper import make_opsetid
 
 

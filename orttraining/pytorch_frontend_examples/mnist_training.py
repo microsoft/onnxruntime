@@ -4,18 +4,17 @@
 
 ## Model testing is not complete.
 
-from __future__ import print_function
 import argparse
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from mpi4py import MPI
 from torchvision import datasets, transforms
-import numpy as np
-import os
 
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
-from mpi4py import MPI
 
 try:
     from onnxruntime.capi._pybind_state import set_cuda_device_id

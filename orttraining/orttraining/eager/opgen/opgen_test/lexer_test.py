@@ -3,7 +3,7 @@
 
 import unittest
 
-from opgen.lexer import StringReader, Lexer, Token, TokenKind, SourceLocation
+from opgen.lexer import Lexer, SourceLocation, StringReader, Token, TokenKind
 
 
 class LexerTestCase(unittest.TestCase):

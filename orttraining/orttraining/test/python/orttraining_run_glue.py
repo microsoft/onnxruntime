@@ -3,12 +3,12 @@
 import dataclasses
 import logging
 import os
+import unittest
 from dataclasses import dataclass, field
 from typing import Dict, Optional
-import unittest
+
 import numpy as np
 from numpy.testing import assert_allclose
-
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -24,7 +24,7 @@ from transformers import (
 )
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
 
 try:
     from onnxruntime.capi._pybind_state import (
@@ -40,9 +40,8 @@ except ImportError:
     pass
 
 
-from orttraining_transformer_trainer import ORTTransformerTrainer
-
 import torch
+from orttraining_transformer_trainer import ORTTransformerTrainer
 
 logger = logging.getLogger(__name__)
 

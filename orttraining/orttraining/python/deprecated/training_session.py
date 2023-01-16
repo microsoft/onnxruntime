@@ -3,14 +3,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import sys
 import os
+import sys
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import (
-    Session,
     InferenceSession,
     IOBinding,
+    Session,
     check_and_normalize_provider_args,
 )
 

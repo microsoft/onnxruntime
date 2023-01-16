@@ -1,16 +1,15 @@
 # This test script is a modified version of Pytorch's tutorial.
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
+import argparse
 import os
 import sys
 import tempfile
-import torch
-import argparse
 
+import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.optim as optim
-import torch.multiprocessing as mp
-
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import onnxruntime

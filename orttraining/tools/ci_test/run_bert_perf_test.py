@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 
 import argparse
+import json
+import os
 import subprocess
 import sys
-import os
-import json
 from collections import namedtuple
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))

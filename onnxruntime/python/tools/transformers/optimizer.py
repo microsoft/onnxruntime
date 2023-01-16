@@ -99,9 +99,7 @@ def optimize_by_onnxruntime(
         kwargs["disabled_optimizers"] = disabled_optimizers
 
     if not use_gpu:
-        onnxruntime.InferenceSession(
-            onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs
-        )
+        onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs)
     else:
         gpu_ep = []
 

@@ -2,12 +2,13 @@
 # Licensed under the MIT License.
 # orttraining_test_checkpoint_storage.py
 
+import os
+import pickle
+import shutil
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
-import os
-import shutil
-import pickle
 
 from onnxruntime.training import _checkpoint_storage
 

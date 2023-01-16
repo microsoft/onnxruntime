@@ -1,4 +1,3 @@
-
 import onnx
 from onnx import TensorProto, helper
 

@@ -1,12 +1,13 @@
+import os
+import tempfile
+import warnings
+from enum import Enum
+
 import numpy as np
 import onnx
-import os
 import torch
-import warnings
-import tempfile
-from enum import Enum
-from . import _checkpoint_storage, _utils
 
+from . import _checkpoint_storage, _utils
 
 ################################################################################
 # Experimental Checkpoint APIs

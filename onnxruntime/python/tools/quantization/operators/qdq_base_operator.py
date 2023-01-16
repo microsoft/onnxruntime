@@ -1,7 +1,6 @@
 import itertools
 
 
-
 class QDQOperatorBase:
     def __init__(self, onnx_quantizer, onnx_node):
         self.quantizer = onnx_quantizer

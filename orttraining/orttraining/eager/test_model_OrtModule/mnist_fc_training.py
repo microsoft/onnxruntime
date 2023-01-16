@@ -4,17 +4,19 @@
 
 ## Model testing is not complete.
 
-from __future__ import print_function
+
 import argparse
+import os
+
+import numpy as np
 import torch
-from onnxruntime.training import ORTModule
-from onnxruntime.capi import _pybind_state as torch_ort_eager
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-import numpy as np
-import os
+
+from onnxruntime.capi import _pybind_state as torch_ort_eager
+from onnxruntime.training import ORTModule
 
 
 class NeuralNet(nn.Module):

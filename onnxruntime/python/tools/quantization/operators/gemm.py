@@ -3,13 +3,7 @@ import logging
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import (
-    TENSOR_NAME_QUANT_SUFFIX,
-    QuantizedValue,
-    QuantizedValueType,
-    attribute_to_kwarg,
-    ms_domain,
-)
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
 

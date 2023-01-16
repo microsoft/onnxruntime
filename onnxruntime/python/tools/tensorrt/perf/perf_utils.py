@@ -4,7 +4,6 @@ import re
 import subprocess
 import sys
 
-
 debug = False
 debug_verbose = False
 

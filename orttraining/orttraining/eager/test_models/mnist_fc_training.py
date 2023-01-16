@@ -4,7 +4,6 @@
 # pylint: disable=missing-docstring
 # pylint: disable=C0103
 
-from __future__ import print_function
 
 import argparse
 import os

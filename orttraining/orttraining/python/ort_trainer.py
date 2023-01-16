@@ -1,7 +1,6 @@
 import io
 import os
 import warnings
-from packaging.version import Version as LooseVersion
 
 import numpy as np
 import onnx
@@ -9,6 +8,7 @@ import torch
 import torch.nn
 import torch.onnx
 from onnx import helper, numpy_helper
+from packaging.version import Version as LooseVersion
 
 import onnxruntime as ort
 import onnxruntime.capi.pt_patch

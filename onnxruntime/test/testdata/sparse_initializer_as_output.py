@@ -4,11 +4,7 @@ import traceback
 
 import numpy as np
 import onnx
-from onnx import (
-    TensorProto,
-    ValueInfoProto,
-    helper,
-)
+from onnx import TensorProto, ValueInfoProto, helper
 from onnx.helper import make_opsetid
 
 

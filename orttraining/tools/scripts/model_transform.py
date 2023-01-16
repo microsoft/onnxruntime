@@ -1,9 +1,8 @@
 import sys
-import onnx
-from onnx import helper, shape_inference
-from onnx import TensorProto
+
 import numpy as np
-from onnx import numpy_helper
+import onnx
+from onnx import TensorProto, helper, numpy_helper, shape_inference
 
 if len(sys.argv) < 2:
     print("Please give model path...")

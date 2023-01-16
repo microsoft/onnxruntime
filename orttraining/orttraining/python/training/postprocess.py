@@ -1,12 +1,11 @@
-import sys
 import os.path
-from onnx import *
-import onnx
-import numpy as np
 import struct
+import sys
 
-from onnx import helper
-from onnx import numpy_helper
+import numpy as np
+import onnx
+from onnx import *
+from onnx import helper, numpy_helper
 
 
 def run_postprocess(model):

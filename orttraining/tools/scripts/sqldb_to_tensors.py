@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import sqlite3
+
 import onnx
 from onnx import numpy_helper
 

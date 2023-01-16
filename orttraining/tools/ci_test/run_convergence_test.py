@@ -3,12 +3,12 @@
 # Licensed under the MIT License.
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
-import os
 
-from compare_results import compare_results_files, Comparisons
+from compare_results import Comparisons, compare_results_files
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 

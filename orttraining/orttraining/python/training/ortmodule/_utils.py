@@ -13,10 +13,10 @@ import traceback
 import types
 import warnings
 from typing import List
-from packaging.version import Version as LooseVersion
 
 import numpy as np
 import torch
+from packaging.version import Version as LooseVersion
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 

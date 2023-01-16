@@ -226,7 +226,6 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         self.input_name_to_nodes()
         self.output_name_to_node()
 
-
         count = 0
         reshape_nodes = self.get_nodes_by_op_type("Reshape")
         for reshape_node in reshape_nodes:

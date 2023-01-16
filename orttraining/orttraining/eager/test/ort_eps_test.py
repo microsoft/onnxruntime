@@ -1,21 +1,22 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import unittest
-import torch
-import onnxruntime_pybind11_state as torch_ort
 import os
 import sys
+import unittest
+
+import onnxruntime_pybind11_state as torch_ort
+import torch
 
 
 def is_windows():
     return sys.platform.startswith("win")
 
 
-from io import StringIO
 import sys
 import threading
 import time
+from io import StringIO
 
 
 class OutputGrabber(object):

@@ -10,9 +10,11 @@ Copyright NVIDIA/apex
 This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 """
 
-import torch
-from ._multi_tensor_apply import MultiTensorApply
 from enum import IntEnum
+
+import torch
+
+from ._multi_tensor_apply import MultiTensorApply
 
 
 class AdamWMode(IntEnum):
