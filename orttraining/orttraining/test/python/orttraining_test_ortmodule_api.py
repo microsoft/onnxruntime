@@ -3605,14 +3605,6 @@ def test_forward_call_kwargs_input(forward_statement):
     model = KwargsNet(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
     model = ORTModule(model)
 
-    # Dummy inputs used
-    torch.randn(N, D_in, device=device)
-    torch.randn(N, D_in, device=device)
-    torch.randn(N, D_in, device=device)
-    torch.randn(N, D_in, device=device)
-    [torch.randn(N, D_in, device=device)] * 2
-    {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}
-
     # Training step
     prediction = eval(forward_statement)
     assert prediction is not None

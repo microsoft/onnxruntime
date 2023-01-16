@@ -22,10 +22,12 @@ from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
 
 try:
+    from torch.utils.tensorboard import SummaryWriter
 
     _has_tensorboard = True
 except ImportError:
     try:
+        from tensorboardX import SummaryWriter
 
         _has_tensorboard = True
     except ImportError:

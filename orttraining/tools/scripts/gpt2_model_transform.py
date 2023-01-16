@@ -111,7 +111,7 @@ def process_concat(model):
                 skip = True
             input_nodes.append(concat_input_node)
 
-        if skip is True:
+        if skip:
             continue
 
         # figure out target shape
