@@ -1,0 +1,118 @@
+# Configuration for lintrunner https://github.com/suo/lintrunner
+# You can install the dependencies and initialize with
+#
+# ```sh
+# pip install lintrunner lintrunner-adapters
+# lintrunner init
+# ```
+#
+# This will install lintrunner on your system and download all the necessary
+# dependencies to run linters locally.
+# If you want to see what lintrunner init will install, run
+# `lintrunner init --dry-run`.
+#
+# To lint local changes:
+#
+# ```bash
+# lintrunner
+# ```
+#
+# To lint all files:
+#
+# ```bash
+# lintrunner --all-files
+# ```
+#
+# To format files:
+#
+# ```bash
+# lintrunner -a --all-files
+# ```
+#
+# To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
+# To update an existing linting rule or create a new one, modify this file or create a
+# new adapter following examples in https://github.com/justinchuby/lintrunner-adapters.
+
+[[linter]]
+code = 'FLAKE8'
+include_patterns = [
+    '**/*.py',
+]
+exclude_patterns = [
+]
+command = [
+    'python3',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'flake8_linter',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    'flake8==5.0.4',
+    'flake8-bugbear==22.10.27',
+    'flake8-pyi==22.10.0',
+    'dlint==0.13.0',
+]
+
+[[linter]]
+code = 'BLACK-ISORT'
+include_patterns = [
+    '**/*.py',
+]
+exclude_patterns = [
+]
+command = [
+    'python3',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'black_isort_linter',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    'black==22.10.0',
+    'isort==5.10.1',
+]
+is_formatter = true
+
+[[linter]]
+code = 'PYLINT'
+include_patterns = [
+    # TODO: Opt in to pylint by adding paths here
+]
+exclude_patterns = [
+]
+command = [
+    'python3',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pylint_linter',
+    '--rcfile=pyproject.toml',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    'pylint==2.15.5',
+]
