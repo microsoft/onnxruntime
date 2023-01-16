@@ -48,10 +48,10 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
 // It controls whether to enable Double QDQ remover and Indentical Children Consolidation
-// "0": enable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
+// "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
 // "1": disable. ORT doesn't remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
 // Its default value is "0"
-static const char* const kOrtSessionOptionsEnableDoubleQDQRemover = "session.enable_double_qdq_remover";
+static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.disable_double_qdq_remover";
 
 // If set to "1", enables the removal of QuantizeLinear/DequantizeLinear node pairs once all QDQ handling has been
 // completed. e.g. If after all QDQ handling has completed and we have -> FloatOp -> Q -> DQ -> FloatOp -> the
