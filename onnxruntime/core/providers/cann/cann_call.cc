@@ -91,8 +91,28 @@ const char* CannErrString<aclError>(aclError e) {
     CASE_ENUM_TO_STR(ACL_ERROR_RT_FAILURE);
     CASE_ENUM_TO_STR(ACL_ERROR_DRV_FAILURE);
     CASE_ENUM_TO_STR(ACL_ERROR_PROFILING_FAILURE);
+
     default:
       return "(look for ACL_ERROR_xxx in acl.h)";
+  }
+}
+
+template <>
+const char* CannErrString<ge::graphStatus>(ge::graphStatus e) {
+  using namespace ge;
+
+  switch (e) {
+    CASE_ENUM_TO_STR(GRAPH_FAILED);
+    CASE_ENUM_TO_STR(GRAPH_SUCCESS);
+    CASE_ENUM_TO_STR(GRAPH_NOT_CHANGED);
+    CASE_ENUM_TO_STR(GRAPH_PARAM_INVALID);
+    CASE_ENUM_TO_STR(GRAPH_NODE_WITHOUT_CONST_INPUT);
+    CASE_ENUM_TO_STR(GRAPH_NODE_NEED_REPASS);
+    CASE_ENUM_TO_STR(GRAPH_INVALID_IR_DEF);
+    CASE_ENUM_TO_STR(OP_WITHOUT_IR_DATATYPE_INFER_RULE);
+
+    default:
+      return "(look for graphStatus in ge_error_codes.h)";
   }
 }
 
@@ -132,5 +152,10 @@ template bool CannCall<aclError, false>(aclError retCode, const char* exprString
                                         aclError successCode, const char* msg);
 template bool CannCall<aclError, true>(aclError retCode, const char* exprString, const char* libName,
                                        aclError successCode, const char* msg);
+
+template bool CannCall<ge::graphStatus, false>(ge::graphStatus retCode, const char* exprString, const char* libName,
+                                               ge::graphStatus successCode, const char* msg);
+template bool CannCall<ge::graphStatus, true>(ge::graphStatus retCode, const char* exprString, const char* libName,
+                                              ge::graphStatus successCode, const char* msg);
 
 }  // namespace onnxruntime

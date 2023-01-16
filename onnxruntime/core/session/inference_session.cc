@@ -65,6 +65,10 @@
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
 #endif
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#include "core/framework/stream_execution_context.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -502,30 +506,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           << "Parallel execution mode does not support the DML Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
 
-      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    }
-  }
-
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
-    // Parallel execution mode does not support the CUDA EP
-    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
-          << "Parallel execution mode does not support the CUDA Execution Provider. "
-          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
-      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    }
-
-    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
-    if (trt_ep) {
-      ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
-    }
-  }
-
-  if (provider_type == onnxruntime::kCannExecutionProvider) {
-    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
-          << "Parallel execution mode does not support the CANN Execution Provider. "
-          << "So making the execution mode sequential for this session since it uses the CANN Execution Provider.";
       session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
   }
@@ -1344,14 +1324,12 @@ common::Status InferenceSession::Initialize() {
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
-        session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
         GetIntraOpThreadPoolToUse(),
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse,
+        session_options_,
         prepacked_weights_container_);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1494,7 +1472,6 @@ common::Status InferenceSession::Initialize() {
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                             session_options_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
@@ -1843,7 +1820,9 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     }
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache, partial_graph_index));
+                                                        run_logger, state, cache, run_options.terminate,
+                                                        partial_graph_index,
+                                                        /*parent stream*/ nullptr));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1989,9 +1968,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
-        session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+        // TODO: this method is not thread safe, if multiple Run happened in parallel we might hit race condition issue.
+        // currently it only used in training, there is no parallel run execution in training so it is ok.
+        // but it is better we can fix it with a better solution.
+        session_state_->UpdateToBeExecutedRange(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
       }
 #endif
 
@@ -2001,8 +1983,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   session_options_.execution_mode, run_options.terminate, run_logger,
-                                                   run_options.only_execute_path_to_fetches));
+                                                   session_options_.execution_mode,
+                                                   run_options, run_logger));
     }
     ORT_CATCH(const std::exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {

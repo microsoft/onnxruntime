@@ -39,6 +39,11 @@ parameters:
   type: boolean
   default: true
 
+- name: build_py_parameters
+  displayName: 'Specify extra build parameters'
+  type: string
+  default: 'NONE'
+
 trigger: none
 
 resources:
@@ -60,3 +65,5 @@ stages:
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
     enable_mac_silicon: ${{ parameters.enable_mac_silicon }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
+    ${{ if not(eq(parameters.build_py_parameters, 'NONE')) }}:
+      build_py_parameters: ${{ parameters.build_py_parameters }}

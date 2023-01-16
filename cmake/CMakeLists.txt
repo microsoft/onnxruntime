@@ -141,11 +141,9 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
-option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
-# For on-device training ort build, onnxruntime_ENABLE_TRAINING must be ON.
-option(onnxruntime_ENABLE_TRAINING_ON_DEVICE "Enable training on device." OFF)
+option(onnxruntime_ENABLE_TRAINING "Enable full training functionality. Includes ORTModule and ORT Training APIs" OFF)
+option(onnxruntime_ENABLE_TRAINING_APIS "Enable ort training apis." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
-option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
@@ -195,15 +193,124 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
+option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
+
+option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
+# https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
+cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
+
+option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
+
+# ENABLE_TRAINING includes all training functionality
+# The following 2 entry points
+# 1. ORTModule
+# 2. ORT Training APIs
+# It includes all the feature additions as well like
+# 1. Python OP
+# 2. Aten Fallback
+# 3. Strided Tensors
+# 4. All training ops including communication and  collectives ops
+# 5. ONNXBlock (Front end for training preparation when using training apis)
+# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
+# when using python env
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  set(onnxruntime_ENABLE_TRAINING_APIS ON)
+  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_ATEN ON)
+endif()
+
+# ENABLE_TRAINING includes all training functionality
+# The following 2 entry points
+# 1. ORTModule
+# 2. ORT Training APIs
+# It includes all the feature additions as well like
+# 1. Python OP
+# 2. Aten Fallback
+# 3. Strided Tensors
+# 4. All training ops including communication and  collectives ops
+# 5. ONNXBlock (Front end for training preparation when using training apis)
+# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
+# when using python env
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  set(onnxruntime_ENABLE_TRAINING_APIS ON)
+  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_ATEN ON)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
+endif()
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    message(FATAL_ERROR "To build for on-device training, the training build must be enabled (onnxruntime_ENABLE_TRAINING).")
+if (onnxruntime_USE_ROCM)
+  if (WIN32)
+    message(FATAL_ERROR "ROCM does not support build in Windows!")
+  endif()
+  if (onnxruntime_USE_CUDA)
+    message(FATAL_ERROR "ROCM does not support build with CUDA!")
+  endif()
+
+  if (NOT CMAKE_HIP_COMPILER)
+    set(CMAKE_HIP_COMPILER "${onnxruntime_ROCM_HOME}/llvm/bin/clang++")
+  endif()
+
+  if (NOT CMAKE_HIP_ARCHITECTURES)
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a")
+  endif()
+
+  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
+  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+
+  enable_language(HIP)
+  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
+  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
+  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
+  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
+  # example, the CMAKE_PREFIX_PATH might be improperly configured.
+  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
+    message(FATAL_ERROR "HIP Language is not properly configured.")
+  endif()
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
+
+  if (NOT onnxruntime_HIPIFY_PERL)
+    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+  endif()
+
+  # replicate strategy used by pytorch to get ROCM_VERSION
+  # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
+  file(READ "${onnxruntime_ROCM_HOME}/.info/version-dev" ROCM_VERSION_DEV_RAW)
+  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
+  if (ROCM_VERSION_DEV_MATCH)
+    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
+    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
+    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
+    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
+    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
+  endif()
+  message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/.info/version-dev ****\n")
+  message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
+  message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
+  message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
+  message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
+  message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
+  message("\n***** HIP LANGUAGE CONFIG INFO ****\n")
+  message("CMAKE_HIP_COMPILER:      ${CMAKE_HIP_COMPILER}")
+  message("CMAKE_HIP_ARCHITECTURES: ${CMAKE_HIP_ARCHITECTURES}")
+  message("CMAKE_HIP_FLAGS:         ${CMAKE_HIP_FLAGS}")
+  string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
+  message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
+  add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
+
+  if (onnxruntime_USE_COMPOSABLE_KERNEL AND ROCM_VERSION_DEV VERSION_LESS "5.3")
+    message(WARNING "composable kernel is only supported on ROCm >= 5.3")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
   endif()
 endif()
 
@@ -350,11 +457,6 @@ set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
 set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
-
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_ATEN ON)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-endif()
 
 find_package(Threads)
 find_package(Patch)
@@ -584,6 +686,11 @@ if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
+if (onnxruntime_USE_AZURE)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_AZURE=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
+endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
@@ -607,6 +714,18 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   # cleaner.
 endif()
 
+if(MSVC)
+  # Replace /Zi and /ZI with /Z7
+  if(MSVC_Z7_OVERRIDE)
+    foreach(flag_var
+      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
+      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      if(${flag_var} MATCHES "/Z[iI]")
+        string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
+      endif(${flag_var} MATCHES "/Z[iI]")
+    endforeach(flag_var)
+  endif(MSVC_Z7_OVERRIDE)
+endif()
 
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
@@ -727,6 +846,11 @@ function(onnxruntime_set_compile_flags target_name)
       # #warning must not be treated as error
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-error=pass-failed "-Wno-error=#warnings")
 
+      # otherwise error: builtin __has_trivial_assign is deprecated; use __is_trivially_assignable instead
+      if (ROCM_VERSION_DEV VERSION_GREATER_EQUAL "5.4")
+        list(APPEND ORT_HIP_WARNING_FLAGS "-Wno-deprecated-builtins")
+      endif()
+
       foreach(FLAG ${ORT_HIP_WARNING_FLAGS})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:HIP>:SHELL:${FLAG}>")
       endforeach()
@@ -751,7 +875,7 @@ function(onnxruntime_configure_target target_name)
   #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   #endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
     target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
   endif()
   if (onnxruntime_ENABLE_LTO)
@@ -772,6 +896,7 @@ function(onnxruntime_configure_target target_name)
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
   endif()
+
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
@@ -968,7 +1093,7 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+if (onnxruntime_ENABLE_TRAINING_APIS)
   include_directories(
     ${REPO_ROOT}/orttraining/orttraining/training_api/include/
   )
@@ -987,18 +1112,18 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
-    set(OPENVINO_VERSION "2021.4")
-    add_definitions(-DOPENVINO_2021_4=1)
-  elseif (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
+  if (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
     set(OPENVINO_VERSION "2022.1")
     add_definitions(-DOPENVINO_2022_1=1)
   elseif (${VER} MATCHES "2022.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.2")
     set(OPENVINO_VERSION "2022.2")
     add_definitions(-DOPENVINO_2022_2=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2022.3")
+    set(OPENVINO_VERSION "2022.3")
+    add_definitions(-DOPENVINO_2022_3=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2022.2")
-    add_definitions(-DOPENVINO_2022_2=1)
+    set(OPENVINO_VERSION "2022.3")
+    add_definitions(-DOPENVINO_2022_3=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1176,71 +1301,6 @@ if (onnxruntime_USE_MIGRAPHX)
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
 endif()
 
-if (onnxruntime_USE_ROCM)
-  if (WIN32)
-    message(FATAL_ERROR "ROCM does not support build in Windows!")
-  endif()
-  if (onnxruntime_USE_CUDA)
-    message(FATAL_ERROR "ROCM does not support build with CUDA!")
-  endif()
-
-  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
-  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
-
-  set(ROCM_PATH ${onnxruntime_ROCM_HOME})
-
-  if (NOT CMAKE_HIP_COMPILER)
-    set(CMAKE_HIP_COMPILER "${ROCM_PATH}/llvm/bin/clang++")
-  endif()
-
-  if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
-  endif()
-
-  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
-  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
-
-  enable_language(HIP)
-  # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
-  # next flag to underlying LLVM instead of clang and -amdgpu-early-inline-all=true is the optimization flag for LLVM.
-  # With CMake's enable_language(HIP), additional flags including the proceeding one are propagated from
-  # hip-lang::device library. But in some weird cases, the hip-lang::device target may not be properly configured, for
-  # example, the CMAKE_PREFIX_PATH might be improperly configured.
-  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
-    message(FATAL_ERROR "HIP Language is not properly configured.")
-  endif()
-  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
-
-  if (NOT onnxruntime_HIPIFY_PERL)
-    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
-  endif()
-
-  # replicate strategy used by pytorch to get ROCM_VERSION
-  # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
-  file(READ "${ROCM_PATH}/.info/version-dev" ROCM_VERSION_DEV_RAW)
-  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
-  if (ROCM_VERSION_DEV_MATCH)
-    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
-    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
-    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
-    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
-    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
-  endif()
-  message("\n***** ROCm version from ${ROCM_PATH}/.info/version-dev ****\n")
-  message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
-  message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
-  message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
-  message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
-  message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
-  message("\n***** HIP LANGUAGE CONFIG INFO ****\n")
-  message("CMAKE_HIP_COMPILER:      ${CMAKE_HIP_COMPILER}")
-  message("CMAKE_HIP_ARCHITECTURES: ${CMAKE_HIP_ARCHITECTURES}")
-  message("CMAKE_HIP_FLAGS:         ${CMAKE_HIP_FLAGS}")
-  string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
-  message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
-  add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
-endif()
-
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
 endif()
@@ -1253,8 +1313,9 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  add_compile_definitions(ENABLE_TRAINING_ON_DEVICE)
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  add_compile_definitions(ENABLE_TRAINING_CORE)
+  add_compile_definitions(ENABLE_TRAINING_APIS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -1270,8 +1331,9 @@ if (onnxruntime_ENABLE_ROCM_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_CORE)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
+  add_compile_definitions(ENABLE_TRAINING)
 
   if (UNIX)
     if (EXISTS "${onnxruntime_MPI_HOME}")

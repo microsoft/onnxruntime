@@ -22,6 +22,11 @@ steps:
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
       displayName: 'Build ${{ parameters.MacosArch }}'
 
+    - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+      - script: |
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+        displayName: 'Running Tests'
+
     - task: ShellScript@2
       displayName: 'Copy build artifacts for zipping'
       inputs:

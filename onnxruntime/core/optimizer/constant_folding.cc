@@ -184,9 +184,15 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-
-      OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
+#endif
+      OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
       ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
       std::vector<OrtValue> fetches;
       ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));

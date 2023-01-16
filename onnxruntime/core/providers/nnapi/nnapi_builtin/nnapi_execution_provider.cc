@@ -175,6 +175,27 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
+  // Generally, NNAPI support graph with inputs and outputs except constant initializer.
+  // So far, we have a few cases that sub-graph has zero inputs,
+  // a) A sub-graph has only initializer as inputs
+  // b) A sub-graph has zero inputs
+  // So we just remove these sub-graph which is captured by NNAPI.
+  // A existing example is CastLike, as which can't be fold in constant folding pass.
+  // CastLike Op will be inlined into Cast after Pass transform.
+  // Can we remove it if support CastLike in CF or support Pass transform after InlineNodes?
+  std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
+    if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
+      const auto* meta_def = capability->sub_graph->GetMetaDef();
+      bool not_empty_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
+        return !graph_viewer.IsConstantInitializer(input, true);
+      });
+
+      if (!not_empty_inputs || meta_def->outputs.empty()) {
+        capability.reset();
+      }
+    }
+  });
+
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::accumulate(
       result.begin(), result.end(), size_t{0},
@@ -298,7 +319,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
     compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      
+
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ctx.GetInputCount();
       const size_t num_outputs = ctx.GetOutputCount();

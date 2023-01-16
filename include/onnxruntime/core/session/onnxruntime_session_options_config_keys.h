@@ -159,6 +159,9 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
+// The file saves configuration for partitioning node among logic streams
+static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
+
 // This Option allows setting affinities for intra op threads.
 // Affinity string follows format:
 // logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id

@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
@@ -123,7 +124,7 @@ __global__ void _AdamOptimizer_mode1(
   if (grads_out) {
     grads_out[id] = T_GRAD(delta);
   }
-  
+
   // Compute the new weight.
   if (weights_out) {
     weights_out[id] = weights[id] + T3(delta);
@@ -163,12 +164,14 @@ void AdamOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction. 
-  const float alpha_correction = do_bias_correction ?
-    onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
-  const float beta_correction = do_bias_correction ?
-    onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
-  
+  // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction.
+  const float alpha_correction = do_bias_correction
+                                     ? contrib::compute_bias_correction_coefficient(alpha, update_count)
+                                     : 1.f;
+  const float beta_correction = do_bias_correction
+                                    ? contrib::compute_bias_correction_coefficient(beta, update_count)
+                                    : 1.f;
+
   // Currently two modes of Adamw are supported:
   // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
   //         bias correction is applied on m and v individually,
@@ -178,101 +181,98 @@ void AdamOptimizerImpl(
   //         weight decay is applied after weight is updated.
   if (weight_decay_mode == 0) {
     _AdamOptimizer_mode0<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      eta,
-      weights,
-      grads,
-      moment_1,
-      moment_2,
-      loss_scale,
-      grad_norm,
-      alpha,
-      beta,
-      lambda,
-      epsilon,
-      max_norm,
-      alpha_correction,
-      beta_correction,
+        eta,
+        weights,
+        grads,
+        moment_1,
+        moment_2,
+        loss_scale,
+        grad_norm,
+        alpha,
+        beta,
+        lambda,
+        epsilon,
+        max_norm,
+        alpha_correction,
+        beta_correction,
 
-      moment_1_out,
-      moment_2_out,
-      weights_out,
-      grads_out,
-      mixed_precision_weights_out,
-      N);
-  }
-  else if (weight_decay_mode == 1) {
+        moment_1_out,
+        moment_2_out,
+        weights_out,
+        grads_out,
+        mixed_precision_weights_out,
+        N);
+  } else if (weight_decay_mode == 1) {
     _AdamOptimizer_mode1<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      eta,
-      weights,
-      grads,
-      moment_1,
-      moment_2,
-      loss_scale,
-      grad_norm,
-      alpha,
-      beta,
-      lambda,
-      epsilon,
-      max_norm,
-      alpha_correction,
-      beta_correction,
-      moment_1_out,
-      moment_2_out,
-      weights_out,
-      grads_out,
-      mixed_precision_weights_out,
-      N);
-  }
-  else {
+        eta,
+        weights,
+        grads,
+        moment_1,
+        moment_2,
+        loss_scale,
+        grad_norm,
+        alpha,
+        beta,
+        lambda,
+        epsilon,
+        max_norm,
+        alpha_correction,
+        beta_correction,
+        moment_1_out,
+        moment_2_out,
+        weights_out,
+        grads_out,
+        mixed_precision_weights_out,
+        N);
+  } else {
     // Shouldn't reach here
     ORT_THROW("Unsupported Adamw optimizer mode.");
   }
 }
 
-#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP)  \
-  template void AdamOptimizerImpl(                                                                \
-      cudaStream_t stream,                                                                        \
-      const T1* eta,                                                                              \
-      const T2 update_count,                                                                      \
-      const T3* weights,                                                                          \
-      const T_GRAD* grads,                                                                        \
-      const T4* moment_1,                                                                         \
-      const T4* moment_2,                                                                         \
-      const T3* loss_scale,                                                                       \
-      const T_GRAD_NORM* grad_norm,                                                               \
-      const float alpha,                                                                          \
-      const float beta,                                                                           \
-      const float lambda,                                                                         \
-      const float epsilon,                                                                        \
-      const float max_norm,                                                                       \
-      const bool do_bias_correction,                                                              \
-      const int64_t weight_decay_mode,                                                            \
-      T4* moment_1_out,                                                                           \
-      T4* moment_2_out,                                                                           \
-      T3* weights_out,                                                                            \
-      T_GRAD* grads_out,                                                                          \
-      T_MIXED_PRECISION_FP* mixed_precision_weights_out,                                          \
+#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP) \
+  template void AdamOptimizerImpl(                                                               \
+      cudaStream_t stream,                                                                       \
+      const T1* eta,                                                                             \
+      const T2 update_count,                                                                     \
+      const T3* weights,                                                                         \
+      const T_GRAD* grads,                                                                       \
+      const T4* moment_1,                                                                        \
+      const T4* moment_2,                                                                        \
+      const T3* loss_scale,                                                                      \
+      const T_GRAD_NORM* grad_norm,                                                              \
+      const float alpha,                                                                         \
+      const float beta,                                                                          \
+      const float lambda,                                                                        \
+      const float epsilon,                                                                       \
+      const float max_norm,                                                                      \
+      const bool do_bias_correction,                                                             \
+      const int64_t weight_decay_mode,                                                           \
+      T4* moment_1_out,                                                                          \
+      T4* moment_2_out,                                                                          \
+      T3* weights_out,                                                                           \
+      T_GRAD* grads_out,                                                                         \
+      T_MIXED_PRECISION_FP* mixed_precision_weights_out,                                         \
       size_t count);
 
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, float, float, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, float, float, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, BFloat16, BFloat16, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, BFloat16, float, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, BFloat16, float, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, BFloat16, float, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, half);
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float, half);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float, half);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half, half);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float, half);
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half, half);
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float, half);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half, half);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float, half);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, float, float, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, float, float, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, BFloat16, BFloat16, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, BFloat16, float, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, BFloat16, float, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16);
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, BFloat16, float, BFloat16);
 
 }  // namespace cuda
 }  // namespace onnxruntime
-

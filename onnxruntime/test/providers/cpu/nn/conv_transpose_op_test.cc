@@ -1129,7 +1129,8 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(ConvTransposeTest, SharedPrepackedWeights) {
   OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});

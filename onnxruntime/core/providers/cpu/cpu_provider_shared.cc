@@ -33,6 +33,7 @@
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/greedy_search.h"
+#include "contrib_ops/cpu/transformers/sampling.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -43,6 +44,7 @@
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -192,19 +194,19 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 
   Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
                                     const TensorShape& input_shape,
-                                    const TensorShape* weights_shape,
+                                    const TensorShape& weights_shape,
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
                                     const Tensor* extra_add_qk,
-                                    const Tensor* key,
-                                    const Tensor* value,
                                     void* parameters,
-                                    const int max_threads_per_block) override {
+                                    const int max_threads_per_block,
+                                    const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
                                                   extra_add_qk,
-                                                  key, value, parameters,
-                                                  max_threads_per_block);
+                                                  parameters,
+                                                  max_threads_per_block,
+                                                  past_seq_len);
   }
 
   Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,
@@ -246,6 +248,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                                               subgraph_session_state);
   }
 
+  void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
+  Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
+  Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
 #endif
@@ -264,11 +270,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return p->AdamWOptimizerBase::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::AdamWOptimizerBase::Prepare&>(prepare));
   }
-
-  Status contrib__AdamWOptimizerBase__GenerateOutputs(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
-                                                      size_t number_of_values,
-                                                      const TensorSeq* values, TensorSeq* updated_values) override {
-    return p->AdamWOptimizerBase::GenerateOutputs(ctx, number_of_values, values, updated_values);
+  Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx,
+                                                        contrib__SGDOptimizerV2Base__Prepare& prepare) override {
+    return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
+                                                    reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
 #endif
 

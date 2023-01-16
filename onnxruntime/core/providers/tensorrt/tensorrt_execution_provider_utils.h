@@ -8,9 +8,9 @@
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
-#include "murmurhash3.h"
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
+#include "murmurhash3.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -199,7 +199,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
 }
 
 // Helper class to generate engine id via model name/model content/env metadata
-class TRTModelMetadefIdGenerator {
+class TRTModelIdGenerator {
  public:
   int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
     model_hash = 0;
@@ -210,92 +210,94 @@ class TRTModelMetadefIdGenerator {
       cur_graph = cur_graph->ParentGraph();
     }
 
-    uint32_t instance_hash[4] = {0, 0, 0, 0};
-
     const Graph& main_graph = *cur_graph;
+    uint32_t hash[4] = {0, 0, 0, 0};
 
-    // hash the bytes in the Graph instance. we can't just use the address as a new Graph instance may use
-    // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
-    // fingerprint for the instance that can use used as the key to the hash of the graph name/inputs&outputs/metadata.
-    MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
-    HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
+    auto hash_str = [&hash](const std::string& str) {
+      MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+    };
 
-    // if we've already hashed this main graph instance use the cached value
-    auto entry = trt_main_graph_hash_.find(graph_instance_hash);
-    if (entry != trt_main_graph_hash_.cend()) {
-      model_hash = entry->second;
+    // Use model name instead of path to avoid cache regeneration if path changes
+    const auto& model_path = main_graph.ModelPath();
+    if (!model_path.IsEmpty()) {
+      // Get model name
+      PathString path_string = model_path.GetComponents().back();
+      char arr[256];
+#ifdef _WIN32
+      wcstombs_s(nullptr, arr, sizeof(arr), path_string.c_str(), sizeof(arr));
+#else
+      strcpy(arr, path_string.c_str());
+#endif
+      std::string model_name(arr);
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
+      // Ensure enough characters are hashed in case model names are too short
+      int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
+      constexpr int32_t hash_string_length = 500;
+      std::string repeat_model_name = model_name;
+      for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+        repeat_model_name += model_name;
+      }
+      hash_str(repeat_model_name);
     } else {
-      uint32_t hash[4] = {0, 0, 0, 0};
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+    }
 
-      // Use graph name instead of path to avoid cache regeneration if path changes
-      const auto& model_name_str = main_graph.Name();
-      if (!model_name_str.empty()) {
-        MurmurHash3::x86_128(model_name_str.data(), gsl::narrow_cast<int32_t>(model_name_str.size()), hash[0], &hash);
-      }
+    // fingerprint the main graph by hashing graph inputs
+    for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
+      hash_str(node_arg->Name());
+    }
 
-      auto hash_str = [&hash](const std::string& str) {
-        MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
-      };
-
-      // fingerprint the main graph by hashing graph inputs
-      for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
-        hash_str(node_arg->Name());
-      }
-
-      // hashing output of each node
-      const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
-      std::vector<size_t> nodes_vector(number_of_ort_nodes);
-      std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-      const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
-      for (const auto& index : nodes_vector) {
-        const auto& node = graph_viewer.GetNode(node_index[index]);
-        for (const auto* node_arg : node->OutputDefs()) {
-          if (node_arg->Exists()) {
-            hash_str(node_arg->Name());
-          }
+    // hashing output of each node
+    const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
+    std::vector<size_t> nodes_vector(number_of_ort_nodes);
+    std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+    const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
+    for (const auto& index : nodes_vector) {
+      const auto& node = graph_viewer.GetNode(node_index[index]);
+      for (const auto* node_arg : node->OutputDefs()) {
+        if (node_arg->Exists()) {
+          hash_str(node_arg->Name());
         }
       }
+    }
 
 #ifdef __linux__
-      hash_str("LINUX");
+    hash_str("LINUX");
 #elif defined(_WIN32)
-      hash_str("WINDOWS");
+    hash_str("WINDOWS");
 #endif
 
 #ifdef ORT_VERSION
-      hash_str(ORT_VERSION);
+    hash_str(ORT_VERSION);
 #endif
 
 #ifdef CUDA_VERSION
-      hash_str(std::to_string(CUDA_VERSION));
+    hash_str(std::to_string(CUDA_VERSION));
 #endif
 
 #if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
-      std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
-      hash_str(TRT_VERSION);
+    std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+    hash_str(TRT_VERSION);
 #endif
 
-      model_hash = hash[0] | (uint64_t(hash[1]) << 32);
-      trt_main_graph_hash_[graph_instance_hash] = model_hash;
-    }
+    model_hash = hash[0] | (uint64_t(hash[1]) << 32);
 
     // return the current unique id, and increment to update
-    return trt_model_metadef_id_[model_hash]++;
+    return trt_model_id_[model_hash]++;
   }
 
  private:
-  std::unordered_map<HashValue, HashValue> trt_main_graph_hash_;  // map graph instance hash to model contents hash
-  std::unordered_map<HashValue, int> trt_model_metadef_id_;       // current unique id for model
+  std::unordered_map<HashValue, int> trt_model_id_;       // current unique id for model
 };
 
-std::unique_ptr<TRTModelMetadefIdGenerator> trt_metadef_id_generator_ = std::make_unique<TRTModelMetadefIdGenerator>();
+std::unique_ptr<TRTModelIdGenerator> trt_model_id_generator_ = std::make_unique<TRTModelIdGenerator>();
 
-// Calll TRTGenerateMetaDefId to generate hash id for TRT engine cache
-int TRTGenerateMetaDefId(const GraphViewer& graph_viewer, HashValue& model_hash) {
+// Calll TRTGenerateModelId to generate hash id for TRT engine cache
+int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
-  return trt_metadef_id_generator_->TRTGenerateId(graph_viewer, model_hash);
+  return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
 }
 }

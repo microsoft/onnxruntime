@@ -537,3 +537,17 @@ def measure_memory(is_gpu, func):
 
         print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
         return max_usage - memory_before_test
+
+
+def get_ort_environment_variables():
+    # Environment variables might impact ORT performance on transformer models. Note that they are for testing only.
+    env_names = ["ORT_DISABLE_FUSED_ATTENTION", "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS"]
+    env = ""
+    for name in env_names:
+        value = os.getenv(name)
+        if value is None:
+            continue
+        if env:
+            env += ","
+        env += f"{name}={value}"
+    return env

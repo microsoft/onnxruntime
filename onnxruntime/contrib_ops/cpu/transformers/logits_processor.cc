@@ -6,8 +6,12 @@
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
+#include "core/providers/cpu/math/softmax_shared.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include <vector>
+#include <numeric>
+#include <algorithm>
 
 namespace onnxruntime {
 namespace contrib {
@@ -187,12 +191,63 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 #endif
 }
 
+template <typename T>
+TemperatureLogitsProcessor<T>::TemperatureLogitsProcessor(float temperature) : temperature_(temperature) {
+}
+
+template <typename T>
+void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
+                                            NextTokenScores<T>& next_token_scores) {
+  if (temperature_ == 1.0f) {
+    return;
+  }
+
+  T* p = next_token_scores.scores.data();
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
+    *p /= temperature_;
+    ++p;
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("TemperatureLogitsProcessor", next_token_scores);
+#endif
+}
+
+template <typename T>
+PresencePenaltyLogitsProcessor<T>::PresencePenaltyLogitsProcessor(const gsl::span<const int32_t>& presence_mask,
+                                                                  float presence_penalty)
+    : presence_mask_(presence_mask), presence_penalty_(presence_penalty) {
+}
+
+template <typename T>
+void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
+                                                NextTokenScores<T>& next_token_scores) {
+  if (presence_penalty_ == 0.0f) {
+    return;
+  }
+
+  assert(!presence_mask_.empty());
+
+  T* p = next_token_scores.scores.data();
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
+    *p -= presence_mask_[i] * presence_penalty_;
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("PresencePenaltyLogitsProcessor", next_token_scores);
+#endif
+}
+
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
 }
 
 void LogitsProcessorList::Init(const GreedySearchParameters& parameters) {
   LogitsProcessorInitImpl<GreedySearchParameters>(parameters);
+}
+
+void LogitsProcessorList::Init(const SamplingParameters& parameters) {
+  LogitsProcessorInitImpl<SamplingParameters>(parameters);
 }
 
 void LogitsProcessorList::Process(const ISequences* sequences,

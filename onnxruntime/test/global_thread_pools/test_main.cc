@@ -94,8 +94,10 @@ int main(int argc, char** argv) {
     st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, long_affinity_str.c_str()));
     ORT_RETURN_IF_NULL_STATUS(st_ptr);
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
     st_ptr.reset(g_ort->SetGlobalIntraOpThreadAffinity(tp_options, affinity_stream.str().c_str()));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+#endif
 
     st_ptr.reset(g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);

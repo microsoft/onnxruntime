@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.4_ubuntu20.04_py3.7_pytorch_1.12.1
 
 WORKDIR /stage
 
@@ -37,7 +37,9 @@ RUN pip install \
       sentencepiece \
       dill==0.3.4 \
       wget \
-      pytorch_lightning==1.6.0
+      pytorch_lightning==1.6.0 \
+      pytest-xdist \
+      pytest-rerunfailures
 
 RUN pip install torch-ort --no-dependencies
 ENV ORTMODULE_ONNX_OPSET_VERSION=15

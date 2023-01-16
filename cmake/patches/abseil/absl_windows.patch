@@ -1,0 +1,41 @@
+diff --git a/absl/copts/GENERATED_AbseilCopts.cmake b/absl/copts/GENERATED_AbseilCopts.cmake
+index a4ab1aa2..dfd13fd7 100644
+--- a/absl/copts/GENERATED_AbseilCopts.cmake
++++ b/absl/copts/GENERATED_AbseilCopts.cmake
+@@ -129,8 +129,6 @@ list(APPEND ABSL_MSVC_FLAGS
+     "/wd4005"
+     "/wd4068"
+     "/wd4180"
+-    "/wd4244"
+-    "/wd4267"
+     "/wd4503"
+     "/wd4800"
+ )
+diff --git a/absl/copts/GENERATED_copts.bzl b/absl/copts/GENERATED_copts.bzl
+index a6efc98e..8c4de8e7 100644
+--- a/absl/copts/GENERATED_copts.bzl
++++ b/absl/copts/GENERATED_copts.bzl
+@@ -130,8 +130,6 @@ ABSL_MSVC_FLAGS = [
+     "/wd4005",
+     "/wd4068",
+     "/wd4180",
+-    "/wd4244",
+-    "/wd4267",
+     "/wd4503",
+     "/wd4800",
+ ]
+diff --git a/absl/copts/copts.py b/absl/copts/copts.py
+index 0d6c1ec3..75fd935f 100644
+--- a/absl/copts/copts.py
++++ b/absl/copts/copts.py
+@@ -132,10 +132,6 @@ COPT_VARS = {
+             "/wd4068",  # unknown pragma
+             # qualifier applied to function type has no meaning; ignored
+             "/wd4180",
+-            # conversion from 'type1' to 'type2', possible loss of data
+-            "/wd4244",
+-            # conversion from 'size_t' to 'type', possible loss of data
+-            "/wd4267",
+             # The decorated name was longer than the compiler limit
+             "/wd4503",
+             # forcing value to bool 'true' or 'false' (performance warning)
