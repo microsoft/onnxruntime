@@ -31,6 +31,12 @@ instead of `onnxruntime/rust/target`.
     CARGO_TARGET_DIR=build/rust cargo test --manifest-path rust/Cargo.toml --features model-fetching
 ```
 
+### cargo test both crates while specifying the absolute path to the OnnxRuntime shared library.
+
+```sh
+    RUST_ONNXRUNTIME_LIBRARY_PATH=<absolute path to shared library> CARGO_TARGET_DIR=build/rust cargo test --manifest-path rust/Cargo.toml --features model-fetching
+```
+
 ## cargo test with sanitizer support
 
 **If you are using a nightly Rust compiler and are on one the platforms listed in [Rust sanitizer support](https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html).**

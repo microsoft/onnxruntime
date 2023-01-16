@@ -4,7 +4,9 @@
 //! https://drive.google.com/file/d/1FmL-Wpm06V-8wgRqvV3Skey_X98Ue4D_/view?usp=sharing
 
 use ndarray::Array2;
+use onnxruntime::LoggingLevel;
 use onnxruntime::{environment::Environment, GraphOptimizationLevel};
+use std::env::var;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -19,7 +21,19 @@ fn main() {
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let env = Environment::builder().with_name("env").build().unwrap();
+    let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+
+    let builder = Environment::builder()
+        .with_name("env")
+        .with_log_level(LoggingLevel::Warning);
+
+    let builder = if let Some(path) = path.clone() {
+        builder.with_library_path(path)
+    } else {
+        builder
+    };
+
+    let env = builder.build().unwrap();
     let session = env
         .new_session_builder()
         .unwrap()

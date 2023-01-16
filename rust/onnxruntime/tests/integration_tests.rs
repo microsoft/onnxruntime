@@ -1,15 +1,18 @@
 use onnxruntime::error::OrtDownloadError;
 use onnxruntime::tensor::ndarray_tensor::NdArrayTensor;
-
 use std::{
     fs,
     io::{self, BufRead, BufReader},
     path::Path,
+    sync::Arc,
     time::Duration,
 };
 
 mod download {
+    use std::env::var;
+
     use super::*;
+    const RUST_ONNXRUNTIME_LIBRARY_PATH: &str = "RUST_ONNXRUNTIME_LIBRARY_PATH";
 
     use image::{imageops::FilterType, ImageBuffer, Luma, Pixel, Rgb};
     use ndarray::s;
@@ -25,12 +28,20 @@ mod download {
     fn squeezenet_mushroom() {
         const IMAGE_TO_LOAD: &str = "mushroom.png";
 
-        let environment = Environment::builder()
-            .with_name("integration_test")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .unwrap();
+        let path = var(RUST_ONNXRUNTIME_LIBRARY_PATH).ok();
 
+        let environment = {
+            let builder = Environment::builder()
+                .with_name("integration_test")
+                .with_log_level(LoggingLevel::Warning);
+            let builder = if let Some(path) = path {
+                builder.with_library_path(path)
+            } else {
+                builder
+            };
+
+            builder.build().unwrap()
+        };
         let session = environment
             .new_session_builder()
             .unwrap()
@@ -134,11 +145,20 @@ mod download {
     fn mnist_5() {
         const IMAGE_TO_LOAD: &str = "mnist_5.jpg";
 
-        let environment = Environment::builder()
-            .with_name("integration_test")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .unwrap();
+        let path = var(RUST_ONNXRUNTIME_LIBRARY_PATH).ok();
+
+        let environment = {
+            let builder = Environment::builder()
+                .with_name("integration_test")
+                .with_log_level(LoggingLevel::Warning);
+            let builder = if let Some(path) = path {
+                builder.with_library_path(path)
+            } else {
+                builder
+            };
+
+            builder.build().unwrap()
+        };
 
         let session = environment
             .new_session_builder()
@@ -210,13 +230,22 @@ mod download {
     fn mnist_5_concurrent_session() {
         const IMAGE_TO_LOAD: &str = "mnist_5.jpg";
 
-        let environment = Environment::builder()
-            .with_name("integration_test")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .unwrap();
+        let path = var(RUST_ONNXRUNTIME_LIBRARY_PATH).ok();
 
-        let session = std::sync::Arc::new(std::sync::Mutex::new(
+        let environment = {
+            let builder = Environment::builder()
+                .with_name("integration_test")
+                .with_log_level(LoggingLevel::Warning);
+            let builder = if let Some(path) = path {
+                builder.with_library_path(path)
+            } else {
+                builder
+            };
+
+            builder.build().unwrap()
+        };
+
+        let session = Arc::new(
             environment
                 .new_session_builder()
                 .unwrap()
@@ -226,14 +255,12 @@ mod download {
                 .unwrap()
                 .with_model_downloaded(DomainBasedImageClassification::Mnist)
                 .expect("Could not download model from file"),
-        ));
+        );
 
         let children: Vec<std::thread::JoinHandle<()>> = (0..20)
-            .map(|_| {
+            .map(move |_| {
                 let session = session.clone();
                 std::thread::spawn(move || {
-                    let session = session.lock().unwrap();
-
                     let input0_shape: Vec<usize> =
                         session.inputs[0].dimensions().map(|d| d.unwrap()).collect();
                     let output0_shape: Vec<usize> = session.outputs[0]
@@ -304,11 +331,20 @@ mod download {
     fn mnist_5_send_session() {
         const IMAGE_TO_LOAD: &str = "mnist_5.jpg";
 
-        let environment = Environment::builder()
-            .with_name("integration_test")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .unwrap();
+        let path = var(RUST_ONNXRUNTIME_LIBRARY_PATH).ok();
+
+        let environment = {
+            let builder = Environment::builder()
+                .with_name("integration_test")
+                .with_log_level(LoggingLevel::Warning);
+            let builder = if let Some(path) = path {
+                builder.with_library_path(path)
+            } else {
+                builder
+            };
+
+            builder.build().unwrap()
+        };
 
         let children: Vec<std::thread::JoinHandle<()>> = (0..20)
             .map(|_| {
@@ -413,11 +449,20 @@ mod download {
     fn upsample() {
         const IMAGE_TO_LOAD: &str = "mushroom.png";
 
-        let environment = Environment::builder()
-            .with_name("integration_test")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .unwrap();
+        let path = var(RUST_ONNXRUNTIME_LIBRARY_PATH).ok();
+
+        let environment = {
+            let builder = Environment::builder()
+                .with_name("integration_test")
+                .with_log_level(LoggingLevel::Warning);
+            let builder = if let Some(path) = path {
+                builder.with_library_path(path)
+            } else {
+                builder
+            };
+
+            builder.build().unwrap()
+        };
 
         let session = environment
             .new_session_builder()

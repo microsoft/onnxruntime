@@ -2,25 +2,27 @@ use tracing::debug;
 
 use onnxruntime_sys as sys;
 
-use tracing::error;
-
 use crate::{
+    environment::{Environment, _Environment},
     error::{assert_not_null_pointer, status_to_result, OrtError, Result},
-    g_ort, AllocatorType, MemType,
+    AllocatorType, MemType,
 };
+
+use tracing::error;
 
 #[derive(Debug)]
 pub struct MemoryInfo {
     pub ptr: *mut sys::OrtMemoryInfo,
+    env: _Environment,
 }
 
 impl MemoryInfo {
     #[tracing::instrument]
-    pub fn new(allocator: AllocatorType, memory_type: MemType) -> Result<Self> {
+    pub fn new(allocator: AllocatorType, memory_type: MemType, env: &Environment) -> Result<Self> {
         debug!("Creating new memory info.");
         let mut memory_info_ptr: *mut sys::OrtMemoryInfo = std::ptr::null_mut();
         let status = unsafe {
-            g_ort().CreateCpuMemoryInfo.unwrap()(
+            env.env().api().CreateCpuMemoryInfo.unwrap()(
                 allocator.into(),
                 memory_type.into(),
                 &mut memory_info_ptr,
@@ -31,6 +33,7 @@ impl MemoryInfo {
 
         Ok(Self {
             ptr: memory_info_ptr,
+            env: env.env.clone(),
         })
     }
 }
@@ -42,7 +45,7 @@ impl Drop for MemoryInfo {
             error!("MemoryInfo pointer is null, not dropping.");
         } else {
             debug!("Dropping the memory information.");
-            unsafe { g_ort().ReleaseMemoryInfo.unwrap()(self.ptr) };
+            unsafe { self.env.env().api().ReleaseMemoryInfo.unwrap()(self.ptr) };
         }
 
         self.ptr = std::ptr::null_mut();
@@ -51,12 +54,29 @@ impl Drop for MemoryInfo {
 
 #[cfg(test)]
 mod tests {
+    use std::env::var;
+
     use super::*;
+    use crate::environment::tests::ONNX_RUNTIME_LIBRARY_PATH;
+    use crate::LoggingLevel;
     use test_log::test;
 
     #[test]
     fn memory_info_constructor_destructor() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let path = var(ONNX_RUNTIME_LIBRARY_PATH).ok();
+
+        let builder = Environment::builder()
+            .with_name("test")
+            .with_log_level(LoggingLevel::Warning);
+
+        let builder = if let Some(path) = path {
+            builder.with_library_path(path)
+        } else {
+            builder
+        };
+        let env = builder.build().unwrap();
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, &env).unwrap();
         std::mem::drop(memory_info);
     }
 }

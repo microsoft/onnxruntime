@@ -1,13 +1,14 @@
 #![allow(non_snake_case)]
 
+use std::env::args;
 #[cfg(not(target_family = "windows"))]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_family = "windows")]
 use std::os::windows::ffi::OsStrExt;
 
 use onnxruntime_sys::{
-    GraphOptimizationLevel, ONNXTensorElementDataType, OrtAllocator, OrtAllocatorType, OrtApi,
-    OrtEnv, OrtGetApiBase, OrtLoggingLevel, OrtMemType, OrtMemoryInfo, OrtRunOptions, OrtSession,
+    onnxruntime, GraphOptimizationLevel, ONNXTensorElementDataType, OrtAllocator, OrtAllocatorType,
+    OrtApi, OrtEnv, OrtLoggingLevel, OrtMemType, OrtMemoryInfo, OrtRunOptions, OrtSession,
     OrtSessionOptions, OrtStatus, OrtTensorTypeAndShapeInfo, OrtTypeInfo, OrtValue,
     ORT_API_VERSION,
 };
@@ -15,7 +16,18 @@ use onnxruntime_sys::{
 // https://github.com/microsoft/onnxruntime/blob/v1.4.0/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp
 
 fn main() {
-    let g_ort = unsafe { OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(ORT_API_VERSION) };
+    let onnxruntime_path = args()
+        .nth(1)
+        .expect("This example expects a path to the ONNXRuntime shared library");
+
+    let (_, g_ort) = unsafe {
+        let ort = onnxruntime::new(onnxruntime_path);
+
+        let ort = ort.expect("Error initializing onnxruntime");
+        let g_ort = ort.OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(ORT_API_VERSION);
+
+        (ort, g_ort)
+    };
     assert_ne!(g_ort, std::ptr::null_mut());
 
     //*************************************************************************

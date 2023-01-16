@@ -11,3 +11,5 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 pub type OnnxEnumInt = i32;
 #[cfg(not(target_os = "windows"))]
 pub type OnnxEnumInt = u32;
+
+pub use libloading::library_filename;

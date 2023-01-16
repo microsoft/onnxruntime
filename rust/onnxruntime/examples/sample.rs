@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use onnxruntime::{environment::Environment, ndarray::Array, GraphOptimizationLevel, LoggingLevel};
+use std::env::var;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -22,11 +23,19 @@ fn run() -> Result<(), Error> {
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let environment = Environment::builder()
+    let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+
+    let builder = Environment::builder()
         .with_name("test")
-        // The ONNX Runtime's log level can be different than the one of the wrapper crate or the application.
-        .with_log_level(LoggingLevel::Info)
-        .build()?;
+        .with_log_level(LoggingLevel::Warning);
+
+    let builder = if let Some(path) = path.clone() {
+        builder.with_library_path(path)
+    } else {
+        builder
+    };
+
+    let environment = builder.build().unwrap();
 
     let session = environment
         .new_session_builder()?

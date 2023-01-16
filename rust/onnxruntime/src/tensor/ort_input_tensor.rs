@@ -2,8 +2,8 @@
 
 use super::construct::{ConstructTensor, InputTensor};
 use crate::{
+    environment::ENV,
     error::{assert_not_null_pointer, call_ort, status_to_result},
-    g_ort,
     memory::MemoryInfo,
     OrtError, Result, TensorElementDataType, TypeToTensorElementDataType,
 };
@@ -98,7 +98,12 @@ where
                 assert_not_null_pointer(tensor_ptr, "Tensor")?;
 
                 let mut is_tensor = 0;
-                let status = unsafe { g_ort().IsTensor.unwrap()(tensor_ptr, &mut is_tensor) };
+                let status = unsafe {
+                    ENV.get().unwrap().lock().unwrap().api().IsTensor.unwrap()(
+                        tensor_ptr,
+                        &mut is_tensor,
+                    )
+                };
                 status_to_result(status).map_err(OrtError::IsTensor)?;
             }
             TensorElementDataType::String => {
@@ -167,7 +172,15 @@ where
         if self.c_ptr.is_null() {
             error!("Null pointer, not calling free.");
         } else {
-            unsafe { g_ort().ReleaseValue.unwrap()(self.c_ptr) }
+            unsafe {
+                ENV.get()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .api()
+                    .ReleaseValue
+                    .unwrap()(self.c_ptr)
+            }
         }
 
         self.c_ptr = std::ptr::null_mut();
@@ -191,14 +204,33 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AllocatorType, MemType};
+    use crate::environment::tests::ONNX_RUNTIME_LIBRARY_PATH;
+    use crate::{environment::Environment, AllocatorType, LoggingLevel, MemType};
     use ndarray::{arr0, arr1, arr2, arr3};
-
+    use once_cell::sync::Lazy;
+    use std::env::var;
     use test_log::test;
+
+    static ENV: Lazy<Environment> = Lazy::new(|| {
+        let path = var(ONNX_RUNTIME_LIBRARY_PATH).ok();
+
+        let builder = Environment::builder()
+            .with_name("test")
+            .with_log_level(LoggingLevel::Warning);
+        let builder = if let Some(path) = path {
+            builder.with_library_path(path)
+        } else {
+            builder
+        };
+
+        builder.build().unwrap()
+    });
 
     #[test]
     fn orttensor_from_array_0d_i32() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let env = &*ENV;
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
         let mut array = arr0::<i32>(123);
         let tensor = array
             .construct(&memory_info, ort_default_allocator())
@@ -209,7 +241,9 @@ mod tests {
 
     #[test]
     fn orttensor_from_array_1d_i32() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let env = &*ENV;
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
         let mut array = arr1(&[1_i32, 2, 3, 4, 5, 6]);
         let tensor = array
             .construct(&memory_info, ort_default_allocator())
@@ -220,7 +254,9 @@ mod tests {
 
     #[test]
     fn orttensor_from_array_2d_i32() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let env = &*ENV;
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
         let mut array = arr2(&[[1_i32, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]);
         let tensor = array
             .construct(&memory_info, ort_default_allocator())
@@ -230,7 +266,9 @@ mod tests {
 
     #[test]
     fn orttensor_from_array_3d_i32() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let env = &*ENV;
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
         let mut array = arr3(&[
             [[1_i32, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]],
             [[13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24]],
@@ -244,7 +282,9 @@ mod tests {
 
     #[test]
     fn orttensor_from_array_1d_string() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let env = &*ENV;
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
         let mut array = arr1(&[
             String::from("foo"),
             String::from("bar"),
@@ -258,7 +298,9 @@ mod tests {
 
     #[test]
     fn orttensor_from_array_3d_str() {
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let env = &*ENV;
+
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
         let mut array = arr3(&[
             [["1", "2", "3"], ["4", "5", "6"]],
             [["7", "8", "9"], ["10", "11", "12"]],

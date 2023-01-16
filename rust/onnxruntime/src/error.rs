@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use onnxruntime_sys as sys;
 
-use crate::{char_p_to_string, g_ort};
+use crate::{char_p_to_string, environment::ENV};
 
 /// Type alias for the `Result`
 pub type Result<T> = std::result::Result<T, OrtError>;
@@ -15,6 +15,9 @@ pub type Result<T> = std::result::Result<T, OrtError>;
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum OrtError {
+    /// For errors with libloading
+    #[error("Failed to load or call onnxruntime library {0}")]
+    Library(#[from] libloading::Error),
     /// The C API can message to the caller using a C `char *` which needs to be converted
     /// to Rust's `String`. This operation can fail.
     #[error("Failed to construct String")]
@@ -208,7 +211,15 @@ impl From<OrtStatusWrapper> for std::result::Result<(), OrtApiError> {
         if status.0.is_null() {
             Ok(())
         } else {
-            let raw: *const i8 = unsafe { g_ort().GetErrorMessage.unwrap()(status.0) };
+            let raw: *const i8 = unsafe {
+                ENV.get()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .api()
+                    .GetErrorMessage
+                    .unwrap()(status.0)
+            };
             match char_p_to_string(raw) {
                 Ok(msg) => Err(OrtApiError::Msg(msg)),
                 Err(err) => match err {
@@ -234,5 +245,5 @@ pub(crate) unsafe fn call_ort<F>(mut f: F) -> std::result::Result<(), OrtApiErro
 where
     F: FnMut(sys::OrtApi) -> *const sys::OrtStatus,
 {
-    status_to_result(f(g_ort()))
+    status_to_result(f(ENV.get().unwrap().lock().unwrap().api()))
 }

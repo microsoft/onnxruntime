@@ -17,6 +17,7 @@ categories = ["science"]
 keywords = ["neuralnetworks", "onnx", "bindings"]
 
 [dependencies]
+libloading = "0.7"
 
 [build-dependencies]
 bindgen = "0.63"

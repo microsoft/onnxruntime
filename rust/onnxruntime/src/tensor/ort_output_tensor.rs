@@ -1,10 +1,14 @@
 //! Module containing tensor with memory owned by the ONNX Runtime
 
-use crate::{error::status_to_result, g_ort, OrtError, Result, TypeToTensorElementDataType};
+use crate::{
+    environment::{_Environment, ENV},
+    error::status_to_result,
+    OrtError, Result, TypeToTensorElementDataType,
+};
 use ndarray::ArrayView;
 use onnxruntime_sys as sys;
-use std::{convert::TryFrom, fmt::Debug};
 
+use std::{convert::TryFrom, fmt::Debug};
 use tracing::debug;
 
 /// Tensor containing data owned by the ONNX Runtime C library, used to return values from inference.
@@ -15,19 +19,22 @@ use tracing::debug;
 pub struct OrtOutputTensor {
     pub(crate) tensor_ptr: *mut sys::OrtValue,
     pub(crate) shape: Vec<usize>,
+    env: _Environment,
 }
 
 #[derive(Debug)]
 pub(crate) struct OrtOwnedTensorExtractor {
     pub(crate) tensor_ptr: *mut sys::OrtValue,
     pub(crate) shape: Vec<usize>,
+    env: _Environment,
 }
 
 impl OrtOwnedTensorExtractor {
-    pub(crate) fn new(shape: Vec<usize>) -> OrtOwnedTensorExtractor {
+    pub(crate) fn new(shape: Vec<usize>, env: _Environment) -> OrtOwnedTensorExtractor {
         OrtOwnedTensorExtractor {
             tensor_ptr: std::ptr::null_mut(),
             shape,
+            env,
         }
     }
 
@@ -38,7 +45,8 @@ impl OrtOwnedTensorExtractor {
         assert_ne!(self.tensor_ptr, std::ptr::null_mut());
 
         let mut is_tensor = 0;
-        let status = unsafe { g_ort().IsTensor.unwrap()(self.tensor_ptr, &mut is_tensor) };
+        let status =
+            unsafe { self.env.env().api().IsTensor.unwrap()(self.tensor_ptr, &mut is_tensor) };
         status_to_result(status).map_err(OrtError::IsTensor)?;
         (is_tensor == 1)
             .then_some(())
@@ -47,6 +55,7 @@ impl OrtOwnedTensorExtractor {
         Ok(OrtOutputTensor {
             tensor_ptr: self.tensor_ptr,
             shape: self.shape,
+            env: self.env,
         })
     }
 }
@@ -55,7 +64,7 @@ impl Drop for OrtOutputTensor {
     #[tracing::instrument]
     fn drop(&mut self) {
         debug!("Dropping OrtOwnedTensor.");
-        unsafe { g_ort().ReleaseValue.unwrap()(self.tensor_ptr) }
+        unsafe { self.env.env().api().ReleaseValue.unwrap()(self.tensor_ptr) }
 
         self.tensor_ptr = std::ptr::null_mut();
     }
@@ -90,7 +99,13 @@ where
         let output_array_ptr_ptr_void: *mut *mut std::ffi::c_void =
             output_array_ptr_ptr.cast::<*mut std::ffi::c_void>();
         let status = unsafe {
-            g_ort().GetTensorMutableData.unwrap()(value.tensor_ptr, output_array_ptr_ptr_void)
+            ENV.get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .api()
+                .GetTensorMutableData
+                .unwrap()(value.tensor_ptr, output_array_ptr_ptr_void)
         };
         status_to_result(status).map_err(OrtError::IsTensor)?;
         assert_ne!(output_array_ptr, std::ptr::null_mut());
@@ -239,7 +254,14 @@ impl<'a> TryFrom<OrtOutputTensor> for OrtOutput<'a> {
         unsafe {
             let mut shape_info = std::ptr::null_mut();
 
-            let status = g_ort().GetTensorTypeAndShape.unwrap()(value.tensor_ptr, &mut shape_info);
+            let status = ENV
+                .get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .api()
+                .GetTensorTypeAndShape
+                .unwrap()(value.tensor_ptr, &mut shape_info);
 
             status_to_result(status).map_err(OrtError::IsTensor)?;
 
@@ -248,11 +270,24 @@ impl<'a> TryFrom<OrtOutputTensor> for OrtOutput<'a> {
             let mut element_type =
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
 
-            let status = g_ort().GetTensorElementType.unwrap()(shape_info, &mut element_type);
+            let status = ENV
+                .get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .api()
+                .GetTensorElementType
+                .unwrap()(shape_info, &mut element_type);
 
             status_to_result(status).map_err(OrtError::IsTensor)?;
 
-            g_ort().ReleaseTensorTypeAndShapeInfo.unwrap()(shape_info);
+            ENV.get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .api()
+                .ReleaseTensorTypeAndShapeInfo
+                .unwrap()(shape_info);
 
             match element_type {
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED => {

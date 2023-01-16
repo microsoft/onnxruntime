@@ -2,47 +2,42 @@
 
 use crate::{
     error::{status_to_result, OrtError, Result},
-    g_ort,
     onnxruntime::custom_logger,
     session::SessionBuilder,
     LoggingLevel,
 };
-use lazy_static::lazy_static;
+use once_cell::sync::OnceCell;
 use onnxruntime_sys as sys;
+use onnxruntime_sys::library_filename;
+use std::ffi::CString;
 use std::{
-    ffi::CString,
-    sync::{Arc, Mutex},
+    ptr::{null, null_mut},
+    sync::{Arc, Mutex, MutexGuard},
 };
+use sys::{onnxruntime, ORT_API_VERSION};
 use tracing::{debug, warn};
 
-lazy_static! {
-    static ref G_ENV: Arc<Mutex<EnvironmentSingleton>> =
-        Arc::new(Mutex::new(EnvironmentSingleton::default()));
-}
+pub(crate) static ENV: OnceCell<Arc<Mutex<_EnvironmentSingleton>>> = OnceCell::new();
+
+pub(crate) static LIB: OnceCell<onnxruntime> = OnceCell::new();
 
 #[derive(Debug)]
-pub(crate) struct EnvironmentSingleton {
-    name: Option<CString>,
+pub(crate) struct _EnvironmentSingleton {
+    name: CString,
     pub(crate) env_ptr: *mut sys::OrtEnv,
+
+    pub api: *const sys::OrtApi,
 }
 
-unsafe impl Send for EnvironmentSingleton {}
-
-impl Drop for EnvironmentSingleton {
-    fn drop(&mut self) {
-        let release_env = g_ort().ReleaseEnv.unwrap();
-        unsafe { release_env(self.env_ptr) };
+impl _EnvironmentSingleton {
+    pub(crate) unsafe fn api(&self) -> sys::OrtApi {
+        *self.api
     }
 }
 
-impl Default for EnvironmentSingleton {
-    fn default() -> Self {
-        EnvironmentSingleton {
-            name: None,
-            env_ptr: std::ptr::null_mut(),
-        }
-    }
-}
+unsafe impl Send for _EnvironmentSingleton {}
+
+unsafe impl Sync for _EnvironmentSingleton {}
 
 /// An [`Environment`](session/struct.Environment.html) is the main entry point of the ONNX Runtime.
 ///
@@ -60,18 +55,43 @@ impl Default for EnvironmentSingleton {
 ///
 /// ```no_run
 /// # use std::error::Error;
+/// # use std::env::var;
 /// # use onnxruntime::{environment::Environment, LoggingLevel};
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// let environment = Environment::builder()
+/// # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+///
+/// let builder = Environment::builder()
 ///     .with_name("test")
-///     .with_log_level(LoggingLevel::Verbose)
-///     .build()?;
+///     .with_log_level(LoggingLevel::Warning);
+///
+/// let builder = if let Some(path) = path {
+///     builder.with_library_path(path)
+/// } else {
+///     builder
+/// };
+/// let environment = builder.build()?;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone)]
 pub struct Environment {
-    env: Arc<Mutex<EnvironmentSingleton>>,
+    pub(crate) env: _Environment,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct _Environment {
+    env: Arc<Mutex<_EnvironmentSingleton>>,
+}
+
+impl _Environment {
+    pub(crate) fn env(&self) -> MutexGuard<_EnvironmentSingleton> {
+        self.env.lock().expect("The lock is poisoned")
+    }
+}
+
+impl std::fmt::Debug for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.env.fmt(f)
+    }
 }
 
 impl Environment {
@@ -82,39 +102,31 @@ impl Environment {
         EnvBuilder {
             name: "default".into(),
             log_level: LoggingLevel::Warning,
+            path: None,
         }
     }
 
     /// Return the name of the current environment
     #[must_use]
     pub fn name(&self) -> String {
-        self.env
-            .lock()
-            .unwrap()
-            .name
-            .as_ref()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string()
+        self.env().name.to_str().unwrap().to_string()
     }
 
-    pub(crate) fn env(&self) -> Arc<Mutex<EnvironmentSingleton>> {
-        Arc::clone(&self.env)
+    pub(crate) fn env(&self) -> MutexGuard<_EnvironmentSingleton> {
+        self.env.env()
     }
 
     #[tracing::instrument]
-    fn new(name: &str, log_level: LoggingLevel) -> Result<Environment> {
-        // NOTE: Because 'G_ENV' is a lazy_static, locking it will, initially, create
-        //      a new Arc<Mutex<EnvironmentSingleton>> with a strong count of 1.
-        //      Cloning it to embed it inside the 'Environment' to return
-        //      will thus increase the strong count to 2.
-        let mut environment_guard = G_ENV
-            .lock()
-            .expect("Failed to acquire lock: another thread panicked?");
-        let g_env_ptr = &mut environment_guard.env_ptr;
-        if g_env_ptr.is_null() {
+    fn new(name: &str, log_level: LoggingLevel, path: Option<String>) -> Result<Environment> {
+        let lib = if let Some(path) = path {
+            LIB.get_or_try_init(|| unsafe { onnxruntime::new(path) })?
+        } else {
+            LIB.get_or_try_init(|| unsafe { onnxruntime::new(library_filename("onnxruntime")) })?
+        };
+        let env = ENV.get_or_try_init(|| {
             debug!("Environment not yet initialized, creating a new one.");
+
+            let api = unsafe { (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) };
 
             let mut env_ptr: *mut sys::OrtEnv = std::ptr::null_mut();
 
@@ -123,50 +135,69 @@ impl Environment {
             let logger_param: *mut std::ffi::c_void = std::ptr::null_mut();
 
             let cname = CString::new(name).unwrap();
+            unsafe {
+                let create_env_with_custom_logger = (*api).CreateEnvWithCustomLogger.unwrap();
+                let status = create_env_with_custom_logger(
+                    logging_function,
+                    logger_param,
+                    log_level.into(),
+                    cname.as_ptr(),
+                    &mut env_ptr,
+                );
 
-            let create_env_with_custom_logger = g_ort().CreateEnvWithCustomLogger.unwrap();
-            let status = {
-                unsafe {
-                    create_env_with_custom_logger(
-                        logging_function,
-                        logger_param,
-                        log_level.into(),
-                        cname.as_ptr(),
-                        &mut env_ptr,
-                    )
-                }
-            };
-
-            status_to_result(status).map_err(OrtError::Environment)?;
-
+                status_to_result(status).map_err(OrtError::Environment)?;
+            }
             debug!(
                 env_ptr = format!("{:?}", env_ptr).as_str(),
                 "Environment created."
             );
 
-            *g_env_ptr = env_ptr;
-            environment_guard.name = Some(cname);
+            Ok::<_, OrtError>(Arc::new(Mutex::new(_EnvironmentSingleton {
+                name: cname,
+                env_ptr,
+                api,
+            })))
+        })?;
 
-            // NOTE: Cloning the lazy_static 'G_ENV' will increase its strong count by one.
-            //       If this 'Environment' is the only one in the process, the strong count
-            //       will be 2:
-            //          * one lazy_static 'G_ENV'
-            //          * one inside the 'Environment' returned
-            Ok(Environment { env: G_ENV.clone() })
-        } else {
-            warn!(
-                name = environment_guard.name.as_ref().unwrap().to_str().unwrap(),
-                env_ptr = format!("{:?}", environment_guard.env_ptr).as_str(),
-                "Environment already initialized, reusing it.",
+        let mut guard = env.lock().expect("Lock is poisoned");
+
+        if guard.env_ptr.is_null() || guard.api.is_null() {
+            debug!("Environment not yet initialized, creating a new one.");
+
+            let api = unsafe { (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) };
+
+            let mut env_ptr: *mut sys::OrtEnv = std::ptr::null_mut();
+
+            let logging_function: sys::OrtLoggingFunction = Some(custom_logger);
+            // FIXME: What should go here?
+            let logger_param: *mut std::ffi::c_void = std::ptr::null_mut();
+
+            let cname = CString::new(name).unwrap();
+            unsafe {
+                let create_env_with_custom_logger = (*api).CreateEnvWithCustomLogger.unwrap();
+                let status = create_env_with_custom_logger(
+                    logging_function,
+                    logger_param,
+                    log_level.into(),
+                    cname.as_ptr(),
+                    &mut env_ptr,
+                );
+
+                status_to_result(status).map_err(OrtError::Environment)?;
+            }
+            debug!(
+                env_ptr = format!("{:?}", env_ptr).as_str(),
+                "Environment created."
             );
 
-            // NOTE: Cloning the lazy_static 'G_ENV' will increase its strong count by one.
-            //       If this 'Environment' is the only one in the process, the strong count
-            //       will be 2:
-            //          * one lazy_static 'G_ENV'
-            //          * one inside the 'Environment' returned
-            Ok(Environment { env: G_ENV.clone() })
+            guard.env_ptr = env_ptr;
+            guard.api = api;
+            guard.name = cname;
         }
+
+        Ok(Environment {
+            env: _Environment { env: env.clone() },
+        })
     }
 
     /// Create a new [`SessionBuilder`](../session/struct.SessionBuilder.html)
@@ -177,30 +208,19 @@ impl Environment {
 }
 
 impl Drop for Environment {
-    #[tracing::instrument]
     fn drop(&mut self) {
-        debug!(
-            global_arc_count = Arc::strong_count(&G_ENV),
-            "Dropping the Environment.",
-        );
+        if Arc::strong_count(ENV.get().unwrap()) == 2 {
+            let env = &mut *ENV.get().unwrap().lock().expect("Lock is poisoned");
 
-        let mut environment_guard = self
-            .env
-            .lock()
-            .expect("Failed to acquire lock: another thread panicked?");
+            unsafe {
+                let release_env = env.api().ReleaseEnv.unwrap();
+                release_env(env.env_ptr);
 
-        // NOTE: If we drop an 'Environment' we (obviously) have _at least_
-        //       one 'G_ENV' strong count (the one in the 'env' member).
-        //       There is also the "original" 'G_ENV' which is a the lazy_static global.
-        //       If there is no other environment, the strong count should be two and we
-        //       can properly free the sys::OrtEnv pointer.
-        if Arc::strong_count(&G_ENV) == 2 {
-            let _old = std::mem::take(&mut *environment_guard);
+                env.api = null();
 
-            debug!(
-                global_arc_count = Arc::strong_count(&G_ENV),
-                "Releasing the Environment.",
-            );
+                env.env_ptr = null_mut();
+                env.name = CString::default();
+            };
         }
     }
 }
@@ -216,6 +236,7 @@ impl Drop for Environment {
 pub struct EnvBuilder {
     name: String,
     log_level: LoggingLevel,
+    path: Option<String>,
 }
 
 impl EnvBuilder {
@@ -233,6 +254,16 @@ impl EnvBuilder {
         self
     }
 
+    /// Add a library path to the Onnxruntime shared library.
+    ///
+    /// **Note**: The library path can be an absolute path or relative (to the executable) path.
+    /// If no library path is specified, it is expected that the OS can find the Onnxruntime shared
+    /// library in the normal manner to that OS.
+    pub fn with_library_path<P: Into<String>>(mut self, path: P) -> EnvBuilder {
+        self.path = Some(path.into());
+        self
+    }
+
     /// Configure the environment with a given log level
     ///
     /// **NOTE**: Since ONNXRuntime can only define one environment per process,
@@ -247,116 +278,91 @@ impl EnvBuilder {
 
     /// Commit the configuration to a new [`Environment`](environment/struct.Environment.html)
     pub fn build(self) -> Result<Environment> {
-        Environment::new(&self.name, self.log_level)
+        Environment::new(&self.name, self.log_level, self.path)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use std::env::var;
+
     use super::*;
-    use std::sync::{RwLock, RwLockWriteGuard};
     use test_log::test;
 
-    impl G_ENV {
-        fn is_initialized(&self) -> bool {
-            Arc::strong_count(self) >= 2
-        }
+    pub(crate) static ONNX_RUNTIME_LIBRARY_PATH: &str = "RUST_ONNXRUNTIME_LIBRARY_PATH";
 
-        fn env_ptr(&self) -> *const sys::OrtEnv {
-            self.lock().unwrap().env_ptr
-        }
-    }
-
-    struct ConcurrentTestRun {
-        lock: Arc<RwLock<()>>,
-    }
-
-    lazy_static! {
-        static ref CONCURRENT_TEST_RUN: ConcurrentTestRun = ConcurrentTestRun {
-            lock: Arc::new(RwLock::new(()))
-        };
-    }
-
-    impl CONCURRENT_TEST_RUN {
-        // fn run(&self) -> std::sync::RwLockReadGuard<()> {
-        //     self.lock.read().unwrap()
-        // }
-        fn single_test_run(&self) -> RwLockWriteGuard<()> {
-            self.lock.write().unwrap()
-        }
-    }
-
-    #[test]
-    fn env_is_initialized() {
-        let _run_lock = CONCURRENT_TEST_RUN.single_test_run();
-
-        assert!(!G_ENV.is_initialized());
-        assert_eq!(G_ENV.env_ptr(), std::ptr::null_mut());
-
-        let env = Environment::builder()
-            .with_name("env_is_initialized")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .unwrap();
-        assert!(G_ENV.is_initialized());
-        assert_ne!(G_ENV.env_ptr(), std::ptr::null_mut());
-
-        std::mem::drop(env);
-        assert!(!G_ENV.is_initialized());
-        assert_eq!(G_ENV.env_ptr(), std::ptr::null_mut());
-    }
-
-    #[ignore]
     #[test]
     fn sequential_environment_creation() {
-        let _concurrent_run_lock_guard = CONCURRENT_TEST_RUN.single_test_run();
+        let first_name: String = "sequential_environment_creation".into();
 
-        let mut prev_env_ptr = G_ENV.env_ptr();
+        let path = var(ONNX_RUNTIME_LIBRARY_PATH).ok();
+
+        let builder = Environment::builder()
+            .with_name(first_name.clone())
+            .with_log_level(LoggingLevel::Warning);
+
+        let builder = if let Some(path) = path.clone() {
+            builder.with_library_path(path)
+        } else {
+            builder
+        };
+
+        let env = builder.build().unwrap();
+
+        let mut prev_env_ptr = env.env().env_ptr;
 
         for i in 0..10 {
             let name = format!("sequential_environment_creation: {}", i);
-            let env = Environment::builder()
+            let builder = Environment::builder()
                 .with_name(name.clone())
-                .with_log_level(LoggingLevel::Warning)
-                .build()
-                .unwrap();
-            let next_env_ptr = G_ENV.env_ptr();
-            assert_ne!(next_env_ptr, prev_env_ptr);
-            prev_env_ptr = next_env_ptr;
+                .with_log_level(LoggingLevel::Warning);
 
-            assert_eq!(env.name(), name);
+            let builder = if let Some(ref path) = path {
+                builder.with_library_path(path)
+            } else {
+                builder
+            };
+
+            let env = builder.build().unwrap();
+            let next_env_ptr = env.env().env_ptr;
+            assert_eq!(next_env_ptr, prev_env_ptr);
+            prev_env_ptr = next_env_ptr;
         }
     }
 
     #[test]
     fn concurrent_environment_creations() {
-        let _concurrent_run_lock_guard = CONCURRENT_TEST_RUN.single_test_run();
-
         let initial_name = "concurrent_environment_creation";
-        let main_env = Environment::new(initial_name, LoggingLevel::Warning).unwrap();
-        let main_env_ptr = main_env.env().lock().unwrap().env_ptr as usize;
+
+        let path = var(ONNX_RUNTIME_LIBRARY_PATH).ok();
+
+        let main_env = Environment::new(initial_name, LoggingLevel::Warning, path.clone()).unwrap();
+        let main_env_ptr = main_env.env().env_ptr as usize;
 
         let children: Vec<_> = (0..10)
             .map(|t| {
+                let path = path.clone();
+
                 std::thread::spawn(move || {
                     let name = format!("concurrent_environment_creation: {}", t);
-                    let env = Environment::builder()
-                        .with_name(name)
-                        .with_log_level(LoggingLevel::Warning)
-                        .build()
-                        .unwrap();
+                    let builder = Environment::builder()
+                        .with_name(name.clone())
+                        .with_log_level(LoggingLevel::Warning);
 
-                    assert_eq!(env.name(), initial_name.to_string());
-                    assert_eq!(env.env().lock().unwrap().env_ptr as usize, main_env_ptr);
+                    let builder = if let Some(path) = path {
+                        builder.with_library_path(path)
+                    } else {
+                        builder
+                    };
+
+                    let env = builder.build().unwrap();
+
+                    assert_eq!(env.env().env_ptr as usize, main_env_ptr);
                 })
             })
             .collect();
 
-        assert_eq!(main_env.name(), initial_name);
-        assert_eq!(
-            main_env.env().lock().unwrap().env_ptr as usize,
-            main_env_ptr
-        );
+        assert_eq!(main_env.env().env_ptr as usize, main_env_ptr);
 
         let res: Vec<std::thread::Result<_>> = children
             .into_iter()

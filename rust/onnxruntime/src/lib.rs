@@ -27,26 +27,44 @@
 //!
 //! ```no_run
 //! # use std::error::Error;
+//! # use std::env::var;
 //! # use onnxruntime::{environment::Environment, LoggingLevel};
 //! # fn main() -> Result<(), Box<dyn Error>> {
-//! let environment = Environment::builder()
+//! # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+//!
+//! let builder = Environment::builder()
 //!     .with_name("test")
-//!     .with_log_level(LoggingLevel::Verbose)
-//!     .build()?;
-//! # Ok(())
-//! # }
+//!     .with_log_level(LoggingLevel::Warning);
+//!
+//!  let builder = if let Some(path) = path {
+//!     builder.with_library_path(path)
+//!  } else {
+//!     builder
+//!  };
+//!  let environment = builder.build()?;
+//!  Ok(())
+//!  }
 //! ```
 //!
 //! Then a [`Session`](session/struct.Session.html) is created from the environment, some options and an ONNX model file:
 //!
 //! ```no_run
 //! # use std::error::Error;
+//! # use std::env::var;
 //! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel};
 //! # fn main() -> Result<(), Box<dyn Error>> {
-//! # let environment = Environment::builder()
-//! #     .with_name("test")
-//! #     .with_log_level(LoggingLevel::Verbose)
-//! #     .build()?;
+//! # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+//! #
+//! # let builder = Environment::builder()
+//! #    .with_name("test")
+//! #    .with_log_level(LoggingLevel::Warning);
+//! #
+//! # let builder = if let Some(path) = path {
+//! #    builder.with_library_path(path)
+//! # } else {
+//! #    builder
+//! # };
+//! # let environment = builder.build()?;
 //! let mut session = environment
 //!     .new_session_builder()?
 //!     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
@@ -55,7 +73,6 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
 #![cfg_attr(
     feature = "model-fetching",
     doc = r##"
@@ -66,12 +83,22 @@ a model can be fetched directly from the [ONNX Model Zoo](https://github.com/onn
 
 ```no_run
 # use std::error::Error;
+# use std::env::var;
 # use onnxruntime::{environment::Environment, download::vision::ImageClassification, LoggingLevel, GraphOptimizationLevel};
 # fn main() -> Result<(), Box<dyn Error>> {
-# let environment = Environment::builder()
-#     .with_name("test")
-#     .with_log_level(LoggingLevel::Verbose)
-#     .build()?;
+# let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+#
+# let builder = Environment::builder()
+#    .with_name("test")
+#    .with_log_level(LoggingLevel::Warning);
+#
+# let builder = if let Some(path) = path {
+#    builder.with_library_path(path)
+# } else {
+#    builder
+# };
+# let environment = builder.build()?;
+
 let mut session = environment
     .new_session_builder()?
     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
@@ -90,12 +117,21 @@ to download.
 //!
 //! ```no_run
 //! # use std::error::Error;
+//! # use std::env::var;
 //! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel, tensor::construct::ConstructTensor};
 //! # fn main() -> Result<(), Box<dyn Error>> {
-//! # let environment = Environment::builder()
-//! #     .with_name("test")
-//! #     .with_log_level(LoggingLevel::Verbose)
-//! #     .build()?;
+//! # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
+//! #
+//! # let builder = Environment::builder()
+//! #    .with_name("test")
+//! #    .with_log_level(LoggingLevel::Warning);
+//! #
+//! # let builder = if let Some(path) = path {
+//! #    builder.with_library_path(path)
+//! # } else {
+//! #    builder
+//! # };
+//! # let environment = builder.build()?;
 //! # let mut session = environment
 //! #     .new_session_builder()?
 //! #     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
@@ -150,16 +186,6 @@ use sys::OnnxEnumInt;
 
 // Re-export ndarray as it's part of the public API anyway
 pub use ndarray;
-
-fn g_ort() -> sys::OrtApi {
-    let base = unsafe { sys::OrtGetApiBase() };
-
-    let api_version = sys::ORT_API_VERSION;
-
-    let api_ptr_mut = unsafe { (*base).GetApi.unwrap()(api_version) };
-
-    unsafe { *api_ptr_mut }
-}
 
 fn char_p_to_string(raw: *const i8) -> Result<String> {
     let c_string = unsafe { std::ffi::CStr::from_ptr(raw as *mut i8).to_owned() };
@@ -265,7 +291,7 @@ mod onnxruntime {
 }
 
 /// Logging level of the ONNX Runtime C API
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[cfg_attr(not(windows), repr(u32))]
 #[cfg_attr(windows, repr(i32))]
 pub enum LoggingLevel {
