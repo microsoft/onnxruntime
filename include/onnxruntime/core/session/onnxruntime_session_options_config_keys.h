@@ -47,7 +47,7 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "0"
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
-// It controls whether to enable Double QDQ remover and Indentical Children Consolidation
+// It controls whether to enable Double QDQ remover and Identical Children Consolidation
 // "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
 // "1": disable. ORT doesn't remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
 // Its default value is "0"
