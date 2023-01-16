@@ -126,13 +126,13 @@ class Benchmark:
         io_binding = self.create_io_binding(sess, input_tensors, output_tensors)
 
         # warm up
-        for iter in range(10):
+        for _ in range(10):
             sess.run_with_iobinding(io_binding)
 
         # measure
         max_iters = 100
         start_time = time.time()
-        for iter in range(max_iters):
+        for _ in range(max_iters):
             sess.run_with_iobinding(io_binding)
 
         # time is in milliseconds

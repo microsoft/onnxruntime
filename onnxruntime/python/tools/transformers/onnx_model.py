@@ -967,7 +967,7 @@ class OnnxModel:
 
         if output_path.endswith(".json"):  # Output text for testing small model.
             with open(output_path, "w") as out:
-                out.write(str(model))
+                out.write(str(self.model))
         else:
             OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
         logger.info(f"Model saved to {output_path}")

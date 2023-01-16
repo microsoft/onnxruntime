@@ -124,7 +124,7 @@ class OnnxRuntimeBackend(Backend):
                 raise RuntimeError("Incompatible device expected '{0}', got '{1}'".format(device, get_device()))
             return cls.prepare(inf, device, **kwargs)
         else:
-            # type: ModelProto
+            # ModelProto
             # check_model serializes the model anyways, so serialize the model once here
             # and reuse it below in the cls.prepare call to avoid an additional serialization
             # only works with onnx >= 1.10.0 hence the version check

@@ -48,7 +48,7 @@ class FusionShape(Fusion):
         input_name_to_nodes: Dict[str, List[NodeProto]],
         output_name_to_node: Dict[str, NodeProto],
     ):
-        """
+        r"""
         Smplify subgraph like
 
                    (2d_input)

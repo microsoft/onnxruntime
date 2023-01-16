@@ -130,9 +130,11 @@ try:
                 _, _, plat = _bdist_wheel.get_tag(self)
                 if platform.system() == "Linux":
                     # Get the right platform tag by querying the linker version
-                    glibc_major, glibc_minor = popen("ldd --version | head -1").read().split()[-1].split(".")
-                    """# See https://github.com/mayeut/pep600_compliance/blob/master/
-                    pep600_compliance/tools/manylinux-policy.json"""
+                    glibc_major, glibc_minor = (
+                        popen("ldd --version | head -1").read().split()[-1].split(".")  # noqa: DUO106
+                    )
+                    # See https://github.com/mayeut/pep600_compliance/blob/master/
+                    # pep600_compliance/tools/manylinux-policy.json
                     if glibc_major == "2" and glibc_minor == "17":
                         plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
                     else:  # For manylinux2014 and above, no alias is required

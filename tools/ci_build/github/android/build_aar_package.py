@@ -153,9 +153,11 @@ def _build_aar(args):
     use_shell = True if is_windows() else False
 
     # clean, build, and publish to a local directory
-    subprocess.run(gradle_command + ["clean"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["build"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["publish"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ["clean"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)  # noqa: DUO116
+    subprocess.run(gradle_command + ["build"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)  # noqa: DUO116
+    subprocess.run(
+        gradle_command + ["publish"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT
+    )  # noqa: DUO116
 
 
 def parse_args():
