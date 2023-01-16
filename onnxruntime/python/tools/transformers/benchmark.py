@@ -489,7 +489,7 @@ def run_tensorflow(
                     "Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length])
                 )
 
-                rng = random.Random()  # noqa: D102
+                rng = random.Random()  # noqa: DUO102
                 values = [rng.randint(0, config.vocab_size - 1) for i in range(batch_size * sequence_length)]
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
