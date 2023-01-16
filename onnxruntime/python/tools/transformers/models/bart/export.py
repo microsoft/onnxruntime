@@ -87,14 +87,14 @@ if __name__ == "__main__":
         )
 
     if not args.no_encoder:
-        logger.info(f"========== EXPORTING ENCODER ==========")
+        logger.info("========== EXPORTING ENCODER ==========")
         export_summarization_edinit.export_encoder(args)
     if not args.no_decoder:
-        logger.info(f"========== EXPORTING DECODER ==========")
+        logger.info("========== EXPORTING DECODER ==========")
         export_summarization_enc_dec_past.export_decoder(args)
     if not args.no_chain:
-        logger.info(f"========== CONVERTING MODELS ==========")
+        logger.info("========== CONVERTING MODELS ==========")
         chain_enc_dec_with_beamsearch.convert_model(args)
     if not args.no_inference:
-        logger.info(f"========== INFERENCING WITH ONNX MODEL ==========")
+        logger.info("========== INFERENCING WITH ONNX MODEL ==========")
         onnx_inference.run_inference(args)

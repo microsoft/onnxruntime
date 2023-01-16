@@ -7,7 +7,6 @@
 import logging
 import os
 
-import onnx
 import torch
 from transformers.modeling_utils import Conv1D
 

@@ -172,7 +172,7 @@ def get_onnx_file_path(
         filename = f"{normalized_model_name}_{input_count}_{precision}_{device}"
 
     if optimized_by_onnxruntime:
-        filename += f"_ort"
+        filename += "_ort"
 
     directory = onnx_dir
     # ONNXRuntime will not write external data so the raw and optimized models shall be in same directory.
@@ -268,7 +268,7 @@ def optimize_onnx_model(
 
 
 def modelclass_dispatcher(model_name, custom_model_class):
-    if custom_model_class != None:
+    if custom_model_class is not None:
         if custom_model_class in MODEL_CLASSES:
             return custom_model_class
         else:
@@ -279,11 +279,11 @@ def modelclass_dispatcher(model_name, custom_model_class):
 
     import re
 
-    if re.search("-squad$", model_name) != None:
+    if re.search("-squad$", model_name) is not None:
         return "AutoModelForQuestionAnswering"
-    elif re.search("-mprc$", model_name) != None:
+    elif re.search("-mprc$", model_name) is not None:
         return "AutoModelForSequenceClassification"
-    elif re.search("gpt2", model_name) != None:
+    elif re.search("gpt2", model_name) is not None:
         return "AutoModelWithLMHead"
 
     return "AutoModel"

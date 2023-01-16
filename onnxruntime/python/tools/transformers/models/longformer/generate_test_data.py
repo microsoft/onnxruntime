@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data

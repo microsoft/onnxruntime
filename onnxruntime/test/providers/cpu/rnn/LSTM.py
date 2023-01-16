@@ -3,7 +3,6 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from typing import Any, Tuple
 
 import numpy as np  # type: ignore
 
@@ -42,7 +41,7 @@ class LSTM_Helper:
         R = params["R"]
 
         num_directions = W.shape[0]
-        sequence_length = X.shape[0]
+        X.shape[0]
         batch_size = X.shape[1]
         hidden_size = R.shape[-1]
 
@@ -256,8 +255,6 @@ class LSTM:  # Base):
 
         print(LSTM.SimpleWeightsNoBiasTwoRows.__name__ + " direction=" + direction)
 
-        seq_length = 2
-        batch_size = 2
         input_size = 1
         hidden_size = 3
         number_of_gates = 4
@@ -395,7 +392,7 @@ class LSTM:  # Base):
         W = weight_scale * np.ones((1, number_of_gates * hidden_size, input_size)).astype(np.float32)
         R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
         B = np.zeros((1, 2 * number_of_gates * hidden_size)).astype(np.float32)
-        seq_lens = np.repeat(input.shape[0], input.shape[1]).astype(np.int32)
+        np.repeat(input.shape[0], input.shape[1]).astype(np.int32)
         init_h = np.zeros((1, input.shape[1], hidden_size)).astype(np.float32)
         init_c = np.zeros((1, input.shape[1], hidden_size)).astype(np.float32)
         P = weight_scale * np.ones((1, number_of_peepholes * hidden_size)).astype(np.float32)

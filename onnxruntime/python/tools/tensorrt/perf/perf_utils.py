@@ -1,11 +1,9 @@
 import json
-import logging
 import pprint
 import re
 import subprocess
 import sys
 
-import coloredlogs
 
 debug = False
 debug_verbose = False
@@ -122,7 +120,7 @@ def parse_single_file(f):
 
     try:
         data = json.load(f)
-    except Exception as e:
+    except Exception:
         return None
 
     model_run_flag = False
@@ -131,7 +129,7 @@ def parse_single_file(f):
     provider_op_map_first_run = {}  # ep -> map of operator to duration
 
     for row in data:
-        if not "cat" in row:
+        if "cat" not in row:
             continue
 
         if row["cat"] == "Session":
@@ -146,7 +144,7 @@ def parse_single_file(f):
             if "name" in row and "args" in row and re.search(".*kernel_time", row["name"]):
                 args = row["args"]
 
-                if not "op_name" in args or not "provider" in args:
+                if "op_name" not in args or "provider" not in args:
                     continue
 
                 provider = args["provider"]
@@ -172,7 +170,7 @@ def parse_single_file(f):
                     op_map = provider_op_map[provider]
 
                     # avoid duplicated metrics
-                    if not row["name"] in op_map:
+                    if row["name"] not in op_map:
                         op_map[row["name"]] = row["dur"]
                         provider_op_map[provider] = op_map
 

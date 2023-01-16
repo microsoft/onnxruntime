@@ -1,7 +1,5 @@
 import itertools
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray
-from .base_operator import QuantOperatorBase
 
 
 class QDQOperatorBase:

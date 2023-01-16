@@ -4,7 +4,6 @@ from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
-    BiasToQuantize,
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,

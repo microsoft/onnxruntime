@@ -9,7 +9,7 @@ import os
 import unittest
 
 import packaging.version
-from onnx import ModelProto, helper, version
+from onnx import helper, version
 from onnx.backend.base import Backend
 from onnx.checker import check_model
 
@@ -59,7 +59,7 @@ class OnnxRuntimeBackend(Backend):
                 domain = opset.domain if opset.domain else "ai.onnx"
                 try:
                     key = (domain, opset.version)
-                    if not (key in helper.OP_SET_ID_VERSION_MAP):
+                    if key not in helper.OP_SET_ID_VERSION_MAP:
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."

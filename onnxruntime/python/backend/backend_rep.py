@@ -5,7 +5,6 @@
 """
 Implements ONNX's backend API.
 """
-from typing import Any, Tuple
 
 from onnx.backend.base import BackendRep
 

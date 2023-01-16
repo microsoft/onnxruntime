@@ -647,7 +647,7 @@ class Gpt2Helper:
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: Gpt2Inputs, total_runs: int = 0):
         """Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs."""
-        logger.debug(f"start onnxruntime_inference")
+        logger.debug("start onnxruntime_inference")
 
         ort_inputs = {"input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())}
 
@@ -715,7 +715,7 @@ class Gpt2Helper:
         include_copy_output_latency: bool = False,
     ):
         """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0."""
-        logger.debug(f"start onnxruntime_inference_with_binded_io")
+        logger.debug("start onnxruntime_inference_with_binded_io")
 
         # Bind inputs and outputs to onnxruntime session
         io_binding = Gpt2Helper.prepare_io_binding(

@@ -1,8 +1,7 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
-from .qdq_base_operator import QDQOperatorBase
 
 
 class QLinearConcat(QuantOperatorBase):

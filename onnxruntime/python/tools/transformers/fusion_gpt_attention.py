@@ -7,7 +7,7 @@ from logging import getLogger
 import numpy as np
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -331,7 +331,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
         # (2) SkipLayerNorm fusion was turned ON but upstream layer's LayerNorm + Add was not
         # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
         # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
-        if another_input is not None and not another_input in layernorm_before_attention.input:
+        if another_input is not None and another_input not in layernorm_before_attention.input:
             logger.debug("Upstream Add and (Skip)LayerNormalization shall have one same input")
             return
 

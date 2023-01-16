@@ -1,6 +1,4 @@
-from enum import Enum
 
-import numpy as np
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
 

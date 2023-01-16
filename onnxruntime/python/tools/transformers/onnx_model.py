@@ -526,7 +526,7 @@ class OnnxModel:
         """Remove cast nodes that are not needed: input and output has same data type."""
         shape_infer = self.infer_runtime_shape(update=True)
         if shape_infer is None:
-            logger.info(f"Skip removing useless cast nodes since shape inference failed.")
+            logger.info("Skip removing useless cast nodes since shape inference failed.")
             return
 
         def get_data_type(input_or_output_name):
@@ -734,7 +734,7 @@ class OnnxModel:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
         """
         if len(self.graphs()) > 1:
-            logger.debug(f"Skip prune_graph since graph has subgraph")
+            logger.debug("Skip prune_graph since graph has subgraph")
             return
 
         if outputs is None:
@@ -960,7 +960,7 @@ class OnnxModel:
             save_model(model, output_path)
 
     def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
-        logger.info(f"Sort graphs in topological order")
+        logger.info("Sort graphs in topological order")
         self.topological_sort()
 
         if output_path.endswith(".json"):  # Output text for testing small model.

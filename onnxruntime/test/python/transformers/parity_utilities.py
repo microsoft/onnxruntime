@@ -48,7 +48,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
 
     input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)
     with torch.no_grad():
-        outputs = model(input_hidden_states)
+        model(input_hidden_states)
 
     dynamic_axes = {
         "input": {0: "batch_size", 1: "seq_len"},
@@ -132,7 +132,6 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
 
 def create_ort_session(onnx_model_path, use_gpu=True):
     from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-    from onnxruntime import __version__ as onnxruntime_version
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL

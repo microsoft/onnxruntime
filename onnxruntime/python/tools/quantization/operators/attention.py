@@ -1,5 +1,4 @@
 import onnx
-from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase

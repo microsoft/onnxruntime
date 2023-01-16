@@ -76,7 +76,7 @@ def get_default_provider():
 
 class Benchmark:
     def __init__(self, model, inputs, outputs, args):
-        self.provider = get_default_provider() if args.provider == None else provider_name(args.provider)
+        self.provider = get_default_provider() if args.provider is None else provider_name(args.provider)
         logger.info(f"Execution provider: {self.provider}")
         self.profiling = args.profiling
         self.model = model

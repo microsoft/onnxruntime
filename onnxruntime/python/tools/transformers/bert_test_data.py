@@ -317,7 +317,7 @@ def find_bert_inputs(
                 if "mask" in input_name_lower:
                     input_mask = input
         if input_mask is None:
-            raise ValueError(f"Failed to find attention mask input")
+            raise ValueError("Failed to find attention mask input")
 
         return input_ids, segment_ids, input_mask
 

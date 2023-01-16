@@ -450,7 +450,8 @@ def run_parity(task: ParityTask, args):
     # Mixed precision baseline
     run_candidate(task, args, last_matmul_node_name, op_block_list=[])
 
-    get_fp32_ops = lambda x: [op for op in x if op in all_ops]
+    def get_fp32_ops(x):
+        return [op for op in x if op in all_ops]
 
     if args.all:
         run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops)

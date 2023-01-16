@@ -1,4 +1,3 @@
-from enum import Enum
 
 import onnx
 from onnx import TensorProto, helper

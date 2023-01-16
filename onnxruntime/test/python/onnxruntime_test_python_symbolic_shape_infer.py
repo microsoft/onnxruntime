@@ -5,7 +5,7 @@ import os
 
 # -*- coding: UTF-8 -*-
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper
+from onnx import TensorProto, helper
 
 if os.path.exists(
     os.path.join(

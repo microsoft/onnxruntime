@@ -10,12 +10,9 @@
 import argparse
 import logging
 import os
-import re
 import sys
 import tempfile
-from collections import deque
 from datetime import datetime
-from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -73,7 +70,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         """
         Returns a list of shape input names of Reshape nodes.
         """
-        output_name_to_node = self.output_name_to_node()
+        self.output_name_to_node()
 
         shape_inputs = []
         for node in self.model.graph.node:

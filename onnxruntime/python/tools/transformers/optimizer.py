@@ -99,7 +99,7 @@ def optimize_by_onnxruntime(
         kwargs["disabled_optimizers"] = disabled_optimizers
 
     if not use_gpu:
-        session = onnxruntime.InferenceSession(
+        onnxruntime.InferenceSession(
             onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs
         )
     else:
@@ -111,7 +111,7 @@ def optimize_by_onnxruntime(
             gpu_ep.append("MIGraphXExecutionProvider")
             gpu_ep.append("ROCMExecutionProvider")
 
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
+        onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
         assert not set(onnxruntime.get_available_providers()).isdisjoint(
             ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
@@ -408,7 +408,7 @@ def main():
     logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
-        logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
+        logger.warning("Specified the same input and output path. Note that this may overwrite the original model")
 
     optimization_options = FusionOptions.parse(args)
 

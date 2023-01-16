@@ -42,7 +42,6 @@ class WarmupLinearSchedule(LambdaLR):
 def main():
     """Main entry."""
     num_training_steps = 100
-    seed = 8888
     device = "cuda"
     batch_size, dimension_in, dimension_hidden = 2, 2, 3
 

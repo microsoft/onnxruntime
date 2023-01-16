@@ -265,7 +265,7 @@ def my_longformer_self_attention_forward_4_3(
     is_global_attn=None,
     output_attentions=False,
 ):
-    assert output_attentions == False
+    assert output_attentions is False
     return my_longformer_self_attention_forward_4(
         self,
         hidden_states,
@@ -287,7 +287,7 @@ def my_longformer_self_attention_forward_4_3_2(
     is_global_attn=None,
     output_attentions=False,
 ):
-    assert output_attentions == False
+    assert output_attentions is False
     assert layer_head_mask is None
     return my_longformer_self_attention_forward_4(
         self,

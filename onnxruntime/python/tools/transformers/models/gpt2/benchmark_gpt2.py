@@ -405,7 +405,7 @@ def main(args):
                         }
                         csv_writer.writerow(row)
                     except:
-                        logger.error(f"Exception", exc_info=True)
+                        logger.error("Exception", exc_info=True)
                         return None
 
     logger.info(f"Results are saved to file {csv_filename}")

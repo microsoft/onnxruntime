@@ -1,6 +1,5 @@
 import logging
 
-import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
@@ -9,11 +8,8 @@ from ..quant_utils import (
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
-    find_by_name,
-    get_mul_node,
     ms_domain,
 )
-from .base_operator import QuantOperatorBase
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
 

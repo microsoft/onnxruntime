@@ -1453,7 +1453,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             args.decoder_onnx, args.use_external_data_format
         ):
             # Can't proceed further - better to raise an exception
-            raise ValueError(f"Could not update the input shapes for the non-initial decoder subgraph.")
+            raise ValueError("Could not update the input shapes for the non-initial decoder subgraph.")
 
     # If the user explicitly requests running shape inference or if we padded/mutated
     # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new

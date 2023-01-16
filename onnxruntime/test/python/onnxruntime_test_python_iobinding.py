@@ -43,7 +43,7 @@ class TestIOBinding(unittest.TestCase):
         return np.array([[2.0, 8.0], [18.0, 32.0], [50.0, 72.0]], dtype=np.float32)
 
     def test_bind_input_to_cpu_arr(self):
-        input = self.create_numpy_input()
+        self.create_numpy_input()
 
         session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()

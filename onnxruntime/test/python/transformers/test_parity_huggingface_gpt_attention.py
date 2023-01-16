@@ -19,7 +19,7 @@ import onnx
 import pytest
 import torch
 from onnx import helper
-from parity_utilities import compare_outputs, create_ort_session, diff_outputs
+from parity_utilities import compare_outputs, create_ort_session
 from torch import nn
 from transformers.modeling_utils import Conv1D
 
@@ -219,7 +219,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
     )
 
     with torch.no_grad():
-        outputs = model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
+        model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
 
     dynamic_axes = {
         "input_hidden_states": {0: "batch_size", 1: "seq_len"},

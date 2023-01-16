@@ -1,13 +1,8 @@
-import argparse
-import copy
-import csv
 import json
-import logging
 import os
 import pprint
 import re
 
-import coloredlogs
 from benchmark import *
 from perf_utils import *
 

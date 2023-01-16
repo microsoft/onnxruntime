@@ -121,7 +121,7 @@ class FusionUtils:
         Returns:
             bool: whether the check is passed or not
         """
-        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+        if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         scale = model.get_constant_value(node.input[1])

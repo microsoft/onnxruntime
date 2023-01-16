@@ -29,7 +29,6 @@ class GRU_Helper:
             assert i in params, "Missing Required Input: {0}".format(i)
 
         num_directions = params["W"].shape[0]
-        sequence_length = params["X"].shape[0]
 
         hidden_size = params["R"].shape[-1]
         batch_size = params["X"].shape[1]
@@ -138,7 +137,6 @@ class OneDirectionGRU:
         # print_with_shape("r_br", r_br)
         # print_with_shape("r_bh", r_bh)
 
-        seq_len = self.X.shape[0]
         num_directions = 1
         hidden_size = self.R.shape[-1]
         batch_size = self.X.shape[1]
@@ -249,8 +247,6 @@ class GRU_ONNXRuntimeUnitTests:
 
         print(GRU_ONNXRuntimeUnitTests.ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows.__name__)
 
-        seq_length = 2
-        batch_size = 2
         input_size = 1
         hidden_size = 3
         input = np.array([[[1.0], [2.0]], [[10.0], [11.0]]]).astype(np.float32)
@@ -273,8 +269,6 @@ class GRU_ONNXRuntimeUnitTests:
             + str(linear_before_reset)
         )
 
-        seq_length = 2
-        batch_size = 3 if linear_before_reset else 2
         input_size = 1
         hidden_size = 3
 

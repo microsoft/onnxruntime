@@ -45,16 +45,13 @@ import logging
 import os
 import timeit
 from datetime import datetime
-from enum import Enum
 
 import numpy
-import onnx
 import psutil
 from benchmark_helper import (
     ConfigModifier,
     OptimizerInfo,
     Precision,
-    allocateOutputBuffers,
     create_onnxruntime_session,
     get_latency_result,
     inference_ort,
@@ -84,7 +81,7 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch
-from transformers import AutoConfig, AutoModel, AutoTokenizer, GPT2Model, LxmertConfig
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig
 
 
 def run_onnxruntime(
@@ -864,7 +861,7 @@ def main():
                     args,
                 )
             except:
-                logger.error(f"Exception", exc_info=True)
+                logger.error("Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

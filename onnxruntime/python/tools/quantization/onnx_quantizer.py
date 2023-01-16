@@ -114,7 +114,7 @@ class ONNXQuantizer:
 
         self.opset_version = self.check_opset_version()
 
-        if not self.mode in QuantizationMode:
+        if self.mode not in QuantizationMode:
             raise ValueError("unsupported quantization mode {}".format(self.mode))
 
         self.quantization_params = self.calculate_quantization_params()

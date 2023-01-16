@@ -3,14 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import argparse
 import logging
-import sys
-from collections import deque
 
-import numpy as np
 import onnx
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
 
 logger = logging.getLogger(__name__)
@@ -61,7 +57,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         return True, reshape_nodes
 
     def fuse_attention(self):
-        input_name_to_nodes = self.input_name_to_nodes()
+        self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
@@ -227,11 +223,9 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         self.skip_reshape()
 
     def skip_reshape(self):
-        input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_node = self.output_name_to_node()
+        self.input_name_to_nodes()
+        self.output_name_to_node()
 
-        nodes_to_remove = []
-        attention_count = 0
 
         count = 0
         reshape_nodes = self.get_nodes_by_op_type("Reshape")

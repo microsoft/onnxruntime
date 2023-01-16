@@ -26,7 +26,6 @@ The input model is generated like the following (need install keras2onnx from so
 import argparse
 import os
 import random
-import sys
 import timeit
 from pathlib import Path
 
@@ -302,7 +301,7 @@ class TinyBertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        dynamic_batch_inputs = {}
+        {}
         for input in self.model.graph.input:
             dim_proto = input.type.tensor_type.shape.dim[0]
             dim_proto.dim_param = dynamic_batch_dim
@@ -355,7 +354,7 @@ def generate_test_data(
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess = onnxruntime.InferenceSession(onnx_file, sess_options, providers=["CPUExecutionProvider"])
 
-        input1_name = sess.get_inputs()[0].name
+        sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]
         inputs = {
             "input_ids": input_1,

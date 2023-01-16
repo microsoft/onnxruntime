@@ -385,7 +385,7 @@ class SymbolicShapeInference:
                     else sympy.Symbol(d, integer=True, nonnegative=True)
                 )
             else:
-                assert None != d
+                assert None is not d
                 sympy_shape.append(d)
         return sympy_shape
 
@@ -412,7 +412,7 @@ class SymbolicShapeInference:
                     new_sympy_shape[i] = self.symbolic_dims_[self.suggested_merge_[str_dim]]
                 else:
                     # add new_dim if it's a computational expression
-                    if not str(new_dim) in self.symbolic_dims_:
+                    if str(new_dim) not in self.symbolic_dims_:
                         self.symbolic_dims_[str(new_dim)] = new_dim
 
     def _onnx_infer_single_node(self, node):
@@ -481,7 +481,7 @@ class SymbolicShapeInference:
         # for example, with Scan/Loop, subgraph input shape would be trimmed from node input shape
         # besides, inputs in subgraph could shadow implicit inputs
         subgraph_inputs = set([i.name for i in list(subgraph.initializer) + list(subgraph.input)])
-        subgraph_implicit_input = set([name for name in self.known_vi_.keys() if not name in subgraph_inputs])
+        subgraph_implicit_input = set([name for name in self.known_vi_.keys() if name not in subgraph_inputs])
         tmp_graph = helper.make_graph(
             list(subgraph.node),
             "tmp",
@@ -502,11 +502,10 @@ class SymbolicShapeInference:
         if inc_subgraph_id:
             self.subgraph_id_ += 1
 
-        all_shapes_inferred = False
         symbolic_shape_inference._preprocess(self.tmp_mp_)
         symbolic_shape_inference.suggested_merge_ = self.suggested_merge_.copy()
         while symbolic_shape_inference.run_:
-            all_shapes_inferred = symbolic_shape_inference._infer_impl(self.sympy_data_.copy())
+            symbolic_shape_inference._infer_impl(self.sympy_data_.copy())
         symbolic_shape_inference._update_output_from_vi()
         if use_node_input:
             # if subgraph uses node input, it needs to update to merged dims
@@ -521,7 +520,7 @@ class SymbolicShapeInference:
         # for new symbolic dims from subgraph output, add to main graph symbolic dims
         subgraph_shapes = [get_shape_from_value_info(o) for o in symbolic_shape_inference.out_mp_.graph.output]
         subgraph_new_symbolic_dims = set(
-            [d for s in subgraph_shapes if s for d in s if type(d) == str and not d in self.symbolic_dims_]
+            [d for s in subgraph_shapes if s for d in s if type(d) == str and d not in self.symbolic_dims_]
         )
         new_dims = {}
         for d in subgraph_new_symbolic_dims:
@@ -793,7 +792,7 @@ class SymbolicShapeInference:
         # create a new symbolic dimension for Compress output
         compress_len = str(self._new_symbolic_dim_from_output(node))
         axis = get_attribute(node, "axis")
-        if axis == None:
+        if axis is None:
             # when axis is not specified, input is flattened before compress so output is 1D
             output_shape = [compress_len]
         else:
@@ -1028,7 +1027,7 @@ class SymbolicShapeInference:
         data_shape = self._get_shape(node, 0)
         data_rank = len(data_shape)
         indices_shape = self._get_shape(node, 1)
-        indices_rank = len(indices_shape)
+        len(indices_shape)
         last_index_dimension = indices_shape[-1]
         assert is_literal(last_index_dimension) and last_index_dimension <= data_rank
         new_shape = indices_shape[:-1] + data_shape[last_index_dimension:]
@@ -1881,7 +1880,7 @@ class SymbolicShapeInference:
         else:
             k = self._get_int_values(node)[1]
 
-        if k == None:
+        if k is None:
             k = self._new_symbolic_dim_from_output(node)
         else:
             k = as_scalar(k)
@@ -2350,7 +2349,7 @@ class SymbolicShapeInference:
                         self.run_ = False
 
                     # create new dynamic dims for ops not handled by symbolic shape inference
-                    if self.run_ == False and not node.op_type in self.dispatcher_ and not known_aten_op:
+                    if self.run_ is False and node.op_type not in self.dispatcher_ and not known_aten_op:
                         is_unknown_op = out_type_undefined and (out_shape is None or len(out_shape) == 0)
                         if is_unknown_op:
                             # unknown op to ONNX, maybe from higher opset or other domain

@@ -9,9 +9,8 @@ import argparse
 import json
 import logging
 import platform
-import sys
 from os import environ
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List
 
 import cpuinfo
 import psutil
