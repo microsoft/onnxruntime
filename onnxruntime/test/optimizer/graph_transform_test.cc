@@ -3572,10 +3572,10 @@ TEST_F(GraphTransformationTests, DoubleQDQRemover_SessionOptionConfig) {
   // DoubleQDQPairsRemover is enabled by default.
   verify_session_config(true, session_options);
 
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableDoubleQDQRemover, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableDoubleQDQRemover, "1"));
   verify_session_config(false, session_options);
 
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableDoubleQDQRemover, "0"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableDoubleQDQRemover, "0"));
   verify_session_config(true, session_options);
 }
 
