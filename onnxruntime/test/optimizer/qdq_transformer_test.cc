@@ -766,17 +766,17 @@ TEST(QDQTransformerTests, Gather) {
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
-  const uint8_t good_u8_1 = 80;
-  const uint8_t good_u8_2 = 40;
-  const uint8_t bad_u8 = 13;
+  constexpr uint8_t good_u8_1 = 80;
+  constexpr uint8_t good_u8_2 = 40;
+  constexpr uint8_t bad_u8 = 13;
 
-  const int8_t good_s8_1 = 99;
-  const int8_t good_s8_2 = -112;
-  const int8_t bad_s8 = 42;
+  constexpr int8_t good_s8_1 = 99;
+  constexpr int8_t good_s8_2 = -112;
+  constexpr int8_t bad_s8 = 42;
 
-  const float good_float_point_1 = 4.0f;
-  const float good_float_point_2 = 8.0f;
-  const float bad_float_point = 1.11f;
+  constexpr float good_float_point_1 = 4.0f;
+  constexpr float good_float_point_2 = 8.0f;
+  constexpr float bad_float_point = 1.11f;
 
   std::function<void(InferenceSessionWrapper & session)> expect_succeed = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
