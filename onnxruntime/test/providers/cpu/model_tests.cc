@@ -265,15 +265,19 @@ TEST_P(ModelTest, Run) {
       {"SSD-int8", "failed in training", {"opset12"}},
       {"VGG 16-int8", "failed in training", {"opset12"}},
       {"YOLOv3-12-int8", "failed in training", {"opset12"}},
-      if (provider_name == "cpu") {
-        {"shufflenetv212qdq", "failed in orttraing-linux-gpu, TRT8.5 with V100, but it's a cpu test?", {"opset12"}},
-      }
-      if (provider_name == "cuda") {
-        broken_tests.insert({"LSTM_Seq_lens_unpacked", "failed in orttraing-linux-gpu, TRT8.5 with V100.", {"opset12"}});
-        broken_tests.insert({"bidaf", "failed in orttraing-linux-gpu, TRT8.5 with V100.", {"opset12"}});
-      }
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
+
+#ifdef ENABLE_TRAINING_CORE
+  // They only failed in orttraining-iinux-gpu-ci-pipelie with TRT8.5
+  if (provider_name == "cpu") {
+    broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100, but it's a cpu test?", {"opset12"}});
+  }
+  if (provider_name == "cuda") {
+    broken_tests.insert({"GoogleNet-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
+    broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
+  }
+#endif
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
