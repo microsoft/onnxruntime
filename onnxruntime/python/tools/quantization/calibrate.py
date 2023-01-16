@@ -81,7 +81,7 @@ class CalibraterBase:
         self.infer_session = None
         self.execution_providers = ["CPUExecutionProvider"]
 
-    def set_execution_providers(self, execution_providers=["CPUExecutionProvider"]):
+    def set_execution_providers(self, execution_providers=("CPUExecutionProvider",)):
         """
         reset the execution providers to execute the collect_data. It triggers to re-creating inference session.
         """
@@ -847,9 +847,9 @@ def create_calibrator(
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,
-    extra_options={},
+    extra_options=None,
 ):
-
+    extra_options = extra_options or {}
     calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm

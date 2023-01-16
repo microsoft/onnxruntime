@@ -330,8 +330,9 @@ def run_candidate(
     task: ParityTask,
     args,
     last_matmul_node_name,
-    op_block_list=["FastGelu", "LayerNormalization"],
+    op_block_list=("FastGelu", "LayerNormalization"),
 ):
+    op_block_list = list(op_block_list)
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
     op_block_list_str = ",".join(sorted(op_block_list))
 

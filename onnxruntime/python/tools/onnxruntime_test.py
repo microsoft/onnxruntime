@@ -29,7 +29,8 @@ integer_dict = {
 }
 
 
-def generate_feeds(sess, symbolic_dims={}):
+def generate_feeds(sess, symbolic_dims=None):
+    symbolic_dims = symbolic_dims or {}
     feeds = {}
     for input_meta in sess.get_inputs():
         # replace any symbolic dimensions
@@ -67,10 +68,11 @@ def run_model(
     num_iters=1,
     debug=None,
     profile=None,
-    symbolic_dims={},
+    symbolic_dims=None,
     feeds=None,
     override_initializers=True,
 ):
+    symbolic_dims = symbolic_dims or {}
     if debug:
         print("Pausing execution ready for debugger to attach to pid: {}".format(os.getpid()))
         print("Press key to continue.")

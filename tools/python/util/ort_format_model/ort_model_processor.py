@@ -25,7 +25,7 @@ class OrtFormatModelProcessor:
         self._op_type_processors = processors
 
     @staticmethod
-    def _setup_type_info(graph: fbs.Graph, outer_scope_value_typeinfo={}):
+    def _setup_type_info(graph: fbs.Graph, outer_scope_value_typeinfo=None):
         """
         Setup the node args for this level of Graph.
         We copy the current list which represents the outer scope values, and add the local node args to that
@@ -34,6 +34,7 @@ class OrtFormatModelProcessor:
         :param outer_scope_value_typeinfo: TypeInfo for outer scope values. Empty for the top-level graph in a model.
         :return: Dictionary of NodeArg name to TypeInfo
         """
+        outer_scope_value_typeinfo = outer_scope_value_typeinfo or {}
         value_name_to_typeinfo = outer_scope_value_typeinfo.copy()
         for j in range(0, graph.NodeArgsLength()):
             n = graph.NodeArgs(j)

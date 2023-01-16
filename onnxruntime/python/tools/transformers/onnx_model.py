@@ -31,7 +31,8 @@ class OnnxModel:
     def disable_shape_inference(self):
         self.enable_shape_infer = False
 
-    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+    def infer_runtime_shape(self, dynamic_axis_mapping=None, update=False):
+        dynamic_axis_mapping = dynamic_axis_mapping or {}
         if self.enable_shape_infer:
             if self.shape_infer_helper is None or update:
                 self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
@@ -233,7 +234,7 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):
+    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=()):
         """
         Find parent node based on constraints on op_type.
 
@@ -262,7 +263,7 @@ class OnnxModel:
         parent_op_type,
         input_index=None,
         output_name_to_node=None,
-        exclude=[],
+        exclude=None,
         return_indice=None,
     ):
         """
@@ -280,6 +281,7 @@ class OnnxModel:
         Returns:
             parent: The matched parent node.
         """
+        exclude = exclude or []
         assert node is not None
         assert input_index is None or input_index >= 0
 

@@ -245,8 +245,8 @@ class QuantizedInitializer:
         rmaxs,
         zero_points,
         scales,
-        data=[],
-        quantized_data=[],
+        data=None,
+        quantized_data=None,
         axis=None,
     ):
         self.name = name
@@ -256,8 +256,8 @@ class QuantizedInitializer:
         # 1D tensor of zero points computed for each axis. scalar if axis is empty
         self.zero_points = zero_points
         self.scales = scales  # 1D tensor of scales computed for each axis. scalar if axis is empty
-        self.data = data  # original data from initializer TensorProto
-        self.quantized_data = quantized_data  # weight-packed data from data
+        self.data = data or []  # original data from initializer TensorProto
+        self.quantized_data = quantized_data or []  # weight-packed data from data
         # Scalar to specify which dimension in the initializer to weight pack.
         self.axis = axis
         # If empty, single zero point and scales computed from a single rmin and rmax

@@ -986,7 +986,7 @@ class Gpt2Helper:
         model_class: str = "GPT2LMHeadModel",
         has_past=True,
         new_folder=False,
-        remove_existing=["raw", "fp32", "fp16", "int8"],
+        remove_existing=frozenset(["raw", "fp32", "fp16", "int8"]),
     ):
         """Build a  path name for given model based on given attributes."""
         model_name = model_name_or_path
