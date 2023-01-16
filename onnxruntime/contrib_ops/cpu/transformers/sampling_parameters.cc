@@ -21,6 +21,14 @@ void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) {
   vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
 }
 
+void SamplingParameters::ParseFromInputs(OpKernelContext* context) {
+  this->GreedySearchParameters::ParseFromInputs(context);
+
+  auto* seed_tensor = context->Input<Tensor>(8);
+  seed = seed_tensor ? static_cast<int>(*seed_tensor->Data<int32_t>()) : 0;
+  ORT_ENFORCE(seed >= 0, "Seed must be >= 0");
+}
+
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

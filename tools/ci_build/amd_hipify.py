@@ -123,7 +123,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # NCCL -> RCCL
     # s = s.replace('NCCL_CALL', 'RCCL_CALL')
-    s = s.replace("#include <nccl.h>", "#include <rccl.h>")
+    s = s.replace("#include <nccl.h>", "#include <rccl/rccl.h>")
 
     # CUDNN -> MIOpen
     s = s.replace("CUDNN", "MIOPEN")
@@ -160,6 +160,11 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # Deletions
     s = s.replace('#include "device_atomic_functions.h"', "")  # HIP atomics in main hip header already
+
+    # Fix warnings due to incorrect header paths, intentionally after all other hipify steps.
+    s = s.replace("#include <hiprand_kernel.h>", "#include <hiprand/hiprand_kernel.h>")
+    s = s.replace("#include <rocblas.h>", "#include <rocblas/rocblas.h>")
+    s = s.replace("#include <hipblas.h>", "#include <hipblas/hipblas.h>")
 
     with open(dst_file_path, "w") as f:
         f.write(s)

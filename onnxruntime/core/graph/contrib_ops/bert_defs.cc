@@ -198,9 +198,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Corresponding past and present are same tensor, its size is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT,
-              static_cast<int64_t>(0))
+              OPTIONAL_VALUE)
         .Attr("mask_filter_value",
-              "The value to be filled in the attention mask. Default value is negative infinity",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Input(0,

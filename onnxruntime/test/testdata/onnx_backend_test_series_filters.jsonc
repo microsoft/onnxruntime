@@ -127,7 +127,6 @@
         "^test_constant_pad_cpu",
         "^test_edge_pad_cpu",
         "^test_reflect_pad_cpu",
-        "^test_resize_*",
         "^test_scatter_elements_*",
         "^test_softplus_example_expanded_cpu",
         "^test_softplus_expanded_cpu",
