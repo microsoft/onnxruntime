@@ -774,9 +774,9 @@ TEST(QDQTransformerTests, DoubleQDQ) {
   const int8_t good_s8_2 = -112;
   const int8_t bad_s8 = 42;
 
-  const float good_float_point_1 = 4.0;
-  const float good_float_point_2 = 8.0;
-  const float bad_float_point = 1.11;
+  const float good_float_point_1 = 4.0f;
+  const float good_float_point_2 = 8.0f;
+  const float bad_float_point = 1.11f;
 
   std::function<void(InferenceSessionWrapper & session)> expect_succeed = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
