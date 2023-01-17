@@ -15,7 +15,7 @@ from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
 from . import _logger
-from ._fallback import ORTModuleONNXModelException, wrap_exception
+from ._fallback_exceptions import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
 # If CheckpointFunction is exported as PythonOp, the checkpointed computation

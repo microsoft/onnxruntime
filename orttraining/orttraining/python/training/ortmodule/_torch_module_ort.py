@@ -8,7 +8,8 @@ from typing import Callable, Iterator, Optional, Tuple, TypeVar
 import torch
 
 from . import _io, _utils
-from ._fallback import ORTModuleTorchModelException, _FallbackManager, wrap_exception
+from ._fallback import _FallbackManager
+from ._fallback_exceptions import ORTModuleTorchModelException, wrap_exception
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
 from .debug_options import DebugOptions

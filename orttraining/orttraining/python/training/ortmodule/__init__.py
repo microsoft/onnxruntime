@@ -13,7 +13,8 @@ from packaging import version
 from onnxruntime import set_seed
 from onnxruntime.capi import build_and_package_info as ort_info
 
-from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _FallbackPolicy, wrap_exception
+from ._fallback import _FallbackPolicy
+from ._fallback_exceptions import ORTModuleFallbackException, ORTModuleInitException, wrap_exception
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 
@@ -86,7 +87,7 @@ if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and "-m" not i
         ),
     )
 
-# Initalized ORT's random seed with pytorch's initial seed
+# Initialize ORT's random seed with pytorch's initial seed
 # in case user has set pytorch seed before importing ORTModule
 set_seed((torch.initial_seed() % sys.maxsize))
 

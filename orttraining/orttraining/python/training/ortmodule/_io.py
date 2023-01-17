@@ -11,7 +11,7 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
+from ._fallback_exceptions import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._utils import warn_of_constant_inputs
 
 

@@ -13,7 +13,8 @@ from onnxruntime.training import ortmodule
 from . import _utils
 from ._custom_gradient_registry import CustomGradientRegistry
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
-from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._fallback import _FallbackManager, _FallbackPolicy
+from ._fallback_exceptions import ORTModuleFallbackException
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from .debug_options import DebugOptions

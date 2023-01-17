@@ -12,7 +12,8 @@ from onnxruntime.capi import _pybind_state as C
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
-from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._fallback import _FallbackManager, _FallbackPolicy
+from ._fallback_exceptions import ORTModuleFallbackException
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
 from .debug_options import DebugOptions
 

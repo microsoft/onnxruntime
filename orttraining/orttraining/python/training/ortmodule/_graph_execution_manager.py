@@ -23,11 +23,11 @@ from onnxruntime.training import ortmodule
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
-from ._fallback import (
+from ._fallback import _FallbackManager
+from ._fallback_exceptions import (
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
-    _FallbackManager,
     wrap_exception,
 )
 from ._gradient_accumulation_manager import GradientAccumulationManager

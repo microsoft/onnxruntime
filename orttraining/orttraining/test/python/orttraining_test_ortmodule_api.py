@@ -28,15 +28,7 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import (
-    DebugOptions,
-    LogLevel,
-    ORTModule,
-    _fallback,
-    _graph_execution_manager,
-    _io,
-    _utils,
-)
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, _fallback, _graph_execution_manager, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 
 DEFAULT_OPSET = 15
