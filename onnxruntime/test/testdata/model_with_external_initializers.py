@@ -1,14 +1,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
+from typing import Any, List
+
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
+from onnx import helper
 from onnx.external_data_helper import set_external_data
 from onnx.numpy_helper import from_array
 
 
-def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) -> TensorProto
+def create_external_data_tensor(value, tensor_name):  # type: (List[Any], str) -> onnx.TensorProto
     tensor = from_array(np.array(value))
     tensor.name = tensor_name
     tensor_filename = "{}.bin".format(tensor_name)
@@ -23,13 +26,13 @@ def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) 
 
 def GenerateModel(model_name):
     # Create one input (ValueInfoProto)
-    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2])
+    X = helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [1, 2])
 
     # Create second input (ValueInfoProto)
-    Pads = helper.make_tensor_value_info("Pads", TensorProto.INT64, [4])
+    Pads = helper.make_tensor_value_info("Pads", onnx.TensorProto.INT64, [4])
 
     # Create one output (ValueInfoProto)
-    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 4])
+    Y = helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 4])
 
     # Create a node (NodeProto)
     node_def = helper.make_node(

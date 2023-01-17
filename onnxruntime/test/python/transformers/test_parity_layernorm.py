@@ -12,7 +12,7 @@ import parity_utilities
 import torch
 from torch import nn
 
-if find_transformers_source():
+if parity_utilities.find_transformers_source():
     from onnx_model import OnnxModel
 else:
     from onnxruntime.transformers.onnx_model import OnnxModel
