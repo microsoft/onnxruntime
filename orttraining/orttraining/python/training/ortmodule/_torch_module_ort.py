@@ -147,7 +147,7 @@ class TorchModuleORT(TorchModuleInterface):
             ),
         )
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["torch.nn.Module"]) -> None:
         raise wrap_exception(
             ORTModuleTorchModelException, NotImplementedError("ORTModule does not support adding modules to it.")
         )
