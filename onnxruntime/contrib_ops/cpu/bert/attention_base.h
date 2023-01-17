@@ -37,6 +37,7 @@ class AttentionBase {
     num_heads_ = static_cast<int>(num_heads);
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+    mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
     if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
       qkv_hidden_sizes_.clear();
@@ -68,6 +69,7 @@ class AttentionBase {
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
+  float mask_filter_value_;                // the value to be used for filtered out positions
 };
 
 }  // namespace contrib
