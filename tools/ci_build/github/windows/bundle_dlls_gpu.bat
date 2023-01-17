@@ -10,9 +10,6 @@ FOR /R %%i IN (*.zip) do (
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_tensorrt.dll !filename!\lib\onnxruntime_providers_tensorrt.dll
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_tensorrt.lib !filename!\lib\onnxruntime_providers_tensorrt.lib
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_tensorrt.pdb !filename!\lib\onnxruntime_providers_tensorrt.pdb
-       move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_cuda.dll !filename!\lib\onnxruntime_providers_cuda.dll
-       move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_cuda.lib !filename!\lib\onnxruntime_providers_cuda.lib
-       move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_cuda.pdb !filename!\lib\onnxruntime_providers_cuda.pdb
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_shared.dll !filename!\lib\onnxruntime_providers_shared.dll
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_shared.lib !filename!\lib\onnxruntime_providers_shared.lib
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime_providers_shared.pdb !filename!\lib\onnxruntime_providers_shared.pdb
