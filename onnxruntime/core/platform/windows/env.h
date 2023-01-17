@@ -76,8 +76,8 @@ class WindowsEnv : public Env {
   common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const override;
   common::Status FileClose(int fd) const override;
   common::Status GetCanonicalPath(const PathString& path, PathString& canonical_path) const override;
-  std::string GetRuntimePath() const override;
-  Status LoadDynamicLibrary(const std::string& library_filename, bool /*global_symbols*/, void** handle) const override;
+  PathString GetRuntimePath() const override;
+  Status LoadDynamicLibrary(const PathString& library_filename, bool /*global_symbols*/, void** handle) const override;
   Status UnloadDynamicLibrary(void* handle) const override;
   Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override;
   std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override;

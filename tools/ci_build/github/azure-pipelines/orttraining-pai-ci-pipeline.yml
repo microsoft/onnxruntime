@@ -53,7 +53,6 @@ jobs:
         python tools/ci_build/build.py \
           --config Release \
           --enable_training \
-          --enable_training_torch_interop \
           --mpi_home /opt/ompi \
           --cmake_extra_defines \
               CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \

@@ -50,14 +50,14 @@ class OpKernel {
   const onnxruntime::Node& Node() const;
   const onnxruntime::KernelDef& KernelDef() const;
 
-  virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
+  [[nodiscard]] virtual Status Compute(_Inout_ OpKernelContext* context) const = 0;
 
   [[nodiscard]] virtual bool IsAsync() const {
     // by default all kernels are sync version.
     return false;
   }
 
-  virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
+  [[nodiscard]] virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 

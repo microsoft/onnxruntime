@@ -9,6 +9,8 @@ set(contrib_ops_excluded_files
   "bert/attention.h"
   "bert/attention_impl.cu"
   "bert/attention_softmax.h"
+  "bert/multihead_attention.cc"
+  "bert/multihead_attention.h"
   "bert/embed_layer_norm.cc"
   "bert/embed_layer_norm.h"
   "bert/embed_layer_norm_impl.cu"

@@ -31,7 +31,7 @@ size_t GetAttentionWorkspaceSize(
 
 template <typename T>
 struct AttentionData {
-  const T* gemm_buffer;
+  T* gemm_buffer;
   const T* bias;
 
   const T* query;

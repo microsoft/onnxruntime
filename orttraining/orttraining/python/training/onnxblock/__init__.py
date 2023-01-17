@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # __init__.py
 
-"""Offline tooling for generating files needed for on-device training."""
+"""Offline tooling for generating files needed for ort training apis."""
 
 from . import loss, optim
 from .building_blocks import Block

@@ -144,12 +144,12 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
   return HIP_CALL(hipPeekAtLastError());
 }
 
-#define ADD_OP_FOR_ALL_VEC_SIZE(name, threads_per_block)  \
-  this->ops_.emplace_back(name<T, threads_per_block, 1>); \
-  this->ops_.emplace_back(name<T, threads_per_block, 2>); \
-  this->ops_.emplace_back(name<T, threads_per_block, 4>); \
-  this->ops_.emplace_back(name<T, threads_per_block, 8>); \
-  this->ops_.emplace_back(name<T, threads_per_block, 16>);
+#define ADD_OP_FOR_ALL_VEC_SIZE(name, threads_per_block) \
+  this->RegisterOp(name<T, threads_per_block, 1>);       \
+  this->RegisterOp(name<T, threads_per_block, 2>);       \
+  this->RegisterOp(name<T, threads_per_block, 4>);       \
+  this->RegisterOp(name<T, threads_per_block, 8>);       \
+  this->RegisterOp(name<T, threads_per_block, 16>);
 
 #define ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name) \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 64)                         \
@@ -163,7 +163,7 @@ template <typename T>
 class SkipLayerNormTunableOp : public onnxruntime::rocm::tunable::TunableOp<SkipLayerNormParams<T>> {
  public:
   SkipLayerNormTunableOp() {
-    this->ops_.emplace_back(SkipLayerNormStaticSelection<T>);
+    this->RegisterOp(SkipLayerNormStaticSelection<T>);
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmallOp)
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegularOp)
 

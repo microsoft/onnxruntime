@@ -112,7 +112,6 @@ namespace DmlGraphFusionHelper
         onnxruntime::Graph& graph,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
-        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
         _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData)
@@ -163,7 +162,7 @@ namespace DmlGraphFusionHelper
             if (iter != initializerNameToInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
-                size_t tensorByteSize = 0;                
+                size_t tensorByteSize = 0;
                 std::vector<uint8_t> unpackedExternalTensor;
 
                 std::unique_ptr<std::byte[]> unpackedTensor;
@@ -398,7 +397,6 @@ namespace DmlGraphFusionHelper
         // Populate input bindings for operator initialization
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
         std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
-        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initInputResources;  // For lifetime control
         std::vector<ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers(fusedNodeInputCount);
 
         std::vector<bool> inputsUsed;
@@ -411,7 +409,6 @@ namespace DmlGraphFusionHelper
             graph,
             inputsUsed,
             initInputBindings,
-            initInputResources,
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
             nullptr);

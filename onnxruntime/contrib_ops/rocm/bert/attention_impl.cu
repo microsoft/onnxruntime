@@ -25,12 +25,15 @@ limitations under the License.
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/tunable/gemm.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
 #include "contrib_ops/rocm/bert/transformer_common.h"
 
 using namespace onnxruntime::rocm;
 using namespace hipcub;
+
+namespace blas = onnxruntime::rocm::tunable::blas;
 
 #define CHECK_ROCM(expr) HIP_RETURN_IF_ERROR(expr)
 
@@ -69,6 +72,7 @@ size_t GetAttentionWorkspaceSize(
 template <typename T>
 Status QkvToContext(
     const hipDeviceProp_t& prop,
+    bool tuning,
     rocblas_handle& rocblas,
     hipStream_t stream,
     const int batch_size,
@@ -133,23 +137,17 @@ Status QkvToContext(
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
 
-  typedef typename ToHipType<T>::MappedType HipT;
-
-  // float one = 1.0f;
-  // float zero = 0.f;
-  const HipT one = ToHipType<T>::FromFloat(1.0f);
-  const HipT zero = ToHipType<T>::FromFloat(0.f);
-
-  // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-  // float temp_alpha = use_raw_attention_mask ? one : rsqrt_head_size;
-  const HipT alpha = use_raw_attention_mask ? one : ToHipType<T>::FromFloat(rsqrt_head_size);
-
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-          rocblas, rocblas_operation_transpose, rocblas_operation_none,
-          all_sequence_length, sequence_length, head_size,
-          &alpha, k, head_size, present_size_per_batch,
-          q, head_size, size_per_batch,
-          &zero, scratch1, all_sequence_length, temp_matrix_size, batches));
+  ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
+      tuning, stream, rocblas,
+      blas::BlasOp::Trans, blas::BlasOp::NonTrans,
+      all_sequence_length, sequence_length, head_size,
+      // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
+      /*alpha=*/use_raw_attention_mask ? 1.0f : rsqrt_head_size,
+      k, head_size, present_size_per_batch,
+      q, head_size, size_per_batch,
+      /*beta=*/0.0f,
+      scratch1, all_sequence_length, temp_matrix_size,
+      batches));
 
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
@@ -174,12 +172,16 @@ Status QkvToContext(
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-          rocblas, rocblas_operation_none, rocblas_operation_none,
-          head_size, sequence_length, all_sequence_length,
-          &one, v, head_size, present_size_per_batch,
-          scratch2, all_sequence_length, temp_matrix_size,
-          &zero, scratch3, head_size, size_per_batch, batches));
+  ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
+      tuning, stream, rocblas,
+      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+      head_size, sequence_length, all_sequence_length,
+      /*alpha=*/1.0f,
+      v, head_size, present_size_per_batch,
+      scratch2, all_sequence_length, temp_matrix_size,
+      /*beta=*/0.0f,
+      scratch3, head_size, size_per_batch,
+      batches));
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
@@ -188,6 +190,7 @@ Status QkvToContext(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,
+    bool tuning,
     hipStream_t stream,
     rocblas_handle& rocblas,
     const size_t element_size,
@@ -210,7 +213,7 @@ Status LaunchAttentionKernel(
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
   if (element_size == 2) {
     return QkvToContext(
-        prop, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
+        prop, tuning, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
         reinterpret_cast<const __half*>(input),
         reinterpret_cast<__half*>(output),
         reinterpret_cast<__half*>(workspace),
@@ -224,7 +227,7 @@ Status LaunchAttentionKernel(
         use_persistent_softmax);
   } else {
     return QkvToContext(
-        prop, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
+        prop, tuning, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
         reinterpret_cast<const float*>(input),
         reinterpret_cast<float*>(output),
         reinterpret_cast<float*>(workspace),
@@ -242,6 +245,7 @@ Status LaunchAttentionKernel(
 template <typename T>
 Status DecoderQkvToContext(
     const hipDeviceProp_t& prop,
+    bool tuning,
     hipStream_t stream,
     rocblas_handle& rocblas,
     const size_t element_size,
@@ -338,26 +342,31 @@ Status DecoderQkvToContext(
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * kv_sequence_length;
-  float one = 1.0f;
-  float zero = 0.f;
 
-  float alpha = rsqrt_head_size;
   const int strideA = kv_sequence_length * head_size;
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
-    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-            rocblas, rocblas_operation_transpose, rocblas_operation_none,
-            kv_sequence_length, sequence_length, head_size,
-            &alpha, key_cache, head_size, strideA,
-            q, head_size, strideB,
-            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN));
+    ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
+        tuning, stream, rocblas,
+        blas::BlasOp::Trans, blas::BlasOp::NonTrans,
+        kv_sequence_length, sequence_length, head_size,
+        /*alpha=*/rsqrt_head_size,
+        key_cache, head_size, strideA,
+        q, head_size, strideB,
+        /*beta=*/0.0f,
+        scratch1, kv_sequence_length, temp_matrix_size,
+        BN));
   } else {
-    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-            rocblas, rocblas_operation_transpose, rocblas_operation_none,
-            kv_sequence_length, sequence_length, head_size,
-            &alpha, k, head_size, strideA,
-            q, head_size, strideB,
-            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN));
+    ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
+        tuning, stream, rocblas,
+        blas::BlasOp::Trans, blas::BlasOp::NonTrans,
+        kv_sequence_length, sequence_length, head_size,
+        /*alpha=*/rsqrt_head_size,
+        k, head_size, strideA,
+        q, head_size, strideB,
+        /*beta=*/0.0f,
+        scratch1, kv_sequence_length, temp_matrix_size,
+        BN));
   }
 
   if (has_key_padding_mask) {
@@ -371,19 +380,27 @@ Status DecoderQkvToContext(
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
-    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-            rocblas, rocblas_operation_none, rocblas_operation_none,
-            head_size, sequence_length, kv_sequence_length,
-            &one, value_cache, head_size, strideA,
-            scratch2, kv_sequence_length, temp_matrix_size,
-            &zero, scratch3, head_size, strideB, BN));
+    ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
+        tuning, stream, rocblas,
+        blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+        head_size, sequence_length, kv_sequence_length,
+        /*alpha=*/1.0f,
+        value_cache, head_size, strideA,
+        scratch2, kv_sequence_length, temp_matrix_size,
+        /*beta=*/0.0f,
+        scratch3, head_size, strideB,
+        BN));
   } else {
-    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-            rocblas, rocblas_operation_none, rocblas_operation_none,
-            head_size, sequence_length, kv_sequence_length,
-            &one, v, head_size, strideA,
-            scratch2, kv_sequence_length, temp_matrix_size,
-            &zero, scratch3, head_size, strideB, BN));
+    ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
+        tuning, stream, rocblas,
+        blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+        head_size, sequence_length, kv_sequence_length,
+        /*alpha=*/1.0f,
+        v, head_size, strideA,
+        scratch2, kv_sequence_length, temp_matrix_size,
+        /*beta=*/0.0f,
+        scratch3, head_size, strideB,
+        BN));
   }
 
   // scratch3 is BxNxSxH, transpose to output SxBxNxH
@@ -393,6 +410,7 @@ Status DecoderQkvToContext(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,
+    bool tuning,
     hipStream_t stream,
     rocblas_handle& rocblas,
     const size_t element_size,
@@ -418,6 +436,7 @@ Status LaunchDecoderAttentionKernel(
   if (element_size == 2) {
     return DecoderQkvToContext(
         prop,
+        tuning,
         stream,
         rocblas,
         element_size,
@@ -443,6 +462,7 @@ Status LaunchDecoderAttentionKernel(
   } else {
     return DecoderQkvToContext(
         prop,
+        tuning,
         stream,
         rocblas,
         element_size,

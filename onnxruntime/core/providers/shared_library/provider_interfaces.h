@@ -799,7 +799,7 @@ struct ProviderHost {
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
 
-  virtual void* Allocator__AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
+  virtual void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
 
   virtual void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) = 0;
   virtual const void* Tensor__DataRaw(const Tensor* p, MLDataType type) = 0;
@@ -882,10 +882,6 @@ struct ProviderHost {
   virtual RandomGenerator& RandomGenerator__Default() = 0;
   virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
   virtual std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) = 0;
-#endif
-
-#if defined(USE_TENSORRT)
-  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;

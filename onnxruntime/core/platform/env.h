@@ -230,7 +230,7 @@ class Env {
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the
   // function.
-  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const = 0;
+  virtual common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols, void** handle) const = 0;
 
   virtual common::Status UnloadDynamicLibrary(void* handle) const = 0;
 
@@ -238,7 +238,7 @@ class Env {
   //
   // Used to help load other shared libraries that live in the same folder as the core code, for example
   // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
-  virtual std::string GetRuntimePath() const { return ""; }
+  virtual PathString GetRuntimePath() const { return PathString(); }
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //

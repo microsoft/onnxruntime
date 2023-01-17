@@ -90,8 +90,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::vector<OutT>& expected_values_y,
                           int provider_type,
                           OrtCustomOpDomain* custom_op_domain_ptr,
-                          const char* custom_op_library_filename,
-                          void** library_handle = nullptr,
+                          const ORTCHAR_T* custom_op_library_filename,
                           bool test_session_creation_only = false,
                           void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
@@ -120,8 +119,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 
   if (custom_op_library_filename) {
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options,
-                                                             custom_op_library_filename, library_handle));
+    session_options.RegisterCustomOpsLibrary(custom_op_library_filename);
   }
 
   // if session creation passes, model loads fine
@@ -247,7 +245,7 @@ TEST(CApiTest, dim_param) {
   dim_value = 0;
   dims = out0_ttsi.GetShape();
   if (!dims.empty()) dim_value = dims[0];
-  
+
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
@@ -399,7 +397,7 @@ TEST(CApiTest, custom_op_handler) {
 
 #ifdef USE_CUDA
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+                       custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 #else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
@@ -434,9 +432,8 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+                       custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
-
 }
 #endif
 
@@ -1186,7 +1183,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cuda);
 
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                       expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+                       expected_values_y, 1, custom_op_domain, nullptr, true);
 }
 #endif
 
@@ -1220,32 +1217,52 @@ TEST(CApiTest, test_custom_op_library) {
        17, 18, 18, 18, 17,
        17, 17, 17, 17, 17};
 
-  std::string lib_name;
+  onnxruntime::PathString lib_name;
 #if defined(_WIN32)
-  lib_name = "custom_op_library.dll";
+  lib_name = ORT_TSTR("custom_op_library.dll");
 #elif defined(__APPLE__)
-  lib_name = "libcustom_op_library.dylib";
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
 #else
-  lib_name = "./libcustom_op_library.so";
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
 #endif
 
-  void* library_handle = nullptr;
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 1, nullptr, lib_name.c_str(), &library_handle);
+                         expected_values_y, 1, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
-#endif
-
-#ifdef _WIN32
-  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
-  ORT_ENFORCE(success, "Error while closing custom op shared library");
-#else
-  int retval = dlclose(library_handle);
-  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+                         expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_library_registration_error) {
+#else
+TEST(CApiTest, test_custom_op_library_registration_error) {
+#endif  // defined(__ANDROID__)
+  // Loads a custom op library with a RegisterCustomOps function that returns an error status.
+  // This test tries to register the library with the session options and expects an error.
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_invalid_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_invalid_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
+#endif
+
+  Ort::SessionOptions session_options;
+
+  try {
+    session_options.RegisterCustomOpsLibrary(lib_name);
+    FAIL();
+  } catch (const Ort::Exception& exception) {
+    ASSERT_THAT(exception.what(), testing::HasSubstr("Failure from custom op library's RegisterCustomOps()"));
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
 std::once_flag my_module_flag;
@@ -1342,7 +1359,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   try {
     // only test model loading, exception expected
     TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                         nullptr, nullptr, nullptr, true);
+                         nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
@@ -1468,7 +1485,6 @@ TEST(CApiTest, io_binding) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, io_binding_cuda) {
-
   Ort::SessionOptions session_options;
 #ifdef USE_TENSORRT
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
@@ -1599,7 +1615,7 @@ TEST(CApiTest, cuda_graph) {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
-  
+
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1610,7 +1626,7 @@ TEST(CApiTest, cuda_graph) {
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
-  
+
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory

@@ -21,9 +21,8 @@ struct Parameter {
   OrtValue& Data() { return data_; }
   const std::string& Name() const { return name_; }
 
-  // Return parameter trainable or not. The trainable property of a param
-  // cannot change over the lifetime of the on-device training
-  // session since the gradient graph is prebuilt for this setting.
+  // Returns whether this parameter is trainable or not.
+  // The trainable property of a param is immutable since the gradient graph is prebuilt for this setting.
   bool RequiresGrad() const { return requires_grad_; }
 
   // Return the mutable gradient for trainable parameter.

@@ -117,7 +117,31 @@
         "^test_gru_batchwise_cuda",
         "^test_div_uint8_cuda",
         "^test_add_uint8_cuda",
-        "^test_roialign_aligned_*"
+        "^test_roialign_aligned_*",
+        "^test_bitwise_*",
+        "^test_center_crop_pad_*",
+        "^test_clip_default_int8_max_expanded_cpu",
+        "^test_clip_default_int8_min_expanded_cpu",
+        "^test_col2im_*",
+        "^test_constant_pad_axes_cpu",
+        "^test_constant_pad_cpu",
+        "^test_edge_pad_cpu",
+        "^test_reflect_pad_cpu",
+        "^test_resize_*",
+        "^test_scatter_elements_*",
+        "^test_softplus_example_expanded_cpu",
+        "^test_softplus_expanded_cpu",
+        "^test_split_*",
+
+        // TODO: GPU failures introduced with ONNX 1.13
+        "^test_clip_default_int8_max_expanded_cuda",
+        "^test_clip_default_int8_min_expanded_cuda",
+        "^test_constant_pad_axes_cuda",
+        "^test_constant_pad_cuda",
+        "^test_edge_pad_cuda",
+        "^test_reflect_pad_cuda",
+        "^test_softplus_example_expanded_cuda",
+        "^test_softplus_expanded_cuda"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -134,7 +158,73 @@
         "^test_maxpool_with_argmax_2d_precomputed_pads_cpu", // maxpool test will fail if built with --traning-enabled
         "^test_maxpool_with_argmax_2d_precomputed_strides_cpu", // maxpool test will fail if built with --traning-enabled
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        // TODO: need to fix DNNL implementation for updated operators in ONNX 1.13
+        "^test_group_normalization_epsilon_cpu",
+        "^test_group_normalization_epsilon_expanded_cpu",
+        "^test_group_normalization_example_cpu",
+        "^test_group_normalization_example_expanded_cpu",
+        "^test_logsoftmax_large_number_expanded_ver18_cpu",
+        "^test_mvn_expanded_ver18_cpu",
+        "^test_reduce_l1_do_not_keepdims_example_cpu",
+        "^test_reduce_l1_do_not_keepdims_random_cpu",
+        "^test_reduce_l1_keep_dims_example_cpu",
+        "^test_reduce_l1_keep_dims_random_cpu",
+        "^test_reduce_l1_negative_axes_keep_dims_example_cpu",
+        "^test_reduce_l1_negative_axes_keep_dims_random_cpu",
+        "^test_reduce_l2_do_not_keepdims_example_cpu",
+        "^test_reduce_l2_do_not_keepdims_random_cpu",
+        "^test_reduce_l2_keep_dims_example_cpu",
+        "^test_reduce_l2_keep_dims_random_cpu",
+        "^test_reduce_l2_negative_axes_keep_dims_example_cpu",
+        "^test_reduce_l2_negative_axes_keep_dims_random_cpu",
+        "^test_reduce_log_sum_asc_axes_cpu",
+        "^test_reduce_log_sum_desc_axes_cpu",
+        "^test_reduce_log_sum_negative_axes_cpu",
+        "^test_reduce_max_do_not_keepdims_example_cpu",
+        "^test_reduce_max_do_not_keepdims_random_cpu",
+        "^test_reduce_max_keepdims_example_cpu",
+        "^test_reduce_max_keepdims_random_cpu",
+        "^test_reduce_max_negative_axes_keepdims_example_cpu",
+        "^test_reduce_max_negative_axes_keepdims_random_cpu",
+        "^test_reduce_mean_do_not_keepdims_example_cpu",
+        "^test_reduce_mean_do_not_keepdims_random_cpu",
+        "^test_reduce_mean_keepdims_example_cpu",
+        "^test_reduce_mean_keepdims_random_cpu",
+        "^test_reduce_mean_negative_axes_keepdims_example_cpu",
+        "^test_reduce_mean_negative_axes_keepdims_random_cpu",
+        "^test_reduce_min_do_not_keepdims_example_cpu",
+        "^test_reduce_min_do_not_keepdims_random_cpu",
+        "^test_reduce_min_keepdims_example_cpu",
+        "^test_reduce_min_keepdims_random_cpu",
+        "^test_reduce_min_negative_axes_keepdims_example_cpu",
+        "^test_reduce_min_negative_axes_keepdims_random_cpu",
+        "^test_reduce_prod_do_not_keepdims_example_cpu",
+        "^test_reduce_prod_do_not_keepdims_random_cpu",
+        "^test_reduce_prod_keepdims_example_cpu",
+        "^test_reduce_prod_keepdims_random_cpu",
+        "^test_reduce_prod_negative_axes_keepdims_example_cpu",
+        "^test_reduce_prod_negative_axes_keepdims_random_cpu",
+        "^test_reduce_sum_square_do_not_keepdims_example_cpu",
+        "^test_reduce_sum_square_do_not_keepdims_random_cpu",
+        "^test_reduce_sum_square_keepdims_example_cpu",
+        "^test_reduce_sum_square_keepdims_random_cpu",
+        "^test_reduce_sum_square_negative_axes_keepdims_example_cpu",
+        "^test_reduce_sum_square_negative_axes_keepdims_random_cpu",
+        "^test_softmax_large_number_expanded_ver18_cpu",
+        "^test_layer_normalization_2d_axis1_expanded_ver18_cpu",
+        "^test_layer_normalization_2d_axis_negative_1_expanded_ver18_cpu",
+        "^test_layer_normalization_3d_axis1_epsilon_expanded_ver18_cpu",
+        "^test_layer_normalization_3d_axis2_epsilon_expanded_ver18_cpu",
+        "^test_layer_normalization_3d_axis_negative_1_epsilon_expanded_ver18_cpu",
+        "^test_layer_normalization_3d_axis_negative_2_epsilon_expanded_ver18_cpu",
+        "^test_layer_normalization_4d_axis1_expanded_ver18_cpu",
+        "^test_layer_normalization_4d_axis2_expanded_ver18_cpu",
+        "^test_layer_normalization_4d_axis3_expanded_ver18_cpu",
+        "^test_layer_normalization_4d_axis_negative_1_expanded_ver18_cpu",
+        "^test_layer_normalization_4d_axis_negative_2_expanded_ver18_cpu",
+        "^test_layer_normalization_4d_axis_negative_3_expanded_ver18_cpu",
+        "^test_layer_normalization_default_axis_expanded_ver18_cpu"
     ],
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",
@@ -171,6 +261,8 @@
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_operator_permute2",
+        "^test_leakyrelu",
+        "^test_leakyrelu_example",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
         "^test_add_bcast.*",
@@ -189,7 +281,10 @@
         "^test_unique_not_sorted_without_axis",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_scatter_elements_with_negative_indices",
         "^test_sce.*",
+        "^test_squeeze",
+        "^test_squeeze_negative_axes",
         "^test_nllloss.*",
         "^test_gather_negative_indices.*",
         "^test_reduce_sum_do_not_keepdims*", // Does not support axes as input
@@ -213,6 +308,14 @@
         "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
         "^test_maxpool_with_argmax_2d_precomputed_pads" //Disabled as it throws segfault
     ],
+    "current_failing_tests_OPENVINO_CPU_FP16": [
+        "^test_gridsample*",
+        "^test_reduce_sum_do_not_keepdims_example",
+        "^test_reduce_sum_do_not_keepdims_random",
+        "^test_scatter_elements_with_negative_indices",
+        "^test_squeeze",
+        "^test_squeeze_negative_axes"
+    ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
         "^test_operator_permute2",
         "^test_operator_repeat",
@@ -222,6 +325,7 @@
         "^test_max_float64.*",
         "^test_min_float64.*",
         "^test_gather_negative_indices.*",
+        "^test_gridsample*",
         "^test_sce.*",
         "^test_nllloss.*",
         "^test_upsample_nearest.*",
@@ -292,7 +396,21 @@
         "^test_roialign_cpu",
         "^test_dft_axis_cpu",
         "^test_dft_cpu",
-        "^test_dft_inverse_cpu"
+        "^test_dft_inverse_cpu",
+        // TODO: Remove identity tests when fixed #42638109
+        "^test_identity_cpu",
+        "^test_sequence_map_add_1_sequence_1_tensor_cpu",
+        "^test_sequence_map_add_1_sequence_1_tensor_expanded_cpu",
+        "^test_sequence_map_add_2_sequences_cpu",
+        "^test_sequence_map_add_2_sequences_expanded_cpu",
+        "^test_sequence_map_extract_shapes_cpu",
+        "^test_sequence_map_extract_shapes_expanded_cpu",
+        "^test_sequence_map_identity_1_sequence_1_tensor_cpu",
+        "^test_sequence_map_identity_1_sequence_1_tensor_expanded_cpu",
+        "^test_sequence_map_identity_1_sequence_cpu",
+        "^test_sequence_map_identity_1_sequence_expanded_cpu",
+        "^test_sequence_map_identity_2_sequences_cpu",
+        "^test_sequence_map_identity_2_sequences_expanded_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

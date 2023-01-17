@@ -1118,6 +1118,58 @@ void RegisterTrainingOpSchemas() {
           {"float"},
           "Constrain learning rate to float");
 
+  /**
+   * SGDOptimizerV2 operator, taking multiple parameters as inputs (seq<tensor>).
+   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single SGDOptimizerV2.
+   * Implementation-wise, this bring opportunities for achieving better performance.
+   *
+   * SGDOptimizerV2 can accept multiple parameters and other states related to them as inputs (seq<tensor>).
+   * This make multi-tensor-apply applicable to the GPU implementation.
+   * SGDOptimizer takes one single parameter and its other states.
+   *
+   * SGDOptimizerV2 is recommended for new usage, SGDOptimizer is left as it is to support existing ORTTrainer
+   * solutions.
+   */
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizerV2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "lr", "The learning rate.", "T1")
+      .Input(1, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
+      .Input(2, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Input(3, "update_signal",
+             "This signal indicates if weight needs to be updated, applicable to gradient infinity check"
+             " in mixed precision training. If not provided or its value is True, weights will be updated.",
+             "T_BOOL", OpSchema::Optional)
+      .Output(0, "update_completed", "Whether gradient is applied or not.", "T_BOOL")
+      .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain learning rate to float")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeConstraint(
+          "S_WEIGHT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain weights' types.")
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        ONNX_NAMESPACE::TensorShapeProto updated_shape;
+        updateOutputShape(ctx, 0, updated_shape);
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 1);
+          if (hasInputShape(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 1, 1);
+          }
+        }
+      });
+
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdamOptimizer)
@@ -1285,7 +1337,7 @@ void RegisterTrainingOpSchemas() {
    *
    *   AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
    *   This make multi-tensor-apply applicable to the GPU implementation. Existing LambOptimizer has similar
-   *   capability, while it is using many fixed-length optional vardaric inputs, which is not a clean op definition.
+   *   capability, while it is using many fixed-length optional variadic inputs, which is not a clean op definition.
    *
    *   AdamOptimizer takes one single parameter and its other states.
    *
