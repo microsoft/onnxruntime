@@ -390,7 +390,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
                                               const int max_sequence_length,
                                               const bool skip_softmax,
                                               const bool mask_filter_value) {
-  std::cout << "SoftmaxWithRawMaskSmallKernel:mask_filter_value" << mask_filter_value << std::endl;
+  printf("ROCM SoftmaxWithRawMaskSmallKernel mask_filter_value: %f\n", mask_filter_value);
   SoftmaxWithRawMaskSmall<T, TPB>(
       all_sequence_length, sequence_length,
       attention_mask, key_padding_mask, add_before_softmax, input, output,

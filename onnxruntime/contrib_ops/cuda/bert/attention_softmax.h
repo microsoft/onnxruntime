@@ -27,6 +27,8 @@ limitations under the License.
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/softmax.h"
 
+#include<iostream>
+
 using namespace onnxruntime::cuda;
 using namespace cub;
 
