@@ -27,6 +27,8 @@ limitations under the License.
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/math/softmax.h"
 
+#include<iostream>
+
 #define ROCMRT_INF_F __int_as_float(0x7f800000)
 
 using namespace onnxruntime::rocm;
@@ -388,6 +390,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
                                               const int max_sequence_length,
                                               const bool skip_softmax,
                                               const bool mask_filter_value) {
+  std::cout << "SoftmaxWithRawMaskSmallKernel:mask_filter_value" << mask_filter_value << std::endl;
   SoftmaxWithRawMaskSmall<T, TPB>(
       all_sequence_length, sequence_length,
       attention_mask, key_padding_mask, add_before_softmax, input, output,
