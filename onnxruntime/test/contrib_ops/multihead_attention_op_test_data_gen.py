@@ -101,7 +101,6 @@ class Attention(nn.Module):
         if self.verbose:
             print("transposed query", query_layer)
 
-        use_cache = past_key_value is not None
         if self.is_decoder:
             # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention

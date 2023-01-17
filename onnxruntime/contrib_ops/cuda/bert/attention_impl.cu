@@ -380,6 +380,7 @@ Status QkvToContext(
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   const bool past_present_share_buffer = parameters.past_present_share_buffer;
+  const float mask_filter_value = parameters.mask_filter_value;
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
@@ -566,8 +567,8 @@ Status QkvToContext(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
                                      mask_index, nullptr, data.extra_add_qk, scratch1, scratch2,
                                      parameters.is_unidirectional, rsqrt_head_size, mask_dimension,
-                                     parameters.max_sequence_length,
-                                     use_persistent_softmax, persistent_softmax_workspace));
+                                     parameters.max_sequence_length, use_persistent_softmax,
+                                     persistent_softmax_workspace, mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
     assert(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
@@ -614,6 +615,7 @@ Status DecoderQkvToContext(
     const bool use_past,
     const bool has_layer_state,
     const bool has_key_padding_mask,
+    const float mask_filter_value,
     const T* gemm_query_buffer,
     const T* gemm_kv_buffer,
     const bool* key_padding_mask,
@@ -731,7 +733,7 @@ Status DecoderQkvToContext(
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
                                                      nullptr, key_padding_mask, add_before_softmax, scratch1, scratch2,
                                                      is_unidirectional, 1.0f, mask_dimension, max_sequence_length,
-                                                     false, nullptr));
+                                                     false, nullptr, mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
                                           add_before_softmax, scratch1, scratch2, is_unidirectional));
@@ -773,6 +775,7 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,
     const bool has_layer_state,
     const bool has_key_padding_mask,
+    const float mask_filter_value,
     const void* gemm_query_buffer,
     const void* gemm_kv_buffer,
     const bool* key_padding_mask,
@@ -798,6 +801,7 @@ Status LaunchDecoderAttentionKernel(
         use_past,
         has_layer_state,
         has_key_padding_mask,
+        mask_filter_value,
         reinterpret_cast<const half*>(gemm_query_buffer),
         reinterpret_cast<const half*>(gemm_kv_buffer),
         key_padding_mask,
@@ -823,6 +827,7 @@ Status LaunchDecoderAttentionKernel(
         use_past,
         has_layer_state,
         has_key_padding_mask,
+        mask_filter_value,
         reinterpret_cast<const float*>(gemm_query_buffer),
         reinterpret_cast<const float*>(gemm_kv_buffer),
         key_padding_mask,
