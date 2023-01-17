@@ -93,11 +93,13 @@ TEST_P(ModelTest, Run) {
   std::string provider_name = ToUTF8String(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
-  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino or dml are enabled, set it to a larger value for resolving MNIST accuracy mismatch
   double relative_per_sample_tolerance = 1e-3;
-  if (provider_name == "openvino" || provider_name == "dml") {
-    relative_per_sample_tolerance = 0.009;
+
+  // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
+  if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
+    if (provider_name == "cuda" || provider_name == "openvino") {
+      relative_per_sample_tolerance = 1e-2;
+    }
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
@@ -110,12 +112,14 @@ TEST_P(ModelTest, Run) {
     SkipTest(" tensorrt only support opset 14 or 15");
     return;
   }
+
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     SkipTest(" dnnl doesn't support opset 10");
     return;
   }
+
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
@@ -133,7 +137,7 @@ TEST_P(ModelTest, Run) {
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"opset9", "opset10"}},
-      {"constantofshape_int_zeros", "test data bug",  {"opset9", "opset10"}},
+      {"constantofshape_int_zeros", "test data bug", {"opset9", "opset10"}},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"opset9", "opset10"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
@@ -180,7 +184,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.",  {"opset13", "opset14"}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -612,7 +616,7 @@ TEST_P(ModelTest, Run) {
     auto opset_version = model_info->GetNominalOpsetVersion();
     if (iter != broken_tests.end() &&
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
-         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
+         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
       SkipTest("It's in broken_tests");
       return;
     }
@@ -628,17 +632,17 @@ TEST_P(ModelTest, Run) {
 
   // TODO(leca): move the parallel run test list to a config file and load it in GetParameterStrings() to make the load process run only once
   std::set<std::string> tests_run_parallel = {"test_resnet18v2",
-      "test_resnet34v2",
-      "test_resnet50",
-      "test_resnet50v2",
-      "test_resnet101v2",
-      "test_resnet152v2",
-      "keras_lotus_resnet3D",
-      "coreml_Resnet50_ImageNet",
-      "mlperf_mobilenet",
-      "mlperf_resnet",
-      "mlperf_ssd_mobilenet_300",
-      "mlperf_ssd_resnet34_1200"};
+                                              "test_resnet34v2",
+                                              "test_resnet50",
+                                              "test_resnet50v2",
+                                              "test_resnet101v2",
+                                              "test_resnet152v2",
+                                              "keras_lotus_resnet3D",
+                                              "coreml_Resnet50_ImageNet",
+                                              "mlperf_mobilenet",
+                                              "mlperf_resnet",
+                                              "mlperf_ssd_mobilenet_300",
+                                              "mlperf_ssd_resnet34_1200"};
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
@@ -742,9 +746,9 @@ TEST_P(ModelTest, Run) {
       std::unique_ptr<OrtSession, decltype(&OrtApis::ReleaseSession)> rel_ort_session(ort_session,
                                                                                       &OrtApis::ReleaseSession);
       const size_t data_count = l->GetDataCount();
-#ifndef USE_DNNL // potential crash for DNNL pipeline
+#ifndef USE_DNNL  // potential crash for DNNL pipeline
       if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
-        LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();    // TODO(leca): change level to INFO or even delete the log once verified parallel test working
+        LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();  // TODO(leca): change level to INFO or even delete the log once verified parallel test working
         Ort::SessionOptions ort_session_options(ortso);
         std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
         for (EXECUTE_RESULT res : results->GetExcutionResult()) {
@@ -753,9 +757,9 @@ TEST_P(ModelTest, Run) {
         }
         continue;
       }
-#endif // !USE_DNNL
+#endif  // !USE_DNNL
       std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
-        ortso, &OrtApis::ReleaseSessionOptions);
+          ortso, &OrtApis::ReleaseSessionOptions);
       // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
@@ -989,8 +993,7 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("Candy"),
       ORT_TSTR("SSD"),
       ORT_TSTR("ResNet101_DUC_HDC-12"),
-      ORT_TSTR("YOLOv3-12")
-      };
+      ORT_TSTR("YOLOv3-12")};
   static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                   ORT_TSTR("mlperf_ssd_mobilenet_300"),
                                                   ORT_TSTR("mask_rcnn"),
@@ -1107,8 +1110,7 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("ResNet101_DUC_HDC"),
                                                     ORT_TSTR("ResNet101_DUC_HDC-12"),
                                                     ORT_TSTR("FCN ResNet-101"),
-                                                    ORT_TSTR("SSD")
-    };
+                                                    ORT_TSTR("SSD")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
@@ -1205,7 +1207,7 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }
 #ifdef _WIN32
-  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
+  // Note: The return value of INSTANTIATE_TEST_SUITE_P accepts std::basic_string<char...>.
   // Need conversion of wchar_t to char.
   return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
 #else

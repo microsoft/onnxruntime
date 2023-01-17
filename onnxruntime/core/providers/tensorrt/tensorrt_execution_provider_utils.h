@@ -28,23 +28,23 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
 }
 
 /*
-* Read calibration table for INT8 quantization
-* Two kind of calibration tables are supported,
-* 1. ORT generated calibration table
-* The table is pre-serialized by flatbuffers.
-* Each entry in the table is a key-value pair,
-* key: tensor name, value: maximum absolute value in floating point
-* For example,
-*   data_0 2.008338
-*   ...
-* 2. Native TensorRT generated calibration table
-* Data format is defined by TensorRT as,
-* tensor name : scale in 32-bit single precision IEEE754 format
-* For example,
-*   TRT-7103-EntropyCalibration2
-*   data_0: 4000889d
-*   ...
-*/
+ * Read calibration table for INT8 quantization
+ * Two kind of calibration tables are supported,
+ * 1. ORT generated calibration table
+ * The table is pre-serialized by flatbuffers.
+ * Each entry in the table is a key-value pair,
+ * key: tensor name, value: maximum absolute value in floating point
+ * For example,
+ *   data_0 2.008338
+ *   ...
+ * 2. Native TensorRT generated calibration table
+ * Data format is defined by TensorRT as,
+ * tensor name : scale in 32-bit single precision IEEE754 format
+ * For example,
+ *   TRT-7103-EntropyCalibration2
+ *   data_0: 4000889d
+ *   ...
+ */
 bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
@@ -95,13 +95,13 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
 }
 
 /*
-* Seralize engine profile
-* The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
-* For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
-* has one dynamic shape dimension: dim_1. The data in profile will be,
-* key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
-* key: tensor_b, value: dim_1 min_shape max_shape
-*/
+ * Seralize engine profile
+ * The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
+ * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+ * has one dynamic shape dimension: dim_1. The data in profile will be,
+ * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
+ * key: tensor_b, value: dim_1 min_shape max_shape
+ */
 void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
@@ -170,15 +170,15 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
 /*
  * Get cache by type
  *
- * \param root root path of the cache  
+ * \param root root path of the cache
  * \param file_extension It could be ".engine", ".profile" or ".timing"
-*/
+ */
 std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_extension) {
   std::vector<fs::path> cache_files;
-  for (const auto & entry : fs::directory_iterator(root)) {
-      if (fs::path(file_extension) == fs::path(entry).extension()) {
-        cache_files.push_back(fs::path(entry));
-      }
+  for (const auto& entry : fs::directory_iterator(root)) {
+    if (fs::path(file_extension) == fs::path(entry).extension()) {
+      cache_files.push_back(fs::path(entry));
+    }
   }
   return cache_files;
 }
@@ -186,118 +186,106 @@ std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_
 bool IsCacheExistedByType(const std::string& root, std::string file_extension) {
   auto cache_files = GetCachesByType(root, file_extension);
   if (cache_files.size() == 0) {
-          return false;
+    return false;
   }
   return true;
 }
 
 void RemoveCachesByType(const std::string& root, std::string file_extension) {
   auto cache_files = GetCachesByType(root, file_extension);
-  for (const auto & entry : cache_files) {
+  for (const auto& entry : cache_files) {
     fs::remove(entry);
   }
 }
 
 // Helper class to generate engine id via model name/model content/env metadata
-class TRTModelIdGenerator {
- public:
-  int TRTGenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) {
-    model_hash = 0;
+HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
+  HashValue model_hash = 0;
 
-    // find the top level graph
-    const Graph* cur_graph = &graph_viewer.GetGraph();
-    while (cur_graph->IsSubgraph()) {
-      cur_graph = cur_graph->ParentGraph();
-    }
+  // find the top level graph
+  const Graph* cur_graph = &graph_viewer.GetGraph();
+  while (cur_graph->IsSubgraph()) {
+    cur_graph = cur_graph->ParentGraph();
+  }
 
-    const Graph& main_graph = *cur_graph;
-    uint32_t hash[4] = {0, 0, 0, 0};
+  const Graph& main_graph = *cur_graph;
+  uint32_t hash[4] = {0, 0, 0, 0};
 
-    auto hash_str = [&hash](const std::string& str) {
-      MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
-    };
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
 
-    // Use model name instead of path to avoid cache regeneration if path changes
-    const auto& model_path = main_graph.ModelPath();
-    if (!model_path.IsEmpty()) {
-      // Get model name
-      PathString path_string = model_path.GetComponents().back();
-      char arr[256];
+  // Use model name instead of path to avoid cache regeneration if path changes
+  const auto& model_path = main_graph.ModelPath();
+  if (!model_path.IsEmpty()) {
+    // Get model name
+    PathString path_string = model_path.GetComponents().back();
+    char arr[256];
 #ifdef _WIN32
-      wcstombs_s(nullptr, arr, sizeof(arr), path_string.c_str(), sizeof(arr));
+    wcstombs_s(nullptr, arr, sizeof(arr), path_string.c_str(), sizeof(arr));
 #else
-      strcpy(arr, path_string.c_str());
+    strcpy(arr, path_string.c_str());
 #endif
-      std::string model_name(arr);
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
-      // Ensure enough characters are hashed in case model names are too short
-      int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
-      constexpr int32_t hash_string_length = 500;
-      std::string repeat_model_name = model_name;
-      for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
-        repeat_model_name += model_name;
-      }
-      hash_str(repeat_model_name);
-    } else {
-      LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+    std::string model_name(arr);
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
+    // Ensure enough characters are hashed in case model names are too short
+    int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
+    constexpr int32_t hash_string_length = 500;
+    std::string repeat_model_name = model_name;
+    for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+      repeat_model_name += model_name;
     }
+    hash_str(repeat_model_name);
+  } else {
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+  }
 
-    // fingerprint the main graph by hashing graph inputs
-    for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
-      hash_str(node_arg->Name());
-    }
+  // fingerprint the main graph by hashing graph inputs
+  for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
+    hash_str(node_arg->Name());
+  }
 
-    // hashing output of each node
-    const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
-    std::vector<size_t> nodes_vector(number_of_ort_nodes);
-    std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-    const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
-    for (const auto& index : nodes_vector) {
-      const auto& node = graph_viewer.GetNode(node_index[index]);
-      for (const auto* node_arg : node->OutputDefs()) {
-        if (node_arg->Exists()) {
-          hash_str(node_arg->Name());
-        }
+  // fingerprint current graph by hashing graph inputs
+  for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
+    hash_str(node_arg->Name());
+  }
+
+  // hashing output of each node
+  const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph_viewer.GetNode(node_index[index]);
+    for (const auto* node_arg : node->OutputDefs()) {
+      if (node_arg->Exists()) {
+        hash_str(node_arg->Name());
       }
     }
+  }
 
 #ifdef __linux__
-    hash_str("LINUX");
+  hash_str("LINUX");
 #elif defined(_WIN32)
-    hash_str("WINDOWS");
+  hash_str("WINDOWS");
 #endif
 
 #ifdef ORT_VERSION
-    hash_str(ORT_VERSION);
+  hash_str(ORT_VERSION);
 #endif
 
 #ifdef CUDA_VERSION
-    hash_str(std::to_string(CUDA_VERSION));
+  hash_str(std::to_string(CUDA_VERSION));
 #endif
 
 #if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
-    std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
-    hash_str(TRT_VERSION);
+  std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+  hash_str(TRT_VERSION);
 #endif
 
-    model_hash = hash[0] | (uint64_t(hash[1]) << 32);
+  model_hash = hash[0] | (uint64_t(hash[1]) << 32);
 
-    // return the current unique id, and increment to update
-    return trt_model_id_[model_hash]++;
-  }
-
- private:
-  std::unordered_map<HashValue, int> trt_model_id_;       // current unique id for model
-};
-
-std::unique_ptr<TRTModelIdGenerator> trt_model_id_generator_ = std::make_unique<TRTModelIdGenerator>();
-
-// Calll TRTGenerateModelId to generate hash id for TRT engine cache
-int TRTGenerateModelId(const GraphViewer& graph_viewer, HashValue& model_hash) {
-  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
-  // use a lock when generating an id to be paranoid
-  static OrtMutex mutex;
-  std::lock_guard<OrtMutex> lock(mutex);
-  return trt_model_id_generator_->TRTGenerateId(graph_viewer, model_hash);
+  // return the current unique id
+  return model_hash;
 }
-}
+}  // namespace onnxruntime

@@ -198,7 +198,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Corresponding past and present are same tensor, its size is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT,
-              static_cast<int64_t>(0))
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size)",
