@@ -244,6 +244,7 @@ Status QkvToContext(
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
+  past_present_share_buffer = past_present_share_buffer && (nullptr != data.present);
 
   T* qkv = data.workspace;
   const int batches = batch_size * num_heads;
@@ -275,7 +276,7 @@ Status QkvToContext(
       // For fused TRT attention, transpose qkv to BxSxNx3xH. For fused causal kernel, transpose to 3xBxNxSxH.
       const int format = (use_fused_kernel ? 2 : 1);
       qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
-      int matrix_to_transpose = ((!use_fused_kernel && past_present_share_buffer) ? 1 : 3);
+      int matrix_to_transpose = ((nullptr == fused_runner && past_present_share_buffer) ? 1 : 3);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
       LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
