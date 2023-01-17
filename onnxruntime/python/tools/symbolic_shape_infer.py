@@ -1780,7 +1780,8 @@ class SymbolicShapeInference:
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(input_sympy_shape))
         split = None
         # Depending on op-version 'split' is provided as attribute or via 2nd input
-        if get_opset(self.out_mp_) < 13:
+        opset = get_opset(self.out_mp_) or 0  # «or 0» is to satisfy the pyright check and to restore defaults
+        if opset < 13:
             split = get_attribute(node, "split")
         elif len(node.input) == 2:
             split = self._try_get_value(node, 1)
