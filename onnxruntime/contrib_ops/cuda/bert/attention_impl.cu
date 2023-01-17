@@ -476,7 +476,6 @@ Status QkvToContext(
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(data.fused_cross_attention_kernel);
 
-    constexpr int packed_kv_sequence_length = 128;  // TODO: do we need this?
     run_fused_cross_attention(
         q,                          // Q
         k,                          // packed KV
@@ -488,13 +487,14 @@ Status QkvToContext(
         num_heads,                  // number of heads
         qk_head_size,               // head size of Q/K/V
         sequence_length,            // sequence length of Q
-        packed_kv_sequence_length,  // sequence length of KV
+        kv_sequence_length,         // sequence length of KV
         stream);
 
     DUMP_ATTENTION("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
-  // Run TRT fused attention if applicale.
+
+  // Run TRT fused attention.
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);

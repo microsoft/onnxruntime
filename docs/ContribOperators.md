@@ -2128,7 +2128,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
+<dd>Query with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>key</tt> : T</dt>
 <dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
 <dt><tt>value</tt> : T</dt>
