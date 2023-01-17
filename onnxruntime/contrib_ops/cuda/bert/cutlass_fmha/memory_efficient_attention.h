@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-struct FmhaParams {
+struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
   int32_t batch_size;
@@ -20,14 +20,12 @@ struct FmhaParams {
   int32_t v_head_size;
   bool causal;
 
-  AttentionQkvFormat format;  // Format of Q, K, V inputs: BNSH or BSNH.
-
   int32_t* cu_seqlens_q;
   int32_t* cu_seqlens_k;
 
-  const void* query;  // [B, S, N, H], or [B, M, n_heads, K] in xFormers
-  const void* key;    // [B, L, N, H], or [B, N, n_heads, K] in xFormers
-  const void* value;  // [B, L, N, H_v], or [B, N, n_heads, Kv] in xFormers
+  const void* query;  // [B, S, N, H]
+  const void* key;    // [B, L, N, H], where L is kv_sequence_length
+  const void* value;  // [B, L, N, H_v]
   void* output;       // [B, S, N, H_v]
   void* workspace;    // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
   cudaStream_t stream;
@@ -37,7 +35,7 @@ struct FmhaParams {
   }
 };
 
-common::Status run_memory_efficient_attention(const FmhaParams& params);
+common::Status run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
 
 inline bool has_memory_efficient_attention(int32_t sm, bool is_half) {
   return sm >= (is_half ? 53 : 50);

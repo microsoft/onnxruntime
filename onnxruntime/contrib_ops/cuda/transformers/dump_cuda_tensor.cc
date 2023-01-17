@@ -174,6 +174,7 @@ void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, i
 void CudaTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
     DumpGpuTensor<size_t>(name, tensor, dim0, dim1, true);
+}
 
 void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, int dim0, int dim1) const {
   Print(name, reinterpret_cast<const MLFloat16*>(tensor), dim0, dim1);

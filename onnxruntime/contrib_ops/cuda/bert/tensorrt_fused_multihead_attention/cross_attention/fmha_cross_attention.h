@@ -43,10 +43,6 @@ struct Gmem_params {
 
   // array of length b+1 holding prefix sum of actual sequence lenghts.
   int32_t* cu_seqlens;
-
-  void print() {
-    printf("stride_in_bytes=%ld h=%d d=%d\n", stride_in_bytes, h, d);
-  }
 };
 
 struct Fused_multihead_attention_params_mhca {
@@ -117,19 +113,6 @@ struct Fused_multihead_attention_params_mhca {
 
     s_q = 0;
     d_padded = 0;
-  }
-
-  void print() {
-    printf("\nparams\n");
-    printf("qkv_stride_in_bytes=%ld \n packed_mask_stride_in_bytes=%ld \n o_stride_in_bytes=%ld \n", qkv_stride_in_bytes, packed_mask_stride_in_bytes, o_stride_in_bytes);
-    printf("b=%d \n h=%d \n s=%d \n d=%d \n", b, h, s, d);
-    printf("scale_bmm1=%d \n scale_softmax=%d \n scale_bmm2=%d \n", scale_bmm1, scale_softmax, scale_bmm2);
-    printf("enable_i2f_trick=%d \n interleaved=%d \n ignore_b1opt=%d \n", (int)enable_i2f_trick, (int)interleaved, (int)ignore_b1opt);
-    printf("s_q=%d \n d_padded=%d \n ", s_q, d_padded);
-    printf("gmem_q_params:\n ");
-    gmem_q_params.print();
-    printf("gmem_kv_params:\n ");
-    gmem_kv_params.print();
   }
 };
 
@@ -313,7 +296,7 @@ inline void run_fused_cross_attention(
     cudaStream_t stream = 0) {                          // cuda stream
   Fused_multihead_attention_params_mhca params = getMHCAParams(
       b, seqQ, seqKV, h, d, devQ, devKV, cuSeqlensQ, cuSeqlensKV, devOutput);
-  params.print();
+
   kernels->run(params, stream);
 }
 

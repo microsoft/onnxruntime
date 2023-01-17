@@ -16,7 +16,7 @@ namespace contrib {
 namespace cuda {
 
 template<typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
-void LaunchCutlassFmha(const FmhaParams& params) {
+void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
   typename Attention::Params p;
   { // set parameters
@@ -47,40 +47,21 @@ void LaunchCutlassFmha(const FmhaParams& params) {
 
     p.causal = params.causal;
 
-    if (params.format == AttentionQkvFormat::Q_K_V_BNSH) {
-      // Input format is BxNxSxH, output is BxSxNxH
-      p.q_strideM = params.qk_head_size;
-      p.k_strideM = params.qk_head_size;
-      p.v_strideM = params.v_head_size;
-      p.o_strideM = params.num_heads * params.v_head_size;
+    // Input format is BxSxNxH, output is BxSxNxH
+    p.q_strideH = params.qk_head_size;
+    p.k_strideH = params.qk_head_size;
+    p.v_strideH = params.v_head_size;
+    p.o_strideH = params.v_head_size;
 
-      p.q_strideH = params.sequence_length * params.qk_head_size;
-      p.k_strideH = params.kv_sequence_length * params.qk_head_size;
-      p.v_strideH = params.kv_sequence_length * params.v_head_size;
-      p.o_strideH = params.v_head_size;
+    p.q_strideM = params.num_heads * params.qk_head_size;
+    p.k_strideM = params.num_heads * params.qk_head_size;
+    p.v_strideM = params.num_heads * params.v_head_size;
+    p.o_strideM = params.num_heads * params.v_head_size;
 
-      p.q_strideB = SafeInt<size_t>(params.num_heads) * params.sequence_length * params.qk_head_size;
-      p.k_strideB = SafeInt<size_t>(params.num_heads) * params.kv_sequence_length * params.qk_head_size;
-      p.v_strideB = SafeInt<size_t>(params.num_heads) * params.kv_sequence_length * params.v_head_size;
-      p.o_strideB = SafeInt<size_t>(params.num_heads) * params.sequence_length * params.v_head_size;
-    } else {
-      ORT_ENFORCE(params.format == AttentionQkvFormat::Q_K_V_BSNH);
-      // Input format is BxSxNxH, output is BxSxNxH
-      p.q_strideH = params.qk_head_size;
-      p.k_strideH = params.qk_head_size;
-      p.v_strideH = params.v_head_size;
-      p.o_strideH = params.v_head_size;
-
-      p.q_strideM = params.num_heads * params.qk_head_size;
-      p.k_strideM = params.num_heads * params.qk_head_size;
-      p.v_strideM = params.num_heads * params.v_head_size;
-      p.o_strideM = params.num_heads * params.v_head_size;
-
-      p.q_strideB = SafeInt<size_t>(params.num_heads) * params.qk_head_size * params.sequence_length;
-      p.k_strideB = SafeInt<size_t>(params.num_heads) * params.qk_head_size * params.kv_sequence_length;
-      p.v_strideB = SafeInt<size_t>(params.num_heads) * params.v_head_size * params.kv_sequence_length;
-      p.o_strideB = SafeInt<size_t>(params.num_heads) * params.v_head_size * params.sequence_length;
-    }
+    p.q_strideB = SafeInt<size_t>(params.num_heads) * params.qk_head_size * params.sequence_length;
+    p.k_strideB = SafeInt<size_t>(params.num_heads) * params.qk_head_size * params.kv_sequence_length;
+    p.v_strideB = SafeInt<size_t>(params.num_heads) * params.v_head_size * params.kv_sequence_length;
+    p.o_strideB = SafeInt<size_t>(params.num_heads) * params.v_head_size * params.sequence_length;
 
     p.causal = params.causal;
   }
@@ -101,7 +82,7 @@ void LaunchCutlassFmha(const FmhaParams& params) {
 
 
 template<typename T, typename ArchTag, int queries_per_block, int keys_per_block, bool single_value_iteration>
-void DispatchIsAligned(const FmhaParams& params){
+void DispatchIsAligned(const MemoryEfficientAttentionParams& params){
 
   using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, single_value_iteration>;
 
@@ -117,7 +98,7 @@ void DispatchIsAligned(const FmhaParams& params){
 
 
 template<typename T, typename ArchTag>
-void DispatchBlockSize(const FmhaParams& params) {
+void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
   if (params.v_head_size <= 64) {
     DispatchIsAligned<T, ArchTag, 64, 64, true>(params);
   } else if (params.v_head_size <= 128) {
@@ -128,7 +109,7 @@ void DispatchBlockSize(const FmhaParams& params) {
 }
 
 template<typename T>
-void DispatchArchTag(const FmhaParams& params) {
+void DispatchArchTag(const MemoryEfficientAttentionParams& params) {
   const int32_t &sm = params.sm;
   if (sm >= 80) {
     DispatchBlockSize<T, cutlass::arch::Sm80>(params);
@@ -143,7 +124,7 @@ void DispatchArchTag(const FmhaParams& params) {
   }
 }
 
-common::Status run_memory_efficient_attention(const FmhaParams& params) {
+common::Status run_memory_efficient_attention(const MemoryEfficientAttentionParams& params) {
   if (params.is_half) {
     DispatchArchTag<cutlass::half_t>(params);
   } else {

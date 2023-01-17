@@ -18,10 +18,11 @@ enum AttentionMaskType {
 };
 
 enum AttentionQkvFormat {
-  Q_K_V_BNSH,      // for memory efficient attention, or TRT fused causal attention, or unfused attention
-  Q_K_V_BSNH,      // for memory efficient attention
-  QKV_BSN3H,       // for TRT fused attention, qkv are packed
-  Q_KV_BSNH_BSN2H, // for TRT fused cross attention, kv are packed
+  Q_K_V_BNSH,            // for unfused attention
+  Q_K_V_BSNH,            // for memory efficient attention
+  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
+  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
 };
 
 enum AttentionKernelType{

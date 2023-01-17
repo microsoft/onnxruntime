@@ -120,7 +120,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             nullptr == past &&
                             nullptr == present &&
                             nullptr == extra_add_qk &&
-                            !is_unidirectional_ &&
                             parameters.hidden_size == parameters.v_hidden_size &&
                             parameters.sequence_length == parameters.kv_sequence_length &&
                             FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
@@ -140,6 +139,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
   }
+
+  bool use_memory_efficient_attention = fused_runner == nullptr &&
+                                        !disable_memory_efficient_attention_ &&
+                                        nullptr == mask_index &&  // TODO: support 1D mask
+                                        nullptr == past &&
+                                        nullptr == present &&
+                                        nullptr == extra_add_qk &&
+                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
@@ -163,13 +170,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   constexpr size_t element_size = sizeof(T);
-  bool use_memory_efficient_attention = fused_runner == nullptr &&
-                                        !disable_memory_efficient_attention_ &&
-                                        nullptr == mask_index &&  // TODO: support 1D mask
-                                        nullptr == past &&
-                                        nullptr == present &&
-                                        nullptr == extra_add_qk &&
-                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,

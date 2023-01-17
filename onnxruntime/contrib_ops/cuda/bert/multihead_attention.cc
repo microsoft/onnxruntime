@@ -110,7 +110,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
                                                              enable_flash_attention_, false);
   if (use_fused_runner) {
-    // Here we assume that num_heads and head_size does not change for a CrossAttention node.
+    // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
       fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
