@@ -18,7 +18,8 @@ Status LaunchRelPosAttnBiasKernel(
     const int seq_len,
     const int num_bucket,
     const int max_distance,
-    const bool is_bidirectional
+    const bool is_bidirectional,
+    const int max_threads_per_block
 );
 
 }  // namespace cuda

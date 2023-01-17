@@ -13,7 +13,7 @@ namespace onnxruntime {
 using contrib::AttentionMaskType;
 namespace test {
 
-static void RunCrossAttentionTest(
+static void RunMultiHeadAttentionTest(
     const std::vector<float>& query_data,               // query:  [batch_size, sequence_length, hidden_size]
     const std::vector<float>& key_data,                 // key:    [batch_size, kv_sequence_length, hidden_size]
     const std::vector<float>& value_data,               // value:  [batch_size, kv_sequence_length, v_hidden_size]
@@ -39,7 +39,7 @@ static void RunCrossAttentionTest(
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
   if (enable_cpu || enable_cuda || enable_rocm) {
-    OpTester tester("CrossAttention", 1, onnxruntime::kMSDomain);
+    OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
     std::vector<int64_t> query_dims = {batch_size, sequence_length, hidden_size};
@@ -112,7 +112,7 @@ static void RunCrossAttentionTest(
   }
 }
 
-TEST(CrossAttentionTest, CrossAttentionBatch1) {
+TEST(MultiHeadAttentionTest, MultiHeadAttentionBatch1) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -149,7 +149,7 @@ TEST(CrossAttentionTest, CrossAttentionBatch1) {
   constexpr bool disable_cuda = false;
   constexpr bool disable_rocm = true;  // not supported in rocm right now.
 
-  RunCrossAttentionTest(
+  RunMultiHeadAttentionTest(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16, disable_cpu, disable_cuda, disable_rocm);

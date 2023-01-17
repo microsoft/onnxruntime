@@ -85,6 +85,7 @@ def test_gemmfastgelu_tunable_bert_cases(dtype, size, transab):
     _test_gemmfastgelu(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", all_transabs)

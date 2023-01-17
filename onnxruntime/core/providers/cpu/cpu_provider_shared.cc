@@ -44,6 +44,7 @@
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
+#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -269,11 +270,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return p->AdamWOptimizerBase::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::AdamWOptimizerBase::Prepare&>(prepare));
   }
-
-  Status contrib__AdamWOptimizerBase__GenerateOutputs(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
-                                                      size_t number_of_values,
-                                                      const TensorSeq* values, TensorSeq* updated_values) override {
-    return p->AdamWOptimizerBase::GenerateOutputs(ctx, number_of_values, values, updated_values);
+  Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx,
+                                                        contrib__SGDOptimizerV2Base__Prepare& prepare) override {
+    return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
+                                                    reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
 #endif
 

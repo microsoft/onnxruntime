@@ -1349,6 +1349,21 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SequentialPlannerContext context(session_options.execution_mode,
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
+
+#ifdef _WIN32
+
+  PathString partition_config_file =
+      ToWideString(session_options.config_options.GetConfigOrDefault(
+          kNodePartitionConfigFile, ""));
+
+#else
+
+  PathString partition_config_file =
+      session_options.config_options.GetConfigOrDefault(
+          kNodePartitionConfigFile, "");
+
+#endif
+
   auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                               execution_providers_, kernel_create_info_map_,
                                               subgraphs_kernel_create_info_maps,
@@ -1357,8 +1372,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #ifdef ORT_ENABLE_STREAM
                                               GetStreamHandleRegistryInstance(),
 #endif
-                                              session_options.config_options.GetConfigOrDefault(
-                                                  kNodePartitionConfigFile, ""),
+                                              partition_config_file,
                                               Logger(),
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
@@ -1373,9 +1387,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SetMemoryProfiler(mem_profiler.release());
 #endif
 
+  // Note: For Training Prepacking should be always disabled.
+  // For inference it is enabled by default, but users can choose to disable it via session options.
+  const bool disable_prepacking =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
-  // Further more, NCCL kernels require initializers to be allocated
+  // Further more, in training scenarios NCCL kernels require initializers to be allocated
   // contiguously.
   //
   // In inferencing scenarios, however, we often want to pre-process and then
@@ -1383,17 +1401,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // sharing a single buffer makes it hard to release individual ones, leading
   // to memory waste.
   //
-  // TODO!! disabling memory pattern tracer increases fragementation, leading to
+  // TODO!! disabling memory pattern tracer increases fragmentation, leading to
   //  out of memory error in some training tests. Need to create kernel first,
-  //  and let the kernel tells us whether the initalizer needs to be traced.
+  //  and let the kernel tells us whether the initializer needs to be traced.
   //
-#if defined(ENABLE_TRAINING)
-  std::unique_ptr<ITensorAllocator> tensor_allocator(
-      ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
-#else
-  std::unique_ptr<ITensorAllocator> tensor_allocator(
-      ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_));
-#endif
+  std::unique_ptr<ITensorAllocator> tensor_allocator = nullptr;
+  if (disable_prepacking) {
+    tensor_allocator = ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_);
+  } else {
+    tensor_allocator = ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_);
+  }
 
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
@@ -1456,15 +1473,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-#ifndef ENABLE_TRAINING
-  const auto disable_prepacking =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
-
-  if (disable_prepacking != "1") {
+  if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }
-#endif
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));

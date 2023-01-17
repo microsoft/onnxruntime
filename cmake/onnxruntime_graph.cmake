@@ -72,6 +72,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
       "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
       )
 endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
