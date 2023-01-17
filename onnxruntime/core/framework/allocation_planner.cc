@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocation_planner.h"
-#include <list>
 #include <algorithm>
-#include <sstream>
 #include <ctime>
+#include <deque>
 #include <iomanip>
+#include <list>
+#include <sstream>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
@@ -22,6 +23,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
+
 
 #ifdef ORT_ENABLE_STREAM
 #include "nlohmann/json.hpp"
