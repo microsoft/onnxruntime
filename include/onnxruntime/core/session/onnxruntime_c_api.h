@@ -3689,11 +3689,12 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelInfo
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Get the number of inputs from ::OrtKernelInfo.
    *
-   * Can be used in the CreateKernel callback of an OrtCustomOp to query the number of inputs
+   * Used in the CreateKernel callback of an OrtCustomOp to query the number of inputs
    * during kernel/session creation.
    *
    * \param[in] info Instance of ::OrtKernelInfo.
@@ -3706,7 +3707,7 @@ struct OrtApi {
 
   /** \brief Get the number of outputs from ::OrtKernelInfo.
    *
-   * Can be used in the CreateKernel callback of an OrtCustomOp to query the number of outputs
+   * Used in the CreateKernel callback of an OrtCustomOp to query the number of outputs
    * during kernel/session creation.
    *
    * \param[in] info Instance of ::OrtKernelInfo.
@@ -3719,7 +3720,7 @@ struct OrtApi {
 
   /** \brief Get the name of a ::OrtKernelInfo's input.
    *
-   * Can be used in the CreateKernel callback of an OrtCustomOp to query an input's name
+   * Used in the CreateKernel callback of an OrtCustomOp to query an input's name
    * during kernel/session creation.
    *
    * If `out` is nullptr, the value of `size` is set to the size of the name
@@ -3746,7 +3747,7 @@ struct OrtApi {
 
   /** \brief Get the name of a ::OrtKernelInfo's output.
    *
-   * Can be used in the CreateKernel callback of an OrtCustomOp to query an output's name
+   * Used in the CreateKernel callback of an OrtCustomOp to query an output's name
    * during kernel/session creation.
    *
    * If `out` is nullptr, the value of `size` is set to the size of the name
@@ -3774,7 +3775,7 @@ struct OrtApi {
 
   /** \brief Get the type information for a ::OrtKernelInfo's input.
    *
-   * Can be used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
+   * Used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
    * of an input during kernel/session creation.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
@@ -3788,7 +3789,7 @@ struct OrtApi {
 
   /** \brief Get the type information for a ::OrtKernelInfo's output.
    *
-   * Can be used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
+   * Used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
    * of an output during kernel/session creation.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
@@ -3801,6 +3802,8 @@ struct OrtApi {
                   _Outptr_ OrtTypeInfo** type_info);
 
   /** \brief Get a ::OrtValue tensor stored as an attribute in the graph node.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to get a tensor attribute.
    *
    * \param[in] info ::OrtKernelInfo instance.
    * \param[in] name UTF-8 null-terminated string representing the attribute's name.
@@ -3815,11 +3818,16 @@ struct OrtApi {
 
   /// @}
   /// \name OrtSessionOptions
+  /// Custom operator APIs
   /// @{
 
   /** \brief Checks if the given session configuration entry exists.
    *
    * The config_key formats are defined in onnxruntime_session_options_config_keys.h
+   *
+   * Can be used in a custom operator library to check for session configuration entries
+   * that target one or more custom operators in the library. Example: The config entry
+   * custom_op.myop.some_key targets a custom op named "myop".
    *
    * \param[in] options The ::OrtSessionOptions instance.
    * \param[in] config_key A null-terminated UTF-8 string representation of the configuration key.
@@ -3847,6 +3855,10 @@ struct OrtApi {
    * is not nullptr, the value of `size` is set to the true size of the string value
    * and a failure status is returned.
    *
+   * Can be used in a custom operator library to get session configuration entries
+   * that target one or more custom operators in the library. Example: The config entry
+   * custom_op.myop.some_key targets a custom op named "myop".
+   *
    * \param[in] options The session options.
    * \param[in] config_key A null-terminated UTF-8 string representation of the config key.
    * \param[in] config_value Pointer to memory where the null-terminated UTF-8 string value will be stored.
@@ -3857,6 +3869,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                   _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
+
+  /// @}
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
