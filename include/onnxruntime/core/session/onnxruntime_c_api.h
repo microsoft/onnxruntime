@@ -1678,6 +1678,7 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelInfo
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Get a float stored as an attribute in the graph node
@@ -1727,6 +1728,7 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelContext
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Used for custom operators, get the input count of a kernel
@@ -2598,6 +2600,7 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelInfo
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Fetch an array of int64_t values stored as an attribute in the graph node
@@ -3141,9 +3144,12 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
+
   /// @}
   /// \name OrtKernelContext
+  /// Custom operator APIs.
   /// @{
+
   /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel
    *   \see ::OrtCustomOp
    * \param[in]  context OrtKernelContext instance
