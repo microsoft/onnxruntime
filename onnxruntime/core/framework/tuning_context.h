@@ -25,6 +25,8 @@ class ITuningContext {
 
   virtual TuningResultsManager& GetTuningResultsManager() = 0;
   virtual const TuningResultsManager& GetTuningResultsManager() const = 0;
+
+  virtual const TuningResultsValidator& GetTuningResultsValidator() const = 0;
 };
 
 class TuningResultsManager {
@@ -48,6 +50,33 @@ class TuningResultsManager {
  private:
   mutable OrtMutex lock_;
   std::unordered_map<std::string, KernelMap> results_;
+};
+
+class TuningResultsValidator {
+ public:
+  using GetFunc = std::function<std::string()>;
+  using ValidateFunc = std::function<Status(const std::string&)>;
+  using GetValidateFuncs = std::unordered_map<std::string, std::pair<GetFunc, ValidateFunc>>;
+
+  TuningResultsValidator();
+
+  std::unordered_map<std::string, std::string> GetAllValidators() const;
+  Status ValidateAll(const std::unordered_map<std::string, std::string>& to_validate) const;
+
+ protected:
+  void RegisterValidator(const std::string& key, const GetFunc& gf, const ValidateFunc& vf);
+
+  virtual std::string GetOrtVersion() const;
+  virtual Status ValidateOrtVersion(const std::string& value) const;
+
+  virtual std::string GetOrtGitCommit() const;
+  virtual Status ValidateOrtGitCommit(const std::string& value) const;
+
+  virtual std::string GetOrtBuildConfig() const;
+  virtual Status ValidateOrtBuildConfig(const std::string& value) const;
+
+ private:
+  GetValidateFuncs validators_;
 };
 
 }  // namespace onnxruntime

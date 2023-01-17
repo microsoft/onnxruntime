@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// This file contains the implementation of TuningResultsManager. At the moment, there is no necessity to expose these
+// This file contains the implementation of TuningContext. At the moment, there is no necessity to expose these
 // methods as OrtApis. This will cause missing symbols when loading provider dynamic libraries, because the libraries
 // are not whole-archive linked and these symbols are not referenced at framework level. To circumvent this problem,
 // the EP must has and only has one translation unit include this file.
@@ -10,6 +10,10 @@
 #endif
 
 #pragma once
+
+#include <functional>
+#include <unordered_set>
+#include <utility>
 
 #include "core/framework/tunable.h"
 #include "core/framework/tuning_context.h"
@@ -104,6 +108,142 @@ void TuningResultsManager::DisjointMerge(const std::string& op_signature, const 
 
 void TuningResultsManager::Clear() {
   results_ = {};
+}
+
+Status CheckMandatoryKeys(
+    const TuningResultsValidator::GetValidateFuncs& gv_funcs,
+    const std::unordered_map<std::string, std::string>& to_check) {
+  constexpr const std::array mandatory_keys{"ORT_VERSION", "ORT_GIT_COMMIT", "ORT_BUILD_CONFIG"};
+
+  bool passed = true;
+  std::ostringstream oss;
+  for (const auto& k : mandatory_keys) {
+    if (gv_funcs.find(k) == gv_funcs.end()) {
+      passed = false;
+      oss << "key=\"" << k << "\" is not registered for Get and Validate. ";
+    }
+
+    if (to_check.find(k) == to_check.end()) {
+      passed = false;
+      oss << "key=\"" << k << "\" is not provided for validation. ";
+    }
+  }
+  ORT_RETURN_IF(!passed, oss.str());
+  return Status::OK();
+}
+
+Status CheckKeysMatching(
+    const TuningResultsValidator::GetValidateFuncs& gv_funcs,
+    const std::unordered_map<std::string, std::string>& to_check) {
+  auto get_keys = [](const auto& it) -> std::string { return it.first; };
+  std::vector<std::string> required_keys;
+  std::vector<std::string> provided_keys;
+  std::transform(gv_funcs.cbegin(), gv_funcs.cend(), std::back_inserter(required_keys), get_keys);
+  std::transform(to_check.cbegin(), to_check.cend(), std::back_inserter(provided_keys), get_keys);
+  std::sort(required_keys.begin(), required_keys.end());
+  std::sort(provided_keys.begin(), provided_keys.end());
+
+  std::unordered_set<std::string> intersection;
+  std::set_intersection(required_keys.cbegin(), required_keys.cend(),
+                        provided_keys.cbegin(), provided_keys.cend(),
+                        std::inserter(intersection, intersection.end()));
+  bool matched = true;
+  std::ostringstream oss;
+  if (intersection.size() != required_keys.size()) {
+    matched = false;
+    for (const auto& k : required_keys) {
+      if (intersection.find(k) == intersection.end()) {
+        oss << "Unmatched validator: \"" << k << "\" is required, but the tuning results does not provide it. ";
+      }
+    }
+  }
+  if (intersection.size() != provided_keys.size()) {
+    matched = false;
+    for (const auto& k : provided_keys) {
+      if (intersection.find(k) == intersection.end()) {
+        oss << "Unmatched validator: \"" << k << "\" is provided, but onnxruntime is unable to consume it. ";
+      }
+    }
+  }
+  ORT_RETURN_IF(!matched, oss.str());
+  return Status::OK();
+}
+
+std::string TuningResultsValidator::GetOrtVersion() const {
+  return ORT_VERSION;
+}
+
+Status TuningResultsValidator::ValidateOrtVersion(const std::string& value) const {
+  ORT_RETURN_IF(value != ORT_VERSION, "onnxruntime version mismatch");
+  return Status::OK();
+}
+
+std::string TuningResultsValidator::GetOrtGitCommit() const {
+  // TODO:
+  return "";
+}
+
+Status TuningResultsValidator::ValidateOrtGitCommit(const std::string& value) const {
+  // TODO:
+  ORT_UNUSED_PARAMETER(value);
+  return Status::OK();
+}
+
+std::string TuningResultsValidator::GetOrtBuildConfig() const {
+  return "";
+}
+
+Status TuningResultsValidator::ValidateOrtBuildConfig(const std::string& value) const {
+  auto current = GetOrtBuildConfig();
+  ORT_RETURN_IF(current != value,
+                "onnxruntime building configuration mismatch: tuning results produced with library \"",
+                value, "\", current library built with \"", current, "\"");
+  return Status::OK();
+}
+
+TuningResultsValidator::TuningResultsValidator() {
+  RegisterValidator(
+      "ORT_VERSION",
+      [this]() { return GetOrtVersion(); },
+      [this](auto&& k) { return ValidateOrtVersion(std::forward<decltype(k)>(k)); });
+
+  RegisterValidator(
+      "ORT_GIT_COMMIT",
+      [this]() { return GetOrtGitCommit(); },
+      [this](auto&& k) { return ValidateOrtGitCommit(std::forward<decltype(k)>(k)); });
+
+  RegisterValidator(
+      "ORT_BUILD_CONFIG",
+      [this]() { return GetOrtBuildConfig(); },
+      [this](auto&& k) { return ValidateOrtBuildConfig(std::forward<decltype(k)>(k)); });
+}
+
+Status TuningResultsValidator::ValidateAll(const std::unordered_map<std::string, std::string>& to_validate) const {
+  ORT_RETURN_IF_ERROR(CheckMandatoryKeys(validators_, to_validate));
+  ORT_RETURN_IF_ERROR(CheckKeysMatching(validators_, to_validate));
+
+  for (const auto& [key, value] : to_validate) {
+    const auto& it = validators_.find(key);
+    ORT_ENFORCE(it != validators_.cend());
+    const ValidateFunc& validator = it->second.second;
+    ORT_RETURN_IF_ERROR(validator(value));
+  }
+
+  return Status::OK();
+}
+
+std::unordered_map<std::string, std::string> TuningResultsValidator::GetAllValidators() const {
+  std::unordered_map<std::string, std::string> ret;
+  for (const auto& [key, get_validate_func_pair] : validators_) {
+    const GetFunc& getter = get_validate_func_pair.first;
+    ret[key] = getter();
+  }
+  return ret;
+}
+
+void TuningResultsValidator::RegisterValidator(const std::string& key, const GetFunc& gf, const ValidateFunc& vf) {
+  ORT_ENFORCE(validators_.find(key) == validators_.end());
+  validators_[key] = std::make_pair(gf, vf);
 }
 
 }  // namespace onnxruntime
