@@ -42,12 +42,12 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #endif
-#if defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
@@ -981,7 +981,7 @@ struct ProviderHostImpl : ProviderHost {
     return p->AllocatorManager::GetAllocator(mem_type, device);
   };
 
-#if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
+#if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
 
@@ -1366,7 +1366,7 @@ void NvtxRangeCreator::EndImpl() {
 }  // namespace profile
 #endif
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace cuda {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_CUDA().GetINcclService();
@@ -1374,7 +1374,7 @@ INcclService& INcclService::GetInstance() {
 }  // namespace cuda
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace rocm {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_ROCM().GetINcclService();

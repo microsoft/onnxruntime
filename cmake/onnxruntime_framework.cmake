@@ -16,6 +16,13 @@ file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
   list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_torch_srcs})
 endif()
 
+if (onnxruntime_USE_NCCL AND onnxruntime_USE_MPI)
+  list(APPEND onnxruntime_framework_srcs
+  "${ONNXRUNTIME_ROOT}/core/distribute/process_group.h"
+  "${ONNXRUNTIME_ROOT}/core/distribute/process_group.cc"
+  )
+endif()
+
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_framework_src_exclude
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
@@ -75,9 +82,11 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
     target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
   endif()
-  if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
-    target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
-  endif()
+endif()
+if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
+  target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
+  target_include_directories(onnxruntime_framework PRIVATE ${NCCL_INCLUDE_DIRS})
+  #target_link_libraries(onnxruntime_framework PRIVATE ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES})
 endif()
 
 if (onnxruntime_ENABLE_ATEN)

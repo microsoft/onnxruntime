@@ -31,6 +31,7 @@ try:
         OrtMemoryInfo,
         OrtMemType,
         OrtSparseFormat,
+        ProcessGroup,
         RunOptions,
         SessionIOBinding,
         SessionOptions,
