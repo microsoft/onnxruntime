@@ -3555,6 +3555,30 @@ static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_opt
   EXPECT_EQ(has_gelu_approximation, is_enabled);
 }
 
+// Test session option configuration for DoubleQDQPairsRemover
+TEST_F(GraphTransformationTests, DoubleQDQRemover_SessionOptionConfig) {
+  auto verify_session_config = [&](bool is_enabled, SessionOptions& session_option) {
+    std::unique_ptr<CPUExecutionProvider> cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    bool has_double_qdq_remover = false;
+    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option, *cpu_ep.get(), {});
+    for (auto& transformer : transformers) {
+      if (transformer->Name() == "DoubleQDQPairsRemover") {
+        has_double_qdq_remover = true;
+      }
+    }
+    EXPECT_EQ(has_double_qdq_remover, is_enabled);
+  };
+  SessionOptions session_options;
+  // DoubleQDQPairsRemover is enabled by default.
+  verify_session_config(true, session_options);
+
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableDoubleQDQRemover, "1"));
+  verify_session_config(false, session_options);
+
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableDoubleQDQRemover, "0"));
+  verify_session_config(true, session_options);
+}
+
 // Test session option configuration for GeluApproximation
 TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
   SessionOptions session_options;
