@@ -5,11 +5,12 @@
 # pylint: disable=C0103
 # pylint: disable=W0212
 
-import pytest
-import torch
+import os
 
 # Import ORT modules.
-from _test_helpers import *
+import _test_helpers
+import pytest
+import torch
 from packaging.version import Version
 from torch.nn.parameter import Parameter
 
@@ -86,7 +87,7 @@ def test_gelu():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 def test_GeLU_custom_func_rets_not_as_module_output():
@@ -144,7 +145,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 def test_GeLU_multiple_forward_runs():
@@ -196,7 +197,7 @@ def test_GeLU_multiple_forward_runs():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input, run_forward_twice=True)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input, run_forward_twice=True)
 
 
 def test_MegatronF():
@@ -236,7 +237,7 @@ def test_MegatronF():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 def test_ScalarAndTuple():
@@ -283,7 +284,7 @@ def test_ScalarAndTuple():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 def test_ScalarAndTupleReordered():
@@ -330,7 +331,7 @@ def test_ScalarAndTupleReordered():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 @pytest.mark.skip(
@@ -380,7 +381,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
     label_input = torch.ones([output_size])
 
     # Test when input is in-place updated, but does not require gradient.
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
 @pytest.mark.skip(
@@ -429,7 +430,7 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     # which is a duplicated computation with the PythonOp.
     # So for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad,
     # this is the reason we ignore the gradient compare here.
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
 @pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
@@ -476,7 +477,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 @pytest.mark.skip(
@@ -528,7 +529,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     # duplicated computation with the PythonOp.  Thus, for the weights that are used twice BUT SHOULD
     # only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
     # ignore the gradient compare here.
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
 @pytest.mark.skip(
@@ -580,7 +581,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
     # should reuse the input torch tensor @140214095996104, 140212816617984 but actually not." It seems
     # if we don't have mark_dirty() in auto grad forward, the result is not using the input_,
     # (maybe a view of it, because data address is same)
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
 ##########################################################################################
@@ -630,7 +631,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 def test_EvalTest():
@@ -736,7 +737,7 @@ def test_TwoOutputFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
 def test_InnerModuleCall():
@@ -860,9 +861,9 @@ def test_Share_Input():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)
 
-    run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
 
 
 def test_MultipleStream_InForwardFunction():
@@ -908,7 +909,7 @@ def test_MultipleStream_InForwardFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    _test_helpers.run_training_test_and_compare(
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -956,7 +957,7 @@ def test_NonDefaultStream_InForwardFunction1():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    _test_helpers.run_training_test_and_compare(
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -1003,7 +1004,7 @@ def test_NonDefaultStream_InForwardFunction2():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    _test_helpers.run_training_test_and_compare(
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -1052,7 +1053,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    _test_helpers.run_training_test_and_compare(
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -1333,4 +1334,4 @@ def test_python_op_save_input_for_backward():
         return torch.randn(output_size, output_size, dtype=torch.float).requires_grad_()
 
     label_input = torch.ones([output_size])
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    _test_helpers.run_training_test_and_compare(model_builder, input_generator, label_input)

@@ -27,8 +27,8 @@ import math
 import os
 import unittest
 
+import parity_utilities
 import torch
-from parity_utilities import *
 from torch import nn
 
 
@@ -36,6 +36,7 @@ class Gelu(nn.Module):
     def __init__(self, formula=4, fp32_gelu_op=False):
         super().__init__()
         self.formula = formula
+        # FIXME(justinchuby): fp32_gelu_op is always True
         self.fp32_gelu_op = True
 
     def gelu(self, x):
@@ -97,12 +98,12 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/gelu_{}_{}.onnx".format(formula, "fp16" if float16 else "fp32")
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)
+    parity_utilities.export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
         optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(formula, "fp16" if float16 else "fp32")
         use_gpu = float16 and not fp32_gelu_op
-        optimize_onnx(
+        parity_utilities.optimize_onnx(
             onnx_model_path,
             optimized_onnx_path,
             Gelu.get_fused_op(formula),
@@ -113,7 +114,7 @@ def run(
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(
+    num_failure = parity_utilities.run_parity(
         model,
         onnx_path,
         batch_size,
@@ -217,9 +218,7 @@ class TestGeluParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             for i in self.formula_to_test:

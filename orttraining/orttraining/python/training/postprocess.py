@@ -1,7 +1,6 @@
 import struct
 
 import onnx
-from onnx import *
 from onnx import helper
 
 

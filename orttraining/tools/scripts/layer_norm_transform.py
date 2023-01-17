@@ -3,7 +3,6 @@ import sys
 
 import numpy as np
 import onnx
-from onnx import *
 
 
 def find_node(graph_proto, op_type):
@@ -18,10 +17,10 @@ def find_node(graph_proto, op_type):
 
 
 def gen_attribute(key, value):
-    attr = AttributeProto()
+    attr = onnx.AttributeProto()
     attr.name = key
     attr.ints.extend(int(v) for v in value)
-    attr.type = AttributeProto.INTS
+    attr.type = onnx.AttributeProto.INTS
     return attr
 
 
@@ -121,7 +120,7 @@ def main():
         layer_norm_output.append("saved_mean_" + str(id))
         id = id + 1
         layer_norm_output.append("saved_inv_std_var_" + str(id))
-        layer_norm = helper.make_node(
+        layer_norm = onnx.helper.make_node(
             "LayerNormalization",
             layer_norm_input,
             layer_norm_output,

@@ -8,8 +8,8 @@ import os
 import unittest
 
 import onnx
+import parity_utilities
 import torch
-from parity_utilities import *
 from torch import nn
 
 if find_transformers_source():
@@ -150,12 +150,12 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/layer_norm_{}_formula{}.onnx".format("fp16" if float16 else "fp32", formula)
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)
+    parity_utilities.export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
         optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
         if (not float16) or cast_fp16:
-            optimize_onnx(
+            parity_utilities.optimize_onnx(
                 onnx_model_path,
                 optimized_onnx_path,
                 expected_op=LayerNorm.get_fused_op(),
@@ -170,7 +170,7 @@ def run(
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(
+    num_failure = parity_utilities.run_parity(
         model,
         onnx_path,
         batch_size,
@@ -295,9 +295,7 @@ class TestLayerNormParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True)
