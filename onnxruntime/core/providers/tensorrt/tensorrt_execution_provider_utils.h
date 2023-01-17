@@ -11,7 +11,7 @@
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/common/path_string.h"
-#include "murmurhash3.h"
+#include "core/framework/murmurhash3.h"
 
 namespace fs = std::experimental::filesystem;
 
