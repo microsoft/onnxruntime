@@ -82,6 +82,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "8b42e751c63ba219755c8ed91af5f6ec1ecc1ee6",
+          "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
+        },
+        "comments": "git submodule at cmake/external/cutlass"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
