@@ -635,9 +635,6 @@ ExecuteGraphImpl(const SessionState& session_state,
   //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
   //    deadlock when we reach the limitation of thread pool.
   bool single_thread_mode = execution_mode == ExecutionMode::ORT_SEQUENTIAL || is_subgraph;
-#ifdef ENABLE_TRAINING_CORE
-  single_thread_mode = true;
-#endif
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
@@ -1004,7 +1001,8 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onn
   }
 }
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
+// Needed only when NCCL kernels are enabled.
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
   const Tensor* prev_input = context->Input<Tensor>(0);
   for (int i = 1; i < context->InputCount(); i++) {

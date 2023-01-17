@@ -1131,6 +1131,7 @@ if (onnxruntime_USE_DML)
 
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_common)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_framework)
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
@@ -1437,17 +1438,20 @@ if (onnxruntime_USE_ROCM)
     #endif()
   endif()
 
-  include(composable_kernel)
-  target_link_libraries(onnxruntime_providers_rocm PRIVATE
-    onnxruntime_composable_kernel_includes
-    # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
-    # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
-    # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
-    device_gemm_instance
-    device_gemm_add_fastgelu_instance
-    device_gemm_fastgelu_instance
-    device_batched_gemm_instance
-  )
+  if (onnxruntime_USE_COMPOSABLE_KERNEL)
+    include(composable_kernel)
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE
+      onnxruntime_composable_kernel_includes
+      # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
+      # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
+      # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
+      device_gemm_instance
+      device_gemm_add_fastgelu_instance
+      device_gemm_fastgelu_instance
+      device_batched_gemm_instance
+    )
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL)
+  endif()
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
