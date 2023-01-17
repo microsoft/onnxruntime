@@ -387,7 +387,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
                                               const int mask_dimension,
                                               const int max_sequence_length,
                                               const bool skip_softmax,
-                                              const bool mask_filter_value) {
+                                              const float mask_filter_value) {
   SoftmaxWithRawMaskSmall<T, TPB>(
       all_sequence_length, sequence_length,
       attention_mask, key_padding_mask, add_before_softmax, input, output,
