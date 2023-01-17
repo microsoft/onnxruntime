@@ -6,6 +6,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "orttraining/training_api/include/module.h"
 #include "orttraining/training_api/include/utils.h"
@@ -148,6 +149,17 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes)
     : named_parameters_{named_parameters} {
+
+  // Enforce weight prepacking is disabled
+  // If user explicitly enabled weight prepacking then return error.
+  // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.
+  std::string disable_prepacking = "";
+  if (session_options.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, disable_prepacking)) {
+    ORT_ENFORCE(disable_prepacking == "1", "Prepacking is not supported for training scenarios.");
+  } else {
+    const_cast<SessionOptions&>(session_options).config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "1";
+  }
+
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   for (const auto& provider : providers) {

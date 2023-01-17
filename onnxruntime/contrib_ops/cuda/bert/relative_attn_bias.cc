@@ -57,6 +57,7 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
+  auto& device_prop = GetDeviceProp();
   return LaunchRelPosAttnBiasKernel<CudaT>(Stream(context),
                                            reinterpret_cast<CudaT*>(output->template MutableData<T>()),
                                            reinterpret_cast<const CudaT*>(bias_table->template Data<T>()),
@@ -64,7 +65,8 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
                                            static_cast<int>(query_len),
                                            static_cast<int>(num_buckets),
                                            max_distance_,
-                                           is_bidirectional_);
+                                           is_bidirectional_,
+                                           device_prop.maxThreadsPerBlock);
 }
 
 }  // namespace cuda

@@ -37,7 +37,7 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
 onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 
-if (onnxruntime_USE_CLOUD)
+if (onnxruntime_USE_AZURE)
 
   add_dependencies(onnxruntime_framework triton)
   target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
@@ -56,7 +56,7 @@ if (onnxruntime_USE_CLOUD)
 
   endif() #if (WIN32)
 
-endif() #if (onnxruntime_USE_CLOUD)
+endif() #if (onnxruntime_USE_AZURE)
 
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
@@ -85,7 +85,7 @@ if (onnxruntime_ENABLE_ATEN)
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json)
 
 if (onnxruntime_USE_MIMALLOC)
     target_link_libraries(onnxruntime_framework mimalloc-static)

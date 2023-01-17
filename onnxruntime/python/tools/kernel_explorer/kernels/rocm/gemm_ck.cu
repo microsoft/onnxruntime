@@ -24,6 +24,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+#ifdef USE_COMPOSABLE_KERNEL
 template <typename T, typename ALayout, typename BLayout>
 class CKGemm : public IKernelExplorer {
  public:
@@ -212,5 +213,8 @@ void InitComposableKernelGemm(py::module m) {
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(float);
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(half);
 }
+#else
+void InitComposableKernelGemm(py::module) {}
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

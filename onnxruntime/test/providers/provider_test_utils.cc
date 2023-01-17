@@ -339,7 +339,7 @@ struct TensorCheck<MLFloat16> {
     const bool has_rel_err = params.relative_error_.has_value();
 
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
 #elif defined(USE_DML)
     threshold = 0.008f;
@@ -396,7 +396,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float abs_threshold = 0.0001f;
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
     threshold = 0.05f;  // expect at least 95% close
 #endif
 
@@ -912,7 +912,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches[idx];
-        
+
         if (expected_data.def_.Exists()) {           // optional edges won't exist (so skip them)
           if (!expected_data.data_.IsAllocated()) {  // optional type output (None)
             EXPECT_TRUE(!ort_value.IsAllocated())
@@ -1463,6 +1463,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 }
 
 #ifdef ENABLE_TRAINING
+// Deprecated code. Remove this when training::TrainingSession is removed.
 template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,

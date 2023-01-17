@@ -46,6 +46,7 @@ function(AddTest)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif(_UT_DEPENDS)
+
   if(_UT_DYN)
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock onnxruntime ${CMAKE_DL_LIBS}
             Threads::Threads)
@@ -53,6 +54,7 @@ function(AddTest)
   else()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
+
   onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
@@ -61,10 +63,12 @@ function(AddTest)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
   endif()
+
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
+
   if (WIN32)
     # include dbghelp in case tests throw an ORT exception, as that exception includes a stacktrace, which requires dbghelp.
     target_link_libraries(${_UT_TARGET} PRIVATE debug dbghelp)
@@ -328,12 +332,19 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING_APIS)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
     )
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+      )
+  endif()
+
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
   if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
@@ -375,6 +386,7 @@ endif()
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
 set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
+set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -514,7 +526,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_CLOUD}
+    ${PROVIDERS_AZURE}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -591,11 +603,11 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
-if(onnxruntime_USE_CLOUD)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/cloud/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_cloud)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cloud)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_cloud)
+if(onnxruntime_USE_AZURE)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/azure/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_azure)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_azure)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
 endif()
 
 if(WIN32)
@@ -684,9 +696,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
     list(APPEND all_tests ${onnxruntime_test_training_api_src})
-  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -947,6 +960,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
@@ -973,6 +987,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
@@ -1153,12 +1168,14 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
     endif()
+
     AddTest(DYN
             TARGET onnxruntime_shared_lib_test
             SOURCES ${onnxruntime_shared_lib_test_SRC} ${onnxruntime_unittest_main_src}
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
         "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
@@ -1166,11 +1183,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
     endif()
+
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${TEST_DATA_DES}
+        ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
     endif()
 
@@ -1283,73 +1301,144 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
     endif()
   endif()
+
+  # Training API Tests
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    # Only files in the trainer and common folder will be compiled into test trainer.
+    file(GLOB training_api_test_trainer_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.h"
+    )
+    onnxruntime_add_executable(onnxruntime_test_trainer ${training_api_test_trainer_src})
+
+    onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_session
+      onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
+
+    set(CXXOPTS ${cxxopts_SOURCE_DIR}/include)
+    target_include_directories(onnxruntime_test_trainer PRIVATE
+      ${CMAKE_CURRENT_BINARY_DIR}
+      ${ONNXRUNTIME_ROOT}
+      ${ORTTRAINING_ROOT}
+      ${eigen_INCLUDE_DIRS}
+      ${CXXOPTS}
+      ${extra_includes}
+      ${onnxruntime_graph_header}
+      ${onnxruntime_exec_src_dir}
+    )
+
+    set(ONNXRUNTIME_TEST_LIBS
+      onnxruntime_session
+      ${onnxruntime_libs}
+      # CUDA is dynamically loaded at runtime
+      onnxruntime_optimizer
+      onnxruntime_providers
+      onnxruntime_util
+      onnxruntime_framework
+      onnxruntime_util
+      onnxruntime_graph
+      ${ONNXRUNTIME_MLAS_LIBS}
+      onnxruntime_common
+      onnxruntime_flatbuffers
+    )
+    target_link_libraries(onnxruntime_test_trainer PRIVATE
+      ${ONNXRUNTIME_TEST_LIBS}
+      ${onnxruntime_EXTERNAL_LIBRARIES}
+    )
+    set_target_properties(onnxruntime_test_trainer PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_WEBASSEMBLY)
-if (onnxruntime_USE_CUDA)
-  onnxruntime_add_shared_library_module(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
-                                                          ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
-  target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-  if (HAS_QSPECTRE)
-    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
-  endif()
-else()
-  onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
-endif()
-target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
-target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})
-if(UNIX)
-  if (APPLE)
-    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+  if (onnxruntime_USE_CUDA)
+    onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
+                                                     ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+    target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    if (HAS_QSPECTRE)
+      target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+    endif()
   else()
-    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    onnxruntime_add_shared_library(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   endif()
-else()
-  set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
-  if (NOT onnxruntime_USE_CUDA)
-    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
-  endif()
-endif()
-set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
-      message(STATUS "Running Java tests")
-      # native-test is added to resources so custom_op_lib can be loaded
-      # and we want to symlink it there
-      set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
-      file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+  target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+  target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})
 
-      # delegate to gradle's test runner
-      if(WIN32)
-        add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
-                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
-        # On windows ctest requires a test to be an .exe(.com) file
-        # So there are two options 1) Install Chocolatey and its gradle package
-        # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
-        # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
-        # That can handle both .exe and .bat
-        add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
-          -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
-          -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
-          -DREPO_ROOT=${REPO_ROOT}
-          ${ORT_PROVIDER_FLAGS}
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
-      else()
-        add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
-                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
-              WORKING_DIRECTORY ${REPO_ROOT}/java)
-      endif()
-      set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
+    if (NOT onnxruntime_USE_CUDA)
+      target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                    "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+    endif()
   endif()
-endif()
+  set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
+        message(STATUS "Running Java tests")
+        # native-test is added to resources so custom_op_lib can be loaded
+        # and we want to symlink it there
+        set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
+        file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+
+        # delegate to gradle's test runner
+        if(WIN32)
+          add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
+                          ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
+          # On windows ctest requires a test to be an .exe(.com) file
+          # So there are two options 1) Install Chocolatey and its gradle package
+          # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
+          # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+          # That can handle both .exe and .bat
+          add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
+            -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
+            -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -DREPO_ROOT=${REPO_ROOT}
+            ${ORT_PROVIDER_FLAGS}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
+        else()
+          add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
+                          ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
+          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+                WORKING_DIRECTORY ${REPO_ROOT}/java)
+        endif()
+        set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+    endif()
+  endif()
+
+  if (onnxruntime_BUILD_SHARED_LIB AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+    set (onnxruntime_customopregistration_test_SRC
+            ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
+
+    set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_common onnxruntime_test_utils)
+    AddTest(DYN
+            TARGET onnxruntime_customopregistration_test
+            SOURCES ${onnxruntime_customopregistration_test_SRC} ${onnxruntime_unittest_main_src}
+            LIBS ${onnxruntime_customopregistration_test_LIBS}
+            DEPENDS ${all_dependencies}
+    )
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+      add_custom_command(
+        TARGET onnxruntime_customopregistration_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${TEST_DATA_SRC}
+        $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
+    endif()
+  endif()
 endif()
 
 # Build custom op library that returns an error OrtStatus when the exported RegisterCustomOps function is called.
 if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
   onnxruntime_add_shared_library_module(custom_op_invalid_library
+                                        ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.h
                                         ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.cc)
   target_include_directories(custom_op_invalid_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
 

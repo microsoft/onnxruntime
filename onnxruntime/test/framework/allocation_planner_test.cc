@@ -7,6 +7,11 @@
 #include <sstream>
 #include "gtest/gtest.h"
 
+#ifdef ORT_ENABLE_STREAM
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
+#endif
+
 #include "core/framework/session_state.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
@@ -24,7 +29,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif  // USE_CUDA
-
+#include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -310,7 +315,7 @@ class PlannerTest : public ::testing::Test {
     status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
                                            MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                           "", DefaultLoggingManager().DefaultLogger(), plan_);
+                                           ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
@@ -1200,7 +1205,7 @@ TEST_F(PlannerTest, MultiStream) {
 }
 #endif
 
-#if not defined(__wasm__)
+#if not defined(__wasm__) and defined(ORT_ENABLE_STREAM)
 
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
@@ -1279,47 +1284,13 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   TypeProto conv_0_out_type, conv_1_out_type, conv_2_out_type, conv_3_out_type, conv_4_out_type;
   conv_0_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_0_out_shape = conv_0_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_0_out_shape->add_dim()->set_dim_value(3L);
-  //conv_0_out_shape->add_dim()->set_dim_value(64L);
-  //conv_0_out_shape->add_dim()->set_dim_value(150L);
-  //conv_0_out_shape->add_dim()->set_dim_value(150L);
-
   conv_1_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_1_out_shape = conv_1_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_1_out_shape->add_dim()->set_dim_value(3L);
-  //conv_1_out_shape->add_dim()->set_dim_value(64L);
-  //conv_1_out_shape->add_dim()->set_dim_value(75L);
-  //conv_1_out_shape->add_dim()->set_dim_value(75L);
-
   conv_2_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_2_out_shape = conv_2_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_2_out_shape->add_dim()->set_dim_value(3L);
-  //conv_2_out_shape->add_dim()->set_dim_value(64L);
-  //conv_2_out_shape->add_dim()->set_dim_value(75L);
-  //conv_2_out_shape->add_dim()->set_dim_value(75L);
-
   conv_3_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_3_out_shape = conv_3_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_3_out_shape->add_dim()->set_dim_value(3L);
-  //conv_3_out_shape->add_dim()->set_dim_value(256L);
-  //conv_3_out_shape->add_dim()->set_dim_value(75L);
-  //conv_3_out_shape->add_dim()->set_dim_value(75L);
-
   conv_4_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_4_out_shape = conv_4_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_4_out_shape->add_dim()->set_dim_value(3L);
-  //conv_4_out_shape->add_dim()->set_dim_value(256L);
-  //conv_4_out_shape->add_dim()->set_dim_value(75L);
-  //conv_4_out_shape->add_dim()->set_dim_value(75L);
 
   TypeProto graph_out_type;
   graph_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* graph_out_shape = graph_out_type.mutable_tensor_type()->mutable_shape();
-  //graph_out_shape->add_dim()->set_dim_value(3L);
-  //graph_out_shape->add_dim()->set_dim_value(256L);
-  //graph_out_shape->add_dim()->set_dim_value(75L);
-  //graph_out_shape->add_dim()->set_dim_value(75L);
 
   onnxruntime::Model model("main_graph", false, ModelMetaData(),
                            PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -1327,8 +1298,6 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   auto& main_graph = model.MainGraph();
 
   auto& graph_in = main_graph.GetOrCreateNodeArg("graph_in", &graph_in_type);
-  //main_graph.AddOuterScopeNodeArg("graph_in");
-  //main_graph.AddValueInfo(&graph_in);
 
   auto& maxpool_0_out = main_graph.GetOrCreateNodeArg("maxpool_out", &maxpool_0_out_type);
   auto& relu_0_out = main_graph.GetOrCreateNodeArg("relu_0_out", &relu_0_out_type);
@@ -1640,8 +1609,8 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
-  ASSERT_TRUE(so.config_options.AddConfigEntry("session.node_partition_config_file",
-                                               "./testdata/multi_stream_models/simplified_ssd_cpu.csv")
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                               "./testdata/multi_stream_models/simplified_ssd_cpu.json")
                   .IsOK());
   InferenceSession sess{so, GetEnvironment()};
 
@@ -1672,38 +1641,124 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     auto& per_value_plan = per_value_plans[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
       std::string reused;
-      // std::string current;
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
-      // ORT_ENFORCE(main_graph_ort_value_index_map.GetName(i, current).IsOK());
       reuse_pairs.erase(reused);
-      // std::cout << reused << " resused by " << current << std::endl;
     }  //if
   }    //for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
-  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu.csv");
-  ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu->Devices() == 1);
 
-  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_cpu_gpu.csv");
+  const char* type = "DeviceBasedPartitioner";
+  constexpr size_t type_len = 22;
+
+  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(
+      DefaultLoggingManager().DefaultLogger(),
+      ORT_TSTR("./testdata/multi_stream_models/multi_stream_single_stream.json"));
+
+  ASSERT_TRUE(graph_partitioner_cpu &&
+              strncmp(graph_partitioner_cpu->Type(), type, type_len) == 0 &&
+              graph_partitioner_cpu->Streams() == 1);
+
+  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(
+      DefaultLoggingManager().DefaultLogger(),
+      ORT_TSTR("./testdata/multi_stream_models/multi_stream_double_stream.json"));
+
   ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu_gpu->Devices() == 2);
+              strncmp(graph_partitioner_cpu_gpu->Type(), type, type_len) == 0 &&
+              graph_partitioner_cpu_gpu->Streams() == 2);
 }
 
-TEST_F(PlannerTest, TestMultiStreamConfigMisshaped) {
-  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu_missing_nodes.csv");
-  ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu->Devices() == 0);
+// Save partition config to a file and check its completeness
+TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream.json";
+  {
+    SessionOptions sess_opt;
+    sess_opt.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                       config_file_path)
+                    .IsOK());
 
-  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu_missing_devices.csv");
-  ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu_gpu->Devices() == 0);
+    InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+    auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Load();
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Initialize();
+    ASSERT_TRUE(status.IsOK());
+  }
+
+  std::ifstream if_stream(config_file_path);
+  ASSERT_TRUE(if_stream.is_open());
+  std::set<std::string> node_set{"model_41/conv2d_34/Conv2D__2321",
+                                 "model_41/conv2d_34/Conv2D",
+                                 "model_41/lambda_9/add",
+                                 "model_41/activation_27/Relu",
+                                 "Transpose__2331"};
+
+  try {
+    json json_config = json::parse(if_stream);
+    ASSERT_TRUE(json_config["type"] == "DeviceBasedPartitioner");
+
+    for (const auto& node_stream : json_config["streams"]) {
+      ASSERT_TRUE(node_stream.is_array());
+
+      for (const auto& node_name : node_stream) {
+        ASSERT_TRUE(node_name.is_string());
+        auto iter = node_set.find(node_name);
+
+        ASSERT_TRUE(iter != node_set.end());
+        node_set.erase(iter);
+      }
+    }
+  } catch (...) {
+    ASSERT_TRUE(false);
+  }
+  if_stream.close();
+  ASSERT_TRUE(node_set.empty());
+}
+
+// Load with partition config where a node is missing, session load expected to fail.
+TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                     config_file_path)
+                  .IsOK());
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(!status.IsOK());
+}
+
+// Load with partition config where streams and devices has mismatch
+TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                     config_file_path)
+                  .IsOK());
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(!status.IsOK());
 }
 
 #endif

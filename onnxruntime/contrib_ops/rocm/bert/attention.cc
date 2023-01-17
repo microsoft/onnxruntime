@@ -127,6 +127,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const void*>(gemm_buffer.get()),
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
+      mask_filter_value_,
       nullptr == past ? nullptr : past->Data<T>(),
       nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
       work_space.get(),

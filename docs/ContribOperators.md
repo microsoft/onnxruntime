@@ -17,7 +17,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
-  * <a href="#com.microsoft.CrossAttention">com.microsoft.CrossAttention</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
   * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
@@ -42,6 +41,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
+  * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
@@ -123,6 +123,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>past_present_share_buffer</tt> : int</dt>
@@ -955,57 +957,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.CrossAttention"></a><a name="com.microsoft.crossattention">**com.microsoft.CrossAttention**</a>
-
-  Multi-Head Cross Attention. Bias from input projection is included.
-  
-  The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
-  means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
-  each key sequence excluding paddings.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>num_heads</tt> : int (required)</dt>
-<dd>Number of attention heads</dd>
-</dl>
-
-#### Inputs (4 - 5)
-
-<dl>
-<dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
-<dt><tt>key</tt> : T</dt>
-<dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
-<dt><tt>value</tt> : T</dt>
-<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size)</dd>
-<dt><tt>bias</tt> : T</dt>
-<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
-<dt><tt>key_padding_mask</tt> (optional) : M</dt>
-<dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output to float tensors.</dd>
-<dt><tt>M</tt> : tensor(int32)</dt>
-<dd>Constrain mask to integer types</dd>
-</dl>
-
-
 ### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
 
   This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
@@ -1018,6 +969,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2156,6 +2109,59 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MultiHeadAttention"></a><a name="com.microsoft.multiheadattention">**com.microsoft.MultiHeadAttention**</a>
+
+  Multi-Head Self/Cross Attention. Bias from input projection is included.
+  
+  The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
+  means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
+  each key sequence excluding paddings.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
+<dt><tt>key_padding_mask</tt> (optional) : M</dt>
+<dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to integer types</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MurmurHash3"></a><a name="com.microsoft.murmurhash3">**com.microsoft.MurmurHash3**</a>
 
   The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.
@@ -2402,6 +2408,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>past_present_share_buffer</tt> : int</dt>
+<dd>Corresponding past and present are same tensor, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
@@ -3945,7 +3953,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (2 - 8)
+#### Inputs (2 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -3964,6 +3972,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>presence_mask</tt> (optional) : I</dt>
 <dd>Presence penalty mask. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>seed</tt> (optional) : I</dt>
+<dd>Seed for random number generator. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 2)
