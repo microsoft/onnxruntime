@@ -43,10 +43,10 @@ class Attention(nn.Module):
         return x.permute(0, 2, 1, 3)
 
     def get_extended_attention_mask(self, attention_mask: Tensor) -> Tensor:
-        if attention_mask.dim() == 3:
-            extended_attention_mask = attention_mask[:, None, :, :]
-        elif attention_mask.dim() == 2:
-            extended_attention_mask = attention_mask[:, None, None, :]
+        assert attention_mask.dim() == 2 or attention_mask.dim() == 3
+        extended_attention_mask = (
+            attention_mask[:, None, :, :] if attention_mask.dim() == 3 else attention_mask[:, None, None, :]
+        )
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(dtype).min
         return extended_attention_mask
 
@@ -131,8 +131,8 @@ class Attention(nn.Module):
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
-        #new_context_layer_shape = context_layer.size()[:-2] + (self.v_hidden_size,)
-        #context_layer = context_layer.view(new_context_layer_shape)
+        # new_context_layer_shape = context_layer.size()[:-2] + (self.v_hidden_size,)
+        # context_layer = context_layer.view(new_context_layer_shape)
 
         print("output", context_layer)
 
@@ -144,7 +144,16 @@ class Attention(nn.Module):
         return outputs
 
 
-def generate_test_data(hidden_dim, q_head_size,  v_head_size, num_heads,  batch_size, sequence_length,  kv_sequence_length, key_padding_mask = None):
+def generate_test_data(
+    hidden_dim,
+    q_head_size,
+    v_head_size,
+    num_heads,
+    batch_size,
+    sequence_length,
+    kv_sequence_length,
+    key_padding_mask=None,
+):
     seed = 123
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -198,6 +207,7 @@ def generate_test_data(hidden_dim, q_head_size,  v_head_size, num_heads,  batch_
     )
     print("output", output)
 
+
 def CrossAttention_Batch2_HeadSize40():
     hidden_dim = 80
     q_head_size = 40
@@ -206,7 +216,8 @@ def CrossAttention_Batch2_HeadSize40():
     batch_size = 2
     sequence_length = 3
     kv_sequence_length = 5
-    generate_test_data(hidden_dim, q_head_size,  v_head_size, num_heads,  batch_size, sequence_length,  kv_sequence_length)
+    generate_test_data(hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length)
+
 
 def CrossAttention_Batch1_HeadSize16():
     hidden_dim = 32
@@ -216,7 +227,8 @@ def CrossAttention_Batch1_HeadSize16():
     batch_size = 1
     sequence_length = 2
     kv_sequence_length = 3
-    generate_test_data(hidden_dim, q_head_size,  v_head_size, num_heads,  batch_size, sequence_length,  kv_sequence_length)
+    generate_test_data(hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length)
+
 
 def CrossAttention_Batch2_HeadSize16_8():
     hidden_dim = 32
@@ -226,7 +238,8 @@ def CrossAttention_Batch2_HeadSize16_8():
     batch_size = 2
     sequence_length = 1
     kv_sequence_length = 3
-    generate_test_data(hidden_dim, q_head_size,  v_head_size, num_heads,  batch_size, sequence_length,  kv_sequence_length)
+    generate_test_data(hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length)
+
 
 with torch.no_grad():
     print("CrossAttention_Batch2_HeadSize40")
