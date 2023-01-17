@@ -41,7 +41,7 @@ class MHARunner {
         mLdOut(0),
         mStrideOut(0),
         mRsqrtHeadSize(1.f / sqrtf(static_cast<float>(headSize))),
-        mHasCausalMask(causal_mask){
+        mHasCausalMask(causal_mask) {
   }
 
   virtual ~MHARunner() = default;
@@ -89,7 +89,11 @@ class MHARunner {
 
 class FusedMHARunnerFP16v2 : public MHARunner {
  public:
-  FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, bool causal_mask, bool enable_flash_attention);
+  FusedMHARunnerFP16v2(const int numHeads,
+                       const int headSize,
+                       const int sm,
+                       bool causal_mask,
+                       bool enable_flash_attention);
   ~FusedMHARunnerFP16v2() = default;  // for pimpl
 
   virtual void setup(const int S, const int B) override;

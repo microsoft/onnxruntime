@@ -10,7 +10,7 @@
 #include "core/framework/ort_value.h"
 
 #ifndef NDEBUG
-//#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
+#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
 #endif
 
 namespace onnxruntime {
