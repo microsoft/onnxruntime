@@ -11,12 +11,14 @@ import sys
 
 import onnxruntime
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
+
 # import recommonmark
 
 # -- Project information -----------------------------------------------------
 
 project = "ONNX Runtime"
-copyright = "2018-2021, Microsoft"
+copyright = "2018-2023, Microsoft"
 author = "Microsoft"
 version = onnxruntime.__version__
 release = version
@@ -35,6 +37,9 @@ extensions = [
     "sphinx.ext.graphviz",
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
     "sphinxcontrib.googleanalytics",
+    "sphinx_exec_code",
+    "sphinx_tabs.tabs",
+    "onnx_sphinx",
 ]
 
 templates_path = ["_templates"]
@@ -50,13 +55,43 @@ language = "en"
 exclude_patterns = []
 pygments_style = "default"
 autoclass_content = "both"
+master_doc = "index"
+onnx_doc_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "operators")
+pygments_style = "sphinx"
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "alabaster"
+html_static_path = ["_static"]
+html_theme = "pydata_sphinx_theme"
 html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ["_static"]
 graphviz_output_format = "svg"
+
+html_context = {
+    "default_mode": "auto",  # auto: the documentation theme will follow the system default that you have set (light or dark)
+}
+
+html_theme_options = {
+    "collapse_navigation": True,
+    "external_links": [
+        {"name": "onnxruntime", "url": "https://onnxruntime.ai/"},
+        {"name": "github", "url": "https://github.com/microsoft/onnxruntime"},
+    ],
+    "github_url": "https://github.com/microsoft/onnxruntime",
+    "navbar_center": [],
+    "navigation_depth": 5,
+    "page_sidebar_items": [],  # default setting is: ["page-toc", "edit-this-page", "sourcelink"],
+    "show_nav_level": 0,
+    "show_prev_next": True,
+    "show_toc_level": 0,
+    # needed for sphinx 6.0
+    "logo": {
+        "text": project,
+        "image_light": html_logo,
+        "image_dark": html_logo,
+        "alt_text": project,
+    },
+}
 
 # -- Options for Google Analytics -------------------------------------------------
 

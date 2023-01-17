@@ -17,15 +17,13 @@ dictionary ``{ int: float }`` as its first step is a
 Train a pipeline
 ++++++++++++++++
 
-The first step consists in retrieving the boston datset.
+The first step consists in creating a dummy datasets.
 """
 import pandas
-from sklearn.datasets import load_boston
-
-boston = load_boston()
-X, y = boston.data, boston.target
-
+from sklearn.datasets import make_regression
 from sklearn.model_selection import train_test_split
+
+X, y = make_regression(1000, n_targets=1)
 
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 X_train_dict = pandas.DataFrame(X_train[:, 1:]).T.to_dict().values()
@@ -63,7 +61,7 @@ from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64Ten
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
-onx = convert_sklearn(pipe, initial_types=initial_type)
+onx = convert_sklearn(pipe, initial_types=initial_type, target_opset=17)
 with open("pipeline_vectorize.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 
