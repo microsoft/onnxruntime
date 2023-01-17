@@ -565,7 +565,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_OPENVINO
     OrtOpenVINOProviderOptions params;
     params.device_type = openvino_device_type.c_str();
-    std::string blob_dump_path;
+    std::string cache_dir;
 
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
@@ -582,16 +582,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
 
-        } else if (option.first == "use_compiled_network") {
-          if (option.second == "True") {
-            params.use_compiled_network = true;
-          } else if (option.second == "False") {
-            params.use_compiled_network = false;
-          } else {
-            ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
-          }
-
-        } else if (option.first == "enable_opencl_throttling") {
+        }  else if (option.first == "enable_opencl_throttling") {
           if (option.second == "True") {
             params.enable_opencl_throttling = true;
           } else if (option.second == "False") {
@@ -611,9 +602,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
           params.num_of_threads = std::stoi(option.second);
-        } else if (option.first == "blob_dump_path") {
-          blob_dump_path = option.second;
-          params.blob_dump_path = blob_dump_path.c_str();
+        } else if (option.first == "cache_dir") {
+          cache_dir = option.second;
+          params.cache_dir = cache_dir.c_str();
         } else if (option.first == "context") {
           params.context = (void*)(option.second.c_str());
         } else {
@@ -1333,7 +1324,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-      
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
