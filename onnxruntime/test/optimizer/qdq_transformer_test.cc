@@ -9,6 +9,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/utils.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
@@ -764,6 +765,99 @@ TEST(QDQTransformerTests, Gather) {
   test_case({12, 37}, {24, 12});
 }
 
+TEST(QDQTransformerTests, DoubleQDQ) {
+  constexpr uint8_t good_u8_1 = 80;
+  constexpr uint8_t good_u8_2 = 40;
+  constexpr uint8_t bad_u8 = 13;
+
+  constexpr int8_t good_s8_1 = 99;
+  constexpr int8_t good_s8_2 = -112;
+  constexpr int8_t bad_s8 = 42;
+
+  constexpr float good_float_point_1 = 4.0f;
+  constexpr float good_float_point_2 = 8.0f;
+  constexpr float bad_float_point = 1.11f;
+
+  std::function<void(InferenceSessionWrapper & session)> expect_succeed = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+  };
+  std::function<void(InferenceSessionWrapper & session)> expect_fail = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+  };
+
+  auto test_case_all_u8 = [&](bool succeed,
+                              uint8_t zp_1, uint8_t zp_2, uint8_t zp_3, uint8_t zp_4,
+                              float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        succeed ? expect_succeed : expect_fail,
+        TransformerLevel::Default,
+        TransformerLevel::Level1,
+        12,
+        (scale_1 + scale_3) / 2,
+        0.01);
+  };
+
+  auto test_case_all_s8 = [&](bool succeed,
+                              int8_t zp_1, int8_t zp_2, int8_t zp_3, int8_t zp_4,
+                              float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        succeed ? expect_succeed : expect_fail,
+        TransformerLevel::Default,
+        TransformerLevel::Level1,
+        12,
+        (scale_1 + scale_3) / 2,
+        0.01);
+  };
+
+  auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
+                                      float scale_1, float scale_2, float scale_3, float scale_4) {
+    TransformerTester(
+        BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        expect_fail,
+        TransformerLevel::Default,
+        TransformerLevel::Level1);
+  };
+
+  // all unsigned type
+  test_case_all_u8(true, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  // all signed type
+  test_case_all_s8(true, good_s8_1, good_s8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  // 2 signed, 2 unsigned
+  test_case_2u8_2s8_failed(good_u8_1, good_u8_1, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  //  different zero point within a pair
+  test_case_all_u8(false, good_u8_1, bad_u8, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, bad_u8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, bad_s8, good_s8_2, good_s8_2, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  test_case_all_s8(false, good_s8_1, good_s8_1, good_s8_2, bad_s8, good_float_point_1, good_float_point_1, good_float_point_2, good_float_point_2);
+  // different scale within a pair
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, bad_float_point, good_float_point_2, good_float_point_2);
+  test_case_all_u8(false, good_u8_1, good_u8_1, good_u8_2, good_u8_2, good_float_point_1, good_float_point_1, bad_float_point, good_float_point_2);
+}
+
+TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
+  auto test_case = [&](int output_index, int expected_Q_count, int expected_DQ_count) {
+    auto graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], expected_Q_count);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_DQ_count);
+    };
+    TransformerTester(
+        BuildDoubleQDQWithoutLastOutput<uint8_t>(output_index),
+        graph,
+        TransformerLevel::Default,
+        TransformerLevel::Level1);
+  };
+  test_case(0, 2, 2);
+  test_case(1, 2, 2);
+  test_case(2, 2, 2);
+  test_case(3, 1, 1);
+}
 // Because split isn't one the supported ops, this will stay the same
 TEST(QDQTransformerTests, Split) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
@@ -2585,13 +2679,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
     auto check_graph = [&](const InferenceSessionWrapper& session) {
       const auto ops_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       const auto expected_ops_in_order = [&]() -> std::vector<std::string> {
-        if (use_matching_qdq_params) {
-          // DQ/Q cleanup removes middle DQ/Q
-          return {"QuantizeLinear", "DequantizeLinear"};
-        }
-
-        // removes nothing
-        return {"QuantizeLinear", "DequantizeLinear", "QuantizeLinear", "DequantizeLinear"};
+        // In either case both DQ and Q will be removed and fused due to DoubleQDQPairsRemover
+        return {"QuantizeLinear", "DequantizeLinear"};
       }();
 
       EXPECT_EQ(ops_in_order, expected_ops_in_order);
