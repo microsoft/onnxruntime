@@ -49,7 +49,7 @@ namespace {
   // https://github.com/NVIDIA/apex/issues/246
   template <typename T>
   struct SharedMemory;
-  
+
   template <>
   struct SharedMemory<float> {
     __device__ float* getPointer() {
@@ -57,7 +57,7 @@ namespace {
       return s_float;
     }
   };
-  
+
   template <>
   struct SharedMemory<double> {
     __device__ double* getPointer() {
@@ -609,10 +609,12 @@ LAYERNORMGRAD_IMPL(float, float, float, true)
 LAYERNORMGRAD_IMPL(double, double, double, true)
 LAYERNORMGRAD_IMPL(half, float, half, true)
 LAYERNORMGRAD_IMPL(float, float, half, true)
+LAYERNORMGRAD_IMPL(half, float, float, true)
 LAYERNORMGRAD_IMPL(float, float, float, false)
 LAYERNORMGRAD_IMPL(double, double, double, false)
 LAYERNORMGRAD_IMPL(half, float, half, false)
 LAYERNORMGRAD_IMPL(float, float, half, false)
+LAYERNORMGRAD_IMPL(half, float, float, false)
 LAYERNORMGRAD_IMPL(BFloat16, float, BFloat16, true)
 LAYERNORMGRAD_IMPL(BFloat16, float, BFloat16, false)
 

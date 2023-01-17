@@ -192,7 +192,7 @@
   
   <Type Name="onnx::TypeProto_Sequence">
     <Intrinsic Name="_has_element_type" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
-    <DisplayString Condition="has_element_type()">{{ elem_type={ *elem_type_ } }}</DisplayString>
+    <DisplayString Condition="_has_element_type()">{{ elem_type={ *elem_type_ } }}</DisplayString>
     <Expand>
       <Item Name="[elem_type]" Condition="_has_element_type()" ExcludeView="simple">elem_type_</Item>
       <Item Name="[has_element_type]" ExcludeView="simple">_has_element_type()</Item>

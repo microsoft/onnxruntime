@@ -8,9 +8,9 @@ import os
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-import numpy as np
+from float16 import convert_float_to_float16
 from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
@@ -24,9 +24,9 @@ class OnnxModel:
     def initialize(self, model):
         self.model: ModelProto = model
         self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
-        self.shape_infer_helper = None
-        self.enable_shape_infer = True
-        self.all_graphs = None
+        self.shape_infer_helper: SymbolicShapeInferenceHelper = None
+        self.enable_shape_infer: bool = True
+        self.all_graphs: Optional[List[GraphProto]] = None
 
     def disable_shape_inference(self):
         self.enable_shape_infer = False
@@ -503,6 +503,63 @@ class OnnxModel:
                 return value
         return None
 
+    def remove_cascaded_cast_nodes(self):
+        """Remove Cast node that are followed by another Cast node like  --> Cast --> Cast -->
+        Note that this shall be used carefully since it might introduce semantic change.
+        For example, float -> int -> float could get different value than the original float value.
+        So, it is recommended to used only in post-processing of mixed precision conversion.
+        """
+        output_name_to_node = self.output_name_to_node()
+        removed_count = 0
+        for node in self.nodes():
+            if node.op_type == "Cast":
+                parent = self.get_parent(node, 0, output_name_to_node=output_name_to_node)
+                if parent and parent.op_type == "Cast":
+                    node.input[0] = parent.input[0]
+                    removed_count += 1
+
+        if removed_count > 0:
+            logger.info("Removed %d cascaded Cast nodes", removed_count)
+            self.prune_graph()
+
+    def remove_useless_cast_nodes(self):
+        """Remove cast nodes that are not needed: input and output has same data type."""
+        shape_infer = self.infer_runtime_shape(update=True)
+        if shape_infer is None:
+            logger.info(f"Skip removing useless cast nodes since shape inference failed.")
+            return
+
+        def get_data_type(input_or_output_name):
+            dtype = self.get_dtype(input_or_output_name)
+            if dtype:
+                return dtype
+            if shape_infer.known_vi_[input_or_output_name].type.tensor_type.HasField("elem_type"):
+                return shape_infer.known_vi_[input_or_output_name].type.tensor_type.elem_type
+            return None
+
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == "Cast":
+                input_dtype = get_data_type(node.input[0])
+                output_dtype = get_data_type(node.output[0])
+                if input_dtype and input_dtype == output_dtype:
+                    nodes_to_remove.append(node)
+
+        if nodes_to_remove:
+            graph_input_names = set(self.get_graphs_input_names())
+            graph_output_names = set(self.get_graphs_output_names())
+            for node in nodes_to_remove:
+                if bool(set(node.output) & graph_output_names):
+                    if not bool(set(node.input) & graph_input_names):
+                        self.replace_output_of_all_nodes(node.input[0], node.output[0])
+                    else:
+                        continue
+                else:
+                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
+                self.remove_node(node)
+
+            logger.info("Removed %d Cast nodes with output type same as input", len(nodes_to_remove))
+
     def convert_model_float32_to_float16(self, cast_input_output=True):
         logger.warning(
             "The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!"
@@ -530,13 +587,6 @@ class OnnxModel:
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
 
-        def float_to_float16_func():
-            from float16 import convert_float_to_float16
-
-            return convert_float_to_float16
-
-        convert_float_to_float16 = float_to_float16_func()
-
         model = self.model
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
@@ -562,37 +612,9 @@ class OnnxModel:
         fp16_model = convert_float_to_float16(model, **parameters)
         self.initialize(fp16_model)
 
-        # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
-        # Below are post-processing that removes those Cast nodes.
-        # Remove first Cast nodes in path like  --> Cast --> Cast -->
-        nodes_to_remove = []
-        for node in self.nodes():
-            if node.op_type == "Cast":
-                parent = self.get_parent(node, 0)
-                if parent and parent.op_type == "Cast":
-                    if self.get_children(parent) == 1:  # cannot be removed if its output is used by multiple nodes
-                        self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
-                        nodes_to_remove.append(parent)
+        self.remove_cascaded_cast_nodes()
 
-        # Remove the second cast node.
-        for node in self.nodes():
-            if (
-                node.op_type == "Cast"
-                and OnnxModel.get_node_attribute(node, "to") == int(TensorProto.FLOAT)
-                and self.get_dtype(node.input[0]) == int(TensorProto.FLOAT)
-            ):
-
-                if self.find_graph_output(node.output[0]):
-                    self.replace_output_of_all_nodes(node.input[0], node.output[0])
-                else:
-                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
-                nodes_to_remove.append(node)
-
-        self.remove_nodes(nodes_to_remove)
-
-        if nodes_to_remove:
-            self.prune_graph()
-            print(f"removed {len(nodes_to_remove)} Cast nodes from float16 model")
+        self.remove_useless_cast_nodes()
 
     def create_node_name(self, op_type, name_prefix=None):
         """Create a unique node name that starts with a prefix (default is operator type).
@@ -870,7 +892,11 @@ class OnnxModel:
                             end = end + 1
             start = start + 1
 
-        assert end == len(graph.node), "Graph is not a DAG"
+        if end != len(graph.node):
+            raise RuntimeError(
+                f"Graph is not a DAG: end={end}, len(graph.node)={len(graph.node)}, graph.node[end]={graph.node[end]}"
+            )
+
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
@@ -890,6 +916,16 @@ class OnnxModel:
         convert_attribute=False,
     ):
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # Add ms domain if needed
+        ms_opset = [opset for opset in model.opset_import if opset.domain == "com.microsoft"]
+        # Check whether there is custom op in top level graph (our fusion is on top level right now).
+        # May need to extend to subgraph if our fusion are extended to subgraphs.
+        ms_node = [node for node in model.graph.node if node.domain == "com.microsoft"]
+        if ms_node and not ms_opset:
+            opset = model.opset_import.add()
+            opset.version = 1
+            opset.domain = "com.microsoft"
 
         if save_as_external_data:
             # Save model to external data, which is needed for model size > 2GB
@@ -1015,7 +1051,8 @@ class OnnxModel:
             logger.warning("add_prefix_to_names does not process subgraphs.")
 
         # Exclude the names of inputs and outputs of main graph (but not subgraphs)
-        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output]
+        # and empty names ("") as they have special meaning to denote missing optional inputs
+        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output] + [""]
 
         for initializer in self.model.graph.initializer:
             if initializer.name not in excluded:

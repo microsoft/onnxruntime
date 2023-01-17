@@ -47,7 +47,7 @@ class QPad(QuantOperatorBase):
                     scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
                     padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
                     quantized_padding_constant_array = quantize_nparray(
-                        self.quantizer.input_qType,
+                        self.quantizer.activation_qType,
                         padding_constant_array,
                         scale_value,
                         zp_value,
@@ -66,12 +66,12 @@ class QPad(QuantOperatorBase):
                     pad_value_qnodes = self.quantizer._get_quantize_input_nodes(
                         node,
                         2,
-                        self.quantizer.input_qType,
+                        self.quantizer.activation_qType,
                         quantized_input_value.scale_name,
                         quantized_input_value.zp_name,
                     )
-                    self.quantizer.new_nodes += [pad_value_qnodes]
-                    node.input[2] = pad_value_qnodes.output[0]
+                    self.quantizer.new_nodes.extend(pad_value_qnodes)
+                    node.input[2] = pad_value_qnodes[0].output[0]
             else:
                 node.input.extend([quantized_input_value.zp_name])  # pad zero_point for original zero
 

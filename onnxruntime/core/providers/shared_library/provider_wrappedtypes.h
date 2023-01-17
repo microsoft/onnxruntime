@@ -4,12 +4,16 @@
 namespace onnxruntime {
 
 extern ProviderHost* g_host;
+using ProviderType = const std::string&;
 
 struct CPUIDInfo final {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
 
   bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
   bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+  bool HasAVX512_BF16() const { return g_host->CPUIDInfo__HasAVX512_BF16(this); }
+  bool HasAMX_BF16() const { return g_host->CPUIDInfo__HasAMX_BF16(this); }
+  bool HasAVX512Skylake() const { return g_host->CPUIDInfo__HasAVX512Skylake(this); }
 
   PROVIDER_DISALLOW_ALL(CPUIDInfo)
 };
@@ -339,11 +343,9 @@ struct ComputeCapability final {
 };
 
 struct DataTransferManager final {
-  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
   Status CopyTensor(const Tensor& src, Tensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
 #if !defined(DISABLE_SPARSE_TENSORS)
   Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst); }
-  Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst, exec_queue_id); }
   Status CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const { return g_host->DataTransferManager__CopySparseTensors(this, src_dst_pairs); }
 #endif
   const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->DataTransferManager__GetDataTransfer(this, src_device, dst_device); }
@@ -484,7 +486,7 @@ struct KernelDefBuilder final {
     return *this;
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   KernelDefBuilder& MayStridedInput(int input_index) {
     g_host->KernelDefBuilder__MayStridedInput(this, input_index);
     return *this;
@@ -510,8 +512,6 @@ struct KernelRegistry final {
   static void operator delete(void* p) { g_host->KernelRegistry__operator_delete(reinterpret_cast<KernelRegistry*>(p)); }
 
   Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
-
-  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
 
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
@@ -697,6 +697,11 @@ struct Graph final {
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
 
   const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
+  const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
+  const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  const Path& ModelPath() const { return g_host->Graph__ModelPath(this); }
+  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
+  bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
@@ -741,6 +746,8 @@ struct GraphViewer final {
 
 struct Path final {
   PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
+  const std::vector<PathString>& GetComponents() const noexcept { return g_host->Path__GetComponents(this); }
+  bool IsEmpty() const noexcept { return g_host->Path__IsEmpty(this); }
 
   PROVIDER_DISALLOW_ALL(Path)
 };
@@ -773,6 +780,7 @@ struct OpKernelContext final {
 
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
+  Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
@@ -884,7 +892,7 @@ inline Status OpKernelInfo::GetAttrs(const std::string& name, TensorShapeVector&
   Status status = this->GetAttrsAsSpan<int64_t>(name, span);
   if (status.IsOK()) {
     out.reserve(span.size());
-    out.assign(span.cbegin(), span.cend());
+    out.assign(span.begin(), span.end());
   }
   return status;
 }
@@ -942,7 +950,7 @@ struct Tensor final {
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   gsl::span<const int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
   bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
   void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
@@ -1047,7 +1055,7 @@ inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor_
 #if !defined(DISABLE_SPARSE_TENSORS)
 struct SparseTensor final {
   const TensorShape& DenseShape() const noexcept { return g_host->SparseTensor__DenseShape(this); }
-  Status Copy(const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) const { return g_host->SparseTensor__Copy(this, dtm, exec_q_id, dst); }
+  Status Copy(const DataTransferManager& dtm, SparseTensor& dst) const { return g_host->SparseTensor__Copy(this, dtm, dst); }
 };
 #endif
 

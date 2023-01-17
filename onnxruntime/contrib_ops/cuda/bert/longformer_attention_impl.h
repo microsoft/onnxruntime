@@ -17,11 +17,12 @@ size_t GetLongformerAttentionWorkspaceSize(
     size_t num_heads,
     size_t head_size,
     size_t sequence_length,
+
     size_t max_num_global,
     size_t window,
     bool disable_compact_memory);
 
-bool LaunchLongformerAttentionKernel(
+Status LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cublasHandle_t cublas,              // Cublas handle
     cudaStream_t stream,                // CUDA stream

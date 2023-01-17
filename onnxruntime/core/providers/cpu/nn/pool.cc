@@ -26,12 +26,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint8_t);
 }  // namespace op_kernel_type_control
 
-using MaxPool8DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
 using EnabledMaxPool8DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
-using MaxPool12DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 using EnabledMaxPool12DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 
@@ -82,7 +78,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   switch (kernel_shape.size()) {
     case 1: {
-      RunLoop<Pool1DTask<T, PoolType>>(tp, total_channels,
+      RunLoop<Pool1DTask<T, PoolType>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                        {X_data, Y_data, x_step, y_step, pooled_height, stride_h(), height, kernel_shape,
                                         pads, pool_context_, pool_attrs_});
 
@@ -90,7 +86,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     }
 
     case 2: {
-      RunLoop<Pool2DTask<T, PoolType>>(tp, total_channels,
+      RunLoop<Pool2DTask<T, PoolType>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                        {X_data, Y_data, x_step, y_step, pooled_height, pooled_width, stride_h(),
                                         stride_w(), height, width, kernel_shape, pads, pool_context_, pool_attrs_});
 
@@ -98,7 +94,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     }
     case 3: {
       RunLoop<Pool3DTask<T, PoolType>>(
-          tp, total_channels,
+          tp, onnxruntime::narrow<size_t>(total_channels),
           {X_data, Y_data, x_step, y_step, pooled_height, pooled_width, pooled_depth, stride_h(), stride_w(),
            stride_d(), height, width, depth, kernel_shape, pads, pool_context_, pool_attrs_});
 
@@ -216,7 +212,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       int64_t y_step = pooled_height;
       const int64_t dilation_h = pool_attrs_.dilations[0];
 
-      RunLoop<MaxPool1DTask<T>>(tp, total_channels,
+      RunLoop<MaxPool1DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                 {X_data, Y_data, I_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
                                  height, kernel_shape, pads});
       break;
@@ -228,7 +224,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       const int64_t dilation_h = pool_attrs_.dilations[0];
       const int64_t dilation_w = pool_attrs_.dilations[1];
       RunLoop<MaxPool2DTask<T>>(
-          tp, total_channels,
+          tp, onnxruntime::narrow<size_t>(total_channels),
           {X_data, Y_data, I_data, x_step, y_step, dilation_h, dilation_w, pooled_height, pooled_width, stride_h(),
            stride_w(), height, width, kernel_shape, pads, pool_attrs_.storage_order});
       break;
@@ -239,7 +235,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       const int64_t dilation_h = pool_attrs_.dilations[0];
       const int64_t dilation_w = pool_attrs_.dilations[1];
       const int64_t dilation_d = pool_attrs_.dilations[2];
-      RunLoop<MaxPool3DTask<T>>(tp, total_channels,
+      RunLoop<MaxPool3DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                 {X_data, Y_data, I_data, x_step, y_step,
                                  dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
                                  pooled_depth, stride_h(), stride_w(), stride_d(), height,
@@ -272,7 +268,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11,
                                    KernelDefBuilder()
                                        .TypeConstraint(
                                            "T",
-                                           BuildKernelDefConstraintsFromTypeList<MaxPool8DataTypes>(),
                                            BuildKernelDefConstraintsFromTypeList<EnabledMaxPool8DataTypes>())
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                                    MaxPoolV8);
@@ -281,7 +276,6 @@ ONNX_CPU_OPERATOR_KERNEL(MaxPool, 12,
                          KernelDefBuilder()
                              .TypeConstraint(
                                  "T",
-                                 BuildKernelDefConstraintsFromTypeList<MaxPool12DataTypes>(),
                                  BuildKernelDefConstraintsFromTypeList<EnabledMaxPool12DataTypes>())
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                          MaxPoolV8);

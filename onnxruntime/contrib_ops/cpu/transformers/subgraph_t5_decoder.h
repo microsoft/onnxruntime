@@ -4,6 +4,7 @@
 #pragma once
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -16,7 +17,8 @@ class T5DecoderSubgraph : public Subgraph {
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
       const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in),
-                                        has_hidden_state_(false) {
+                                        has_hidden_state_(false),
+                                        use_sequence_as_input_ids_(true) {
     first_present_output_index_ = 1;
   }
 
@@ -32,7 +34,10 @@ class T5DecoderSubgraph : public Subgraph {
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
       const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
       int num_beam,
-      void* stream);
+      Stream* stream,
+      bool use_sequence_as_input_ids,
+      int cur_len,
+      transformers::Sequences& sequences);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
@@ -54,14 +59,15 @@ class T5DecoderSubgraph : public Subgraph {
     return first_present_output_index_;
   }
 
-  int HasHiddenStates() const {
-    return has_hidden_state_;
+  bool UseSequenceAsInputIds() const {
+    return use_sequence_as_input_ids_;
   }
 
  private:
   int first_past_input_index_;
   int first_present_output_index_;
   bool has_hidden_state_;
+  bool use_sequence_as_input_ids_;
 };
 
 }  // namespace transformers

@@ -19,7 +19,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <winerror.h>
 #endif
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 namespace onnxruntime {
 namespace common {
 

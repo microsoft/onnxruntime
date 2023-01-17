@@ -20,7 +20,7 @@ from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 class OnnxRuntimeBackend(Backend):
     """
     Implements
-    `ONNX's backend API <https://github.com/onnx/onnx/blob/master/docs/ImplementingAnOnnxBackend.md>`_
+    `ONNX's backend API <https://github.com/onnx/onnx/blob/main/docs/ImplementingAnOnnxBackend.md>`_
     with *ONNX Runtime*.
     The backend is mostly used when you need to switch between
     multiple runtimes with the same API.

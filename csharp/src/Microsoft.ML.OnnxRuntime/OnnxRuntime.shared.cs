@@ -49,12 +49,13 @@ namespace Microsoft.ML.OnnxRuntime
     public sealed class OrtEnv : SafeHandle
     {
         private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
+        private static LogLevel envLogLevel = LogLevel.Warning;
 
         #region private methods
         private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
     : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out handle));
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
@@ -73,7 +74,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
         /// during lazy initialization
         /// </summary>
-        internal static IntPtr Handle  
+        internal static IntPtr Handle
         {
             get
             {
@@ -149,6 +150,21 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return availableProviders;
+        }
+
+
+        /// <summary>
+        /// Get/Set log level property of OrtEnv instance
+        /// </summary>
+        /// <returns>env log level</returns>
+        public LogLevel EnvLogLevel
+        {
+            get { return envLogLevel; }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(Handle, value));
+                envLogLevel = value;
+            }
         }
         #endregion
 

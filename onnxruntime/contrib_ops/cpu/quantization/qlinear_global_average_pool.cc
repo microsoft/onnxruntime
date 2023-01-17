@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "qlinear_global_average_pool.h"
+#include "core/common/narrow.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
@@ -32,7 +33,7 @@ Status ComputeQLinearGlobalAvgPool(
       const T8Bits* input = (const T8Bits*)(x + (first * image_size));
       T8Bits* output = (T8Bits*)(y + first);
       std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), last - first));
-      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, image_size, acc_buffer.data());
+      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, narrow<size_t>(image_size), acc_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N * C), {1.0 * image_size, 1.0, 8.0 * image_size}, worker);
@@ -40,11 +41,11 @@ Status ComputeQLinearGlobalAvgPool(
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
       const T8Bits* input = x + first * C * image_size;
       T8Bits* output = y + first * C;
-      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), C));
-      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), C), 0);
+      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), narrow<size_t>(C)));
+      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), narrow<size_t>(C)), 0);
       MlasQLinearGlobalAveragePoolNhwc(
           input, x_scale, x_zero_point, output, y_scale, y_zero_point,
-          last - first, image_size, C, C, acc_buffer.data(), zero_buffer.data());
+          last - first, narrow<size_t>(image_size), narrow<size_t>(C), narrow<size_t>(C), acc_buffer.data(), zero_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N),
@@ -79,11 +80,11 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
 
   int64_t N = x_shape[0];
   int64_t C = (channels_last_ ? x_shape.back() : x_shape[1]);
-  int64_t image_size = std::accumulate(x_shape.cbegin() + spatial_dim_start, x_shape.cbegin() + spatial_dim_end,
+  int64_t image_size = std::accumulate(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end,
                                        1LL, std::multiplies<int64_t>());
 
   std::vector<int64_t> output_dims(x_shape.begin(), x_shape.end());
-  std::transform(x_shape.cbegin() + spatial_dim_start, x_shape.cbegin() + spatial_dim_end,
+  std::transform(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end,
                  output_dims.begin() + spatial_dim_start, [](const int64_t&) { return int64_t{1}; });
   Tensor& Y = *context->Output(0, output_dims);
 

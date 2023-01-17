@@ -27,9 +27,9 @@ __global__ void ConcatTensorToTensor(const int tensor_add_sequence_length,
   const int H = blockDim.x;
 
   // K: number of identical tensors
-  // tensor_in:    K x BxNxS'xH
-  // tensor_add:   K x BxNxSxH
-  // tensor_out:   K x BxNx(S'+S)xH
+  // tensor_in:    K x BxNxPxH
+  // tensor_add:   K x BxNxLxH
+  // tensor_out:   K x BxNxTxH, where T = P + L
   const int tensor_in_sequence_length = all_sequence_length - tensor_add_sequence_length;
 
   const int present_SH = all_sequence_length * H;
@@ -67,9 +67,9 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
   const int stride = blockDim.x;
 
   // K: number of identical tensor
-  // tensor_in:    K x BxNxS'xH
-  // tensor_add:   K x BxNxSxH
-  // tensor_out:   K x BxNx(S'+S)xH
+  // tensor_in:    K x BxNxPxH
+  // tensor_add:   K x BxNxLxH
+  // tensor_out:   K x BxNxTxH
   const int tensor_in_sequence_length = all_sequence_length - tensor_add_sequence_length;
 
   const int present_SH = all_sequence_length * H;
@@ -92,7 +92,7 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
   }
 }
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -133,10 +133,10 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                                                    tensor_out);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -193,10 +193,10 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                                                   tensor_out);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+Status LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -220,7 +220,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
       present);
 }
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+Status LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,

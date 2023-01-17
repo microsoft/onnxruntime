@@ -80,7 +80,7 @@ struct BinaryElementwisePreparation {
       auto offset = out_rank - lhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
-        if (lhs_shape.GetDims()[i - offset] != 1) {
+        if (lhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
           lhs_padded_strides[i] = original_lhs_padded_strides[i];
         }
       }
@@ -92,7 +92,7 @@ struct BinaryElementwisePreparation {
       auto offset = out_rank - rhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
-        if (rhs_shape.GetDims()[i - offset] != 1) {
+        if (rhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
           rhs_padded_strides[i] = original_rhs_padded_strides[i];
         }
       }

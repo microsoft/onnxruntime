@@ -26,10 +26,6 @@ class ACLExecutionProvider : public IExecutionProvider {
   explicit ACLExecutionProvider(const ACLExecutionProviderInfo& info);
   virtual ~ACLExecutionProvider();
 
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
-
   const void* GetExecutionHandle() const noexcept override {
     // The ACL interface does not return anything interesting.
     return nullptr;

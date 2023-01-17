@@ -69,20 +69,20 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   // OffsetOutput computes gets the final result
   IAllocatorUniquePtr<int32_t> a_row_buf;
   if (b_offset != 0) {
-    a_row_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.N());
-    ORT_RETURN_IF_ERROR(ReduceRowSumOnMatrixA(Stream(), a_ptr, a_row_buf.get(), b_offset, helper));
+    a_row_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.N(), ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(ReduceRowSumOnMatrixA(Stream(ctx), a_ptr, a_row_buf.get(), b_offset, helper));
   }
 
   IAllocatorUniquePtr<int32_t> b_col_buf;
   if (a_offset != 0) {
-    b_col_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.M());
-    ORT_RETURN_IF_ERROR(ReduceColSumOnMatrixB(Stream(), b_ptr, b_col_buf.get(), a_offset, helper));
+    b_col_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.M(), ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(ReduceColSumOnMatrixB(Stream(ctx), b_ptr, b_col_buf.get(), a_offset, helper));
   }
 
   int alpha = 1;
   int beta = 0;
   if (a_offset != 0 || b_offset != 0) {
-    ORT_RETURN_IF_ERROR(OffsetOutput(Stream(),
+    ORT_RETURN_IF_ERROR(OffsetOutput(Stream(ctx),
                                      a_row_buf.get(),
                                      b_col_buf.get(),
                                      output_ptr,
@@ -104,7 +104,8 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
                                  static_cast<int>(helper.N()),
                                  output_ptr + helper.OutputOffsets()[batch],
                                  static_cast<int>(helper.N()),
-                                 this));
+                                 this,
+                                 ctx->GetComputeStream()));
   }
 
   return Status::OK();

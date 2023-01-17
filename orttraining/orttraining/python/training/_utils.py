@@ -113,7 +113,7 @@ def dtype_torch_to_numpy(torch_dtype):
 def dtype_onnx_to_torch(onnx_type):
     """Converts ONNX types to PyTorch types
 
-    Reference: https://github.com/onnx/onnx/blob/master/onnx/onnx.in.proto (enum DataType)
+    Reference: https://github.com/onnx/onnx/blob/main/onnx/onnx.in.proto (enum DataType)
                https://pytorch.org/docs/stable/tensors.html
     """
     onnx_types = [

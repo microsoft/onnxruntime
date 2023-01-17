@@ -1,9 +1,9 @@
 ARG BASEIMAGE=centos:7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
-ARG DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
-ARG LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
-ARG PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+ARG DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root
+ARG LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
+ARG PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin:
 
 #Build manylinux2014 docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -160,7 +160,7 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-ENV PATH /usr/local/gradle/bin:/opt/rh/devtoolset-10/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH /usr/local/gradle/bin:/opt/rh/devtoolset-11/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts

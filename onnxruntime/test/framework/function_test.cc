@@ -13,7 +13,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-
+#include "test/util/include/asserts.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -316,5 +316,41 @@ TEST(FunctionTest, AttrName) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {3.0, 6.0, 9.0});
 }
 
+// Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
+TEST(FunctionTest, NestedConstant) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 17 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            xseq = SequenceConstruct (x)
+            yseq = SequenceMap (xseq) <body =
+              zeropad (float[3] lx) => (float[6] ly) {
+                zeros = Constant <value = float[3] {0.0, 0.0, 0.0}> ()
+                ly = Concat <axis = 0> (lx, zeros)
+              }>
+            zero = Constant <value = int64{0}> ()
+            y = SequenceAt (yseq, zero)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
+}
+
+// GH13121. Model with function body that has variadic inputs (or outputs) was not loading.
+// Add handling for variadics to IOTypeConstraintHelper. Test model has a Concat and Split to test both variadic
+// inputs and outputs.
+TEST(FunctionTest, Variadics) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/function_with_variadics.onnx");
+
+  SessionOptions so;
+  so.session_logid = "FunctionTest.Variadics";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+}
 }  // namespace test
 }  // namespace onnxruntime

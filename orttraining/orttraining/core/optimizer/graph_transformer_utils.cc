@@ -10,7 +10,7 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
-#include "core/optimizer/computation_reduction.h"
+#include "core/optimizer/compute_optimizer/compute_optimizer.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
@@ -23,6 +23,7 @@
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/free_dim_override_transformer.h"
+#include "core/optimizer/gather_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -39,6 +40,7 @@
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/propagate_cast_ops.h"
+#include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -55,6 +57,7 @@
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/qdq_fusion.h"
 
 namespace onnxruntime {
 namespace training {
@@ -92,13 +95,23 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
-      transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
+      if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
+        transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
+      } else {
+        transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>(compatible_eps));
+      }
 
       transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
+      // If a model with Q, DQ nodes is being used for the purpose of training, it must be for
+      // Quantization Aware Training. So, replace QDQ nodes with FakeQuant.
+      transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
@@ -115,9 +128,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
-#if defined(USE_CUDA) || defined(USE_ROCM)
-      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>(compatible_eps));
-#endif
+
+      if (config.enable_compute_optimizer) {
+        transformers.emplace_back(std::make_unique<ComputeOptimizer>(compatible_eps));
+      }
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
       }
@@ -190,11 +204,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level1: {
       InlinedHashSet<std::string_view> l1_execution_providers = {};
       InlinedHashSet<std::string_view> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider,
-                                                                       onnxruntime::kRocmExecutionProvider};
+                                                                        onnxruntime::kRocmExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
-      //transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      // transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));

@@ -172,7 +172,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
       if (v == nullptr) continue;
-      ret = VerifyValueInfo(*v, Ort::Unowned<Ort::Value>{actual_output_value});
+      ret = VerifyValueInfo(*v, actual_output_value);
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {
         switch (compare_result) {

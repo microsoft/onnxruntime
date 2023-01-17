@@ -105,6 +105,10 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id) {
+  return Create(device_id, /*skip_software_device_check*/ false);
+}
+
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -120,8 +124,13 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   ComPtr<IDXGIAdapter1> adapter;
   ORT_THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
 
-  // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much faster
-  ORT_THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
+  // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much
+  // faster. Some scenarios though call for EP initialization without this check (as execution will not actually occur
+  // anyway) such as operation kernel registry enumeration for documentation purposes.
+  if (!skip_software_device_check)
+  {
+    ORT_THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
+  }
 
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
@@ -150,7 +159,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   ComPtr<IDMLDevice> dml_device;
   ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
                                    flags,
-                                   DML_FEATURE_LEVEL_2_0,
+                                   DML_FEATURE_LEVEL_5_0,
                                    IID_PPV_ARGS(&dml_device)));
 
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());

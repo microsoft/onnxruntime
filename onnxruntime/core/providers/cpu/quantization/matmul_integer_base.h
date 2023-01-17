@@ -4,6 +4,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 #include "core/quantization/quantization.h"
 
 namespace onnxruntime {
@@ -106,19 +107,19 @@ class MatMulIntegerBase : public OpKernel {
 
     if (B_quant_param_rank == 1 &&
         B_shape_rank == 2 &&
-        B_quant_param_shape[B_quant_param_rank - 1] == B_shape[B_shape_rank - 1]) {
+        B_quant_param_shape[0] == B_shape[1]) {
       return true;
     }
 
     if (B_quant_param_rank != B_shape_rank ||
         B_quant_param_rank <= 1 ||
-        B_quant_param_shape[B_quant_param_rank - 2] != 1) {
+        B_quant_param_shape[SafeInt<size_t>(B_quant_param_rank) - 2] != 1) {
       return false;
     }
 
     for (int64_t rank = 0; rank < B_quant_param_rank; rank++) {
       if (rank != B_quant_param_rank - 2 &&
-          B_quant_param_shape[rank] != B_shape[rank]) {
+          B_quant_param_shape[onnxruntime::narrow<size_t>(rank)] != B_shape[onnxruntime::narrow<size_t>(rank)]) {
         return false;
       }
     }

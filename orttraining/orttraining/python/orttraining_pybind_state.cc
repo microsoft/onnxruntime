@@ -8,7 +8,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #endif
 
@@ -28,12 +28,16 @@
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
+#include "core/framework/stream_execution_context.h"
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/lr_scheduler.h"
+
 #endif
 
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
@@ -73,7 +77,33 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
     j += 1;
   }
 }
+#ifdef ENABLE_TRAINING_APIS
+namespace {
+// This function is used to create an execution provider to be passed to Module and Optimizer.
+std::vector<std::shared_ptr<IExecutionProvider>>
+GetExecutionProvidersForTrainingApis(OrtDevice device) {
+  std::vector<std::shared_ptr<IExecutionProvider>> provider;
 
+#ifdef USE_CUDA
+  if (device.Type() == OrtDevice::GPU) {
+    OrtCUDAProviderOptions provider_options{};
+    provider_options.device_id = device.Id();
+
+    if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+      provider.push_back(factory->CreateProvider());
+
+    return provider;
+  }
+#endif
+  if (device.Type() == OrtDevice::CPU) {
+    provider = std::vector<std::shared_ptr<IExecutionProvider>>();
+  } else {
+    ORT_THROW("Unsupported device type: ", device.Type());
+  }
+  return provider;
+}
+}  // namespace
+#endif
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
@@ -133,6 +163,20 @@ struct TrainingParameters {
 struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
 };
+
+#ifdef ENABLE_TRAINING_APIS
+// Thin wrapper over internal C++ Optimizer
+struct PyOptimizer {
+  PyOptimizer(const std::string optimizer_model_uri,
+              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
+      : optimizer_(std::make_unique<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
+                                                                           model->NamedParameters(), onnxruntime::SessionOptions(),
+                                                                           GetTrainingORTEnv(), provider)) {
+  }
+
+  std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
+};
+#endif
 
 struct PyGradientGraphBuilder {
   std::unique_ptr<GradientGraphBuilder> builder;
@@ -506,7 +550,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so, env)) {
+        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so.value, env)) {
     }
   };
 
@@ -681,6 +725,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
+      .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
@@ -738,13 +783,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<std::vector<int64_t>>& input_shapes) {
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
            })
-      .def("get_model",
+      .def("get_gradient_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetModel());
+             return py::bytes(ortmodule_graph_builder->GetGradientModel());
            })
-      .def("get_inference_optimized_model",
+      .def("get_forward_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+             return py::bytes(ortmodule_graph_builder->GetForwardModel());
            })
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
@@ -821,8 +866,107 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
+#ifdef ENABLE_TRAINING_APIS
+  py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
+  training_module
+      .def(py::init([](const std::string& model_uri,
+                       onnxruntime::training::api::CheckpointState& state,
+                       std::optional<std::string> eval_model_uri,
+                       OrtDevice device) {
+        onnxruntime::SessionOptions session_option;
+        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+        return std::make_unique<onnxruntime::training::api::Module>(
+            model_uri,
+            state.module_checkpoint_state.named_parameters, session_option,
+            GetTrainingORTEnv(), provider, eval_model_uri);
+      }))
+      .def("train_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
+           })
+      .def("eval_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
+           })
+      .def("lazy_reset_grad",
+           [](onnxruntime::training::api::Module* model) -> void {
+             ORT_THROW_IF_ERROR(model->LazyResetGrad());
+           })
+      .def("copy_parameters_to_buffer",
+           [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+           })
+      .def("copy_buffer_to_parameters",
+           [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
+             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+           })
+      .def("get_parameters_size",
+           [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+             return model->GetParametersSize(trainable_only);
+           })
+      .def("save_checkpoint",
+           [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
+             onnxruntime::training::api::CheckpointState state;
+             ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
+             ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                           ToPathString(checkpoint_path)));
+           })
+      .def("export_model_for_inferencing",
+           [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
+              const std::vector<std::string>& graph_output_names) -> void {
+             ORT_ENFORCE(model, "Received a nullptr for expected pointer to class training::api::Module");
+             ORT_THROW_IF_ERROR(model->ExportModelForInferencing(inference_model_path,
+                                                                 graph_output_names));
+           });
+
+  py::class_<onnxruntime::training::api::CheckpointState>
+      checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
+  checkpoint_state.def(py::init([](
+                                    const std::string& ckpt_uri) {
+    onnxruntime::training::api::CheckpointState state;
+    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ToPathString(ckpt_uri), state));
+    return state;
+  }));
+
+  py::class_<PyOptimizer>
+      training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
+  training_optimizer.def(py::init([](
+                                      const std::string optimizer_model_uri,
+                                      onnxruntime::training::api::Module* model,
+                                      OrtDevice device) {
+                      onnxruntime::SessionOptions session_option;
+                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+
+                      return std::make_unique<PyOptimizer>(
+                          optimizer_model_uri,
+                          model, provider);
+                    }))
+      .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
+        ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
+      })
+      .def("set_learning_rate", [](PyOptimizer* optimizer, float lr) -> void {
+        ORT_THROW_IF_ERROR(optimizer->optimizer_->SetLearningRate(lr));
+      })
+      .def("get_learning_rate", [](PyOptimizer* optimizer) -> float {
+        return optimizer->optimizer_->GetLearningRate();
+      });
+  py::class_<onnxruntime::training::api::LinearLRScheduler>
+      lr_scheduler(m, "LinearLRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");
+  lr_scheduler.def(py::init([](PyOptimizer* optimizer,
+                               int64_t total_step_count,
+                               int64_t warmup_step_count,
+                               float initial_lr) {
+                ORT_THROW_IF_ERROR(optimizer->optimizer_->SetInitialLearningRate(initial_lr));
+
+                return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+                    optimizer->optimizer_, warmup_step_count, total_step_count);
+              }))
+      .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
+        ORT_THROW_IF_ERROR(scheduler->Step());
+      });
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
@@ -855,7 +999,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           std::istringstream buffer(serialized_model);
           ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
 
           std::string model_proto_str;
           ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");

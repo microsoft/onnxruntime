@@ -143,7 +143,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. CoreML should be able to take at least some of the nodes
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
 
 #if defined(__APPLE__)
   RandomValueGenerator random{};

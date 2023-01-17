@@ -159,7 +159,7 @@ class TestInferenceSession(unittest.TestCase):
 
             """
             int8_use_native_calibration_table = "false"
-            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table 
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table
             int8_enable = "true"
             option['trt_int8_enable'] = int8_enable
             calib_table_name = '/home/onnxruntime/table.flatbuffers' # this file is not existed
@@ -236,6 +236,8 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
 
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
+
+                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
 
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
@@ -347,6 +349,31 @@ class TestInferenceSession(unittest.TestCase):
                 runBaseTest1()
                 runBaseTest2()
                 # raise OSError("could not load any of: " + ' '.join(libnames))
+
+        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+
+            def runRocmOptionsTest():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
+                self.assertIn("ROCMExecutionProvider", sess.get_providers())
+                options = sess.get_provider_options()
+
+                def test_get_and_set_option_with_values(option_name, option_values):
+                    provider_options = sess.get_provider_options()
+                    self.assertIn("ROCMExecutionProvider", provider_options)
+                    rocm_options = options["ROCMExecutionProvider"]
+                    self.assertIn(option_name, rocm_options)
+                    for option_value in option_values:
+                        rocm_options[option_name] = option_value
+                        sess.set_providers(["ROCMExecutionProvider"], [rocm_options])
+                        new_provider_options = sess.get_provider_options()
+                        self.assertEqual(
+                            new_provider_options.get("ROCMExecutionProvider", {}).get(option_name),
+                            str(option_value),
+                        )
+
+                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+
+            runRocmOptionsTest()
 
     def testInvalidSetProviders(self):
         with self.assertRaises(RuntimeError) as context:
@@ -1154,7 +1181,9 @@ class TestInferenceSession(unittest.TestCase):
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
 
-        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
+        # To create an OrtArenaCfg using non-default parameters, use one of below templates:
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes option
+        # ort_arena_cfg = onnxrt.OrtArenaCfg({"max_mem": -1, ""arena_extend_strategy": 1, etc..})
         ort_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
             onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
@@ -1307,6 +1336,43 @@ class TestInferenceSession(unittest.TestCase):
             set(),
         )
         print("Create session with customize execution provider successfully!")
+
+    def testCreateAllocator(self):
+        def verify_allocator(allocator, expected_config):
+            for key, val in expected_config.items():
+                if key == "max_mem":
+                    self.assertEqual(allocator.max_mem, val)
+                elif key == "arena_extend_strategy":
+                    self.assertEqual(allocator.arena_extend_strategy, val)
+                elif key == "initial_chunk_size_bytes":
+                    self.assertEqual(allocator.initial_chunk_size_bytes, val)
+                elif key == "max_dead_bytes_per_chunk":
+                    self.assertEqual(allocator.max_dead_bytes_per_chunk, val)
+                elif key == "initial_growth_chunk_size_bytes":
+                    self.assertEqual(allocator.initial_growth_chunk_size_bytes, val)
+                else:
+                    raise ValueError("Invalid OrtArenaCfg option: " + key)
+
+        # Verify ordered parameter initialization
+        ort_arena_cfg = onnxrt.OrtArenaCfg(8, 0, 4, 2)
+        expected_allocator = {
+            "max_mem": 8,
+            "arena_extend_strategy": 0,
+            "initial_chunk_size_bytes": 4,
+            "max_dead_bytes_per_chunk": 2,
+        }
+        verify_allocator(ort_arena_cfg, expected_allocator)
+
+        # Verify key-value pair initialization
+        expected_kvp_allocator = {
+            "max_mem": 16,
+            "arena_extend_strategy": 1,
+            "initial_chunk_size_bytes": 8,
+            "max_dead_bytes_per_chunk": 4,
+            "initial_growth_chunk_size_bytes": 2,
+        }
+        ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
 
 if __name__ == "__main__":

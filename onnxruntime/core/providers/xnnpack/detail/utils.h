@@ -21,6 +21,7 @@ namespace onnxruntime {
 class GraphViewer;
 class NodeUnit;
 namespace xnnpack {
+constexpr const char* kDynamicDomainByCreate = "xnnpack";
 
 enum OpComputeType : uint8_t {
   op_compute_type_invalid = 0,
@@ -46,13 +47,16 @@ using OpQuantParam = std::vector<std::pair<std::vector<float>, uint8_t>>;
 
 enum class QuantizedOpType : uint8_t {
   QLinearConv,
+  QLinearConvTranspose,
   QLinearMaxPool,
   QlinearAvgPool,
   // QDQ operator
   QDQConv,
+  QDQConvTranspose,
   QDQMaxPool,
   QDQAvgPool,
   QDQSoftmax,
+  QDQResize,
   Unknown,
 };
 
@@ -75,7 +79,7 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
-std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const Node& activation,
+std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation,
                                                          const GraphViewer& graph);
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& unit_node);
 

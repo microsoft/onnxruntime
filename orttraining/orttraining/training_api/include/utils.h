@@ -85,6 +85,9 @@ T GetValue(OrtValue& ort_value) {
   return val;
 }
 
+ONNX_NAMESPACE::TensorProto CopyTensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
+                                                    const DataTransferManager& data_transfer_manager);
+
 }  // namespace utils
 }  // namespace api
 }  // namespace training

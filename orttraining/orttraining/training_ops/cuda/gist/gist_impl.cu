@@ -34,7 +34,7 @@ __global__ void _GistPack1EncoderKernel(
     uint8_t* output_data,
     const size_t factor,
     const CUDA_LONG N) {
- 
+
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N); // id of Y (compressed tensor)
   uint8_t out = 0x0;
   uint8_t bit_out = 0x0;
@@ -67,9 +67,9 @@ __global__ void _GistPack8EncoderKernel(
     const T* input_data,
     uint8_t* output_data,
     const CUDA_LONG N) {
- 
+
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  
+
   T X = input_data[id];
 
   if (X == (T)0) {
@@ -127,7 +127,7 @@ __global__ void _GistPack8EncoderKernel(
   if (pack_e >= 0x1f) { //NaN values
     pack_e = 0;
   }
-  output_data[id] = (s << (pack_e_size + pack_m_size)) | (pack_e << pack_m_size) | pack_m;  
+  output_data[id] = (s << (pack_e_size + pack_m_size)) | (pack_e << pack_m_size) | pack_m;
 }
 
 template <typename T>
@@ -180,7 +180,7 @@ __global__ void _GistPack16EncoderKernel(
     half* output_data,
     const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  
+
   T X = input_data[id];
   output_data[id] = __float2half(X);
 }
@@ -327,7 +327,7 @@ __global__ void _GistPackMsfp15DecoderKernel(
   const int tile_i = id % num_tiles;
   const int pre_axis_i = id / num_tiles;
 
-  // Extract exponent 
+  // Extract exponent
   uint32_t shared_exp = 0;
   for (int i = 7; i >= 0; i--) {
     size_t in_i = pre_axis_i * axis_size +
@@ -397,7 +397,7 @@ void GistPack1EncoderImpl(
     uint8_t* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  cudaMemset(output_data, 0, N);
+  CUDA_CALL_THROW(cudaMemset(output_data, 0, N));
   _GistPack1EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
 }
 
@@ -419,7 +419,7 @@ void GistPack8EncoderImpl(
     uint8_t* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  
+
   _GistPack8EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
@@ -472,8 +472,8 @@ void GistPackMsfp15EncoderImpl(
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
   _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-    input_data, 
-    output_data, 
+    input_data,
+    output_data,
     (CUDA_LONG)threads,
     (CUDA_LONG)pre_axis_size,
     (CUDA_LONG)axis_size,

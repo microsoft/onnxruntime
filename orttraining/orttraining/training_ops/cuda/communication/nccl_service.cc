@@ -238,16 +238,16 @@ void NcclService::Initialize() {
   const int mpi_size = onnxruntime::training::MPIContext::GetInstance().GetWorldSize();
 
   // Set device this NCCL communicator runs on.
-  CUDA_CALL(cudaSetDevice(mpi_local_rank));
+  CUDA_CALL_THROW(cudaSetDevice(mpi_local_rank));
 
   // Create communication stream.
-  CUDA_CALL(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
 
   // Get NCCL unique ID at rank 0 and broadcast it to all others.
   ncclUniqueId id;
-  if (mpi_rank == 0) NCCL_CALL(ncclGetUniqueId(&id));
+  if (mpi_rank == 0) NCCL_CALL_THROW(ncclGetUniqueId(&id));
   MPI_CHECK(MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
-  NCCL_CALL(ncclCommInitRank(&comm_, mpi_size, id, mpi_rank));
+  NCCL_CALL_THROW(ncclCommInitRank(&comm_, mpi_size, id, mpi_rank));
 }
 
 void NcclService::Launch() {
@@ -280,7 +280,7 @@ void NcclService::Launch() {
         }
 
         // Start NCCL parallel communication.
-        NCCL_CALL(ncclGroupStart());
+        NCCL_CALL_THROW(ncclGroupStart());
         for (auto& task : schedule_[time_].batch) {
           ORT_ENFORCE(task.is_enqueued,
                       "Unscheduled task cannot be run.",
@@ -291,25 +291,25 @@ void NcclService::Launch() {
           switch (task.type) {
             case NcclTask::Type::SEND:
               ORT_ENFORCE(task.peers.size() == 1, "Send can only send data to one rank.");
-              NCCL_CALL(ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_));
+              NCCL_CALL_THROW(ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_));
               break;
             case NcclTask::Type::RECV:
               ORT_ENFORCE(task.peers.size() == 1, "Recv can only send data to one rank.");
-              NCCL_CALL(ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_));
+              NCCL_CALL_THROW(ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_));
               break;
             default:
               ORT_NOT_IMPLEMENTED("NCCL service currently only support ncclSend and ncclRecv.");
           }
           task.is_finished = true;
         }
-        NCCL_CALL(ncclGroupEnd());
+        NCCL_CALL_THROW(ncclGroupEnd());
 
         // Make sure all NCCL computation are done.
         // Since the Submit*andWait are blocked by the following "cv_.notify_all()",
         // all NCCL Send and Recv called above are all finished before Submit*andWait returning.
         // Thus, CUDA operations after Send and Recv won't be inserted by other threads
         // when we call NCCL Send's and Recv's.
-        CUDA_CALL(cudaStreamSynchronize(stream_));
+        CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
 
         // This round of communication is done.
         // We can start waiting for the tasks to be fully scheduled.
@@ -363,7 +363,7 @@ void NcclService::Terminate() {
     cv_.wait(lock, [this] { return schedule_.empty() || (total_time_ > 0 && time_ == 0); });
   }
 
-  CUDA_CALL(cudaStreamDestroy(stream_));
+  CUDA_CALL_THROW(cudaStreamDestroy(stream_));
 
   is_running_ = false;
   is_planned_ = false;
@@ -373,7 +373,7 @@ void NcclService::Terminate() {
   group_status_.clear();
   schedule_.clear();
   worker_.join();
-  NCCL_CALL(ncclCommDestroy(comm_));
+  NCCL_CALL_THROW(ncclCommDestroy(comm_));
 }
 
 }  // namespace cuda

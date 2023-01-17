@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include "core/providers/cpu/quantization/quantize_linear.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
@@ -25,9 +26,9 @@ static void PrepareForQDQ(const TensorShape& input_shape,
                 "x_zero_point must be null or a scalar or 1D tensor or size 1.");
   } else {  // per-channel QuantizeLinear/DequantizeLinear
     const int64_t axis_no_neg = HandleNegativeAxis(axis, input_shape.NumDimensions());
-    block_count = input_shape.SizeToDimension(axis_no_neg);
-    broadcast_dim = input_shape[axis_no_neg];
-    block_size = input_shape.SizeFromDimension(axis_no_neg + 1);
+    block_count = input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis_no_neg));
+    broadcast_dim = input_shape[onnxruntime::narrow<size_t>(axis_no_neg)];
+    block_size = input_shape.SizeFromDimension(SafeInt<size_t>(axis_no_neg) + 1);
 
     // if an axis was specified, ensure the scale and zero point are compatible
     ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == broadcast_dim,

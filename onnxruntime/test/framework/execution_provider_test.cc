@@ -39,7 +39,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelPath) {
     HashValue model_hash;
     int id = ep.GetId(viewer, model_hash);
     ASSERT_EQ(id, 0);
-    ASSERT_NE(model_hash, 0);
+    ASSERT_NE(model_hash, 0u);
 
     for (int i = 1; i < 4; ++i) {
       HashValue cur_model_hash;
@@ -70,7 +70,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelHashing) {
   HashValue model_hash;
   int id = ep.GetId(viewer, model_hash);
   ASSERT_EQ(id, 0);
-  ASSERT_NE(model_hash, 0);
+  ASSERT_NE(model_hash, 0u);
 
   // now load the model from bytes and check the hash differs
   std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);

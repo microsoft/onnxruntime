@@ -1,10 +1,8 @@
 import inspect
-import math
 import os
 import tempfile
-from distutils.version import StrictVersion
 from functools import partial
-
+from packaging.version import Version as StrictVersion
 import _test_commons
 import _test_helpers
 import onnx

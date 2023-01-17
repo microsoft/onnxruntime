@@ -25,6 +25,7 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   auto x_md = x_mem.get_desc();
   auto x_size = x_md.dims().size();
   auto x_format = sp.GetDnnlFormat(x_size);
+  x_mem = sp.GetMemoryAndReshape(node.Input(IN_X), x_md, eng);
 
   // Dims for one dimensional tensor
   dnnl::memory::dims one_dim(x_size, 1);
@@ -129,7 +130,7 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
                            {DNNL_ARG_SRC_1, y_scale_mem},
                            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1, y_zp_mem},
                            {DNNL_ARG_DST, y_mem}});
-  
+
   // Set outputs
   sp.SetMemory(node.Output(OUT_Y), y_mem);
   sp.SetMemory(node.Output(OUT_Y_SCALE), y_scale_mem, false, true);

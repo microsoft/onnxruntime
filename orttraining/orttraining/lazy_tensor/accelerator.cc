@@ -10,8 +10,7 @@
 #include <string>
 #include <vector>
 // Pytorch.
-#include <torch/csrc/jit/passes/onnx.h>
-#include <torch/csrc/jit/passes/shape_analysis.h>
+#include <torch/csrc/onnx/onnx.h>
 #include <torch/torch.h>
 // ORT friends.
 #include "core/common/logging/sinks/clog_sink.h"
@@ -272,7 +271,7 @@ static std::unique_ptr<onnxruntime::InferenceSession> CreateSession() {
 #ifdef USE_CUDA
   NvtxRange range(__func__);
 #endif
-  // Enviroment shared by all sessions.
+  // Environment shared by all sessions.
   static onnxruntime::Environment& pybind_default_env = onnxruntime::python::GetTrainingORTEnv();
   // All sessions use the same config.
   static onnxruntime::SessionOptions sess_opts;

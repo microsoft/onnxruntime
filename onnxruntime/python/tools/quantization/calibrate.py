@@ -178,10 +178,10 @@ class MinMaxCalibrater(CalibraterBase):
         """
         super(MinMaxCalibrater, self).__init__(
             model,
-            op_types_to_calibrate,
-            augmented_model_path,
-            symmetric,
-            use_external_data_format,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -351,7 +351,11 @@ class HistogramCalibrater(CalibraterBase):
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
         super(HistogramCalibrater, self).__init__(
-            model, op_types_to_calibrate, augmented_model_path, use_external_data_format
+            model,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -359,7 +363,6 @@ class HistogramCalibrater(CalibraterBase):
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
         self.method = method
-        self.symmetric = symmetric
         self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
@@ -567,14 +570,23 @@ class HistogramCollector(CalibrationDataCollector):
         for tensor, data_arr in name_to_arr.items():
             data_arr = np.asarray(data_arr)
             data_arr = data_arr.flatten()
+            if data_arr.size > 0:
+                min_value = np.min(data_arr)
+                max_value = np.max(data_arr)
+            else:
+                min_value = 0
+                max_value = 0
+
             data_arr = np.absolute(data_arr)  # only consider absolute value
 
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
                 hist, hist_edges = np.histogram(data_arr, bins=self.num_bins)
-                self.histogram_dict[tensor] = (hist, hist_edges)
+                self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
+                old_min = old_histogram[2]
+                old_max = old_histogram[3]
                 old_hist = old_histogram[0]
                 old_hist_edges = old_histogram[1]
                 temp_amax = np.max(data_arr)
@@ -586,7 +598,7 @@ class HistogramCollector(CalibrationDataCollector):
                     old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
                 hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
                 hist[: len(old_hist)] += old_hist
-                self.histogram_dict[tensor] = (hist, hist_edges)
+                self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
         """
@@ -685,6 +697,7 @@ class HistogramCollector(CalibrationDataCollector):
             cdf = np.cumsum(hist / total)
             if self.symmetric:
                 idx_right = np.searchsorted(cdf, percentile / 100.0)
+
                 thresholds_dict[tensor] = (
                     -float(hist_edges[idx_right]),
                     float(hist_edges[idx_right]),
@@ -697,7 +710,12 @@ class HistogramCollector(CalibrationDataCollector):
                     float(hist_edges[idx_left]),
                     float(hist_edges[idx_right]),
                 )
-
+            min_value = histogram[2]
+            max_value = histogram[3]
+            if thresholds_dict[tensor][0] < min_value:
+                thresholds_dict[tensor] = (min_value, thresholds_dict[tensor][1])
+            if thresholds_dict[tensor][1] > max_value:
+                thresholds_dict[tensor] = (thresholds_dict[tensor][0], max_value)
             # Plot histogram for debug only
             if False:
                 apply_plot(hist, hist_edges)
@@ -814,7 +832,12 @@ class HistogramCollector(CalibrationDataCollector):
 
         min_kl_divergence_idx = np.argmin(kl_divergence)
         optimal_threshold = thresholds[min_kl_divergence_idx]
-
+        min_value = histogram[2]
+        max_value = histogram[3]
+        if optimal_threshold[0] < min_value:
+            optimal_threshold = (min_value, optimal_threshold[1])
+        if optimal_threshold[1] > max_value:
+            optimal_threshold = (optimal_threshold[0], max_value)
         return optimal_threshold
 
 

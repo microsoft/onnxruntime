@@ -7,6 +7,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/nn/pool_base.h"
@@ -34,7 +35,7 @@ struct MaxpoolWithMask1DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (int64_t c = begin; c < end; ++c) {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -81,7 +82,7 @@ struct MaxpoolWithMask2DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (int64_t c = begin; c < end; ++c) {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -141,7 +142,7 @@ struct MaxpoolWithMask3DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (int64_t c = begin; c < end; ++c) {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -229,7 +230,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-        RunMaxpoolLoop<MaxpoolWithMask1DTask<float>>(tp, total_channels,
+        RunMaxpoolLoop<MaxpoolWithMask1DTask<float>>(tp, narrow<size_t>(total_channels),
                                                      {X_data, M_data, Y_data, x_step, y_step, pooled_height, stride_h(),
                                                       height, total_mask_channels, kernel_shape, pads});
         break;
@@ -241,7 +242,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
         RunMaxpoolLoop<MaxpoolWithMask2DTask<float>>(
-            tp, total_channels,
+            tp, narrow<size_t>(total_channels),
             {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, stride_h(), stride_w(), height, width,
              total_mask_channels, kernel_shape, pads});
         break;
@@ -252,7 +253,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
         RunMaxpoolLoop<MaxpoolWithMask3DTask<float>>(
-            tp, total_channels,
+            tp, narrow<size_t>(total_channels),
             {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, pooled_depth, stride_h(), stride_w(),
              stride_d(), height, width, depth, total_mask_channels, kernel_shape, pads});
         break;

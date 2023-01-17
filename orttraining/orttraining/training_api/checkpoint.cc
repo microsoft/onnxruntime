@@ -6,7 +6,6 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/path.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
@@ -16,6 +15,7 @@
 #include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -53,10 +53,6 @@ Status CreateTensorProtosFromOrtValues(
                  [](const NameMLValMap::value_type& v) { return v.first; });
   std::sort(ordered_tensor_names.begin(), ordered_tensor_names.end());
 
-  // Copy the tensor data and create TensorProto storing the data.
-  InlinedVector<char> tensor_data_buffer{};
-  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-
   saved_tensor_protos.reserve(ordered_tensor_names.size());
 
   uint64_t total_bytes = 0;
@@ -65,7 +61,6 @@ Status CreateTensorProtosFromOrtValues(
     const OrtValue& ort_value = name_to_ort_value.at(tensor_name);
     ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
     const Tensor& src_tensor = ort_value.Get<Tensor>();
-    tensor_data_buffer.resize(src_tensor.SizeInBytes());
 
     // Currently large model size not considered, so exception thrown here
     // when protobuf upper limit hit.
@@ -74,23 +69,8 @@ Status CreateTensorProtosFromOrtValues(
       ORT_THROW("checkpoint file size hit upper limit.");
     }
 
-    auto& tensor_location = src_tensor.Location();
-    if (tensor_location.device.Type() == OrtDevice::CPU ||
-        tensor_location.mem_type == OrtMemTypeCPUInput ||
-        tensor_location.mem_type == OrtMemTypeCPUOutput ||
-        tensor_location.device.Type() == OrtDevice::GPU) {
-      gsl::span<char> dst_span = gsl::make_span(tensor_data_buffer);
-      ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
-      Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
-      ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
-
-      // Convert Tensor to TensorProto.
-      ONNX_NAMESPACE::TensorProto tensor_proto;
-      tensor_proto = utils::TensorToTensorProto(dst_tensor, tensor_name);
-      saved_tensor_protos.emplace_back(tensor_proto);
-    } else {
-      ORT_THROW("Unsupported device type for saving tensors");
-    }
+    saved_tensor_protos.emplace_back(utils::CopyTensorToTensorProto(
+        src_tensor, tensor_name, data_transfer_manager));
   }
 
   return Status::OK();
@@ -279,16 +259,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
     // Re-organize optimizer_state_ort_values mapping
     // Firstly indexed by momentum names; Secondly indexed by parameter names.
     InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
-    for (const std::pair<std::string, ParameterOptimizerState>&
-             param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states) {
-      const std::string& param_name = param_named_optimizer_state.first;
-      const auto& param_optimizer_state = param_named_optimizer_state.second;
-
-      for (const std::pair<std::string, OrtValue>&
-               momentum_named_state : param_optimizer_state.momentum_named_states) {
-        const std::string& momentum_name = momentum_named_state.first;
-        const OrtValue& m_state_val = momentum_named_state.second;
-
+    for (const auto& [param_name, param_optimizer_state] : group_optimizer_state_ptr->param_named_optimizer_states) {
+      for (const auto& [momentum_name, m_state_val] : param_optimizer_state.momentum_named_states) {
         if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
           std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
           optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});

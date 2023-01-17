@@ -34,6 +34,7 @@ extensions = [
     "sphinx_gallery.gen_gallery",
     "sphinx.ext.graphviz",
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
+    "sphinxcontrib.googleanalytics",
 ]
 
 templates_path = ["_templates"]
@@ -56,6 +57,10 @@ html_theme = "alabaster"
 html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ["_static"]
 graphviz_output_format = "svg"
+
+# -- Options for Google Analytics -------------------------------------------------
+
+googleanalytics_id = "UA-156955408-1"
 
 # -- Options for intersphinx extension ---------------------------------------
 

@@ -17,7 +17,7 @@ Load and run a model
 --------------------
 
 InferenceSession is the main class of ONNX Runtime. It is used to load and run an ONNX model,
-as well as specify environment and application configuration options. 
+as well as specify environment and application configuration options.
 
 .. code-block:: python
 
@@ -65,7 +65,7 @@ Data on CPU
 ^^^^^^^^^^^
 
 On CPU (the default), OrtValues can be mapped to and from native Python data structures: numpy arrays, dictionaries and lists of
-numpy arrays. 
+numpy arrays.
 
 .. code-block:: python
 
@@ -95,15 +95,15 @@ this called `IOBinding`.
 
 To use the `IOBinding` feature, replace `InferenceSession.run()` with `InferenceSession.run_with_iobinding()`.
 
-A graph is executed on a device other than CPU, for instance CUDA. Users can 
+A graph is executed on a device other than CPU, for instance CUDA. Users can
 use IOBinding to copy the data onto the GPU.
 
 .. code-block:: python
 
-	# X is numpy array on cpu 
+	# X is numpy array on cpu
 	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
 	io_binding = session.io_binding()
-	# OnnxRuntime will copy the data over to the CUDA device if 'input' is consumed by nodes on the CUDA device 
+	# OnnxRuntime will copy the data over to the CUDA device if 'input' is consumed by nodes on the CUDA device
 	io_binding.bind_cpu_input('input', X)
 	io_binding.bind_output('output')
 	session.run_with_iobinding(io_binding)
@@ -122,7 +122,7 @@ The input data is on a device, users directly use the input. The output data is 
 	session.run_with_iobinding(io_binding)
 	Y = io_binding.copy_outputs_to_cpu()[0]
 
-The input data and output data are both on a device, users directly use the input and also place output on the device.	
+The input data and output data are both on a device, users directly use the input and also place output on the device.
 
 .. code-block:: python
 
@@ -265,7 +265,7 @@ Internal classes
 ----------------
 
 These classes cannot be instantiated by users but they are returned
-by methods or functions of this libary.
+by methods or functions of this library.
 
 ModelMetadata
 ^^^^^^^^^^^^^
@@ -284,7 +284,7 @@ Backend
 
 In addition to the regular API which is optimized for performance and usability, 
 *ONNX Runtime* also implements the
-`ONNX backend API <https://github.com/onnx/onnx/blob/master/docs/ImplementingAnOnnxBackend.md>`_
+`ONNX backend API <https://github.com/onnx/onnx/blob/main/docs/ImplementingAnOnnxBackend.md>`_
 for verification of *ONNX* specification conformance.
 The following functions are supported:
 

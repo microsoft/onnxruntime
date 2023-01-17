@@ -25,7 +25,6 @@ static std::unordered_set<std::string> providers_except_cpu = {
     kCudaExecutionProvider,
     kDnnlExecutionProvider,
     kOpenVINOExecutionProvider,
-    kNupharExecutionProvider,
     kTvmExecutionProvider,
     kVitisAIExecutionProvider,
     kTensorrtExecutionProvider,
@@ -40,7 +39,6 @@ static std::unordered_set<std::string> providers_except_cpu = {
 static std::unordered_set<std::string> providers_except_cpu_gpu = {
     kDnnlExecutionProvider,
     kOpenVINOExecutionProvider,
-    kNupharExecutionProvider,
     kTvmExecutionProvider,
     kVitisAIExecutionProvider,
     kTensorrtExecutionProvider,
@@ -167,7 +165,6 @@ static std::unordered_set<std::string> providers_except_gpu = {
     kCpuExecutionProvider,
     kDnnlExecutionProvider,
     kOpenVINOExecutionProvider,
-    kNupharExecutionProvider,
     kTvmExecutionProvider,
     kVitisAIExecutionProvider,
     kTensorrtExecutionProvider,

@@ -7,7 +7,6 @@
 #include "tvm_utils.h"
 #include "tvm_api.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -17,13 +16,13 @@ std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& m
                                              const TvmEPOptions& options,
                                              const InputsInfoMap& inputs_info,
                                              const std::vector<DLTensor> output_tensors) {
-    const std::string& name = options.executor;
-    if (name == "graph") {
-        return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
-    } else if (name == "vm") {
-        return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
-    }
-    return nullptr;
+  const std::string& name = options.executor;
+  if (name == "graph") {
+    return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
+  } else if (name == "vm") {
+    return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
+  }
+  return nullptr;
 }
 
 /* ------------------------------------ RunnerImpl ------------------------------------ */
@@ -31,15 +30,13 @@ std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& m
 RunnerImpl::RunnerImpl(const std::shared_ptr<TvmModule>& mod,
                        const InputsInfoMap& inputs_info,
                        const TVMTensorShapes output_shapes,
-                       const std::vector<DLTensor> output_tensors) :
-  mod_(mod),
-  inputs_info_(inputs_info),
-  output_shapes_(output_shapes),
-  output_tensors_(output_tensors) {
+                       const std::vector<DLTensor> output_tensors) : mod_(mod),
+                                                                     inputs_info_(inputs_info),
+                                                                     output_shapes_(output_shapes),
+                                                                     output_tensors_(output_tensors) {
 }
 
-void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
-                                                  OrtKernelContext* context,
+void RunnerImpl::convert_input_tensors2dl_tensors(Ort::KernelContext& context,
                                                   std::vector<DLTensor>& dst,
                                                   std::vector<size_t>& dst_inds) {
   size_t num = inputs_info_.size();
@@ -49,20 +46,19 @@ void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
     // TODO(vvchernov): decomposition declaration only available with -std=c++1z or -std=gnu++1z
     auto& i = info.first;
     auto& shape = info.second;
-    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-    ORT_ENFORCE(input_tensor->IsTensor());
-    const Tensor& tensor = input_tensor->Get<Tensor>();
-    const OrtDevice& device = tensor.Location().device;
-    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-    auto tensor_type = ort.GetTensorElementType(tensor_info);
-    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+    auto input_tensor = context.GetInput(i);
+    ORT_ENFORCE(input_tensor.IsTensor());
+
+    auto ort_device_type = input_tensor.GetTensorMemoryInfo().GetDeviceType();
+    const auto tensor_type = input_tensor.GetTensorTypeAndShapeInfo().GetElementType();
 
     DLTensor t;
-    t.device = GetDLDevice(device);
+    t.device = GetDLDevice(ort_device_type);
     t.dtype = GetDataType(tensor_type);
     t.strides = nullptr;
     t.byte_offset = 0;
-    t.data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+    t.data = const_cast<void*>(input_tensor.GetTensorRawData());
     t.ndim = shape.size();
     t.shape = shape.data();
     dst.emplace_back(t);
@@ -70,25 +66,20 @@ void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
   }
 }
 
-void RunnerImpl::add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
-                                                     OrtKernelContext* context) {
+void RunnerImpl::add_device_type_data2output_tensors(Ort::KernelContext& context) {
   size_t num_outputs = output_tensors_.size();
   for (auto i = 0u; i < num_outputs; i++) {
-    //setup output tensor property
-    OrtValue* output_tensor = ort.KernelContext_GetOutput(context,
-                                                          i,
-                                                          output_shapes_[i].data(),
-                                                          output_shapes_[i].size());
-    ORT_ENFORCE(output_tensor->IsTensor());
-    const Tensor& tensor = output_tensor->Get<Tensor>();
-    const OrtDevice& device = tensor.Location().device;
-    auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
-    auto tensor_type = ort.GetTensorElementType(tensor_info);
-    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+    // setup output tensor property
+    auto output_tensor = context.GetOutput(i,
+                                           output_shapes_[i].data(),
+                                           output_shapes_[i].size());
+    ORT_ENFORCE(output_tensor.IsTensor());
 
-    output_tensors_[i].device = GetDLDevice(device);
-    output_tensors_[i].dtype = GetDataType(tensor_type);
-    output_tensors_[i].data = ort.GetTensorMutableData<void>(output_tensor);
+    output_tensors_[i].device =
+        GetDLDevice(output_tensor.GetTensorMemoryInfo().GetDeviceType());
+    output_tensors_[i].dtype =
+        GetDataType(output_tensor.GetTensorTypeAndShapeInfo().GetElementType());
+    output_tensors_[i].data = output_tensor.GetTensorMutableRawData();
   }
 }
 
@@ -97,20 +88,19 @@ void RunnerImpl::add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
 GERunnerImpl::GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
                            const InputsInfoMap& inputs_info,
                            const TVMTensorShapes output_shapes,
-                           const std::vector<DLTensor> output_tensors) :
-  RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
+                           const std::vector<DLTensor> output_tensors) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
 }
 
-void GERunnerImpl::set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) {
+void GERunnerImpl::set_input(Ort::KernelContext& context) {
   std::vector<size_t> inds;
   std::vector<DLTensor> dl_tensors_inputs;
-  convert_input_tensors2dl_tensors(ort, context, dl_tensors_inputs, inds);
+  convert_input_tensors2dl_tensors(context, dl_tensors_inputs, inds);
 
   tvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
 }
 
-void GERunnerImpl::connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) {
-  add_device_type_data2output_tensors(ort, context);
+void GERunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
+  add_device_type_data2output_tensors(context);
 }
 
 void GERunnerImpl::run_and_get_output() {
@@ -123,24 +113,23 @@ void GERunnerImpl::run_and_get_output() {
 VMRunnerImpl::VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
                            const InputsInfoMap& inputs_info,
                            const TVMTensorShapes output_shapes,
-                           const std::vector<DLTensor> output_tensors) :
-  RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
+                           const std::vector<DLTensor> output_tensors) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
 }
 
-void VMRunnerImpl::set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) {
+void VMRunnerImpl::set_input(Ort::KernelContext& context) {
   std::vector<size_t> inds;
   std::vector<DLTensor> dl_tensors_inputs;
-  convert_input_tensors2dl_tensors(ort, context, dl_tensors_inputs, inds);
+  convert_input_tensors2dl_tensors(context, dl_tensors_inputs, inds);
 
   tvm::TVM_VM_SetInputs(*mod_, inds, dl_tensors_inputs);
 }
 
-void VMRunnerImpl::connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) {
-  if(!probe_infer_) {
+void VMRunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
+  if (!probe_infer_) {
     infer_once_to_get_output_shapes();
   }
 
-  add_device_type_data2output_tensors(ort, context);
+  add_device_type_data2output_tensors(context);
 }
 
 void VMRunnerImpl::run_and_get_output() {
@@ -161,5 +150,5 @@ void VMRunnerImpl::infer_once_to_get_output_shapes() {
   probe_infer_ = true;
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime

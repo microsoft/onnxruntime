@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/gsl_suppress.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/common/status.h"
@@ -55,6 +54,14 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   memcpy(p->msg, st.ErrorMessage().c_str(), clen);
   p->msg[clen] = '\0';
   return p;
+}
+
+Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category) {
+  if (ort_status == nullptr) {
+    return Status::OK();
+  }
+
+  return Status(category, static_cast<common::StatusCode>(ort_status->code), &ort_status->msg[0]);
 }
 }  // namespace onnxruntime
 #ifdef _MSC_VER

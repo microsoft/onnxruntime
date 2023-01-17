@@ -44,7 +44,7 @@ struct ConvAttributes {
       // Pads are explicitly provided, make sure that auto_pad is NOTSET
       ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
                   "A Conv/ConvTranspose node has both 'auto_pad' and 'pads' attributes");
-      pads.assign(pads_span.cbegin(), pads_span.cend());
+      pads.assign(pads_span.begin(), pads_span.end());
     }
 
     status = info.GetAttrs("dilations", dilations);

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/rocm/tunable/gemm.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -26,7 +27,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
   // There are no string tensors in Einsum's case - so safely use memcpy
   HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        hipMemcpyDeviceToDevice,
-                                       static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream())));
+                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
 
   return Status::OK();
 }
@@ -35,7 +36,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
   return rocm::Transpose::DoTranspose(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
-                                      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+                                      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream(),
                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
                                       permutation, input, output, input_shape_override);
 }
@@ -48,29 +49,19 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               void* einsum_rocm_assets) {
   typedef typename rocm::ToHipType<T>::MappedType HipT;
 
-  HipT one = rocm::ToHipType<T>::FromFloat(1.0f);
-  HipT zero = rocm::ToHipType<T>::FromFloat(0.0f);
-
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
-                                                        rocblas_operation_none,
-                                                        rocblas_operation_none,
-                                                        static_cast<int>(N),
-                                                        static_cast<int>(M),
-                                                        static_cast<int>(K),
-                                                        &one,
-                                                        reinterpret_cast<const HipT*>(input_2_data),
-                                                        static_cast<int>(N),
-                                                        static_cast<int>(right_stride),
-                                                        reinterpret_cast<const HipT*>(input_1_data),
-                                                        static_cast<int>(K),
-                                                        static_cast<int>(left_stride),
-                                                        &zero,
-                                                        reinterpret_cast<HipT*>(output_data),
-                                                        static_cast<int>(N),
-                                                        static_cast<int>(output_stride),
-                                                        static_cast<int>(num_batches)));
-
-  return Status::OK();
+  namespace blas = rocm::tunable::blas;
+  return blas::column_major::StridedBatchedGemm(
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->IsTunableOpEnabled(),
+      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_->GetHandle()),
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
+      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+      N, M, K,
+      /*alpha=*/1.0f,
+      reinterpret_cast<const HipT*>(input_2_data), N, right_stride,
+      reinterpret_cast<const HipT*>(input_1_data), K, left_stride,
+      /*beta=*/0.0f,
+      reinterpret_cast<HipT*>(output_data), N, output_stride,
+      num_batches);
 }
 
 // ROCM EP specific ReduceSum helper
@@ -82,7 +73,8 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
   return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
-                                              true, input_shape_override);
+                                              true, static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,
+                                              input_shape_override);
 }
 
 // ROCM EP specific Diagonal helper
@@ -124,7 +116,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   DiagonalImpl(
-      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream(),
       input.DataRaw(),
       input.Shape().GetDims().size(),
       first_dim,

@@ -68,12 +68,16 @@ struct Optimizer {
 
   Status LoadStateDict(const OptimizerCheckpointState& optimizer_checkpoint_states);
 
-  inline Status SetLearningRate(float lr) {
+  Status SetLearningRate(float lr) {
     optimizer_state_.learning_rate = lr;
     return Status::OK();
   }
 
-  inline Status SetInitialLearningRate(float initial_lr) {
+  float GetLearningRate() const noexcept {
+    return optimizer_state_.learning_rate;
+  }
+
+  Status SetInitialLearningRate(float initial_lr) {
     optimizer_state_.initial_lr = initial_lr;
     optimizer_state_.learning_rate = initial_lr;
     return Status::OK();

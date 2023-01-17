@@ -681,6 +681,18 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   ThreadPoolProfiler profiler_;
 
+  void SignalAllAndWait() {
+    done_ = true;
+
+    // Now if all threads block without work, they will start exiting.
+    // But note that threads can continue to work arbitrary long,
+    // block, submit new work, unblock and otherwise live full life.
+    WakeAllWorkersForExit();
+    // Join threads explicitly (by destroying) to avoid destruction order within
+    // this class.
+    for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
+  }
+
  public:
   void StartProfiling() override {
     profiler_.Start();
@@ -750,22 +762,24 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       ComputeCoprimes(i, &all_coprimes_.back());
     }
 
-    worker_data_.resize(num_threads_);
-    for (auto i = 0u; i < num_threads_; i++) {
-      worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+    // Eigen::MaxSizeVector has neither essential exception safety features
+    // such as swap, nor it is movable. So we have to join threads right here
+    // on exception
+    ORT_TRY {
+      worker_data_.resize(num_threads_);
+      for (auto i = 0u; i < num_threads_; i++) {
+        worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+      }
+    } ORT_CATCH(...) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        SignalAllAndWait();
+        throw;
+      });
     }
   }
 
   ~ThreadPoolTempl() override {
-    done_ = true;
-
-    // Now if all threads block without work, they will start exiting.
-    // But note that threads can continue to work arbitrary long,
-    // block, submit new work, unblock and otherwise live full life.
-    WakeAllWorkersForExit();
-    // Join threads explicitly (by destroying) to avoid destruction order within
-    // this class.
-    for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
+    SignalAllAndWait();
   }
 
   // Run fn().  Ordinarily, the function will be added to the thread pool and executed

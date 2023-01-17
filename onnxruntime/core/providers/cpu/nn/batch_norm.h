@@ -19,6 +19,7 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/framework/tensor.h"
@@ -75,13 +76,13 @@ class BatchNorm : public OpKernel {
     Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
     const auto& dims_vec = x_shape.GetDims();
-    const size_t N = dims_vec[0];
-    const size_t C = dims_vec[1];  // assume NCHW as per the spec
+    const size_t N = onnxruntime::narrow<size_t>(dims_vec[0]);
+    const size_t C = onnxruntime::narrow<size_t>(dims_vec[1]);  // assume NCHW as per the spec
 
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;
     for (size_t i = 2; i < dims_vec.size(); ++i) {
-      sample_size *= gsl::narrow<size_t>(dims_vec[i]);
+      sample_size *= narrow<size_t>(dims_vec[i]);
     }
 
     // calculate sample_size (including all channels)

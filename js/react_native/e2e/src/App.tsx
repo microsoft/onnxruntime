@@ -96,11 +96,9 @@ export default class App extends React.PureComponent<{}, State> {
         <Text>{'\n'}</Text>
         {imagePath && (
           <Image
-            source={
-      {
-      uri:
-        imagePath
-      }}
+            source={{
+              uri: imagePath,
+            }}
             style={{
               height: 200,
               width: 200,

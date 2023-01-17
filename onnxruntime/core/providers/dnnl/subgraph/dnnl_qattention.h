@@ -2,8 +2,10 @@
 // Licensed under the MIT License
 
 #pragma once
+#include <cmath>
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include "dnnl_util.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -33,6 +35,9 @@ class DnnlQAttention {
  private:
   dnnl::memory ComputeTotalScale(DnnlSubgraphPrimitive& sp, DnnlNode& node);
   dnnl::memory::dim GetNumHeads(DnnlNode& node);
+  dnnl::memory CopySubMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::dims sub_mem_dims, dnnl::memory::dims sub_mem_offset);
+  dnnl::memory CastMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::data_type dst_datatype);
+  dnnl::memory CastAndTransformMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::data_type dst_datatype, dnnl::memory::dims dst_strides);
 };
 
 }  // namespace ort_dnnl

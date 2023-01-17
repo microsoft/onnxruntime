@@ -5,40 +5,6 @@ set -e -x
 yum -y install \
     graphviz
 
-# Download a file from internet
-function GetFile {
-  local uri=$1
-  local path=$2
-  local force=${3:-false}
-  local download_retries=${4:-5}
-  local retry_wait_time_seconds=${5:-30}
-
-  if [[ -f $path ]]; then
-    if [[ $force = false ]]; then
-      echo "File '$path' already exists. Skipping download"
-      return 0
-    else
-      rm -rf $path
-    fi
-  fi
-
-  if [[ -f $uri ]]; then
-    echo "'$uri' is a file path, copying file to '$path'"
-    cp $uri $path
-    return $?
-  fi
-
-  echo "Downloading $uri"
-  # Use aria2c if available, otherwise use curl
-  if command -v aria2c > /dev/null; then
-    aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
-  else
-    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
-  fi
-
-  return $?
-}
-
 os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
@@ -54,24 +20,7 @@ else
 fi
 
 cd /tmp/src
-
-echo "Installing azcopy"
-mkdir -p /tmp/azcopy
-GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
-tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
-cp /tmp/azcopy/azcopy /usr/bin
-
-echo "Installing Ninja"
-GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
-tar -zxf ninja-linux.tar.gz
-cd ninja-1.10.0
-cmake -Bbuild-cmake -H.
-cmake --build build-cmake
-mv ./build-cmake/ninja /usr/bin
-
-echo "Installing Node.js"
-GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-x64.tar.gz /tmp/src/node-v16.14.2-linux-x64.tar.gz
-tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-x64.tar.gz -C /usr
+source $(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)/install_shared_deps.sh
 
 echo "Installing gradle"
 cd /tmp/src
@@ -94,17 +43,20 @@ echo "Installing Pytorch requirements"
 /opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements.txt
 /opt/python/cp39-cp39/bin/python3.9 -m pip install flatbuffers cerberus h5py onnx
 echo "Building and installing Pytorch"
-VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py develop
-/opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
+VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py install
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
 
-echo "Installing valgrind"
-cd /tmp/src
-GetFile 'https://sourceware.org/pub/valgrind/valgrind-3.16.1.tar.bz2' /tmp/src/valgrind-3.16.1.tar.bz2
-tar -jxvf valgrind-3.16.1.tar.bz2
-cd valgrind-3.16.1
-./configure --prefix=/usr --libdir=/usr/lib64 --enable-only64bit --enable-tls
-make -j$(getconf _NPROCESSORS_ONLN)
-make install
+cd /usr/local/
+echo "Cloning TorchDynamo"
+git clone --recursive https://github.com/pytorch/torchdynamo.git
+cd torchdynamo
+echo "Installing TorchDynamo requirements"
+/opt/python/cp39-cp39/bin/python3.9 -m pip install transformers
+/opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements.txt
+echo "Installing TorchDynamo"
+/opt/python/cp39-cp39/bin/python3.9 setup.py install
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torchdynamo; print(f'Installed TorchDynamo: {torchdynamo.__path__}')"
 
 cd /
 rm -rf /tmp/src

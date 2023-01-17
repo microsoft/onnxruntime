@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/scaler.h"
 
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(Scaler)
 .SetDomain("ai.onnx.ml")
 .SetDoc(R"DOC(
@@ -83,7 +83,7 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: input has empty dimensions.");
   }
 
-  size_t x_size = x_shape.Size();
+  size_t x_size = onnxruntime::narrow<size_t>(x_shape.Size());
   int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
   auto* ttp = context->GetOperatorThreadPool();
   auto conditional_batch_call = [ttp, x_size](std::function<void(ptrdiff_t)> f) {

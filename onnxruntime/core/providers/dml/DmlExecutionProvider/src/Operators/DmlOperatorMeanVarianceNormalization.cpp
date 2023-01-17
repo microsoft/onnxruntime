@@ -24,7 +24,8 @@ public:
         {
             int32_t crossChannelAxes[] = { 0, 1, 2, 3 };
             int32_t nonChannelAxes[] = {0, 2, 3};
-            gsl::span<int32_t> defaultAxes(acrossChannels ? gsl::make_span(crossChannelAxes) : gsl::make_span(nonChannelAxes));
+            gsl::span<int32_t> defaultAxes(acrossChannels ? gsl::span<int32_t>(crossChannelAxes)
+                                                          : gsl::span<int32_t>(nonChannelAxes));
             onnxAxes.assign(defaultAxes.begin(), defaultAxes.end());
         }
 
@@ -55,6 +56,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(MeanVarianceNormalization, DmlOperatorMeanVarNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedMeanVarianceNormalization, DmlOperatorMeanVarNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedMeanVarianceNormalization, DmlOperatorMeanVarNormalization);
 
 } // namespace Dml

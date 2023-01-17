@@ -281,7 +281,7 @@ __global__ void SoftmaxKernel(const int all_sequence_length,
 }
 
 template <typename T>
-bool ComputeSoftmax(cudaStream_t stream, const int all_sequence_length, const int sequence_length,
+Status ComputeSoftmax(cudaStream_t stream, const int all_sequence_length, const int sequence_length,
                     const int batch_size, const int num_heads,
                     const T* add_before_softmax, const T* input, T* output, bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
@@ -314,10 +314,10 @@ bool ComputeSoftmax(cudaStream_t stream, const int all_sequence_length, const in
     SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
         all_sequence_length, sequence_length, add_before_softmax, input, output);
   } else {
-    ORT_THROW("Attention CUDA operator does not support total sequence length > 1024.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention CUDA operator does not support total sequence length > 1024.");
   }
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template <typename T, unsigned TPB>
@@ -397,7 +397,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
 }
 
 template <typename T>
-bool ComputeSoftmaxWithMask1D(cudaStream_t stream,
+Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
                               const int all_sequence_length,
                               const int sequence_length,
                               const int batch_size,
@@ -446,14 +446,14 @@ bool ComputeSoftmaxWithMask1D(cudaStream_t stream,
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
                                          add_before_softmax, input, output);
   } else {
-    ORT_THROW("Attention CUDA operator does not support total sequence length > 1024.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention CUDA operator does not support total sequence length > 1024.");
   }
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template <typename T>
-bool ComputeSoftmaxWithRawMask(cudaStream_t stream,
+Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -515,7 +515,7 @@ bool ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                          is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax);
   } else {
-    ORT_THROW("Attention CUDA operator does not support total sequence length > 1024.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention CUDA operator does not support total sequence length > 1024.");
   }
 
   if (use_persistent_softmax) {
@@ -527,7 +527,7 @@ bool ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                                           batch_size * num_heads * sequence_length);
   }
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace cuda

@@ -306,7 +306,7 @@ def attribute_to_kwarg(attribute):
         raise ValueError("attribute {} does not have type specified.".format(attribute.name))
 
     # Based on attribute type definitions from AttributeProto
-    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
     if attribute.type == 1:
         value = attribute.f
     elif attribute.type == 2:
@@ -510,6 +510,24 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
 
 
+def add_pre_process_metadata(model):
+    """Tag the model that it went through quantization pre-processing"""
+    metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            metadata_props.update({prop.key: prop.value})
+    onnx.helper.set_model_props(model, metadata_props)
+
+
+def model_has_pre_process_metadata(model):
+    """Check the model whether it went through quantization pre-processing"""
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            if prop.key == "onnx.quant.pre_process" and prop.value == "onnxruntime.quant":
+                return True
+    return False
+
+
 def add_infer_metadata(model):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
@@ -527,10 +545,10 @@ def model_has_infer_metadata(model):
 
 
 def load_model_with_shape_infer(model_path: Path):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        inferred_model_path = str(Path(temp_dir) / (model_path.stem + "-inferred.onnx"))
-        onnx.shape_inference.infer_shapes_path(str(model_path), inferred_model_path)
-        model = onnx.load(inferred_model_path)
+    inferred_model_path = generate_identified_filename(model_path, "-inferred")
+    onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
+    model = onnx.load(inferred_model_path.as_posix())
+    inferred_model_path.unlink()
     return model
 
 

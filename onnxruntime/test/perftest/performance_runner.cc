@@ -42,7 +42,7 @@ static std::unique_ptr<DefaultThreadPoolType> default_pool;
 static std::once_flag default_pool_init;
 Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
-    int core_num = env.GetNumCpuCores();
+    int core_num = env.GetNumPhysicalCpuCores();
     default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();

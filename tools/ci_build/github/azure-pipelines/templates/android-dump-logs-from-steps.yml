@@ -1,0 +1,22 @@
+# dumps the Android logs from the given step(s)
+
+parameters:
+- name: steps
+  type: stepList
+
+steps:
+- task: CmdLine@2
+  inputs:
+    script: |
+      python3 tools/python/run_adb.py logcat --clear
+  displayName: "Clear Android logs"
+  condition: succeededOrFailed()
+
+- ${{ parameters.steps }}
+
+- task: CmdLine@2
+  inputs:
+    script: |
+      python3 tools/python/run_adb.py logcat -d
+  displayName: "Dump Android logs"
+  condition: succeededOrFailed()

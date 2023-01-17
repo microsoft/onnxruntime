@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/utf8_util.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
@@ -473,10 +474,10 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   size_t C = 0;
   if (input_dims.size() == 1) {
     N = 1;
-    C = gsl::narrow<size_t>(input_dims[0]);
+    C = narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
-    N = gsl::narrow<size_t>(input_dims[0]);
-    C = gsl::narrow<size_t>(input_dims[1]);
+    N = narrow<size_t>(input_dims[0]);
+    C = narrow<size_t>(input_dims[1]);
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input dimensions are either [C] or [N][C] allowed");

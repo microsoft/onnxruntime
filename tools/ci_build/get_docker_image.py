@@ -70,6 +70,13 @@ def main():
 
     log.info("Image: {}".format(full_image_name))
 
+    dst_deps_file = Path(args.context) / "scripts" / "deps.txt"
+    # The docker file may provide a special deps.txt in its docker context dir and uses that one.
+    # Otherwise, copy a generic one from this repo's cmake dir.
+    if not dst_deps_file.exists():
+        log.info("Copy deps.txt to : {}".format(str(dst_deps_file)))
+        shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
+
     if "manylinux" in args.dockerfile:
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
@@ -78,8 +85,17 @@ def main():
             shutil.rmtree(str(dest))
 
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
-        run("patch", "-p1", "-i", str((Path(args.context) / "manylinux.patch").resolve()), cwd=str(dest))
-
+        src_entrypoint_file = str(Path(args.manylinux_src) / "docker" / "manylinux-entrypoint")
+        dst_entrypoint_file = str(Path(args.context) / "manylinux-entrypoint")
+        shutil.copyfile(src_entrypoint_file, dst_entrypoint_file)
+        shutil.copymode(src_entrypoint_file, dst_entrypoint_file)
+        run(
+            "patch",
+            "-p1",
+            "-i",
+            str((Path(SCRIPT_DIR) / "github" / "linux" / "docker" / "manylinux.patch").resolve()),
+            cwd=str(dest),
+        )
     if use_container_registry:
         run(
             args.docker_path,

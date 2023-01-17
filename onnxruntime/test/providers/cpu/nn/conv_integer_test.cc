@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -92,6 +93,11 @@ TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
 }
 
 TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -154,6 +160,11 @@ TEST(ConvIntegerTest, Pointwise_2D_u8u8) {
 }
 
 TEST(ConvIntegerTest, Pointwise_3D_u8u8) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,

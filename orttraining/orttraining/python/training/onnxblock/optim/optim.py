@@ -99,33 +99,36 @@ class ClipGradNorm(building_blocks.Block):
 
         self._max_norm = max_norm
 
-        self._reduce = building_blocks.ReduceAllL2()
-        self._add = building_blocks.Add()
-        self._div = building_blocks.Div()
-        self._mul = building_blocks.Mul()
-        self._clip = building_blocks.Clip(clip_max=1.0)
-
-    def build(self, *gradient_names):
+    def build(self, gradients_name: str):
         """Adds a clip grad norm sub graph to the onnx model."""
 
         # get the model to manipulate
         onnx_model = accessor.global_accessor.model
 
-        # add the necessary graph initializers
-        add_node_eps_name = graph_utils.generate_random_graph_name("add_eps")
-        onnx_model.graph.initializer.append(
-            onnx.helper.make_tensor(add_node_eps_name, onnx.TensorProto.FLOAT, [1], [1e-6])
+        node_attributes = {
+            "max_norm": self._max_norm,
+        }
+
+        # create the graph node for InplaceClipGradNorm
+        cgn_node_input_names = [gradients_name]
+        cgn_node_output_name = graph_utils.generate_random_graph_name("clip_grad_norm_output")
+        cgn_node_output_names = [cgn_node_output_name]
+        cgn_node = onnx.helper.make_node(
+            "InplaceClipGradNorm",
+            cgn_node_input_names,
+            cgn_node_output_names,
+            name=graph_utils.generate_random_graph_name("InplaceClipGradNorm"),
+            domain="com.microsoft",
+            **node_attributes,
         )
-        max_norm_name = graph_utils.generate_random_graph_name("max_norm")
-        onnx_model.graph.initializer.append(
-            onnx.helper.make_tensor(max_norm_name, onnx.TensorProto.FLOAT, [1], [self._max_norm])
+        onnx_model.graph.node.append(cgn_node)
+
+        # Add the output to the value info of the model.
+        onnx_model.graph.value_info.append(
+            onnx.helper.make_tensor_sequence_value_info(cgn_node_output_name, onnx.TensorProto.FLOAT, None)
         )
 
-        # perform gradient clipping
-        total_norm_name = self._reduce(*gradient_names)
-        adjusted_total_norm_name = self._add(total_norm_name, add_node_eps_name)
-        clip_coef_name = self._clip(self._div(max_norm_name, adjusted_total_norm_name))
-        return [self._mul(grad_name, clip_coef_name) for grad_name in gradient_names]
+        return cgn_node_output_name
 
 
 class AdamW(model.Model):
@@ -181,7 +184,7 @@ class AdamW(model.Model):
         params_name = "params"
         first_order_moments_name = "first_order_moments"
         second_order_moments_name = "second_order_moments"
-        gradient_suffix = "_grad"
+        gradients_name = "gradients"
 
         trainable_parameters, _ = parameters
 
@@ -194,30 +197,21 @@ class AdamW(model.Model):
         )
 
         # Prepare the tensor sequence inputs for params and moments
-        for input_name in [params_name, first_order_moments_name, second_order_moments_name]:
+        for input_name in [params_name, gradients_name, first_order_moments_name, second_order_moments_name]:
             onnx_model.graph.input.append(
                 onnx.helper.make_tensor_sequence_value_info(input_name, trainable_parameters[0].data_type, None)
             )
 
-        # TODO: Make the grads as a tensor sequence input after implementing clip grad
-        # normalization implementation which takes in a tensor sequence.
-        grad_names = []
-        for param in trainable_parameters:
-            grad_names.append(f"{param.name}{gradient_suffix}")
-            onnx_model.graph.input.append(
-                onnx.helper.make_tensor_value_info(grad_names[-1], param.data_type, param.dims)
-            )
-
         # Clip the gradients if needed
         if self._clip_grad is not None:
-            grad_names = self._clip_grad(*grad_names)
+            gradients_name = self._clip_grad(gradients_name)
 
         # Run multi tensor AdamWOptimizer
         updated_flag_name = self._adamw(
             learning_rate_name,
             step_name,
             params_name,
-            self._sc(*grad_names),
+            gradients_name,
             first_order_moments_name,
             second_order_moments_name,
         )

@@ -50,6 +50,7 @@
     <Compile Remove="InferenceTest.cs" />
     <Compile Remove="OrtIoBindingAllocationTest.cs" />
     <Compile Remove="Tensors\TensorTests.cs" />
+    <Compile Remove="TrainingTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Tensors\TensorArithmetic.cs">
@@ -78,6 +79,7 @@
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\ArrayTensorExtensionTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
+    <None Include="TrainingTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Tensors\TensorArithmetic.tt">
@@ -92,7 +94,7 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.16.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="xunit" Version="2.4.1" />
   </ItemGroup>
 

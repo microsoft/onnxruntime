@@ -22,7 +22,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxMap_getStringKeys(JNIEnv*
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetValue((OrtValue*)handle, 0, allocator, &keys));
   if (code == ORT_OK) {
     // Convert to Java String array
-    jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
+    jobjectArray output = createStringArrayFromTensor(jniEnv, api, keys);
 
     api->ReleaseValue(keys);
 
@@ -72,7 +72,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxMap_getStringValues(JNIEn
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetValue((OrtValue*)handle, 1, allocator, &values));
   if (code == ORT_OK) {
     // Convert to Java String array
-    jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, values);
+    jobjectArray output = createStringArrayFromTensor(jniEnv, api, values);
 
     api->ReleaseValue(values);
 

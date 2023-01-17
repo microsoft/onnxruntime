@@ -401,7 +401,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
     for (int row = tid_y_in_grid; row < m; row += y_grid_stride) {
       // Thread-level reduction. Each thread loads y_load_count_per_thread values
       // and aggregrate them.
-#pragma unroll(y_load_count_per_thread)
+#pragma unroll y_load_count_per_thread
       for (int row_inner = 0; row_inner < y_load_count_per_thread; ++row_inner) {
         int row_final = row + row_inner * t_count_y_in_grid;
         int col_final = col;
@@ -418,7 +418,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
 
 // This loop conducts reduction on elements stored in shared memory.
 // Each block reduces blockDim.y-by-blockDim.x tensor to 1-by-blockDim.x tensor.
-#pragma unroll(4)
+#pragma unroll 4
     for (int stride = blockDim.y / 2; stride > 0; stride /= 2) {
       if (threadIdx.y < stride) {
         shared_memory[tid_in_block] += shared_memory[tid_in_block + stride * blockDim.x];

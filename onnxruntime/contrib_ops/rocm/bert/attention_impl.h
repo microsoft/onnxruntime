@@ -4,7 +4,7 @@
 #pragma once
 
 #include <hip/hip_fp16.h>
-#include <rocblas.h>
+#include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
@@ -25,9 +25,10 @@ size_t GetAttentionWorkspaceSize(
     int sequence_length,
     int past_sequence_length);
 
-bool LaunchAttentionKernel(
+Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
-    hipStream_t stream,                        // cuda stream
+    bool tuning,                               // Whether to enable tuning
+    hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
     int batch_size,                            // Batch size (B)
@@ -46,9 +47,10 @@ bool LaunchAttentionKernel(
     void* present                              // Present state output
 );
 
-bool LaunchDecoderAttentionKernel(
+Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
-    hipStream_t stream,               // Cuda stream
+    bool tuning,                      // Whether to enable tuning
+    hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
     const int batch_size,             // Batch size (B)
@@ -72,67 +74,69 @@ bool LaunchDecoderAttentionKernel(
     void* new_value_cache             // New_value_cache tensor
 );
 
-bool LaunchTransCtx(hipStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
+Status LaunchTransCtx(hipStream_t stream,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
-bool LaunchTransCtx(hipStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+Status LaunchTransCtx(hipStream_t stream,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
-bool LaunchTransQkv(hipStream_t stream, const int matrix_num,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
+Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output,
+                      int total_matrix_count = -1);
 
-bool LaunchTransQkv(hipStream_t stream, const int matrix_num,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
+                      int total_matrix_count = -1);
 
-bool LaunchConcatTensorToTensor(hipStream_t stream,
-                                const int all_sequence_length,
-                                const int sequence_length,
-                                const int batch_size,
-                                const int head_size,
-                                const int num_heads,
-                                const int max_threads_per_block,
-                                const int matrix_num,
-                                const float* tensor_in,
-                                const float* tensor_add,
-                                float* tensor_out);
+Status LaunchConcatTensorToTensor(hipStream_t stream,
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const float* tensor_in,
+                                  const float* tensor_add,
+                                  float* tensor_out);
 
-bool LaunchConcatTensorToTensor(hipStream_t stream,
-                                const int all_sequence_length,
-                                const int sequence_length,
-                                const int batch_size,
-                                const int head_size,
-                                const int num_heads,
-                                const int max_threads_per_block,
-                                const int matrix_num,
-                                const half* tensor_in,
-                                const half* tensor_add,
-                                half* tensor_out);
+Status LaunchConcatTensorToTensor(hipStream_t stream,
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const half* tensor_in,
+                                  const half* tensor_add,
+                                  half* tensor_out);
 
-bool LaunchConcatPastToPresent(hipStream_t stream,
-                               const int all_sequence_length,
-                               const int sequence_length,
-                               const int batch_size,
-                               const int head_size,
-                               const int num_heads,
-                               const int max_threads_per_block,
-                               const float* past,
-                               const float* k_v,
-                               float* present);
+Status LaunchConcatPastToPresent(hipStream_t stream,
+                                 const int all_sequence_length,
+                                 const int sequence_length,
+                                 const int batch_size,
+                                 const int head_size,
+                                 const int num_heads,
+                                 const int max_threads_per_block,
+                                 const float* past,
+                                 const float* k_v,
+                                 float* present);
 
-bool LaunchConcatPastToPresent(hipStream_t stream,
-                               const int all_sequence_length,
-                               const int sequence_length,
-                               const int batch_size,
-                               const int head_size,
-                               const int num_heads,
-                               const int max_threads_per_block,
-                               const half* past,
-                               const half* k_v,
-                               half* present);
+Status LaunchConcatPastToPresent(hipStream_t stream,
+                                 const int all_sequence_length,
+                                 const int sequence_length,
+                                 const int batch_size,
+                                 const int head_size,
+                                 const int num_heads,
+                                 const int max_threads_per_block,
+                                 const half* past,
+                                 const half* k_v,
+                                 half* present);
 
 inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle handle,
                                                               rocblas_operation transa,

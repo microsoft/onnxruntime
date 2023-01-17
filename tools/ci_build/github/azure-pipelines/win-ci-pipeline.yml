@@ -8,22 +8,27 @@ stages:
 - stage: x64_debug
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --build_java --build_nodejs --build_wheel
+        additionalBuildFlags: --build_java --build_nodejs --build_wheel --disable_memleak_checker
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'
 
 - stage: x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -35,12 +40,17 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'
 
 - stage: x64_release_dnnl
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -51,12 +61,16 @@ stages:
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
-
+        isTraining: false
+        ORT_EP_NAME: DNNL
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'
 
 - stage: x64_release_xnnpack
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -67,11 +81,16 @@ stages:
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
+        isTraining: false
+        ORT_EP_NAME: XNNPACK
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'
 
 - stage: x64_release_winml
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -84,11 +103,16 @@ stages:
         # WinML has many warnings
         RunStaticCodeAnalysis: false
         EnablePython: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'
 
 - stage: x86_release
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_x86.bat
@@ -98,27 +122,37 @@ stages:
         isX86: true
         job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'
 
 - stage: training_x64_debug
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_training --build_wheel
+        additionalBuildFlags: --enable_training --build_wheel --disable_memleak_checker
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: training_x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
+        isTraining: true
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'onnxruntime-Win2019-CPU-training'
 
 - stage: training_x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -128,21 +162,51 @@ stages:
         isX86: false
         job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        # Liqun is fixing them
         RunStaticCodeAnalysis: true
+        isTraining: true
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'onnxruntime-Win2019-CPU-training'
 
-- stage: training_on_device_x64_release
+- stage: ort_training_apis_x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-cpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_training --enable_training_on_device
+        additionalBuildFlags: --enable_training_apis
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: training_on_device_x64_release
+        job_name_suffix: ort_training_apis_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
         EnablePython: false
+        isTraining: true
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'onnxruntime-Win2019-CPU-training'
+
+- stage: x64_release_azure
+  dependsOn: []
+  jobs:
+    - template: templates/win-ci-vs-2019.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_azure.bat
+        buildArch: x64
+        additionalBuildFlags: --use_azure
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release_azure
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        RunStaticCodeAnalysis: false
+        EnablePython: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'Win-CPU-2019'

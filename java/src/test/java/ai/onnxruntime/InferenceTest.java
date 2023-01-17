@@ -20,17 +20,20 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.LongBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,6 +58,10 @@ public class InferenceTest {
   private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+
+  public static Path getResourcePath(String path) {
+    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
+  }
 
   @Test
   public void environmentTest() {
@@ -617,6 +624,12 @@ public class InferenceTest {
     runProvider(OrtProvider.DNNL);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_XNNPACK", matches = "1")
+  public void testXNNPACK() throws OrtException {
+    runProvider(OrtProvider.XNNPACK);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -672,6 +685,24 @@ public class InferenceTest {
     skipModels.put("mask_rcnn_keras", "Pad is not a registered function/op");
 
     return skipModels;
+  }
+
+  private static String getCustomOpLibraryName() {
+    String customLibraryName = "";
+    String osName = System.getProperty("os.name").toLowerCase();
+    if (osName.contains("windows")) {
+      // In windows we start in the wrong working directory relative to the custom_op_library.dll
+      // So we look it up as a classpath resource and resolve it to a real path
+      customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
+    } else if (osName.contains("mac")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
+    } else if (osName.contains("linux")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
+    } else {
+      fail("Unknown os/platform '" + osName + "'");
+    }
+
+    return customLibraryName;
   }
 
   public static List<String[]> getModelsForTest() throws IOException {
@@ -1003,19 +1034,7 @@ public class InferenceTest {
   public void testLoadCustomLibrary() throws OrtException {
     // This test is disabled on Android.
     if (!OnnxRuntime.isAndroid()) {
-      String customLibraryName = "";
-      String osName = System.getProperty("os.name").toLowerCase();
-      if (osName.contains("windows")) {
-        // In windows we start in the wrong working directory relative to the custom_op_library.dll
-        // So we look it up as a classpath resource and resolve it to a real path
-        customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
-      } else if (osName.contains("mac")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
-      } else if (osName.contains("linux")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
-      } else {
-        fail("Unknown os/platform '" + osName + "'");
-      }
+      String customLibraryName = getCustomOpLibraryName();
       String customOpLibraryTestModel =
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
@@ -1055,6 +1074,55 @@ public class InferenceTest {
             assertArrayEquals(flatOutput, resultArray);
           }
           OnnxValue.close(container);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testLoadCustomOpsUsingFunction() throws OrtException {
+    // This test is disabled on Android.
+    if (!OnnxRuntime.isAndroid()) {
+      String customLibraryName = getCustomOpLibraryName();
+      String customOpLibraryTestModel =
+          TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
+
+      try (SessionOptions options = new SessionOptions()) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        boolean isWindows = osName.contains("windows");
+        boolean isMac = osName.contains("mac");
+
+        // on Windows and mac, Java.System.load will make the symbols from the loaded library
+        // available.
+        // on other platforms the dlsym uses RTLD_LOCAL so they're not. Would need to use something
+        // like
+        // https://github.com/java-native-access/jna to achieve that.
+        // As we have unit tests that validate the custom op registration across all platforms, we
+        // settle for just
+        // making sure the ORT API function can be called and behaves as expected.
+        try {
+          // manually load the library. typically we'd expect the user to link against the library,
+          // but doing that here would conflict with testLoadCustomLibrary needing to test ORT
+          // loading
+          // the library.
+          System.load(customLibraryName);
+          options.registerCustomOpsUsingFunction("RegisterCustomOps");
+
+          if (isWindows || isMac) {
+            if (OnnxRuntime.extractCUDA()) {
+              options.addCUDA();
+            }
+            try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
+              // if model was loaded the op registration was successful
+            }
+          } else {
+            fail("Expected to throw OrtException due System.load not using RTLD_GLOBAL");
+          }
+        } catch (OrtException e) {
+          System.out.println(e.getMessage());
+          assertTrue(
+              !(isWindows || isMac), "Expected to not throw OrtException on Windows or macOS");
+          assertTrue(e.getMessage().contains("Failed to get symbol RegisterCustomOps"));
         }
       }
     }
@@ -1294,7 +1362,8 @@ public class InferenceTest {
 
         // try-cast first element in sequence to map/dictionary type
         @SuppressWarnings("unchecked")
-        Map<Long, Float> map = (Map<Long, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+        Map<Long, Float> map =
+            (Map<Long, Float>) ((List<OnnxMap>) secondOutput.getValue()).get(0).getValue();
         assertEquals(0.25938290, map.get(0L), 1e-6);
         assertEquals(0.40904793, map.get(1L), 1e-6);
         assertEquals(0.33156919, map.get(2L), 1e-6);
@@ -1361,12 +1430,79 @@ public class InferenceTest {
         // try-cast first element in sequence to map/dictionary type
         @SuppressWarnings("unchecked")
         Map<String, Float> map =
-            (Map<String, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+            (Map<String, Float>) ((List<OnnxMap>) secondOutput.getValue()).get(0).getValue();
         assertEquals(0.25938290, map.get("0"), 1e-6);
         assertEquals(0.40904793, map.get("1"), 1e-6);
         assertEquals(0.33156919, map.get("2"), 1e-6);
       }
       ov.close();
+    }
+  }
+
+  @Test
+  public void testModelSequenceOfTensors() throws OrtException {
+    String modelPath = TestHelpers.getResourcePath("/test_sequence_tensors.onnx").toString();
+
+    try (SessionOptions options = new SessionOptions();
+        OrtSession session = env.createSession(modelPath, options)) {
+      Map<String, NodeInfo> outputInfos = session.getOutputInfo();
+      NodeInfo outputInfo = outputInfos.get("output_sequence");
+      assertTrue(outputInfo.getInfo() instanceof SequenceInfo);
+
+      Map<String, OnnxTensor> container = new HashMap<>();
+      OnnxTensor firstInputTensor =
+          OnnxTensor.createTensor(
+              env, OrtUtil.reshape(new long[] {1, 2, 3, 4, 5, 6}, new long[] {2, 3}));
+      OnnxTensor secondInputTensor =
+          OnnxTensor.createTensor(
+              env, OrtUtil.reshape(new long[] {7, 8, 9, 10, 11, 12}, new long[] {2, 3}));
+
+      container.put("tensor1", firstInputTensor);
+      container.put("tensor2", secondInputTensor);
+
+      try (OrtSession.Result outputs = session.run(container)) {
+        // output is a sequence<tensors>
+        Optional<OnnxValue> output = outputs.get("output_sequence");
+        assertTrue(output.isPresent());
+        assertTrue(output.get() instanceof OnnxSequence);
+
+        // cast to a sequence
+        OnnxSequence seq = (OnnxSequence) output.get();
+
+        // make sure that the sequence holds only 2 elements (tensors)
+        assertEquals(2, seq.getInfo().length);
+
+        // try-cast the elements in sequence to tensor type
+        List<? extends OnnxValue> elements = seq.getValue();
+        assertEquals(2, elements.size());
+        assertTrue(elements.get(0) instanceof OnnxTensor);
+        assertTrue(elements.get(1) instanceof OnnxTensor);
+
+        OnnxTensor firstTensor = (OnnxTensor) elements.get(0);
+        OnnxTensor secondTensor = (OnnxTensor) elements.get(1);
+
+        LongBuffer outputBuf = firstTensor.getLongBuffer();
+
+        // make sure the tensors in the output sequence hold the correct values
+        assertEquals(1, outputBuf.get(0));
+        assertEquals(2, outputBuf.get(1));
+        assertEquals(3, outputBuf.get(2));
+        assertEquals(4, outputBuf.get(3));
+        assertEquals(5, outputBuf.get(4));
+        assertEquals(6, outputBuf.get(5));
+
+        outputBuf = secondTensor.getLongBuffer();
+
+        assertEquals(7, outputBuf.get(0));
+        assertEquals(8, outputBuf.get(1));
+        assertEquals(9, outputBuf.get(2));
+        assertEquals(10, outputBuf.get(3));
+        assertEquals(11, outputBuf.get(4));
+        assertEquals(12, outputBuf.get(5));
+
+        firstTensor.close();
+        secondTensor.close();
+      }
     }
   }
 
@@ -1515,8 +1651,8 @@ public class InferenceTest {
         case CORE_ML:
           options.addCoreML();
           break;
-        case NUPHAR:
-          options.addNuphar(true, "");
+        case XNNPACK:
+          options.addXnnpack(Collections.emptyMap());
           break;
         case VITIS_AI:
         case RK_NPU:

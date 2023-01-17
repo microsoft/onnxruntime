@@ -4,7 +4,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
 jobs:
 - job: BuildAndTestEagerMode
@@ -138,6 +138,24 @@ jobs:
               export PYTHONPATH=/build/Release && \
               /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
               /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_lort.py"
+      workingDirectory: $(Build.SourcesDirectory)
+      condition: succeededOrFailed()
+
+  - task: CmdLine@2
+    displayName: 'Test DORT with Python 3.9'
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuildlort \
+            bash -c "
+              export PYTHONPATH=/build/Release && \
+              /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
+              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py"
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 

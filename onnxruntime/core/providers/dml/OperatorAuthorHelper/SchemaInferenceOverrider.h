@@ -14,9 +14,9 @@ namespace SchemaInferenceOverrider
     // require type inference functions.
     template <typename T>
     void OverrideSchemaInferenceFunction(
-        _In_z_ const char* name, 
-        int version, 
-        bool isLatest, 
+        _In_z_ const char* name,
+        int version,
+        bool isLatest,
         gsl::span<const uint32_t> constantCpuInputs
     )
     {
@@ -41,8 +41,8 @@ namespace SchemaInferenceOverrider
                 }
 
                 auto abiContext = Windows::AI::MachineLearning::Adapter::MLSchemaInferenceContext::Create(
-                    &nodeInfo, 
-                    &ctx, 
+                    &nodeInfo,
+                    &ctx,
                     constantCpuInputsCapture);
 
                 ORT_THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));
@@ -54,7 +54,7 @@ namespace SchemaInferenceOverrider
         {
             // Assert that this is the latest schema version for the operator, since a new version might need
             // the same treatment.
-            const uint32_t maxVersion = 9;
+            [[maybe_unused]] constexpr uint32_t maxVersion = 9;
             assert(
                 !onnx::OpSchemaRegistry::Schema(name, maxVersion) ||
                 onnx::OpSchemaRegistry::Schema(name, maxVersion) == onnx::OpSchemaRegistry::Schema(name, version));
@@ -65,7 +65,7 @@ namespace SchemaInferenceOverrider
 #define OVERRIDE_SCHEMA(version, isLatest, opName) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( \
     #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, gsl::span<uint32_t>());
-    
+
 #pragma push_macro("OVERRIDE_SCHEMA_EX")
 #define OVERRIDE_SCHEMA_EX(version, isLatest, opName, shapeInferenceName, /*CPU constant tensor indices*/ ...) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInferenceName>( \

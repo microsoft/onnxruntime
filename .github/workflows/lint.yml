@@ -81,6 +81,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+      - name: Install ninja
+        run: python -m pip install --upgrade ninja
+      - name: Generate compile_commands.json
+        run: |
+          python tools/ci_build/build.py \
+            --cmake_generator "Ninja" \
+            --build_dir build \
+            --update \
+            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Generate ONNX protobuf files
+        run: cmake --build build/Debug --config Debug --target onnx_proto
+#       - name: Run clang-tidy
+#         uses: ZedThree/clang-tidy-review@526cbfb043719639f1ebdeedae0cc1eacd219d8f
+#         with:
+#           token: ${{ secrets.github_token }}
+#           build_dir: "build/Debug"
+#           config_file: ".clang-tidy"
+#           lgtm_comment_body: ""
       - uses: reviewdog/action-cpplint@master
         with:
           github_token: ${{ secrets.github_token }}

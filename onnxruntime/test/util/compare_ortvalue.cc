@@ -421,12 +421,13 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
 }
 
 static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& t,
-                                                                                      const Ort::Value& o) {
+                                                                                      const OrtValue* v) {
   // below code doesn't work
   // if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
   //	return COMPARE_RESULT::TYPE_MISMATCH;
   //}
 
+  Ort::ConstValue o(v);
   auto info = o.GetTensorTypeAndShapeInfo();
   ONNXTensorElementDataType real_type = info.GetElementType();
   ONNXTensorElementDataType expected_type = onnxruntime::utils::CApiElementTypeFromProtoType(t.elem_type());
@@ -455,7 +456,8 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const Ort::Value& o) {
+std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* val_ptr) {
+  Ort::ConstValue o{val_ptr};
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
     if (!o.IsTensor()) {

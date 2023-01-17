@@ -8,8 +8,27 @@ using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-    public partial class InferenceTest
+  /// <summary>
+  /// This is compensate for the absence of string.Contains() in .NET Standard 2.0
+  /// Contains(String, StringComparison)
+  /// </summary>
+  public static class StringExtensions
+  {
+    public static bool Contains(this String str, String substring,
+                                StringComparison comp)
     {
+      if (substring == null)
+        throw new ArgumentNullException("substring",
+                                     "substring cannot be null.");
+      else if (!Enum.IsDefined(typeof(StringComparison), comp))
+        throw new ArgumentException("comp is not a member of StringComparison",
+                                 "comp");
+
+      return str.IndexOf(substring, comp) >= 0;
+    }
+  }
+  public partial class InferenceTest
+  {
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
 
@@ -213,6 +232,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+        private static Func<DirectoryInfo, IEnumerable<DirectoryInfo>> getOpsetDirectories = delegate (DirectoryInfo modelsDirInfo)
+        {
+            return modelsDirInfo.EnumerateDirectories("opset*", SearchOption.AllDirectories);
+        };
+
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
             var skipModels = new Dictionary<string, string>() {
@@ -229,7 +253,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
-                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },    
+                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
                 { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
@@ -354,7 +378,62 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
-                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." },
+                { "BERT-Squad-int8", "training domain"},
+                { "YOLOv3-12-int8", "training_domain"},
+                // opset 18 models. these should be supported by ORT 1.14 when released
+                { "test_bitwise_and_i16_3d", "pending opset 18 support"},
+                { "test_bitwise_and_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_and_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_bitwise_and_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_not_2d", "pending opset 18 support"},
+                { "test_bitwise_not_3d", "pending opset 18 support"},
+                { "test_bitwise_not_4d", "pending opset 18 support"},
+                { "test_bitwise_or_i16_4d", "pending opset 18 support"},
+                { "test_bitwise_or_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_or_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_bitwise_or_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_xor_i16_3d", "pending opset 18 support"},
+                { "test_bitwise_xor_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_xor_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_xor_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_center_crop_pad_crop", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_and_pad", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_and_pad_expanded", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_axes_chw", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_axes_chw_expanded", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_axes_hwc", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_axes_hwc_expanded", "pending opset 18 support"},
+                { "test_center_crop_pad_crop_expanded", "pending opset 18 support"},
+                { "test_center_crop_pad_pad", "pending opset 18 support"},
+                { "test_center_crop_pad_pad_expanded", "pending opset 18 support"},
+                { "test_col2im", "pending opset 18 support"},
+                { "test_col2im_5d", "pending opset 18 support"},
+                { "test_col2im_dilations", "pending opset 18 support"},
+                { "test_col2im_pads", "pending opset 18 support"},
+                { "test_col2im_strides", "pending opset 18 support"},
+                { "test_constant_pad", "pending opset 18 support"},
+                { "test_constant_pad_axes", "pending opset 18 support"},
+                { "test_edge_pad", "pending opset 18 support"},
+                { "test_reflect_pad", "pending opset 18 support"},
+                { "test_scatter_elements_with_axis", "pending opset 18 support"},
+                { "test_scatter_elements_without_axis", "pending opset 18 support"},
+                { "test_scatter_elements_with_duplicate_indices", "pending opset 18 support"},
+                { "test_scatter_elements_with_negative_indices", "pending opset 18 support"},
+                { "test_scatter_elements_with_reduction_max", "pending opset 18 support"},
+                { "test_scatter_elements_with_reduction_min", "pending opset 18 support"},
+                { "test_scatternd", "pending opset 18 support"},
+                { "test_scatternd_add", "pending opset 18 support"},
+                { "test_scatternd_max", "pending opset 18 support"},
+                { "test_scatternd_min", "pending opset 18 support"},
+                { "test_scatternd_multiply", "pending opset 18 support"},
+                { "test_softplus_example_expanded", "pending opset 18 support"},
+                { "test_softplus_expanded", "pending opset 18 support"},
+                { "test_optional_get_element_optional_sequence", "pending opset 18 support"},
+                { "test_optional_get_element_optional_tensor", "pending opset 18 support"},
+                { "test_optional_has_element_empty_optional_input", "pending opset 18 support"},
+                { "test_optional_has_element_optional_input", "pending opset 18 support"},
+                { "test_optional_has_element_tensor_input", "pending opset 18 support"},
             };
 
             // The following models fails on nocontribops win CI
@@ -371,7 +450,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
             if (isMlOpsDisabled)
             {
-                foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+                foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
                 {
                     foreach (var modelDir in opsetDir.EnumerateDirectories())
                     {
@@ -402,6 +481,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
                 skipModels["test_ssd"] = "System out of memory";
                 skipModels["roberta_sequence_classification"] = "System out of memory";
+                // models from model zoo
+                skipModels["VGG 19"] = "bad allocation";
+                skipModels["VGG 19-caffe2"] = "bad allocation";
+                skipModels["VGG 19-bn"] = "bad allocation";
+                skipModels["VGG 16"] = "bad allocation";
+                skipModels["VGG 16-bn"] = "bad allocation";
+                skipModels["VGG 16-fp32"] = "bad allocation";
             }
 
             return skipModels;
@@ -413,14 +499,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-                    if (!skipModels.ContainsKey(modelDir.Name))
+                    if (!(skipModels.ContainsKey(modelDir.Name) ||
+                          modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                          modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
                     {
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
                 } //model
             } //opset
@@ -432,15 +520,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
-                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
-                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-                    if (skipModels.ContainsKey(modelDir.Name))
+                    if (skipModels.ContainsKey(modelDir.Name) ||
+                        modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                        modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
 
                 }
@@ -450,12 +539,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opset, string modelName)
+        private void TestPreTrainedModels(string opsetDir, string modelName)
         {
-            var modelsDir = GetTestModelsDir();
+            var opsetDirInfo = new DirectoryInfo(opsetDir);
+            var opset = opsetDirInfo.Name;
             string onnxModelFileName = null;
 
-            var modelDir = new DirectoryInfo(Path.Combine(modelsDir, opset, modelName));
+            var modelDir = new DirectoryInfo(Path.Combine(opsetDir, modelName));
 
             try
             {

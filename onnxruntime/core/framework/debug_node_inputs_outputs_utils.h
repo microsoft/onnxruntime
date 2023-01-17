@@ -131,28 +131,28 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables();
 void DumpNodeInputs(
     const NodeDumpOptions& dump_options,
     const NodeDumpContext& dump_context,
-    const OpKernelContext& context, 
-    const Node& node, 
+    const OpKernelContext& context,
+    const Node& node,
     const SessionState& session_state);
 
 void DumpNodeInputs(
     const NodeDumpContext& dump_context,
-    const OpKernelContext& context, 
-    const Node& node, 
+    const OpKernelContext& context,
+    const Node& node,
     const SessionState& session_state);
 
 // dumps outputs for a node
 void DumpNodeOutputs(
     const NodeDumpOptions& dump_options,
     const NodeDumpContext& dump_context,
-    OpKernelContext& context, 
-    const Node& node, 
+    OpKernelContext& context,
+    const Node& node,
     const SessionState& session_state);
 
 void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
-    OpKernelContext& context, 
-    const Node& node, 
+    OpKernelContext& context,
+    const Node& node,
     const SessionState& session_state);
 
 }  // namespace utils

@@ -31,10 +31,7 @@ limitations under the License.
 using namespace onnxruntime::cuda;
 using namespace cub;
 
-#define CHECK(expr)         \
-  if (!CUBLAS_CALL(expr)) { \
-    return false;           \
-  }
+#define CHECK(expr) CUBLAS_RETURN_IF_ERROR(expr)
 
 namespace onnxruntime {
 namespace contrib {
@@ -191,7 +188,7 @@ __launch_bounds__(blockSize)
 }
 
 // Launch the softmax kernel for non compact memory.
-bool LaunchLongformerSoftmaxSimpleKernel(
+Status LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space
@@ -669,7 +666,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
     }
   }
 
-  return true;
+  return Status::OK();
 }
 
 }  // namespace cuda

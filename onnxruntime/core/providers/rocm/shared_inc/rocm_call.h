@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/common.h"
 #include "core/providers/rocm/rocm_pch.h"
 
 namespace onnxruntime {
@@ -11,7 +12,8 @@ namespace onnxruntime {
 // -----------------------------------------------------------------------
 
 template <typename ERRTYPE, bool THRW>
-bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
+std::conditional_t<THRW, void, Status> RocmCall(
+  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
 
 #define HIP_CALL(expr) (RocmCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess))
 #define ROCBLAS_CALL(expr) (RocmCall<rocblas_status, false>((expr), #expr, "ROCBLAS", rocblas_status_success))

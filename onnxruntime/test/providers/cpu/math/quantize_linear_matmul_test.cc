@@ -6,6 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -329,6 +330,11 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
                          {2, 2, 4},
@@ -372,6 +378,11 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
                         {2, 2, 4},
@@ -482,6 +493,7 @@ struct PrePackTestOp {
 };
 
 #ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
