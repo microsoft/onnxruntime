@@ -75,7 +75,12 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   }
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
-      /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+      /*cb=*/nullptr, /*allow_exceptions=*/true
+      // Comment support is added in 3.9.0 with breaking change to default behavior.
+      #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
+      , /*ignore_comments=*/true
+      #endif
+    );
   overrides_json["atol_overrides"].get_to(absolute_overrides);
   overrides_json["rtol_overrides"].get_to(relative_overrides);
   return TestTolerances(
@@ -680,19 +685,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
-    {"resize_downsample_scales_cubic_antialias", "resize kernel needs update for opset18."},
-    {"resize_downsample_scales_linear_antialias", "resize kernel needs update for opset18."},
-    {"resize_downsample_sizes_cubic_antialias", "resize kernel needs update for opset18."},
-    {"resize_downsample_sizes_linear_antialias", "resize kernel needs update for opset18."},
-    {"resize_downsample_sizes_nearest_not_larger", "resize kernel needs update for opset18."},
-    {"resize_downsample_sizes_nearest_not_smaller", "resize kernel needs update for opset18."},
-    {"resize_tf_crop_and_resize_axes_2_3", "resize kernel needs update for opset18."},
-    {"resize_tf_crop_and_resize_axes_3_2", "resize kernel needs update for opset18."},
-    {"resize_upsample_scales_nearest_axes_2_3", "resize kernel needs update for opset18."},
-    {"resize_upsample_scales_nearest_axes_3_2", "resize kernel needs update for opset18."},
-    {"resize_upsample_sizes_nearest_axes_2_3", "resize kernel needs update for opset18."},
-    {"resize_upsample_sizes_nearest_axes_3_2", "resize kernel needs update for opset18."},
-    {"resize_upsample_sizes_nearest_not_larger", "resize kernel needs update for opset18."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
     {"test_optional_get_element", "Optional type not supported in this build flavor."},

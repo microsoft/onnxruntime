@@ -281,6 +281,26 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_regis
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    registerCustomOpsUsingFunction
+ * Signature: (JJLjava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_registerCustomOpsUsingFunction
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring functionName) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+
+  // Extract the string chars
+  const char* cFuncName = (*jniEnv)->GetStringUTFChars(jniEnv, functionName, NULL);
+
+  // Register the custom ops by calling the function
+  checkOrtStatus(jniEnv,api,api->RegisterCustomOpsUsingFunction((OrtSessionOptions*)optionsHandle,cFuncName));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,functionName,cFuncName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    closeCustomLibraries
  * Signature: ([J)V
  */
