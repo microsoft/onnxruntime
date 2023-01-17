@@ -32,6 +32,7 @@ struct AttentionParameters {
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
+  float mask_filter_value;
   AttentionMaskType mask_type;
 };
 
