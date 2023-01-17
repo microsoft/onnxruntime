@@ -101,6 +101,7 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
         self.use_multi_head_attention = use_multi_head_attention
+        self.mask_filter_value = None
 
         # Flags to show warning only once
         self.num_heads_warning = True
@@ -383,6 +384,9 @@ class FusionAttention(Fusion):
                 [helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])]
             )
 
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
+
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
@@ -568,6 +572,11 @@ class FusionAttention(Fusion):
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
+
+        if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+            _, mul_val = self.model.get_constant_input(mask_nodes[0])
+            if mul_val != -10000:
+                self.mask_filter_value = mul_val
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
