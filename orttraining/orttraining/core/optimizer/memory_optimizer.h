@@ -96,12 +96,12 @@ class MemoryOptimizer : public GraphTransformer {
     }
 
     bool Contains(std::string_view subgraph_str) const {
-      return subgraph_descs.find(subgraph_str) != subgraph_descs.end();
+      return subgraph_descs.find(std::string(subgraph_str)) != subgraph_descs.end();
     }
 
     SubGraphDesc& GetSubGraphDesc(std::string_view subgraph_string) {
       ORT_ENFORCE(Contains(subgraph_string), "Subgraph string not found.", subgraph_string);
-      return subgraph_descs.at(subgraph_string);
+      return subgraph_descs.at(std::string(subgraph_string));
     }
 
     SubGraphDesc& CreateSubGraphDesc(const std::string& subgraph_string,
