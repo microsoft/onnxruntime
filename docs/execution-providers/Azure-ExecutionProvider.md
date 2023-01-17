@@ -3,7 +3,7 @@ title: Azure
 description: Instructions to infer an ONNX model remotely with an Azure endpoint
 parent: Execution Providers
 nav_order: 12
-redirect_from: /docs/reference/execution-providers/Cloud-ExecutionProvider
+redirect_from: /docs/reference/execution-providers/Azure-ExecutionProvider
 ---
 
 # Azure Execution Provider (Preview)
@@ -38,7 +38,7 @@ For Linux, please make sure openssl is installed.
 
 ## Known Issue
 
-For certain ubuntu versions, https call made by azureEP might report error like - "error setting certificate verify location ...".
+For certain ubuntu versions, https call made by AzureEP might report error like - "error setting certificate verify location ...".
 To silence it, please create file "/etc/pki/tls/certs/ca-bundles.crt" that links to "/etc/ssl/certs/ca-certificates.crt".
 
 ## Build
