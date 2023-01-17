@@ -8,8 +8,8 @@ on:
   pull_request:
 
 jobs:
-  lint-python:
-    name: Lint Python
+  optional-lint:
+    name: Optional Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
