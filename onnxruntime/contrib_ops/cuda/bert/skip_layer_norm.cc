@@ -124,7 +124,8 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
       epsilon_,
       hidden_size,
       static_cast<int>(element_count),
-      element_size);
+      element_size,
+      bias_paired_with_skip_input_);
 }
 
 }  // namespace cuda

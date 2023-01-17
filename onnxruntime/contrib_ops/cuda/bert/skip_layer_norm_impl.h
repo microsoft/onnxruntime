@@ -21,7 +21,8 @@ Status LaunchSkipLayerNormKernel(
     float epsilon,                  // Layer normalization epsilon
     int hidden_size,                // hidden size, it is the leading dimension (ld)
     int element_count,              // number of elements in input tensor
-    size_t element_size);
+    size_t element_size,
+    bool bias_paired_with_skip_input);
 
 }  // namespace cuda
 }  // namespace contrib

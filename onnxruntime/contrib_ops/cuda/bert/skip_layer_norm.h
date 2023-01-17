@@ -19,6 +19,7 @@ class SkipLayerNorm final : public CudaKernel {
 
  private:
   float epsilon_;
+  bool bias_paired_with_skip_input_ = false;
 };
 
 }  // namespace cuda

@@ -112,17 +112,17 @@ __global__ void SkipLayerNormKernelSmall(
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
       if (hasBias) {
-          if(!bias_paired_with_skip_input) {
-              input_v[i] = (input_v[i] + bias_v[i]) + skip_v[i];
-          } else {
-              input_v[i] = input_v[i] + (bias_v[i] + skip_v[i]);
-          }
+        if (!bias_paired_with_skip_input) {
+          input_v[i] = (input_v[i] + bias_v[i]) + skip_v[i];
+        } else {
+          input_v[i] = input_v[i] + (bias_v[i] + skip_v[i]);
+        }
       } else {
-          input_v[i] += skip_v[i];
+        input_v[i] += skip_v[i];
       }
 
       if (hasSkipInputBiasAdditionOutput) {
-        skip_input_bias_add_output_v[i] = input[i];
+        skip_input_bias_add_output_v[i] = input_v[i];
       }
 
       const T rldval = rld * input_v[i];

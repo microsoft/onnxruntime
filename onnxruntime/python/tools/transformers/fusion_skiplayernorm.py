@@ -158,13 +158,20 @@ class FusionBiasSkipLayerNormalization(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        inputs = [
-            node.input[1 - add_input_index],
-            matmul.output[0],
-            node.input[2],
-            node.input[3],
-            add.input[bias_index],
-        ]
+
+        if add_input_index == 0:
+            inputs = [matmul.output[0], node.input[1]]
+        else:
+            inputs = [node.input[0], matmul.output[0]]
+
+        inputs.extend(
+            [
+                node.input[2],
+                node.input[3],
+                add.input[bias_index],
+            ]
+        )
+
         new_node = helper.make_node(
             "SkipLayerNormalization",
             inputs=inputs,
@@ -181,6 +188,8 @@ class FusionBiasSkipLayerNormalization(Fusion):
         # Set default epsilon if no epsilon exists from skiplayernorm
         if len(new_node.attribute) == 0:
             new_node.attribute.extend([helper.make_attribute("epsilon", 1.0e-12)])
+
+        new_node.attribute.extend([helper.make_attribute("bias_paired_with_skip_input", add_input_index)])
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
