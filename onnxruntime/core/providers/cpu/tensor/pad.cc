@@ -490,11 +490,11 @@ static PadValue PadValueFromFloat(float value, MLDataType data_type) {
 
 template <class T>
 void ComputePadWithAxes(
-    const int64_t* pads_tensor_raw_data,
-    const T* axes_tensor_raw_data,
-    size_t axes_size,
+    gsl::span<const int64_t> pads_tensor_raw_data,
+    gsl::span<const T> axes_tensor_raw_data,
     size_t data_rank,
     PadsVector& pads) {
+  size_t axes_size = axes_tensor_raw_data.size();
   for (size_t i = 0; i < axes_size; ++i) {
     T axis = axes_tensor_raw_data[i];
     if (axis < 0) {
@@ -541,10 +541,18 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       pads.resize(2 * data_rank, 0);
       if (axes_tensor->IsDataType<int32_t>()) {
         const int32_t* axes_tensor_raw_data = axes_tensor->Data<int32_t>();
-        ComputePadWithAxes(pads_tensor_raw_data, axes_tensor_raw_data, (size_t)axes_size, data_rank, pads);
+        ComputePadWithAxes<int32_t>(
+          {pads_tensor_raw_data, gsl::narrow<size_t>(2 * axes_size)},
+          {axes_tensor_raw_data, gsl::narrow<size_t>(axes_size)},
+          data_rank,
+          pads);
       } else if(axes_tensor->IsDataType<int64_t>()) {
         const int64_t* axes_tensor_raw_data = axes_tensor->Data<int64_t>();
-        ComputePadWithAxes(pads_tensor_raw_data, axes_tensor_raw_data, (size_t)axes_size, data_rank, pads);
+        ComputePadWithAxes<int64_t>(
+          {pads_tensor_raw_data, gsl::narrow<size_t>(2 * axes_size)},
+          {axes_tensor_raw_data, gsl::narrow<size_t>(axes_size)},
+          data_rank,
+          pads);
       }
     } else {
       ORT_ENFORCE(pads_size == 2 * data_rank,
