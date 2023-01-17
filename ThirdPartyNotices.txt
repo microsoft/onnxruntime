@@ -1037,7 +1037,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 _____
 
-gsl-lite
+Microsoft GSL
 
 Copyright (c) 2015 Microsoft Corporation. All rights reserved.
 
