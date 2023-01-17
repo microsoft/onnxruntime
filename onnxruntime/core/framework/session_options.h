@@ -11,6 +11,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 #include "core/framework/config_options.h"
+#include "core/framework/ort_value.h"
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/library_handles.h"

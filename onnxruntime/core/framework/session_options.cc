@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/logging.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/session_options.h"
 
 namespace onnxruntime {
