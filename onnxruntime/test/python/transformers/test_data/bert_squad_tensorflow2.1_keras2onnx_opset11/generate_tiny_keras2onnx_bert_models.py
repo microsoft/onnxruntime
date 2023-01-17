@@ -301,7 +301,6 @@ class TinyBertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        {}
         for input in self.model.graph.input:
             dim_proto = input.type.tensor_type.shape.dim[0]
             dim_proto.dim_param = dynamic_batch_dim

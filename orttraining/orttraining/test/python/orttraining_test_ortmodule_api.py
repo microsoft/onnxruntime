@@ -4242,7 +4242,6 @@ def test_ortmodule_list_input_with_unused_values():
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
-            batch[0]
             b = batch[1]
             return self.dummy + b
 
@@ -4497,7 +4496,6 @@ def test_ortmodule_dict_input_with_unused_values():
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
-            batch["b"]
             a = batch["a"]
             return self.dummy + a
 
