@@ -276,7 +276,7 @@ class PolyWarmupLRScheduler(_LRScheduler):
 
         assert (
             train_step_info.optimizer_config.lr > self.lr_end
-        ), f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
+        ), f"lr_end ({self.lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
 
         if train_step_info.optimization_step < self._num_warmup_steps:
             return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))

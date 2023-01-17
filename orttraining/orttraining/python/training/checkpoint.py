@@ -423,7 +423,7 @@ def _aggregate_over_ranks(
         assert (
             ranks[i] == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
         ), "Unexpected rank in file at path {}. Expected {}, got {}".format(
-            path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
+            path, ranks[i], rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
         )
         if loaded_mixed_precision is None:
             loaded_mixed_precision = rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]

@@ -3,6 +3,7 @@ import os
 import pprint
 import re
 
+# FIXME: Remove star imports
 from benchmark import *
 from perf_utils import *
 

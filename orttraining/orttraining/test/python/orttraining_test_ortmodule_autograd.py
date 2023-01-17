@@ -672,8 +672,8 @@ def test_EvalTest():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    # Test pure inferencing scenarios, when inputs don't requires_grad.
-    run_evaluate_test_and_compare(model_builder, input_generator, label_input)
+    # Test pure inference scenarios, when inputs don't requires_grad.
+    _test_helpers.run_evaluate_test_and_compare(model_builder, input_generator, label_input)
 
 
 @pytest.mark.skipif(
@@ -803,12 +803,12 @@ def test_InnerModuleCall():
     # Test indirect ORTModule call from custom function
     result_pth = get_inner_module_call_result(x.detach(), "cuda:0", False)
     result_ort = get_inner_module_call_result(x.detach(), "cuda:0", True)
-    compare_tensor_list(result_ort, result_pth)
+    _test_helpers.compare_tensor_list(result_ort, result_pth)
 
     # Test indirect ORTModule call from custom function
     result_ort = get_inner_module_call_result(x.detach(), "cpu", True)
     result_pth = get_inner_module_call_result(x.detach(), "cpu", False)
-    compare_tensor_list(result_ort, result_pth)
+    _test_helpers.compare_tensor_list(result_ort, result_pth)
 
 
 @pytest.mark.skipif(

@@ -729,7 +729,7 @@ class ORTTrainer(object):
                 if gpu_ep_name not in providers:
                     raise RuntimeError(
                         "ORTTrainer options specify a CUDA device but the {} provider is unavailable.".format(
-                            cuda_ep_name
+                            gpu_ep_name
                         )
                     )
 

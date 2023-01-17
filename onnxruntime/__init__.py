@@ -61,6 +61,8 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     OrtValue,
     SparseTensor,
 )
+
+# FIXME: Remove star imports
 from onnxruntime.capi.training import *  # noqa: F403
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
