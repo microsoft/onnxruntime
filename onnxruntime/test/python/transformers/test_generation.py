@@ -65,10 +65,11 @@ class TestBeamSearchGpt(unittest.TestCase):
         gpt2_beam_search_onnx_model = onnx.load(model_path)
         graph_proto = gpt2_beam_search_onnx_model.graph
         for node in graph_proto.node:
-            if node == "BeamSearch" or node == "GreedySearch":
+            if node.op_type == "BeamSearch" or node.op_type == "GreedySearch":
                 for attr in node.attribute:
                     if attr.name == "init_decoder":
                         init_decoder_found = True
+                        break
 
         self.assertTrue(init_decoder_found)
 
@@ -88,7 +89,7 @@ class TestBeamSearchGpt(unittest.TestCase):
         result = run(arguments, sentences=self.sentences if sentences is None else sentences)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
         # (CPU) Check for the presence of the "init_decoder" attribute
-        self.check_for_init_decoder_attr(arguments.output)
+        self.check_for_init_decoder_attr(self.beam_search_onnx_path)
 
         # Test GPU
         if self.enable_cuda:
@@ -98,7 +99,7 @@ class TestBeamSearchGpt(unittest.TestCase):
             self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
             # (GPU) Check for the presence of the "init_decoder" attribute
-            self.check_for_init_decoder_attr(arguments.output)
+            self.check_for_init_decoder_attr(self.beam_search_onnx_path)
 
         os.remove(self.beam_search_onnx_path)
 
