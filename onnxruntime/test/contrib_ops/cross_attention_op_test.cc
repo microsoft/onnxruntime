@@ -41,6 +41,7 @@ static void RunMultiHeadAttentionTest(
   if (enable_cpu || enable_cuda || enable_rocm) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+    tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
 
     std::vector<int64_t> query_dims = {batch_size, sequence_length, hidden_size};
     std::vector<int64_t> key_dims = {batch_size, kv_sequence_length, hidden_size};
