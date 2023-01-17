@@ -1791,8 +1791,8 @@ class PlannerImpl {
     //    b. which node need to trigger downstream
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
-    size_t num_notifications = 0;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
+    std::map<NodeIndex, std::vector<std::pair<WaitNotificationFn, NotificationIndex>>> node_to_wait;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -1811,7 +1811,6 @@ class PlannerImpl {
         // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor 
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
         if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
-          bool notification_recorded = false;
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
@@ -1823,15 +1822,23 @@ class PlannerImpl {
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
-                  if (node_stream_map_[it->Index()] != i || plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU) {
-                    node_to_notification[node_index] = num_notifications++;
-                    notification_recorded = true;
-                    break;
+                  OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
+                  if (node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) {
+                    if (node_to_notification.find(node_index) == node_to_notification.end()) {
+                      node_to_notification[node_index] = plan_.notification_owners.size();
+                      plan_.notification_owners.push_back(i);
+                    }
+                    WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
+                    ORT_ENFORCE(wait_handle != nullptr, "wait_handle should not be null");
+                    if (node_to_wait.find(it->Index()) == node_to_wait.end()) {
+                      node_to_wait[it->Index()] = std::vector<std::pair<WaitNotificationFn, NotificationIndex>>{std::make_pair(wait_handle, node_to_notification[node_index])};
+                    } else {
+                      node_to_wait[it->Index()].push_back(std::make_pair(wait_handle, node_to_notification[node_index]));
+                    }
                   }
                 }
               }
             }
-            if (notification_recorded) break;   // notification is stream based property, as long as one notification is filed, end the loop for current node
           }
         }
       }
@@ -1848,16 +1855,8 @@ class PlannerImpl {
         ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.device.Type());
       }
     }
-    // 4. set notification owners
-    plan_.notification_owners.resize(num_notifications);
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-      auto it = node_to_notification.find(node_index);
-      if (it != node_to_notification.end()) {
-        // notification owned by the node who produced it.
-        plan_.notification_owners[it->second] = node_stream_map_[node_index];
-      }
-    }
-    // 5. add commands to logic queue
+    
+    // 4. add commands to logic queue
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (size_t j = 0; j < stream_nodes_[i].size(); ++j) {
         auto node_index = stream_nodes_[i][j];
@@ -1883,38 +1882,15 @@ class PlannerImpl {
             execution_plan[i]->step_pc.push_back(node_index);
 #endif
           }
-          // check whether we need to wait on notification
-          auto notification_it = node_to_notification.find(it->Index());
-          if (notification_it != node_to_notification.end()) {
-            // push a wait command if has EP registered it.
-            // find which tensor we consumed to decide which wait handle to use
-            // if there are multiple tensors consumed on different devices, need to wait on all of them
-            // for example, if a cuda kernel A produce a cpu tensor C and a gpu tensor C', cuda kernel B
-            // depends on both C and C', we need to wait on both GPU and CPU.
-            for (auto* inputs : node->InputDefs()) {
-              if (inputs->Exists()) {
-                if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), inputs) != it->OutputDefs().end()) {
-                  OrtValueIndex input_arg_idx;
-                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(inputs->Name(), input_arg_idx));
-                  auto& consumer_device = plan_.allocation_plan[input_arg_idx].location.device;
+        }
 
-                  // launch WaitOnEPStep only when (same condition when initializing node_to_notification)
-                  // 1. input node and current node are in different streams, Or
-                  // 2. current node consumes a CPU tensor from an non-shape op.
-                  if (node_stream_map_[it->Index()] != i || consumer_device.Type() == OrtDevice::CPU) {
-                    auto wait_handle = stream_handle_registry.GetWaitHandle(
-                      execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
-                      consumer_device.Type());
-                    if (wait_handle) {
-                      execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
+        auto wait_it = node_to_wait.find(node_index);
+        if (wait_it != node_to_wait.end()) {
+          for (auto wait_param = wait_it->second.begin(); wait_param != wait_it->second.end(); wait_param++) {
+            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param->first, wait_param->second));
 #ifdef ENABLE_TRAINING
-                      execution_plan[i]->step_pc.push_back(node_index);
-#endif
-                    }
-                  }
-                }
-              }
-            }
+            execution_plan[i]->step_pc.push_back(node_index);
+#endif  // ENABLE_TRAINING
           }
         }
 
@@ -1962,7 +1938,7 @@ class PlannerImpl {
       }
     }
 #ifdef ENABLE_TRAINING
-    // 6. build the node_execution_order_in_training
+    // 5. build the node_execution_order_in_training
     //  the training memory optimization rely on a stable order how kernel get launched to calculate memory pattern
     //  so we limit training scenario to run with single stream and single thread mode
     //  the code below will simulate the execution and get the stable execution order
@@ -2051,7 +2027,7 @@ class PlannerImpl {
       process_stream(i, -1);
     }
     ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
-    // 7. turn the step_node_index to step_pc
+    // 6. turn the step_node_index to step_pc
     for (auto& stream : plan_.execution_plan) {
       for (size_t i = 0; i < stream->step_pc.size(); ++i) {
         auto it = std::find(plan_.node_execution_order_in_training.begin(), plan_.node_execution_order_in_training.end(), stream->step_pc[i]);

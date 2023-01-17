@@ -281,7 +281,7 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
     state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
@@ -325,14 +325,16 @@ class PlannerTest : public ::testing::Test {
       virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType /*ep_type*/, CreateStreamFn /*f*/) override {}
     };
 
-    onnxruntime::GraphViewer graph_viewer{graph_};
-    status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
-                                           kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                           MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                           ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
+    if (invoke_createPlan_explicityly) {
+      onnxruntime::GraphViewer graph_viewer{graph_};
+      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
+                                             kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
+                                             MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
+                                             ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
 
-    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
+    }
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {
@@ -1202,7 +1204,7 @@ TEST_F(PlannerTest, MultiStream) {
   execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
-  CreatePlan();
+  CreatePlan({}, false);
 
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
@@ -1244,7 +1246,7 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   SetNodePartitionConfigFilePath("./testdata/multi_stream_models/3_gpu_streams.json");
-  CreatePlan();
+  CreatePlan({}, false);
 
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 3) << "3 logic streams";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 3) << "stream 0 has 3 steps";
@@ -1259,8 +1261,8 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
 
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[2]->steps_.size(), 5) << "stream 2 has 5 steps";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3, for TriggerDownstreamStep in stream 1";
-  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[1]).name(), "WaitOnEPStep"), nullptr) << "1st step: WaitOnEPStep for node 3, for ActivateNotificationStep in stream 1";
-  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[2]).name(), "BarrierStep"), nullptr) << "2nd step: BarrierStep for node 3, for TriggerDownstreamStep in stream 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[1]).name(), "BarrierStep"), nullptr) << "1st step: BarrierStep for node 3, for TriggerDownstreamStep in stream 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[2]).name(), "WaitOnEPStep"), nullptr) << "2nd step: WaitOnEPStep for node 3, for ActivateNotificationStep in stream 1";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[3]).name(), "WaitOnEPStep"), nullptr) << "3rd step: WaitOnEPStep for node 3, for ActivateNotificationStep in stream 2";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[4]).name(), "LaunchKernelStep"), nullptr) << "4th step: LaunchKernelStep for node 3";
 }
@@ -1285,7 +1287,7 @@ TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
   execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
-  CreatePlan();
+  CreatePlan({}, false);
 
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 5) << "stream 0 has 5 steps";
