@@ -31,8 +31,6 @@ void ComputeTop1Reference(const std::vector<float>& values,
                           std::vector<int32_t>& top_k_tokens,
                           int32_t batch_size,
                           int32_t vocab_size) {
-  using VK = std::pair<float, int32_t>;
-
   for (int32_t b = 0; b < batch_size; b++) {
     int32_t base_idx = b * vocab_size;
 

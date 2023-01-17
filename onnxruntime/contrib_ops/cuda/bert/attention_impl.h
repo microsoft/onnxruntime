@@ -45,17 +45,18 @@ struct AttentionData {
   T* workspace;
   T* output;
   T* present;
+
+  void* fused_runner;
+  const void* fused_cross_attention_kernel;
 };
 
 template <typename T>
 Status QkvToContext(
-    const cudaDeviceProp& prop,
+    const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
-    AttentionData<T>& data,
-    void* fused_runner,
-    int past_present_share_buffer = 0);
+    AttentionData<T>& data);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
