@@ -4,7 +4,7 @@ import torch
 from orttraining_test_data_loader import BatchArgsOption, create_ort_test_dataloader, split_batch
 
 from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
-from onnxruntime.training import amp, optim, orttrainer, orttrainer_options
+from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.optim import _LRScheduler
 
 
