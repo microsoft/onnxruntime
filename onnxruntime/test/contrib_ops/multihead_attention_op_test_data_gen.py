@@ -9,9 +9,10 @@
 import math
 from typing import Optional, Tuple
 
-import torch
-from torch import nn, Tensor
 import numpy as np
+import torch
+from torch import Tensor, nn
+
 
 # Modified from BertSelfAttention in https://github.com/huggingface/transformers/blob/main/src/transformers/models/bert/modeling_bert.py
 class Attention(nn.Module):
