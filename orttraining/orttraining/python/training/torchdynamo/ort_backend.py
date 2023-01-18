@@ -337,15 +337,17 @@ def _create_onnx_model(onnx_proto):
     return onnx.ModelProto.FromString(onnx_proto)
 
 
-def _create_onnx_session(onnx_proto, ep : str):
+def _create_onnx_session(onnx_proto, ep: str):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
     return onnxruntime.InferenceSession(onnx_proto, providers=[ep])
+
 
 def _infer_ep_from_device(device):
     if device.type == "cuda":
         return "CUDAExecutionProvider"
     return "CPUExecutionProvider"
+
 
 def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
     assert all(value.device == values[0].device for value in values), "All values must be on the same device."
@@ -455,7 +457,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep : str = ""):
+    def __init__(self, ep: str = ""):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
