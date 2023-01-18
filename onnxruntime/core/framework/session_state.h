@@ -162,6 +162,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
+// This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -516,6 +517,7 @@ class SessionState {
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #ifdef ENABLE_TRAINING
+// Needed for ORTTrainer. Should be removed along with ORTTrainer code
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else

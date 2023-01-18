@@ -1331,6 +1331,23 @@ TEST(PoolTest, LpPool) {
   test.Run();
 }
 
+TEST(PoolTest, LpPoolCeilMode) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("LpPool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", vector<int64_t>{3});
+  test.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+  test.AddAttribute("p", static_cast<int64_t>(1));
+  test.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
+  test.AddOutput<float>("Y", {1, 1, 2}, {6, 7});
+  test.Run();
+}
+
 TEST(PoolTest, GlobalLpPool) {
   OpTester test("GlobalLpPool");
   test.AddAttribute("p", static_cast<int64_t>(3));

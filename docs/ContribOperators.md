@@ -94,24 +94,24 @@ Do not modify directly.*
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
   Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
-  
+
   The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
   is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
   and v_hidden_size is that of V.
-  
+
   The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
   or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
   we support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
   where value is actual sequence length excluding padding. When input has left-side padding, mask_index has
   shape (2 * batch_size), where the values are the exclusive end positions followed by the inclusive start positions.
-  
+
   When unidirectional is 1, each token only attends to previous tokens.
-  
+
   Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
   The qkv_hidden_sizes is required only when K and V have different hidden sizes.
-  
+
   When there is past state, hidden dimension for Q, K and V shall be the same.
-  
+
   The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
   For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
   For cross attention, query and key might have different lengths.
@@ -123,6 +123,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>past_present_share_buffer</tt> : int</dt>
@@ -175,133 +177,133 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
   contains following basic component: LSTM Cell, Bahdanau Attention Mechanism, AttentionWrapp.
-  
+
   Activation functions:
-  
+
     Relu(x)                - max(0, x)
-  
+
     Tanh(x)                - (1 - e^{-2x})/(1 + e^{-2x})
-  
+
     Sigmoid(x)             - 1/(1 + e^{-x})
-  
+
     (NOTE: Below are optional)
-  
+
     Affine(x)              - alpha*x + beta
-  
+
     LeakyRelu(x)           - x if x >= 0 else alpha * x
-  
+
     ThresholdedRelu(x)     - x if x >= alpha else 0
-  
+
     ScaledTanh(x)          - alpha*Tanh(beta*x)
-  
+
     HardSigmoid(x)         - min(max(alpha*x + beta, 0), 1)
-  
+
     Elu(x)                 - x if x >= 0 else alpha*(e^x - 1)
-  
+
     Softsign(x)            - x/(1 + |x|)
-  
+
     Softplus(x)            - log(1 + e^x)
-  
+
     Softmax(x)             - exp(x) / sum(exp(x))
-  
+
   Bahdanau Attention Mechanism:
       `M` -  Memory tensor.
-  
+
       `VALUES` - masked Memory by its real sequence length.
-  
+
       `MW` - Memory layer weight.
-  
+
       `KEYS` - Processed memory tensor by the memory layer.
                KEYS = M * MW
-  
+
       `Query` - Query tensor, normally at specific time step in sequence.
-  
+
       `QW` - Query layer weight in the attention mechanism
-  
+
       `PQ` - processed query,  = `Query` * `QW`
-  
+
       `V' - attention vector
-  
+
       `ALIGN` - calculated alignment based on Query and KEYS
           ALIGN = softmax(reduce_sum(`V` * Tanh(`KEYS` + `PQ`)))
-  
+
       `CONTEXT` - context based on `ALIGN` and `VALUES`
           CONTEXT = `ALIGN` * `VALUES`
-  
-  
+
+
   LSTM Cell:
     `X` - input tensor concat with attention state in the attention wrapper
-  
+
     `i` - input gate
-  
+
     `o` - output gate
-  
+
     `f` - forget gate
-  
+
     `c` - cell gate
-  
+
     `t` - time step (t-1 means previous time step)
-  
+
     `W[iofc]` - W parameter weight matrix for input, output, forget, and cell gates
-  
+
     `R[iofc]` - R recurrence weight matrix for input, output, forget, and cell gates
-  
+
     `Wb[iofc]` - W bias vectors for input, output, forget, and cell gates
-  
+
     `Rb[iofc]` - R bias vectors for input, output, forget, and cell gates
-  
+
     `P[iof]`  - P peephole weight vector for input, output, and forget gates
-  
+
     `WB[iofc]` - W parameter weight matrix for backward input, output, forget, and cell gates
-  
+
     `RB[iofc]` - R recurrence weight matrix for backward input, output, forget, and cell gates
-  
+
     `WBb[iofc]` - W bias vectors for backward input, output, forget, and cell gates
-  
+
     `RBb[iofc]` - R bias vectors for backward input, output, forget, and cell gates
-  
+
     `PB[iof]`  - P peephole weight vector for backward input, output, and forget gates
-  
+
     `H` - Hidden state
-  
+
     `num_directions` - 2 if direction == bidirectional else 1
-  
+
     Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
-  
+
       - it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
-  
+
       - ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
-  
+
       - ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
-  
+
       - Ct = ft (.) Ct-1 + it (.) ct
-  
+
       - ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
-  
+
       - Ht = ot (.) h(Ct)
-  
-  
+
+
   AttentionWrapp Notations:
     `lstm()' - wrapped inner cell.
              Ht, Ct = lstm(concat(Xt, ATTNt-1), Ct-1)
-  
+
     `am()` - attention mechanism the wrapper used.
              CONTEXTt, ALIGNt = am(Ht, ALIGNt-1)
-  
+
     `AW` - attention layer weights, optional.
-  
+
     `ATTN` - attention state, initial is zero. If `AW` provided, it is the output of the attention layer,
                   ATTNt = concat(Ht, CONTEXTt) * AW
              otherwise,
                   ATTNt = CONTEXTt
-  
+
   RNN layer output:
     `Y` - if needed is the sequence of Ht from lstm cell.
-  
+
     `Y_h` - is the last valid H from lstm cell.
-  
+
     `Y_c` - is the last valid C from lstm cell.
-  
+
 
 #### Version
 
@@ -515,7 +517,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.BiasGelu"></a><a name="com.microsoft.biasgelu">**com.microsoft.BiasGelu**</a>
 
   Bias Gelu.
-  It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. 
+  It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation.
 
 #### Version
 
@@ -707,7 +709,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   ```
   scale = 1. / (1. - ratio).
   ```
-  
+
   This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 
 #### Version
@@ -967,6 +969,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -1762,7 +1766,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         which are used to interpolate the output value `output[n, :, h, w]`.
         The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
         See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
-        
+
 
 #### Version
 
@@ -1877,10 +1881,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
   attends to its W previous tokens and W succeeding tokens with W being the window length. A selected few tokens
   attend globally to all other tokens.
-  
+
   The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.
   Mask value < 0 (like -10000.0) means the token is masked, 0 otherwise.
-  
+
   Global attention flags have value 1 for the tokens attend globally and 0 otherwise.
 
 #### Version
@@ -2065,11 +2069,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
   "This operator supports **multidirectional (i.e., Numpy-style) broadcasting**"
   The output of this op is the int32 accumulated result of the mul operation
-  
+
   ```
   C (int32) = (A - A_zero_point) * (B - B_zero_point)
   ```
-  
+
 
 #### Version
 
@@ -2108,7 +2112,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MultiHeadAttention"></a><a name="com.microsoft.multiheadattention">**com.microsoft.MultiHeadAttention**</a>
 
   Multi-Head Self/Cross Attention. Bias from input projection is included.
-  
+
   The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
   means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
   each key sequence excluding paddings.
@@ -2120,6 +2124,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2350,7 +2356,7 @@ This version of the operator has been available since version 1 of the 'com.micr
                       [0.0, 0.0, 4.5, 5.7],
                       ],
                       ]
-              
+
 
 #### Version
 
@@ -2402,6 +2408,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>past_present_share_buffer</tt> : int</dt>
+<dd>Corresponding past and present are same tensor, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
@@ -2522,7 +2530,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QLinearAdd"></a><a name="com.microsoft.qlinearadd">**com.microsoft.QLinearAdd**</a>
 
   Performs element-wise binary addition on 8 bit data types (with Numpy-style broadcasting support).
-  
+
   C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point
 
 #### Version
@@ -2580,11 +2588,11 @@ This version of the operator has been available since version 1 of the 'com.micr
    output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
    ```
    if ceil_mode is enabled
-  
+
    ```
    * pad_shape[i] is sum of pads along axis i
    ```
-  
+
    `auto_pad` is a DEPRECATED attribute. If you are using them currently, the output spatial shape will be following:
    ```
    VALID: output_spatial_shape[i] = ceil((input_spatial_shape[i] - kernel_spatial_shape[i] + 1) / strides_spatial_shape[i])
@@ -2594,9 +2602,9 @@ This version of the operator has been available since version 1 of the 'com.micr
    ```
    pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
    ```
-  
+
   The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
-  
+
   Input and output scales and zero points are used to convert the output to a new quantization range.
   Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
 
@@ -2864,7 +2872,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QLinearMul"></a><a name="com.microsoft.qlinearmul">**com.microsoft.QLinearMul**</a>
 
   Performs element-wise binary multiplication on 8 bit data types (with Numpy-style broadcasting support).
-  
+
   C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point
 
 #### Version
@@ -2915,10 +2923,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   with the exception that numpy default keepdims to False instead of True.
   Input and Output scales and zero points are used to requantize the output in a new range.
   This helps to improve accuracy as after ReduceMean operation the range of the output is expected to decrease.
-  
+
   ```
   "Output = Dequantize(Input) -> ReduceMean on fp32 data -> Quantize(output)",
-  
+
   ```
 
 #### Version
@@ -2968,7 +2976,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
   (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
-  Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` 
+  Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))`
 
 #### Version
 
@@ -3753,10 +3761,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
 
   Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
-  
+
   The input has padding with shape (batch_size, sequence_length, hidden_size). This will generate two outputs:
   output has shape (total_tokens, hidden_size); token_offset with shape (batch_size, sequence_length).
-  
+
   token_offset has offsets of all non-padding tokens first, then offset of all padding tokens. It is
   a list of batch_size * sequence_length elements, which is reshaped to 2D for convenience of shape inference.
 
@@ -3799,7 +3807,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.RestorePadding"></a><a name="com.microsoft.restorepadding">**com.microsoft.RestorePadding**</a>
 
   Restore paddings and fill padding with zeros.
-  
+
   The input has padding with shape (total_tokens, hidden_size) and token_offset with shape (batch_size, sequence_length).
   The output has shape (batch_size, sequence_length, hidden_size).
 
@@ -3945,7 +3953,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (2 - 8)
+#### Inputs (2 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -3964,6 +3972,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>presence_mask</tt> (optional) : I</dt>
 <dd>Presence penalty mask. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>seed</tt> (optional) : I</dt>
+<dd>Seed for random number generator. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -4253,7 +4263,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
          for a dictionary of fixed size.
-        
+
 
 #### Version
 
@@ -4343,7 +4353,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         the main diagonal. A negative k value includes as many diagonals below the main diagonal.
         If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
         the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
-        
+
 
 #### Version
 
@@ -4394,7 +4404,7 @@ This version of the operator has been available since version 1 of the 'com.micr
                   output_uniques = [2, 1, 3, 4]
                   output_idx = [0, 1, 1, 2, 3, 2]
                   output_counts = [1, 2, 2, 1]
-                
+
 
 #### Version
 
@@ -4593,5 +4603,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-

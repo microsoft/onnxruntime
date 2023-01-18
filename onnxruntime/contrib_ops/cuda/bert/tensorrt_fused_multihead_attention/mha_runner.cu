@@ -159,7 +159,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     params.o_ptr = output;
     params.cu_seqlens = static_cast<int*>(const_cast<void*>(cu_seqlens));
 
-    if (use_flash_attention && flash_attention_kernel != nullptr) {
+    if (use_flash_attention && flash_attention_kernel != nullptr && !has_causal_mask) {
       flash_attention_kernel->run(params, stream);
     } else {
       xmmaKernel->run(params, stream, use_flash_attention, has_causal_mask);

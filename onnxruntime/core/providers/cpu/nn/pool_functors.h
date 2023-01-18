@@ -468,7 +468,6 @@ struct LpPool2DTask final {
           }
         }
         y_d[pool_index] = static_cast<T>(std::pow(y_d[pool_index], 1.0f / p));
-        //std::cout << y_d[pool_index] << "\t";
       }
     }
   }

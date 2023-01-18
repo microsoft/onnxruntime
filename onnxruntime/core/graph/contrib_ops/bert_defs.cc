@@ -125,7 +125,7 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
   }
 }
 
-void CrossAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
   // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
   // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
@@ -198,7 +198,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Corresponding past and present are same tensor, its size is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT,
-              static_cast<int64_t>(0))
+              OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size)",
@@ -258,8 +262,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
-constexpr const char* CrossAttention_ver1_doc = R"DOC(
-Multi-Head Cross Attention. Bias from input projection is included.
+constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
+Multi-Head Self/Cross Attention. Bias from input projection is included.
 
 The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
 means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
@@ -267,10 +271,12 @@ each key sequence excluding paddings.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    CrossAttention, 1,
+    MultiHeadAttention, 1,
     OpSchema()
-        .SetDoc(CrossAttention_ver1_doc)
+        .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is negative infinity",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
@@ -299,7 +305,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          CrossAttentionTypeAndShapeInference(ctx);
+          MultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
@@ -343,6 +349,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(Decoder_Attention_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is negative infinity",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
         .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
         .Input(2, "q_weight", "2D input tensor with shape (hidden_size, hidden_size)", "T")
@@ -436,7 +444,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           schema.BuildFunction(functionProto);
           return true;
         }));
-        
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     RelativePositionBias, 1,
     OpSchema()

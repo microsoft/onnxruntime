@@ -24,8 +24,11 @@ namespace onnxruntime {
 class StreamExecutionContext;
 class DeviceStreamCollection;
 class SessionScope;
+
+#ifdef ENABLE_TRAINING
 using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
 using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
+#endif
 
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,

@@ -14,13 +14,14 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class CrossAttention final : public CudaKernel {
+class MultiHeadAttention final : public CudaKernel {
  public:
-  CrossAttention(const OpKernelInfo& info);
+  MultiHeadAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
   int num_heads_;  // number of attention heads
+  float mask_filter_value_;
   bool disable_fused_runner_;
   bool enable_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;

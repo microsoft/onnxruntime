@@ -7,10 +7,10 @@
 
 namespace onnxruntime {
 
-class CloudExecutionProvider : public IExecutionProvider {
+class AzureExecutionProvider : public IExecutionProvider {
  public:
-  explicit CloudExecutionProvider(const std::unordered_map<std::string, std::string>& config);
-  ~CloudExecutionProvider() = default;
+  explicit AzureExecutionProvider(const std::unordered_map<std::string, std::string>& config);
+  ~AzureExecutionProvider() = default;
   const std::unordered_map<std::string, std::string>& GetConfig() const { return config_; }
 
  private:

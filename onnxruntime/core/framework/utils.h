@@ -194,7 +194,7 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif
 
