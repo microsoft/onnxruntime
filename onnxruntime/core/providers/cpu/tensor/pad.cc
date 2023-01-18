@@ -542,15 +542,15 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       if (axes_tensor->IsDataType<int32_t>()) {
         const int32_t* axes_tensor_raw_data = axes_tensor->Data<int32_t>();
         ComputePadWithAxes<int32_t>(
-          {pads_tensor_raw_data, gsl::narrow<size_t>(2 * axes_size)},
-          {axes_tensor_raw_data, gsl::narrow<size_t>(axes_size)},
+          {pads_tensor_raw_data, onnxruntime::narrow<size_t>(2 * axes_size)},
+          {axes_tensor_raw_data, onnxruntime::narrow<size_t>(axes_size)},
           data_rank,
           pads);
       } else if(axes_tensor->IsDataType<int64_t>()) {
         const int64_t* axes_tensor_raw_data = axes_tensor->Data<int64_t>();
         ComputePadWithAxes<int64_t>(
-          {pads_tensor_raw_data, gsl::narrow<size_t>(2 * axes_size)},
-          {axes_tensor_raw_data, gsl::narrow<size_t>(axes_size)},
+          {pads_tensor_raw_data, onnxruntime::narrow<size_t>(2 * axes_size)},
+          {axes_tensor_raw_data, onnxruntime::narrow<size_t>(axes_size)},
           data_rank,
           pads);
       }
