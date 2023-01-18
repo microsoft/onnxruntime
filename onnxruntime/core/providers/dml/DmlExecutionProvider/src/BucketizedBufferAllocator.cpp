@@ -167,7 +167,11 @@ namespace Dml
         gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
         if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResourceInUavState()->GetDesc().Width)
         {
-            assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
+            if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
+            {
+                // Ensure there are sufficient buckets
+                m_pool.resize(bucketIndex + 1);
+            }
 
             // Return the resource to the bucket
             Bucket* bucket = &m_pool[bucketIndex];
