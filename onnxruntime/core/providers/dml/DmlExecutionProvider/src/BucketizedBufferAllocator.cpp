@@ -125,7 +125,6 @@ namespace Dml
             resourceId = ++m_currentResourceId;
         }
 
-        assert(resourceWrapper->GetResourceInUavState()->GetDesc().Width == bucketSize);
         assert(resourceWrapper != nullptr);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
