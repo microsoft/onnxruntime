@@ -1823,13 +1823,14 @@ class PlannerImpl {
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
-                  if (node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) {
+                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
+                  if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU)
+                      && wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
                     }
-                    WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
-                    ORT_ENFORCE(wait_handle != nullptr, "wait_handle should not be null");
+
                     if (node_to_wait.find(it->Index()) == node_to_wait.end()) {
                       node_to_wait[it->Index()] = std::vector<std::pair<WaitNotificationFn, NotificationIndex>>{std::make_pair(wait_handle, node_to_notification[node_index])};
                     } else {
