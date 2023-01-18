@@ -1,0 +1,15 @@
+diff --git a/examples/41_fused_multi_head_attention/kernel_forward.h b/examples/41_fused_multi_head_attention/kernel_forward.h
+index 3f85953b..b038541a 100644
+--- a/examples/41_fused_multi_head_attention/kernel_forward.h
++++ b/examples/41_fused_multi_head_attention/kernel_forward.h
+@@ -162,8 +162,9 @@ struct AttentionKernel {
+     int32_t num_batches;
+     int32_t num_heads;
+ 
++    // https://github.com/NVIDIA/cutlass/issues/771
+     CUTLASS_HOST_DEVICE int32_t o_strideM() const {
+-      return head_dim_value;
++      return head_dim_value * num_heads;
+     }
+ 
+     // Moves pointers to what we should process

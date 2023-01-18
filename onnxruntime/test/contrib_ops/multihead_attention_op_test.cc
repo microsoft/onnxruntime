@@ -142,7 +142,8 @@ static void RunMultiHeadAttentionKernel(
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"}}};
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
@@ -156,7 +157,8 @@ static void RunMultiHeadAttentionKernel(
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"}}};
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
@@ -170,7 +172,23 @@ static void RunMultiHeadAttentionKernel(
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"}}};
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+    RunMultiHeadAttentionTest(
+        query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
+        num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
+        use_float16, disable_cpu, disable_cuda, disable_rocm);
+    return;
+  }
+
+  if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention)
+  {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
@@ -184,7 +202,8 @@ static void RunMultiHeadAttentionKernel(
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"}}};
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
@@ -197,6 +216,14 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
     constexpr bool use_float16 = false;
 
     AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Unfused;
+    if (!SkipAttentionKernel(data, kernel_type)) {
+      RunMultiHeadAttentionKernel(
+          data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
+          data.fp32_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
+          data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
+    }
+
+    kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
           data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
@@ -229,6 +256,14 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
     }
 
+    kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
+    if (!SkipAttentionKernel(data, kernel_type)) {
+      RunMultiHeadAttentionKernel(
+          data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
+          data.fp16_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
+          data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
+    }
+
     kernel_type = AttentionKernelType::AttentionKernel_Default;
     RunMultiHeadAttentionKernel(
         data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
@@ -246,6 +281,18 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
   RunMultiHeadAttentionTests(data);
 }
 #endif
+
+TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding) {
+  AttentionTestData data;
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data);
+  RunMultiHeadAttentionTests(data);
+}
+
+TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding) {
+  AttentionTestData data;
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
+  RunMultiHeadAttentionTests(data);
+}
 
 // This tests qk_head_size != k_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {

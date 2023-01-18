@@ -19,7 +19,7 @@ enum AttentionMaskType {
 
 enum AttentionQkvFormat {
   Q_K_V_BNSH,            // for unfused attention
-  Q_K_V_BSNH,            // input format of query, key and value for MultiHeadAttention
+  Q_K_V_BSNH,            // for memory efficient attention, or format of query, key and value for MultiHeadAttention
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
@@ -30,6 +30,7 @@ enum AttentionKernelType{
   AttentionKernel_TrtFusedAttention,
   AttentionKernel_TrtFlashAttention,
   AttentionKernel_TrtFusedCrossAttention,
+  AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_Default
 };
 
@@ -62,6 +63,9 @@ constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATT
 
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
+// Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
+constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";
 
 }  // namespace attention
 

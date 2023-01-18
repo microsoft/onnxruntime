@@ -7,6 +7,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -43,6 +44,8 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
   enable_flash_attention_ = sizeof(T) == 2 &&
                             !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+
+  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 }
 
 template <typename T>
@@ -139,6 +142,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+  bool use_memory_efficient_attention = fused_runner == nullptr &&
+                                        !disable_memory_efficient_attention_ &&
+                                        nullptr == mask_index &&  // TODO: support 1D mask
+                                        nullptr == past &&
+                                        nullptr == present &&
+                                        nullptr == extra_add_qk &&
+                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
+
   cublasHandle_t cublas = GetCublasHandle(context);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -169,7 +180,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.sequence_length,
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   use_memory_efficient_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -188,6 +200,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }

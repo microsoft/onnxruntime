@@ -6,6 +6,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -44,6 +45,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   enable_flash_attention_ = sizeof(T) == 2 &&
                             !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+
+  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 
   disable_fused_cross_attention_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
 }
@@ -124,6 +127,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+  bool use_memory_efficient_attention = fused_runner == nullptr &&
+                                        fused_cross_attention_kernel == nullptr &&
+                                        !disable_memory_efficient_attention_ &&
+                                        nullptr == key_padding_mask &&  // TODO: support 1D mask
+                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
+
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
@@ -133,7 +142,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.sequence_length,
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   use_memory_efficient_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -152,6 +162,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present = nullptr;
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
 
   cublasHandle_t cublas = GetCublasHandle(context);
   return QkvToContext<CudaT>(
