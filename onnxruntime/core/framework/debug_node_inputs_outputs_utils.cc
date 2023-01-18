@@ -568,7 +568,7 @@ void DumpNodeOutputs(
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // should never happen...
+        // should never happen with a valid model...
         std::cout << "missing data type\n";
       }
     } else {
