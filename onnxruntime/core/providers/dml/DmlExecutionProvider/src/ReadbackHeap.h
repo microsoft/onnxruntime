@@ -21,13 +21,13 @@ namespace Dml
             ID3D12Resource* src,
             uint64_t srcOffset,
             D3D12_RESOURCE_STATES srcState);
-        
+
         // Overload supporting batching
         void ReadbackFromGpu(
             gsl::span<void*> dst,
             gsl::span<const uint32_t > dstSizes,
             gsl::span<ID3D12Resource*> src,
-            D3D12_RESOURCE_STATES srcState);
+            gsl::span<const D3D12_RESOURCE_STATES> srcStates);
 
     private:
         void EnsureReadbackHeap(size_t size);

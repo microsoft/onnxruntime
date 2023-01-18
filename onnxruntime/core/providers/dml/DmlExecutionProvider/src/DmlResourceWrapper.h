@@ -11,7 +11,9 @@ namespace Dml
     DmlResourceWrapper : public IUnknown
     {
     public:
-        virtual ID3D12Resource* GetD3D12Resource() const = 0;
+        virtual ID3D12Resource* GetResourceInUavState() const = 0;
+        virtual ID3D12Resource* GetResourceInCopySrcState() const = 0;
+        virtual ID3D12Resource* GetResourceInCopyDstState() const = 0;
         virtual ~DmlResourceWrapper(){}
     };
 }

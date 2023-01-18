@@ -17,8 +17,8 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
-#include "DmlCommittedResourceAllocator.h"
 #include "DmlCommittedResourceWrapper.h"
+#include "DmlHeapAllocator.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -123,7 +123,7 @@ namespace Dml
 
         const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
 
-        ComPtr<ID3D12Resource> resource = allocInfo->GetResource();
+        ComPtr<ID3D12Resource> resource = allocInfo->GetResourceInUavState();
         resource.CopyTo(d3dResource);
         *pooledResource = allocation.Detach();
         return S_OK;
@@ -136,7 +136,7 @@ namespace Dml
         ORT_TRY
         {
             const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(allocation);
-            return allocInfo->GetResource();
+            return allocInfo->GetResourceInUavState();
         }
         ORT_CATCH_GENERIC
         {
@@ -178,16 +178,20 @@ namespace Dml
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
+        auto heapAllocator = std::make_unique<D3D12HeapAllocator>(
+            m_d3d12Device.Get(),
+            queue,
+            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
         // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
         // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
         m_allocator = std::make_shared<BucketizedBufferAllocator>(
             m_d3d12Device.Get(),
             m_context,
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+            std::move(heapAllocator));
 
         m_context->SetAllocator(m_allocator);
 
@@ -338,7 +342,7 @@ namespace Dml
                 {
                     assert(tensor->IsDataInterface());
                     const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(tensor).GetDataInterface().Get());
-                    ID3D12Resource* resource = allocInfo->GetResource();
+                    ID3D12Resource* resource = allocInfo->GetResourceInUavState();
                     D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
                     bufferBindings.push_back({ resource, 0, resourceDesc.Width });
                     bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
@@ -429,12 +433,19 @@ namespace Dml
             //
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
 
-            ID3D12Resource* dstData = dstAllocInfo->GetResource();
+            ID3D12Resource* dstData = dstAllocInfo->GetResourceInCopyDstState() == nullptr
+                ? dstAllocInfo->GetResourceInUavState()
+                : dstAllocInfo->GetResourceInCopyDstState();
+
+            // When resources in dst state exist (e.g. reserved resources), we can avoid barriers. Otherwise,
+            // take the slower path of adding a barrier (e.g. committed resources).
+            const auto dstState = dstAllocInfo->GetResourceInCopyDstState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_DEST;
+
             const void* srcData = src->GetData();
 
             const uint64_t dstOffset = 0;
-            const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
-
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
@@ -446,10 +457,17 @@ namespace Dml
             void* dstData = dst->GetData();
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
 
-            ID3D12Resource* srcData = srcAllocInfo->GetResource();
+            ID3D12Resource* srcData = srcAllocInfo->GetResourceInCopySrcState() == nullptr
+                ? srcAllocInfo->GetResourceInUavState()
+                : srcAllocInfo->GetResourceInCopySrcState();
+
+            // When resources in src state exist (e.g. reserved resources), we can avoid barriers. Otherwise,
+            // take the slower path of adding a barrier (e.g. committed resources).
+            const auto srcState = srcAllocInfo->GetResourceInCopySrcState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_SOURCE;
 
             const uint64_t srcOffset = 0;
-            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
             m_readbackHeap->ReadbackFromGpu(AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
@@ -462,9 +480,25 @@ namespace Dml
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
 
-            ID3D12Resource* srcData = srcAllocInfo->GetResource();
-            ID3D12Resource* dstData = dstAllocInfo->GetResource();
-            m_context->CopyBufferRegion(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, srcData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dataSizeInBytes);
+            ID3D12Resource* srcData = srcAllocInfo->GetResourceInCopySrcState() == nullptr
+                ? srcAllocInfo->GetResourceInUavState()
+                : srcAllocInfo->GetResourceInCopySrcState();
+
+            ID3D12Resource* dstData = dstAllocInfo->GetResourceInCopyDstState() == nullptr
+                ? dstAllocInfo->GetResourceInUavState()
+                : dstAllocInfo->GetResourceInCopyDstState();
+
+            // When resources in src and dst state exist (e.g. reserved resources), we can avoid barriers. Otherwise,
+            // take the slower path of adding a barrier (e.g. committed resources).
+            const auto srcState = srcAllocInfo->GetResourceInCopySrcState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            const auto dstState = dstAllocInfo->GetResourceInCopyDstState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_DEST;
+
+            m_context->CopyBufferRegion(dstData, 0, dstState, srcData, 0, srcState, dataSizeInBytes);
         }
         else
         {
@@ -488,7 +522,7 @@ namespace Dml
         if (mlTensor != nullptr)
         {
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
-            ID3D12Resource* dstData = dstAllocInfo->GetResource();
+            ID3D12Resource* dstData = dstAllocInfo->GetResourceInUavState();
             m_context->FillBufferWithPattern(dstData, rawValue);
         }
 
@@ -734,8 +768,16 @@ namespace Dml
     {
         // Source and destination for batched GPU -> CPU copies
         std::vector<ID3D12Resource*> srcDatas;
+        srcDatas.reserve(src_dst_pairs.size());
+
+        std::vector<D3D12_RESOURCE_STATES> srcStates;
+        srcStates.reserve(src_dst_pairs.size());
+
         std::vector<void*> dstDatas;
+        dstDatas.reserve(src_dst_pairs.size());
+
         std::vector<uint32_t> dataSizesInBytes;
+        dataSizesInBytes.reserve(src_dst_pairs.size());
 
         assert(!m_closed);
         auto provider = const_cast<ExecutionProviderImpl*>(this);
@@ -776,14 +818,22 @@ namespace Dml
             dstDatas.push_back(dstWrapper.GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
 
-            srcDatas.push_back(srcAllocInfo->GetResource());
+            auto srcData = srcAllocInfo->GetResourceInCopySrcState() == nullptr
+                ? srcAllocInfo->GetResourceInUavState()
+                : srcAllocInfo->GetResourceInCopySrcState();
+
+            auto srcState = srcAllocInfo->GetResourceInCopySrcState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            srcDatas.push_back(srcData);
+            srcStates.push_back(srcState);
         }
 
         const uint64_t srcOffset = 0;
-        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcStates);
 
         return onnxruntime::common::Status::OK();
     }
@@ -836,10 +886,10 @@ namespace Dml
         else
         {
 #ifdef _GAMING_XBOX
-            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResource());
+            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResourceInUavState());
             *abiData = wrappedResource.Detach();
 #else
-            ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResource();
+            ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResourceInUavState();
             *abiData = resource.Detach();
 #endif
         }
@@ -976,7 +1026,7 @@ namespace Dml
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
     {
         Dml::BucketizedBufferAllocator* pAllocationInfo = static_cast<Dml::BucketizedBufferAllocator*>(allocator);
-        return pAllocationInfo->DecodeDataHandle(ptr)->GetResource();
+        return pAllocationInfo->DecodeDataHandle(ptr)->GetResourceInUavState();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

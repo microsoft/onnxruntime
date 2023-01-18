@@ -37,10 +37,6 @@ namespace Dml
     BucketizedBufferAllocator::BucketizedBufferAllocator(
         ID3D12Device* device,
         std::shared_ptr<ExecutionContext> context,
-        const D3D12_HEAP_PROPERTIES& heapProps,
-        D3D12_HEAP_FLAGS heapFlags,
-        D3D12_RESOURCE_FLAGS resourceFlags,
-        D3D12_RESOURCE_STATES initialState,
         std::unique_ptr<DmlSubAllocator>&& subAllocator
         )
         : onnxruntime::IAllocator(
@@ -51,10 +47,6 @@ namespace Dml
             )
         ),
         m_device(device),
-        m_heapProperties(heapProps),
-        m_heapFlags(heapFlags),
-        m_resourceFlags(resourceFlags),
-        m_initialState(initialState),
         m_context(context),
         m_subAllocator(std::move(subAllocator))
     {
@@ -133,7 +125,7 @@ namespace Dml
             resourceId = ++m_currentResourceId;
         }
 
-        assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
+        assert(resourceWrapper->GetResourceInUavState()->GetDesc().Width == bucketSize);
         assert(resourceWrapper != nullptr);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
@@ -174,7 +166,7 @@ namespace Dml
 
         // Free the resource to the pool if its size matches a bucket size
         gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
+        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResourceInUavState()->GetDesc().Width)
         {
             assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
 
@@ -188,9 +180,29 @@ namespace Dml
         {
             // Free the underlying allocation once queued work has completed.
 #ifdef _GAMING_XBOX
-            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResourceInUavState()).Get());
+
+            if (allocInfo->GetResourceInCopySrcState() != nullptr)
+            {
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResourceInCopySrcState()).Get());
+            }
+
+            if (allocInfo->GetResourceInCopyDstState() != nullptr)
+            {
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResourceInCopyDstState()).Get());
+            }
 #else
-            m_context->QueueReference(allocInfo->GetResource());
+            m_context->QueueReference(allocInfo->GetResourceInUavState());
+
+            if (allocInfo->GetResourceInCopySrcState() != nullptr)
+            {
+                m_context->QueueReference(allocInfo->GetResourceInCopySrcState());
+            }
+
+            if (allocInfo->GetResourceInCopyDstState() != nullptr)
+            {
+                m_context->QueueReference(allocInfo->GetResourceInCopyDstState());
+            }
 #endif
             allocInfo->DetachResourceWrapper();
         }

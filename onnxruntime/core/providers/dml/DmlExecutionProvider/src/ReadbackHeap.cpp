@@ -48,7 +48,7 @@ namespace Dml
         return newCapacity;
     }
 
-    void ReadbackHeap::EnsureReadbackHeap(size_t size) 
+    void ReadbackHeap::EnsureReadbackHeap(size_t size)
     {
         if (!m_readbackHeap)
         {
@@ -76,7 +76,7 @@ namespace Dml
         D3D12_RESOURCE_STATES srcState)
     {
         assert(!dst.empty());
-        
+
         EnsureReadbackHeap(dst.size());
 
         // Copy from the source resource into the readback heap
@@ -100,12 +100,12 @@ namespace Dml
         memcpy(dst.data(), readbackHeapData, dst.size());
         m_readbackHeap->Unmap(0, nullptr);
     }
-    
+
     void ReadbackHeap::ReadbackFromGpu(
         gsl::span<void*> dst,
         gsl::span<const uint32_t > dstSizes,
         gsl::span<ID3D12Resource*> src,
-        D3D12_RESOURCE_STATES srcState)
+        gsl::span<const D3D12_RESOURCE_STATES> srcStates)
     {
         assert(dst.size() == src.size());
         assert(dstSizes.size() == src.size());
@@ -133,7 +133,7 @@ namespace Dml
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 src[i],
                 0,
-                srcState,
+                srcStates[i],
                 dstSizes[i]);
 
             offset += dstSizes[i];

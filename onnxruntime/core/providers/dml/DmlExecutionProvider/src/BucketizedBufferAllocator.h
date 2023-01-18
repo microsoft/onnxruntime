@@ -46,9 +46,19 @@ namespace Dml
             return m_owner;
         }
 
-        ID3D12Resource* GetResource() const
+        ID3D12Resource* GetResourceInUavState() const
         {
-            return m_resourceWrapper->GetD3D12Resource();
+            return m_resourceWrapper->GetResourceInUavState();
+        }
+
+        ID3D12Resource* GetResourceInCopySrcState() const
+        {
+            return m_resourceWrapper->GetResourceInCopySrcState();
+        }
+
+        ID3D12Resource* GetResourceInCopyDstState() const
+        {
+            return m_resourceWrapper->GetResourceInCopyDstState();
         }
 
         ComPtr<DmlResourceWrapper> DetachResourceWrapper() const
@@ -95,10 +105,6 @@ namespace Dml
         BucketizedBufferAllocator(
             ID3D12Device* device,
             std::shared_ptr<ExecutionContext> context,
-            const D3D12_HEAP_PROPERTIES& heapProps,
-            D3D12_HEAP_FLAGS heapFlags,
-            D3D12_RESOURCE_FLAGS resourceFlags,
-            D3D12_RESOURCE_STATES initialState,
             std::unique_ptr<DmlSubAllocator>&& subAllocator);
 
         // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
@@ -141,10 +147,6 @@ namespace Dml
         void FreeResource(void* p, uint64_t resourceId);
 
         ComPtr<ID3D12Device> m_device;
-        D3D12_HEAP_PROPERTIES m_heapProperties;
-        D3D12_HEAP_FLAGS m_heapFlags;
-        D3D12_RESOURCE_FLAGS m_resourceFlags;
-        D3D12_RESOURCE_STATES m_initialState;
 
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;

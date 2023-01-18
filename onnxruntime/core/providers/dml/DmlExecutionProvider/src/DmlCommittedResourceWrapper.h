@@ -9,7 +9,9 @@ namespace Dml
     {
     public:
         DmlCommittedResourceWrapper(ComPtr<ID3D12Resource>&& d3d12Resource) : m_d3d12Resource(std::move(d3d12Resource)) {}
-        ID3D12Resource* GetD3D12Resource() const final { return m_d3d12Resource.Get(); }
+        ID3D12Resource* GetResourceInUavState() const final { return m_d3d12Resource.Get(); }
+        ID3D12Resource* GetResourceInCopySrcState() const final { return nullptr; }
+        ID3D12Resource* GetResourceInCopyDstState() const final { return nullptr; }
 
     private:
         ComPtr<ID3D12Resource> m_d3d12Resource;
