@@ -279,7 +279,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
+               "Query with shape (batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1,
                "key",
@@ -458,14 +458,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-            propagateElemTypeFromInputToOutput(ctx, 0, 0);
-            auto& bias_table_shape = getInputShape(ctx, 0);
-            TensorShapeProto output_shape;
-            output_shape.add_dim()->set_dim_value(1);
-            *output_shape.add_dim() = bias_table_shape.dim(1);
-            output_shape.add_dim();
-            output_shape.add_dim();
-            updateOutputShape(ctx, 0, output_shape);
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          auto& bias_table_shape = getInputShape(ctx, 0);
+          TensorShapeProto output_shape;
+          output_shape.add_dim()->set_dim_value(1);
+          *output_shape.add_dim() = bias_table_shape.dim(1);
+          output_shape.add_dim();
+          output_shape.add_dim();
+          updateOutputShape(ctx, 0, output_shape);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(

@@ -527,10 +527,40 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 namespace detail {
 
 template <typename T>
-inline Ort::SessionOptions SessionOptionsImpl<T>::Clone() const {
+inline Ort::SessionOptions ConstSessionOptionsImpl<T>::Clone() const {
   OrtSessionOptions* out;
   ThrowOnError(GetApi().CloneSessionOptions(this->p_, &out));
   return SessionOptions{out};
+}
+
+template <typename T>
+inline std::string ConstSessionOptionsImpl<T>::GetConfigEntry(const char* config_key) const {
+  size_t size = 0;
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline bool ConstSessionOptionsImpl<T>::HasConfigEntry(const char* config_key) const {
+  int out = 0;
+  Ort::ThrowOnError(GetApi().HasSessionConfigEntry(this->p_, config_key, &out));
+  return static_cast<bool>(out);
+}
+
+template <typename T>
+inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key, const std::string& def) {
+  if (!this->HasConfigEntry(config_key)) {
+    return def;
+  }
+
+  return this->GetConfigEntry(config_key);
 }
 
 template <typename T>
@@ -749,7 +779,14 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
 }
 
 template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name) {
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const ORTCHAR_T* library_name,
+                                                                              const CustomOpConfigs& custom_op_configs) {
+  // Add custom op config entries before registering the custom op library. Otherwise, the config entries _may_ be ignored by
+  // the custom op library.
+  for (const auto& config_iter : custom_op_configs.GetFlattenedConfigs()) {
+    AddConfigEntry(config_iter.first.c_str(), config_iter.second.c_str());
+  }
+
   ThrowOnError(GetApi().RegisterCustomOpsLibrary_V2(this->p_, library_name));
   return *this;
 }
@@ -874,6 +911,27 @@ inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* al
 
 inline SessionOptions::SessionOptions() {
   ThrowOnError(GetApi().CreateSessionOptions(&this->p_));
+}
+
+/// CustomOpConfigs
+inline std::string detail::MakeCustomOpConfigEntryKey(const char* custom_op_name, const char* config) {
+  std::string config_key = "custom_op.";
+
+  config_key += custom_op_name;
+  config_key += ".";
+  config_key += config;
+
+  return config_key;
+}
+
+inline CustomOpConfigs& CustomOpConfigs::AddConfig(const char* custom_op_name, const char* config_key, const char* config_value) {
+  const std::string full_flat_key = detail::MakeCustomOpConfigEntryKey(custom_op_name, config_key);
+  flat_configs_[full_flat_key] = config_value;
+  return *this;
+}
+
+inline const std::unordered_map<std::string, std::string>& CustomOpConfigs::GetFlattenedConfigs() const {
+  return flat_configs_;
 }
 
 inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
@@ -1004,17 +1062,36 @@ inline std::vector<int64_t> TensorTypeAndShapeInfoImpl<T>::GetShape() const {
 
 }  // namespace detail
 
-inline ConstTensorTypeAndShapeInfo TypeInfo::GetTensorTypeAndShapeInfo() const {
+namespace detail {
+template <typename T>
+inline ConstTensorTypeAndShapeInfo TypeInfoImpl<T>::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(this->p_, &out));
   return ConstTensorTypeAndShapeInfo{out};
 }
 
-inline ConstSequenceTypeInfo TypeInfo::GetSequenceTypeInfo() const {
+template <typename T>
+inline ConstSequenceTypeInfo TypeInfoImpl<T>::GetSequenceTypeInfo() const {
   const OrtSequenceTypeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(this->p_, &out));
   return ConstSequenceTypeInfo{out};
 }
+
+template <typename T>
+inline ConstMapTypeInfo TypeInfoImpl<T>::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(this->p_, &out));
+  return ConstMapTypeInfo{out};
+}
+
+template <typename T>
+inline ONNXType TypeInfoImpl<T>::GetONNXType() const {
+  ONNXType out;
+  ThrowOnError(GetApi().GetOnnxTypeFromTypeInfo(this->p_, &out));
+  return out;
+}
+
+}  // namespace detail
 
 namespace detail {
 template <typename T>
@@ -1025,12 +1102,6 @@ inline TypeInfo SequenceTypeInfoImpl<T>::GetSequenceElementType() const {
 }
 
 }  // namespace detail
-
-inline ConstMapTypeInfo TypeInfo::GetMapTypeInfo() const {
-  const OrtMapTypeInfo* out;
-  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
-  return ConstMapTypeInfo{out};
-}
 
 namespace detail {
 template <typename T>
@@ -1047,12 +1118,6 @@ inline TypeInfo MapTypeInfoImpl<T>::GetMapValueType() const {
   return TypeInfo{output};
 }
 }  // namespace detail
-
-inline ONNXType TypeInfo::GetONNXType() const {
-  ONNXType out;
-  ThrowOnError(GetApi().GetOnnxTypeFromTypeInfo(this->p_, &out));
-  return out;
-}
 
 namespace detail {
 
@@ -1359,37 +1424,37 @@ inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
 }
 
 inline size_t KernelContext::GetInputCount() const {
-  size_t out;
+  size_t out = 0;
   Ort::ThrowOnError(GetApi().KernelContext_GetInputCount(ctx_, &out));
   return out;
 }
 
 inline size_t KernelContext::GetOutputCount() const {
-  size_t out;
+  size_t out = 0;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutputCount(ctx_, &out));
   return out;
 }
 
 inline ConstValue KernelContext::GetInput(size_t index) const {
-  const OrtValue* out;
+  const OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetInput(ctx_, index, &out));
   return ConstValue{out};
 }
 
 inline UnownedValue KernelContext::GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const {
-  OrtValue* out;
+  OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dim_values, dim_count, &out));
   return UnownedValue(out);
 }
 
 inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
-  OrtValue* out;
+  OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dims.data(), dims.size(), &out));
   return UnownedValue(out);
 }
 
 inline void* KernelContext::GetGPUComputeStream() const {
-  void* out;
+  void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
   return out;
 }
@@ -1401,9 +1466,74 @@ inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType
 namespace detail {
 template <typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
-  OrtKernelInfo* info_copy;
+  OrtKernelInfo* info_copy = nullptr;
   Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
   return KernelInfo{info_copy};
+}
+
+template <typename T>
+inline size_t KernelInfoImpl<T>::GetInputCount() const {
+  size_t out = 0;
+  ThrowOnError(GetApi().KernelInfo_GetInputCount(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline size_t KernelInfoImpl<T>::GetOutputCount() const {
+  size_t out = 0;
+  ThrowOnError(GetApi().KernelInfo_GetOutputCount(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetInputName(size_t index) const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetInputName(this->p_, index, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetInputName(this->p_, index, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetOutputName(size_t index) const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputName(this->p_, index, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputName(this->p_, index, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline TypeInfo KernelInfoImpl<T>::GetInputTypeInfo(size_t index) const {
+  OrtTypeInfo* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetInputTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
+}
+
+template <typename T>
+inline TypeInfo KernelInfoImpl<T>::GetOutputTypeInfo(size_t index) const {
+  OrtTypeInfo* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetOutputTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
+}
+
+template <typename T>
+inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocator* allocator) const {
+  OrtValue* out = nullptr;
+  ThrowOnError(GetApi().KernelInfoGetAttribute_tensor(this->p_, name, allocator, &out));
+  return Value{out};
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
@@ -1722,5 +1852,23 @@ inline std::vector<std::string> GetAvailableProviders() {
 }
 
 SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+
+template <typename TOp, typename TKernel>
+void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
+                                                   ConstSessionOptions options) const {
+  const TOp* derived = static_cast<const TOp*>(this);
+  std::vector<std::string> keys = derived->GetSessionConfigKeys();
+
+  out.reserve(keys.size());
+
+  std::string config_entry_key = detail::MakeCustomOpConfigEntryKey(derived->GetName(), "");
+  const size_t prefix_size = config_entry_key.length();
+
+  for (const auto& key : keys) {
+    config_entry_key.resize(prefix_size);
+    config_entry_key.append(key);
+    out[key] = options.GetConfigEntryOrDefault(config_entry_key.c_str(), "");
+  }
+}
 
 }  // namespace Ort
