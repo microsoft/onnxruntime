@@ -124,6 +124,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>past_present_share_buffer</tt> : int</dt>
@@ -1021,6 +1023,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2174,6 +2178,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2182,7 +2188,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
+<dd>Query with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>key</tt> : T</dt>
 <dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
 <dt><tt>value</tt> : T</dt>
@@ -2456,6 +2462,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>past_present_share_buffer</tt> : int</dt>
+<dd>Corresponding past and present are same tensor, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
@@ -3999,7 +4007,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (2 - 8)
+#### Inputs (2 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -4018,6 +4026,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>presence_mask</tt> (optional) : I</dt>
 <dd>Presence penalty mask. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>seed</tt> (optional) : I</dt>
+<dd>Seed for random number generator. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 2)

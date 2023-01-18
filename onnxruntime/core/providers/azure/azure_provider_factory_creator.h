@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-struct CloudProviderFactoryCreator {
+struct AzureProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const std::unordered_map<std::string, std::string>& config);
 };
 

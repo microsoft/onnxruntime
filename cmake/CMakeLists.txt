@@ -193,13 +193,15 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
+option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 # https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
-option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
+option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -260,7 +262,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -305,6 +307,11 @@ if (onnxruntime_USE_ROCM)
   string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
   message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
+
+  if (onnxruntime_USE_COMPOSABLE_KERNEL AND ROCM_VERSION_DEV VERSION_LESS "5.3")
+    message(WARNING "composable kernel is only supported on ROCm >= 5.3")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
+  endif()
 endif()
 
 if (APPLE)
@@ -679,10 +686,10 @@ if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
-if (onnxruntime_USE_CLOUD)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CLOUD=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CLOUD=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cloud)
+if (onnxruntime_USE_AZURE)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_AZURE=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
@@ -1105,18 +1112,18 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
-    set(OPENVINO_VERSION "2021.4")
-    add_definitions(-DOPENVINO_2021_4=1)
-  elseif (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
+  if (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
     set(OPENVINO_VERSION "2022.1")
     add_definitions(-DOPENVINO_2022_1=1)
   elseif (${VER} MATCHES "2022.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.2")
     set(OPENVINO_VERSION "2022.2")
     add_definitions(-DOPENVINO_2022_2=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2022.3")
+    set(OPENVINO_VERSION "2022.3")
+    add_definitions(-DOPENVINO_2022_3=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2022.2")
-    add_definitions(-DOPENVINO_2022_2=1)
+    set(OPENVINO_VERSION "2022.3")
+    add_definitions(-DOPENVINO_2022_3=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()

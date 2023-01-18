@@ -123,7 +123,7 @@ class AttentionCPUBase : public AttentionBase {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data,
-                    has_unidirectional, batch_size, sequence_length, past_sequence_length);
+                    has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       } else {  // no any mask
         size_t bytes = static_cast<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
         memset(attention_probs, 0, bytes);
