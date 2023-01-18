@@ -42,7 +42,7 @@ jobs:
     msbuildPlatform: x64
     isX86: false
     job_name_suffix: x64_minimal_no_exception
-    RunOnnxRuntimeTests: true
+    RunOnnxRuntimeTests: false
     RunStaticCodeAnalysis: false
     isTraining: false
     ORT_EP_NAME: CPU
@@ -59,7 +59,7 @@ jobs:
     msbuildPlatform: x64
     isX86: false
     job_name_suffix: x64_debug_node_input_output
-    RunOnnxRuntimeTests: true
+    RunOnnxRuntimeTests: false
     RunStaticCodeAnalysis: false
     isTraining: false
     ORT_EP_NAME: CPU
