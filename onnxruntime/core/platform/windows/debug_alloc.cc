@@ -170,11 +170,14 @@ Memory_LeakCheck::Memory_LeakCheck() noexcept {
   g_heap = HeapCreate(0, 0, 0);
 }
 
-Memory_LeakCheck::~Memory_LeakCheck() {
-  auto DebugPrint = [](const char* s) {
-    std::cout << "dbg: " << s;
-  };
+// print debug message
+// no trailing newline will be added
+static void DebugPrint(const char* message) {
+  OutputDebugStringA(message);
+  std::cout << "memleakdbg: " << message;
+}
 
+Memory_LeakCheck::~Memory_LeakCheck() {
   SymbolHelper symbols;
 
   // Create a new heap so we can still allocate memory while dumping the memory leaks
