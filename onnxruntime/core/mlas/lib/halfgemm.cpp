@@ -16,6 +16,8 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "mlas_float16.h"
+
 #include "halfgemm.h"
 
 #include <exception>
@@ -116,7 +118,7 @@ MlasHalfGemmPackBSize(
         return 0;
     }
     const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
-    const size_t BytesRequired = N * AlignedK * sizeof(MLAS_FP16);
+    const size_t BytesRequired = N * AlignedK * FP16_SIZE;
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired =
         (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
@@ -134,7 +136,7 @@ MlasHalfGemmPackB(
     )
 {
     const auto* dispatch = MlasHalfGemmGetDispatch();
-    dispatch->CopyPackBRoutine((MLAS_FP16*)PackedB, B, ldb, N, K);
+    dispatch->CopyPackBRoutine((_mlas_fp16_*)PackedB, (const _mlas_fp16_*)B, ldb, N, K);
 }
 
 void
@@ -148,12 +150,12 @@ MlasHalfGemmConvertPackB(
     )
 {
     const auto* dispatch = MlasHalfGemmGetDispatch();
-    dispatch->ConvertPackBRoutine((MLAS_FP16*)PackedB, B, ldb, N, K);
+    dispatch->ConvertPackBRoutine((_mlas_fp16_*)PackedB, B, ldb, N, K);
 }
 
 
 //
-// C++ implementation that runs very slowly
+// Dummy C++ implementation that runs very slowly
 //
 
 struct MLAS_HALF_GEMM_KERNEL_DEFAULT {
@@ -162,33 +164,14 @@ struct MLAS_HALF_GEMM_KERNEL_DEFAULT {
     static constexpr size_t KernelMaxM = 128; // max # rows the vectorized kernel can process
     static constexpr size_t PackedK = 1;
 
-    static constexpr MLAS_HALF_GEMM_STRIDES Strides{128, 128, 128};
+    static constexpr MLAS_HALF_GEMM_STRIDES Strides{8, 16, 32};
 };
 
 template<>
 MLAS_FORCEINLINE
 void
-MlasHalfGemmCopyPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
-    MLAS_FP16* D,
-    const MLAS_FP16* B,
-    size_t ldb,
-    size_t CountN,
-    size_t CountK
-    )
-{
-    MLAS_UNREFERENCED_PARAMETER(D);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(CountN);
-    MLAS_UNREFERENCED_PARAMETER(CountK);
-    // No packing for fp16 B. leave it alone
-}
-
-template<>
-MLAS_FORCEINLINE
-void
 MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
-    MLAS_FP16* D,
+    _mlas_fp16_* D,
     const float* A,
     size_t lda,
     size_t CountM,
@@ -197,8 +180,7 @@ MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
 {
     for (size_t m = 0; m < CountM; m++) {
         for (size_t k = 0; k < CountK; k++) {
-            new (D) MLAS_FP16(*(A + m * lda + k));
-            D++;
+            *D++ = MLAS_Float2Half(*(A + m * lda + k));
         }
     }
 }
@@ -207,7 +189,7 @@ template<>
 MLAS_FORCEINLINE
 void
 MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
-    MLAS_FP16* D,
+    _mlas_fp16_* D,
     const float* B,
     size_t ldb,
     size_t CountN,
@@ -216,8 +198,7 @@ MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
 {
     for (size_t k = 0; k < CountK; k++) {
         for (size_t n = 0; n < CountN; n++) {
-            new (D) MLAS_FP16(*(B + k * ldb + n));
-            D++;
+            *D++ = MLAS_Float2Half(*(B + k * ldb + n));
         }
     }
 }
@@ -230,44 +211,35 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    const MLAS_FP16* A,
+    const _mlas_fp16_* A,
     size_t lda,
-    const MLAS_FP16* B,
+    const _mlas_fp16_* B,
     size_t ldb,
-    MLAS_FP16* C,
+    _mlas_fp16_* C,
     size_t ldc,
-    const MLAS_FP16* Bias,
+    const _mlas_fp16_* Bias,
     const bool ZeroMode)
 {
-    CountM = std::min(CountM, MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM);
-    while (CountM-- > 0) {
-        //
-        // Process a single column of matrix B in a loop.
-        //
-        const MLAS_FP16* bias = Bias;
-        const auto* b_col = B;
-        auto* c = C;
-        while (CountN-- > 0) {
-            const auto* a = A;
-            const auto* b = b_col;
+    for (size_t m = 0; m < CountM; m++) {
+        for (size_t n = 0; n < CountN; n++) {
+            const auto* a = A + (m * lda);
+            const auto* b = B + n;
+            auto* c = C + (m * ldc) + n;
 
-            float Accumulator = bias->ToFloat();
-            bias++;
-            for (size_t k = 0; k < CountK; k++) {
-                Accumulator += a->ToFloat() * b->ToFloat();
-                a++;
-                b += ldb;
-            }
+            float sum = Bias == nullptr ? 0.0f : MLAS_Half2Float(Bias[n]);
             if (!ZeroMode) {
-                Accumulator += c->ToFloat();
+                sum += MLAS_Half2Float(*c);
             }
-            new (c) MLAS_FP16(Accumulator);
 
-            c++;
-            b_col++;
+            for (size_t k = 0; k < CountK; k++) {
+                auto down = MLAS_Float2Half(MLAS_Half2Float(*a) * MLAS_Half2Float(*b) + sum);
+                sum = MLAS_Half2Float(down);
+                b += ldb;
+                a += 1;
+            }
+
+            *c = MLAS_Float2Half(sum);
         }
-        A += lda;
-        C += ldc;
     }
 }
 
@@ -275,7 +247,7 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
 const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     nullptr, 
-    MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
+    MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::PackedK,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM
 };

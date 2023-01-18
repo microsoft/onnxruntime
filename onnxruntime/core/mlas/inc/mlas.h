@@ -104,7 +104,6 @@ namespace onnxruntime {
 };  // namespace onnxruntime
 
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
-using MLAS_FP16 = struct onnxruntime::MLFloat16;
 
 
 //
@@ -1374,6 +1373,12 @@ MlasQLinearMul(
 // Half precision routines
 //
 
+// Any type with size=2 should work
+using MLAS_FP16 = onnxruntime::MLFloat16;
+
+constexpr size_t FP16_SIZE = sizeof(uint16_t);
+
+
 class MLAS_HALF_GEMM_OUTPUT_PROCESSOR {
 public:
     virtual
@@ -1401,7 +1406,7 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
     const MLAS_FP16* Bias = nullptr;  /**< address of Bias, vector size N */
     MLAS_FP16* C = nullptr;           /**< address of result matrix */
     size_t lda = 0;                   /**< leading dimension of A */
-    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is packed*/
+    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is pre-packed*/
     size_t ldc = 0;                   /**< leading dimension of C*/
     const MLAS_HALF_GEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/

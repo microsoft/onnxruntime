@@ -10,8 +10,8 @@ Module Name:
 
 Abstract:
 
-    This module defines the set of template functions to implement a kernel of
-    half precision matrix/matrix multiply operation (QGEMM).
+    This module defines the set of template functions to implement half
+    precision matrix/matrix multiply operation (QGEMM).
 
     To implement a new kernel, template functions below need to be specialized:
        MlasHalfGemmCopyPackB
@@ -63,8 +63,8 @@ template<typename KernelType>
 MLAS_FORCEINLINE 
 void
 MlasHalfGemmCopyPackB(
-    MLAS_FP16* D,
-    const MLAS_FP16* B,
+    _mlas_fp16_* D,
+    const _mlas_fp16_* B,
     size_t ldb,
     size_t CountN,
     size_t CountK
@@ -91,7 +91,7 @@ MlasHalfGemmCopyPackB(
 template<typename KernelType>
 void
 MlasHalfGemmConvertPackA(
-    MLAS_FP16* D,
+    _mlas_fp16_* D,
     const float* A,
     size_t lda,
     size_t CountM,
@@ -111,7 +111,7 @@ MlasHalfGemmConvertPackA(
 template <typename KernelType>
 void
 MlasHalfGemmConvertPackB(
-    MLAS_FP16* D,
+    _mlas_fp16_* D,
     const float* B,
     size_t ldb,
     size_t CountN,
@@ -119,21 +119,21 @@ MlasHalfGemmConvertPackB(
 );
 
 /**
- * @brief Find the location of [StartK, StartN] in packed B buffer
+ * @brief Find the location of PackedB[StartK, StartN]
  * 
  * @tparam KernelType 
  * @param PackedB 
- * @param DimN 
- * @param DimK 
+ * @param DimN       Total columns of the packing buffer
+ * @param DimK       Total rows of the packing buffer
  * @param StartN 
  * @param StartK 
  * @return  Address of PackedB[StartK, StartN]
 */
 template <typename KernelType>
 MLAS_FORCEINLINE
-const MLAS_FP16*
+const _mlas_fp16_*
 MlasHalfGemmPackedBOffset(
-    const MLAS_FP16* PackedB,
+    const _mlas_fp16_* PackedB,
     size_t DimN,
     size_t DimK,
     size_t StartN,
@@ -173,13 +173,13 @@ MlasHalfGemmKernel(
     const size_t CountM,
     const size_t CountN,
     const size_t CountK,
-    const MLAS_FP16* A,
+    const _mlas_fp16_* A,
     const size_t lda,
-    const MLAS_FP16* B,
+    const _mlas_fp16_* B,
     const size_t ldb,
-    MLAS_FP16* C,
+    _mlas_fp16_* C,
     size_t ldc,
-    const MLAS_FP16* Bias,
+    const _mlas_fp16_* Bias,
     const bool ZeroMode
 );
 
@@ -206,22 +206,26 @@ MlasHalfGemmNoPackOperation(
     size_t ldb = Data->ldb;  // 0 if prepacked
     const size_t ldc = Data->ldc;
 
-    const MLAS_FP16* pa = reinterpret_cast<const MLAS_FP16*>(Data->A) + RangeStartM * lda;
-    const MLAS_FP16* B;
+    const auto* pa = reinterpret_cast<const _mlas_fp16_*>(Data->A)
+        + RangeStartM * lda;
+    const _mlas_fp16_* pb;
     if (ldb == 0) {
-        B = MlasHalfGemmPackedBOffset<KernelType>(
-            reinterpret_cast<const MLAS_FP16*>(Data->B),
+        pb = MlasHalfGemmPackedBOffset<KernelType>(
+            reinterpret_cast<const _mlas_fp16_*>(Data->B),
             N,
             K,
             RangeStartN,
             0);
         ldb = MlasHalfGemmPackedBLeadingDim<KernelType>(N, K);
     } else {
-        B = reinterpret_cast<const MLAS_FP16*>(Data->B) + RangeStartN;
+        pb = reinterpret_cast<const _mlas_fp16_*>(Data->B) + RangeStartN;
     }
 
-    const MLAS_FP16* Bias = Data->Bias + RangeStartN;
-    MLAS_FP16* c = Data->C + RangeStartM * ldc + RangeStartN;
+    const _mlas_fp16_* Bias = (nullptr == Data->Bias)
+        ? nullptr 
+        : reinterpret_cast<const _mlas_fp16_*>(Data->Bias) + RangeStartN;
+    _mlas_fp16_* c = reinterpret_cast<_mlas_fp16_*>(Data->C)
+        + RangeStartM * ldc + RangeStartN;
 
     size_t RowsRemaining = RangeCountM;
     while (RowsRemaining > 0) {
@@ -231,7 +235,7 @@ MlasHalfGemmNoPackOperation(
             K,
             pa,
             lda,
-            B,
+            pb,
             ldb,
             c,
             ldc,
@@ -274,7 +278,13 @@ MlasHalfGemmOperation(
     const size_t ldc = Data->ldc;
 
     if (!Data->AIsfp32 && (ldb == 0 || !KernelType::PackNeeded && !Data->BIsfp32)) {
-        // No packing needed, use a simpler driver instead
+        // !Data->AIsfp32 => A is fp16, no packing on the left hand side
+        // ldb == 0 => B is already packed, no packing on the right hand side
+        // !KernelType::PackNeeded && !Data->BIsfp32  => B is fp16 and the kernel
+        //      does not require packing
+        // 
+        // So no packing needed on either A or B, use a simpler driver instead
+
         MlasHalfGemmNoPackOperation<KernelType>(
             N,
             K,
@@ -286,21 +296,22 @@ MlasHalfGemmOperation(
         return;
     }
 
-    const MLAS_FP16* Bias = Data->Bias + RangeStartN;
-    MLAS_FP16* C = Data->C + RangeStartM * ldc + RangeStartN;
+    const auto* Bias = reinterpret_cast<const _mlas_fp16_*>(Data->Bias);
+    _mlas_fp16_* C = reinterpret_cast<_mlas_fp16_*>(Data->C)
+        + RangeStartM * ldc + RangeStartN;
 
     //
     // Three dimensional tiling due to limited packing panel size
     //
     constexpr MLAS_HALF_GEMM_STRIDES Strides = KernelType::Strides;
-    constexpr size_t packASize = UpAlignSize(Strides.M * Strides.K * sizeof(MLAS_FP16));
-    constexpr size_t packBSize = UpAlignSize(Strides.N * Strides.K * sizeof(MLAS_FP16));
+    constexpr size_t packASize = UpAlignSize(Strides.M * Strides.K * FP16_SIZE);
+    constexpr size_t packBSize = UpAlignSize(Strides.N * Strides.K * FP16_SIZE);
     MlasThreadedBufAlloc(packASize + packBSize);
 
     uint8_t* p = ThreadedBufHolder.get();
-    MLAS_FP16* PanelA = reinterpret_cast<MLAS_FP16*>(p);
+    auto* PanelA = reinterpret_cast<_mlas_fp16_*>(p);
     p += packASize;
-    MLAS_FP16* PanelB = reinterpret_cast<MLAS_FP16*>(p);
+    auto* PanelB = reinterpret_cast<_mlas_fp16_*>(p);
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -323,17 +334,18 @@ MlasHalfGemmOperation(
             // Copy a panel of matrix B to a local packed buffer.
             //
             size_t ld_pb;
-            const MLAS_FP16* pb;
+            const _mlas_fp16_* pb;
             if (ldb == 0) {
                 // Already packed
                 pb = MlasHalfGemmPackedBOffset<KernelType>(
-                    reinterpret_cast<const MLAS_FP16*>(Data->B),
+                    reinterpret_cast<const _mlas_fp16_*>(Data->B),
                     N,
                     K,
                     RangeStartN + n,
                     k);
                 ld_pb = MlasHalfGemmPackedBLeadingDim<KernelType>(N, K);
             } else if (Data->BIsfp32) {
+                // fp32, need conversion and packing
                 MlasHalfGemmConvertPackB<KernelType>(
                     PanelB,
                     reinterpret_cast<const float*>(Data->B) + ldb * k + RangeStartN + n,
@@ -343,9 +355,10 @@ MlasHalfGemmOperation(
                 pb = PanelB;
                 ld_pb = MlasHalfGemmPackedBLeadingDim<KernelType>(CountN, CountK);
             } else if (KernelType::PackNeeded) {
+                // fp16, need packing
                 MlasHalfGemmCopyPackB<KernelType>(
                     PanelB,
-                    reinterpret_cast<const MLAS_FP16*>(Data->B) + ldb * k + RangeStartN + n,
+                    reinterpret_cast<const _mlas_fp16_*>(Data->B) + ldb * k + RangeStartN + n,
                     ldb,
                     CountN,
                     CountK);
@@ -353,7 +366,7 @@ MlasHalfGemmOperation(
                 ld_pb = MlasHalfGemmPackedBLeadingDim<KernelType>(CountN, CountK);
             } else {
                 // fp16, and no packing needed
-                pb = reinterpret_cast<const MLAS_FP16*>(Data->B) + ldb * k + RangeStartN + n;
+                pb = reinterpret_cast<const _mlas_fp16_*>(Data->B) + ldb * k + RangeStartN + n;
                 ld_pb = ldb;
             }
 
@@ -361,7 +374,8 @@ MlasHalfGemmOperation(
             // Step through each slice of matrix A along the M dimension.
             //
 
-            MLAS_FP16* c = C + n;
+            auto* c = C + n;
+            const auto* pbias = (nullptr == Bias) ? nullptr : Bias + RangeStartN + n;
             size_t CountM;
             for (size_t m = 0; m < RangeCountM; m += CountM) {
                 CountM = std::min(RangeCountM - m, Strides.M);
@@ -369,7 +383,7 @@ MlasHalfGemmOperation(
                 //
                 // Copy a panel of matrix A to a local packed buffer.
                 //
-                const MLAS_FP16* pa;
+                const _mlas_fp16_* pa;
                 size_t ld_pa;
                 if (Data->AIsfp32) {
                     MlasHalfGemmConvertPackA<KernelType>(
@@ -381,7 +395,7 @@ MlasHalfGemmOperation(
                     pa = PanelA;
                     ld_pa = KernelType::PackedK * PackedCountK;
                 } else {
-                    pa = reinterpret_cast<const MLAS_FP16*>(Data->A) + (RangeStartM + m) * lda + k;
+                    pa = reinterpret_cast<const _mlas_fp16_*>(Data->A) + (RangeStartM + m) * lda + k;
                     ld_pa = lda;
                 }
 
@@ -400,7 +414,7 @@ MlasHalfGemmOperation(
                         ld_pb,
                         c,
                         ldc,
-                        Bias,
+                        ZeroMode ? pbias : nullptr,
                         ZeroMode);
 
                     size_t RowsHandled = std::min(RowsRemaining, KernelType::KernelMaxM);
@@ -445,8 +459,8 @@ void
 typedef
 void
 (MLAS_HALF_GEMM_COPY_PACKB_ROUTINE)(
-    MLAS_FP16* D,
-    const MLAS_FP16* B,
+    _mlas_fp16_* D,
+    const _mlas_fp16_* B,
     size_t ldb,
     size_t CountN,
     size_t CountK
@@ -455,7 +469,7 @@ void
 typedef
 void
 (MLAS_HALF_GEMM_CONVERT_PACKB_ROUTINE)(
-    MLAS_FP16* D,
+    _mlas_fp16_* D,
     const float* B,
     size_t ldb,
     size_t CountN,
