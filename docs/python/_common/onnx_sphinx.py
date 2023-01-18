@@ -6,6 +6,7 @@ import importlib
 import inspect
 import keyword
 import os
+import pprint
 import re
 import sys
 import textwrap
@@ -199,21 +200,11 @@ def _get_main_template():  # type: ignore
         {{ title }}
         {{ "=" * len(title) }}
 
-        Lists out all the ONNX operators. For each operator, lists out the usage guide,
-        parameters, examples, and line-by-line version history.
-        This section also includes tables detailing each operator
-        with its versions, as done in `Operators.md
-        <https://github.com/onnx/onnx/blob/main/docs/Operators.md>`_.
-
-        All examples end by calling function `expect`.
-        which checks a runtime produces the expected output for this example.
-        One implementation based on `onnxruntime <https://onnxruntime.ai/>`_
-        can be found at :ref:`l-function-expect`.
+        Lists out all the ONNX operators defined in onnxruntime.
 
         .. toctree::
             :hidden:
 
-            ../expect_onnxruntime
             {% for p in pages %}{{ os.path.split(p)[-1] }}
             {% endfor %}
 
@@ -262,177 +253,14 @@ _attribute_conversion_functions = {
 }
 
 
-class _CustomSchema:
-    """
-    For operators defined outside onnx.
-    """
-
-    class _empty:
-        "dummy class"
-
-        @staticmethod
-        def from_attribute(data):
-            "Creates an instance of `_CustomSchema._attribute`."
-            if not isinstance(data, dict):
-                raise TypeError(  # pragma: no cover
-                    f"Unexpected type {type(data)!r}.")
-            self = _CustomSchema._empty()
-            setattr(self, 'name', data['name'])
-            setattr(self, 'description', data['description'])
-            setattr(self, 'required', data['required'])
-            setattr(self, 'type', _CustomSchema._empty())
-            setattr(self.type, 'value', data['type'])
-            setattr(self, 'default_value', '?')
-            return self
-
-        @staticmethod
-        def from_io(data):
-            "Creates an instance of `_CustomSchema._io`."
-            if not isinstance(data, dict):
-                raise TypeError(  # pragma: no cover
-                    f"Unexpected type {type(data)!r}.")
-            self = _CustomSchema._empty()
-            setattr(self, 'name', data['name'])
-            setattr(self, 'typeStr', data['typeStr'])
-            setattr(self, 'description', data['description'])
-            setattr(self, 'option', _CustomSchema._empty())
-            setattr(self.option, 'value', data['option'])
-            setattr(self, 'isHomogeneous', data['isHomogeneous'])
-            return self
-
-    class _io:
-        "input, output"
-
-        def __init__(self, t):
-            self.name = t.name
-            self.typeStr = t.typeStr
-            if isinstance(t.option, int):
-                self.option = t.option
-            else:
-                self.option = t.option.value
-            self.description = t.description
-            self.isHomogeneous = t.isHomogeneous
-
-        def data(self):
-            "Returns all data in that class in a dictionary."
-            return {'name': self.name, 'typeStr': self.typeStr,
-                    'description': self.description,
-                    'isHomogeneous': self.isHomogeneous,
-                    'option': self.option}
-
-        def __eq__(self, ot):
-            return self.name == ot.name and self.typeStr == ot.typeStr
-
-    class _attribute:
-        "attribute"
-
-        def __init__(self, att):
-            self.name = att.name
-            if isinstance(att.type, int):
-                self.type = att.type
-            else:
-                self.type = att.type.value
-            self.default_value = '?'
-            self.description = att.description
-            self.required = att.required
-
-        def data(self):
-            "Returns all data in that class in a dictionary."
-            return {'name': self.name, 'type': self.type,
-                    'description': self.description,
-                    'required': self.required}
-
-        def __eq__(self, ot):
-            return self.name == ot.name and self.type == ot.type
-
-    def __init__(self, schema):
-        self._schema = schema
-        self.domain = schema.domain
-        self.name = schema.name
-        self.since_version = schema.since_version
-        try:
-            self.inputs = [_CustomSchema._io(t) for t in schema.inputs]
-        except AttributeError as e:  # pragma: no cover
-            raise AttributeError(
-                "Issue with operator=%r domain=%r since_version=%r, "
-                "type(schema)=%r" % (
-                    schema.name, schema.domain, schema.since_version,
-                    type(schema))) from e
-        try:
-            self.outputs = [_CustomSchema._io(t) for t in schema.outputs]
-        except AttributeError as e:  # pragma: no cover
-            raise AttributeError(
-                "Issue with operator=%r domain=%r since_version=%r, "
-                "type(schema)=%r" % (
-                    schema.name, schema.domain, schema.since_version,
-                    type(schema))) from e
-        self.attributes = {a.name: _CustomSchema._attribute(a)
-                           for a in schema.attributes.values()}
-        self.min_input = schema.min_input
-        self.max_input = schema.max_input
-        self.min_output = schema.min_output
-        self.max_output = schema.max_output
-        self.doc = schema.doc
-
-    _atts = ['domain', 'name', 'since_version', 'inputs', 'outputs',
-             'attributes', 'min_input', 'max_input',
-             'min_output', 'max_output', 'doc']
-
-    def __eq__(self, ot):
-        for k in _CustomSchema._atts:
-            if getattr(self, k) == getattr(ot, k):
-                continue
-            return False
-        return True
-
-    def data(self):
-        "Returns all data in that class in a dictionary."
-        def _(x):
-            if x is None:
-                return None
-            if isinstance(x, (str, int)):
-                return x
-            if isinstance(x, list):
-                return [_(e) for e in x]
-            if isinstance(x, dict):
-                return {k: _(v) for k, v in x.items()}
-            if hasattr(x, 'data'):
-                return x.data()
-            raise TypeError(  # pragma: no cover
-                f"Unable to handle type {type(x)!r} - {x!r}.")
-
-        return {k: _(getattr(self, k)) for k in _CustomSchema._atts}
-
-    def SerializeToString(self):
-        "Serializes this class into json."
-        return json.dumps(self.data())
-
-    @staticmethod
-    def ParseFromString(s):
-        "Parses this class from a json string."
-        obj = json.loads(s)
-        e = _CustomSchema._empty()
-        for k in _CustomSchema._atts:
-            if k == 'attributes':
-                setattr(e, k, {a['name']: _CustomSchema._empty.from_attribute(a)
-                               for a in obj[k].values()})
-            elif k in ('inputs', 'outputs'):
-                setattr(e, k, [_CustomSchema._empty.from_io(o)
-                               for o in obj[k]])
-            else:
-                setattr(e, k, obj[k])
-        return _CustomSchema(e)
-
-    def __repr__(self):
-        return f"_CustomSchema(**{pprint.pformat(self.data())})"
-
-
 def _populate__get_all_schemas_with_history():  # type: ignore
     import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 
     get_schemas = rtpy.get_all_operator_schema or rtpy.get_all_opkernel_def
-    for op in get_schemas():
-        sch = _CustomSchema(op)
+
+    schemas = get_schemas()
+    res = {}
+    for sch in schemas:
         domain, name = sch.domain, sch.name
         if domain in res and name in res[domain]:
             # already handled
@@ -543,8 +371,6 @@ def get_rst_doc(  # type: ignore
             if sch.domain:
                 return f"{sch.name} ({sch.domain})"
             return sch.name
-        if sch.domain:
-            return f"{sch.name} - {sch.since_version} ({sch.domain})"
         return f"{sch.name} - {sch.since_version}"
 
     def format_option(obj):
@@ -642,6 +468,8 @@ def get_rst_doc(  # type: ignore
         return str(value)
 
     def clean_default_value(attr):
+        if isinstance(attr.default_value, str):
+            raise TypeError(f"Unexpected type for {type(attr)} - {attr}.")
         if not attr.default_value.name:
             return ""
         default_value = onnx.helper.get_attribute_value(attr.default_value)
@@ -924,12 +752,12 @@ def is_last_schema(sch: OpSchema) -> bool:
     return last.since_version == sch.since_version
 
 
-def onnx_documentation_folder(folder, ops=None, title="ONNX Operators", flog=None, max_opsets=None):  # type: ignore
+def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime",
+                              flog=None, max_opsets=None):  # type: ignore
     """
     Creates documentation in a folder for all known
-    ONNX operators or a subset.
+    ONNX operators defined in onnxruntime or a subset.
     :param folder: folder where to write the documentation
-    :param ops: None for all operators or a subset of them
     :param title: index title
     :param flog: logging function
     :param max_opsets: included operator definition up to this opsets
@@ -1016,23 +844,12 @@ def onnx_documentation_folder(folder, ops=None, title="ONNX Operators", flog=Non
     pages = []
     tables = []
 
-    if ops is not None:
-        ops = set(ops)
-
     # loop on domains
     for dom in sorted(all_schemas):
         sdom = "ai.onnx" if dom == "" else dom
         dom_pages = []
 
-        sub = all_schemas[dom]
-        do = []  # type: ignore
-        if ops is None:
-            do.extend(sub)
-        else:
-            inter = set(sub).intersection(ops)
-            if len(inter) == 0:
-                continue
-            do.extend(sorted(inter))
+        do = all_schemas[dom]
         if len(do) == 0:
             continue
 
