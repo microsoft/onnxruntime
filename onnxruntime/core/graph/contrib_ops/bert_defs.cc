@@ -450,14 +450,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          auto& bias_table_shape = getInputShape(ctx, 0);
-          TensorShapeProto output_shape;
-          output_shape.add_dim()->set_dim_value(1);
-          *output_shape.add_dim() = bias_table_shape.dim(1);
-          output_shape.add_dim();
-          output_shape.add_dim();
-          updateOutputShape(ctx, 0, output_shape);
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+            auto& bias_table_shape = getInputShape(ctx, 0);
+            TensorShapeProto output_shape;
+            output_shape.add_dim()->set_dim_value(1);
+            *output_shape.add_dim() = bias_table_shape.dim(1);
+            output_shape.add_dim();
+            output_shape.add_dim();
+            updateOutputShape(ctx, 0, output_shape);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -465,10 +465,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Skip and Layer Normalization Fusion")
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
-        .Attr("bias_paired_with_skip_input",
-              "1 indicates that the optional bias (if present) is to be paired with 'skip' "
-              "otherwise it is to be paired with 'input'. By default, the value is 0.",
-              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
