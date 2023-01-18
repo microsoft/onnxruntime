@@ -203,6 +203,8 @@ You can also bind inputs and outputs directly to a PyTorch tensor.
     )
 
     session.run_with_iobinding(binding)
+    
+    You can also see code examples of this API in in the [ONNX RUntime inferences examples](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/api/onnxruntime-python-api.py).
 
 
 API Details
