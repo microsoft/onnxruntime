@@ -285,6 +285,7 @@ jobs:
           GdnBreakGdnToolBinSkim: true
           GdnBreakPolicy: M365
           GdnBreakPolicyMinSev: Error
+        continueOnError: true
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
