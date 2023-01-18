@@ -203,8 +203,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
-        .Attr("mup_scale",
-              "If use mup scaling, norm_factor = head_size / mup_scale, otherwise sqrt(head_size). Default value is 0.0f",
+        .Attr("norm_factor",
+              "If use mup scaling, norm_factor = head_size / norm_factor, otherwise sqrt(head_size). Default value is 0.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Input(0,

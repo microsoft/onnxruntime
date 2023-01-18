@@ -62,7 +62,7 @@ static void RunAttentionTest(
     const std::vector<float>& extra_add_data = {},
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
-    bool use_mup = false) {
+    bool use_norm_factor = false) {
   input_hidden_size = (input_hidden_size == 0 ? hidden_size : input_hidden_size);  // By default, no pruning.
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
   past_present_share_buffer = past_present_share_buffer && use_past_state;
@@ -79,8 +79,8 @@ static void RunAttentionTest(
     tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
     tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(past_present_share_buffer ? 1 : 0));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
-    if (use_mup && !enable_rocm) {
-      tester.AddAttribute<int64_t>("mup_scale", static_cast<float>(sqrt(head_size)));
+    if (use_norm_factor && !enable_rocm) {
+      tester.AddAttribute<float>("norm_factor", static_cast<float>(sqrt(head_size)));
     }
 
     int32_t qkv_hidden_size_sum;
@@ -267,19 +267,19 @@ static void RunAttentionTest(
     const std::vector<float>& extra_add_data = {},
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
-    bool use_mup = false) {
+    bool use_norm_factor = false) {
   RunAttentionTest(input_data, weights_data, false, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, extra_add_data,
-                   kv_sequence_length, past_present_share_buffer, use_mup);
+                   kv_sequence_length, past_present_share_buffer, use_norm_factor);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, extra_add_data,
-                   kv_sequence_length, past_present_share_buffer, use_mup);
+                   kv_sequence_length, past_present_share_buffer, use_norm_factor);
 }
 
 TEST(AttentionTest, AttentionBatch1) {
@@ -1668,7 +1668,7 @@ TEST(AttentionTest, AttentionUnidirectionalAttentionMask) {
                    AttentionMaskType::MASK_2D_KEY_PADDING);
 }
 
-TEST(AttentionTest, AttentionWithMuP) {
+TEST(AttentionTest, AttentionWithNormFactor) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -1707,7 +1707,10 @@ TEST(AttentionTest, AttentionWithMuP) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
-                   AttentionMaskType::MASK_2D_KEY_PADDING, 0, 0, false, false, false, {}, {}, 0, false, true);
+                   AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   false /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, {} /*qkv_sizes*/,
+                   {} /*extra_add_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
+                   true /*use_norm_factor*/);
 }
 
 TEST(AttentionTest, AttentionMask1DEndNoWord) {

@@ -38,7 +38,6 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-  mup_scale_ = info.GetAttrOrDefault<float>("mup_scale", 0.0f);
 
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
@@ -115,7 +114,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
       fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
-          num_heads_, parameters.head_size, sm, is_unidirectional, enable_flash_attention_, mup_scale_));
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_flash_attention_, parameters.norm_factor));
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.

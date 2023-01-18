@@ -224,8 +224,8 @@ FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads,
                                            const int sm,
                                            bool causal_mask,
                                            bool enable_flash_attention,
-                                           const float mup_scale)
-    : MHARunner(numHeads, headSize, 2, causal_mask, mup_scale),
+                                           const float norm_factor)
+    : MHARunner(numHeads, headSize, 2, causal_mask, norm_factor),
       mSm(sm),
       mEnableFlashAttention(enable_flash_attention),
       pimpl(new mhaImpl(this)) {
