@@ -21,4 +21,10 @@ ExternalProject_Add(tbb
 #set(TBB_INC ${SOURCE_DIR}/src)
 set(TBB_INC ${CMAKE_CURRENT_BINARY_DIR}/_deps/tbb-src/include)
 include_directories(${TBB_INC})
-link_directories(${CMAKE_CURRENT_BINARY_DIR}/_deps/tbb-build/tbb_relwithdebinfo)
+link_directories(${CMAKE_CURRENT_BINARY_DIR}/_deps/tbb-build/tbb_${CMAKE_BUILD_TYPE})
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+set (TBB "tbb12_debug")
+else()
+set (TBB "tbb12")
+endif()

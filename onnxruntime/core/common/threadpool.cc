@@ -374,7 +374,7 @@ ThreadPool::ThreadPool(Env* /*env*/,
                        bool /*low_latency_hint*/,
                        bool /*force_hybrid*/) : dop_(degree_of_parallelism) {
   ORT_ENFORCE(dop_ > 0, "dop must be a positive integer!");
-  tbb_global_ = std::make_unique<oneapi::tbb::global_control>(oneapi::tbb::global_control::max_allowed_parallelism, degree_of_parallelism);
+  tbb_global_ = std::make_unique<oneapi::tbb::global_control>(oneapi::tbb::global_control::max_allowed_parallelism, degree_of_parallelism - 1);
 }
 
 ThreadPool::~ThreadPool() {}

@@ -100,7 +100,7 @@ endif()
 if (onnxruntime_USE_TBB)
   #message(STATUS "TBB INC:" ${TBB_INC})
   #target_include_directories(onnxruntime_common PRIVATE ${TBB_INC})
-  target_link_libraries(onnxruntime_common PRIVATE tbb12)
+  target_link_libraries(onnxruntime_common PRIVATE ${TBB})
 endif()
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
