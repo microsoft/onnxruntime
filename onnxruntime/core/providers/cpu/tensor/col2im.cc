@@ -50,7 +50,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   TensorShapeVector adjusted_kernel_shape_dims;
   auto image_dims = image_shape->Data<int64_t>();
   auto kernel_dims = kernel_shape->Data<int64_t>();
-  for (auto i = 0; i < image_dim_number; ++i) {
+  for (size_t i = 0; i < image_dim_number; ++i) {
     image_shape_size *= image_dims[i];
     kernel_shape_size *= kernel_dims[i];
     adjusted_kernel_shape_dims.push_back(dilations[i] * (kernel_dims[i] - 1) + 1);
@@ -64,7 +64,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
 
   TensorShapeVector batched_image_shape_dims, adjusted_image_shape_dims;
   batched_image_shape_dims.insert(batched_image_shape_dims.begin(), {N, C});
-  for (auto i = 0; i < image_dim_number; ++i) {
+  for (size_t i = 0; i < image_dim_number; ++i) {
     batched_image_shape_dims.push_back(image_dims[i]);
     adjusted_image_shape_dims.push_back(image_dims[i] - adjusted_kernel_shape[i] + 1);
   }
