@@ -520,8 +520,8 @@ class FusionEmbedLayerNoMask(Fusion):
         # gpt2 has optional segment embedding, subgraph pattern is like
         #                      input_ids  position_ids
         #                         |        |
-        #                      Gather    Gather
-        #                           \   /
+        #  token_ids           Gather    Gather
+        #       |                   \   /
         #   Gather (optional)        Add _ _ _ _ _
         #                   \         |           |
         #                     LayerNormalization  |
