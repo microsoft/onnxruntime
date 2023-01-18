@@ -540,7 +540,9 @@ Status QkvToContext(
   float zero = 0.f;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
-  const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(qk_head_size));
+  const float mup_scale = parameters.mup_scale;
+  const float rsqrt_head_size = mup_scale != 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                                : mup_scale / static_cast<float>(qk_head_size);
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
   cublasSetStream(cublas, stream);

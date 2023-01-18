@@ -219,8 +219,16 @@ class FusedMHARunnerFP16v2::mhaImpl {
   bool has_causal_mask = false;
 };
 
-FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, bool causal_mask, bool enable_flash_attention)
-    : MHARunner(numHeads, headSize, 2, causal_mask), mSm(sm), mEnableFlashAttention(enable_flash_attention), pimpl(new mhaImpl(this)) {
+FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads,
+                                           const int headSize,
+                                           const int sm,
+                                           bool causal_mask,
+                                           bool enable_flash_attention,
+                                           const float mup_scale)
+    : MHARunner(numHeads, headSize, 2, causal_mask, mup_scale),
+      mSm(sm),
+      mEnableFlashAttention(enable_flash_attention),
+      pimpl(new mhaImpl(this)) {
 }
 
 void FusedMHARunnerFP16v2::setup(const int S, const int B) {
