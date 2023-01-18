@@ -30,14 +30,6 @@ bool IsDebugEnabled();
 // Internal diagnostic function.
 bool IsCILogEnabled();
 
-// bool UseCompiledNetwork();
-
-// std::string GetCurrentWorkingDir();
-
-// bool IsDirExists(const std::string& pathname);
-
-// void CreateDirectory(const std::string& ov_compiled_blobs_dir);
-
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
 void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor);
