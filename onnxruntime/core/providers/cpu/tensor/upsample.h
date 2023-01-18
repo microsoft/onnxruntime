@@ -135,7 +135,7 @@ void UpsampleBilinear(const int32_t batch_size,
   }
 }
 
-template <typename T, bool UseExtrapolation>
+template <typename T>
 void NhwcUpsampleBilinear(const int32_t batch_size,
                           const int32_t num_channels,
                           const int32_t input_height,
@@ -145,6 +145,7 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
                           const float height_scale,
                           const float width_scale,
                           const std::vector<float>& roi,
+                          const bool use_extrapolation,
                           const float extrapolation_value,
                           const T* const XdataBase,
                           T* const YdataBase,
@@ -168,7 +169,7 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
 
             // when use_extrapolation is set and original index of x or y is out of the dim range
             // then use extrapolation_value as the output value.
-            if constexpr (UseExtrapolation) {
+            if (use_extrapolation) {
               if ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1))) {
                 for (int32_t c = 0; c < num_channels; ++c) {
@@ -232,7 +233,7 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
                                                    const GetOriginalCoordinateFunc& get_original_coordinate,
                                                    const bool is_nchw);
 
-template <typename T, bool UseExtrapolation>
+template <typename T>
 void NhwcUpsampleBilinearInteger(const int32_t batch_size,
                                  const int32_t num_channels,
                                  const int32_t input_height,
@@ -242,6 +243,7 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
                                  const float height_scale,
                                  const float width_scale,
                                  const std::vector<float>& roi,
+                                 const bool use_extrapolation,
                                  const float extrapolation_value,
                                  const T* const XdataBase,
                                  T* const YdataBase,
@@ -265,7 +267,7 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
 
             // when use_extrapolation is set and original index of x or y is out of the dim range
             // then use extrapolation_value as the output value.
-            if constexpr (UseExtrapolation) {
+            if (use_extrapolation) {
               if ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1))) {
                 for (int32_t c = 0; c < num_channels; ++c) {

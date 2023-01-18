@@ -370,7 +370,7 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 13, float, Mean_8);
 
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
-//REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
+// REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
 
@@ -543,30 +543,47 @@ void PowImpl(OpKernelContext& context) {
   UntypedBroadcastTwo(context, funcs, 1.0);
 }
 
-template <typename B>
-Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
-  namespace on = ONNX_NAMESPACE;
-  Status s;
-  switch (Y.GetElementType()) {
-    case on::TensorProto_DataType_INT32:
-      PowImpl<B, int32_t>(context);
-      break;
-    case on::TensorProto_DataType_INT64:
-      PowImpl<B, int64_t>(context);
-      break;
-    case on::TensorProto_DataType_FLOAT:
-      PowImpl<B, float>(context);
-      break;
-    case on::TensorProto_DataType_DOUBLE:
-      PowImpl<B, double>(context);
-      break;
-    default:
-      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
-                          DataTypeImpl::ToString(Y.DataType()));
-  }
-  return s;
-}
+// template <typename B>
+// Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
+//   namespace on = ONNX_NAMESPACE;
+//   Status s;
+//   switch (Y.GetElementType()) {
+//     case on::TensorProto_DataType_INT32:
+//       PowImpl<B, int32_t>(context);
+//       break;
+//     case on::TensorProto_DataType_INT64:
+//       PowImpl<B, int64_t>(context);
+//       break;
+//     case on::TensorProto_DataType_FLOAT:
+//       PowImpl<B, float>(context);
+//       break;
+//     case on::TensorProto_DataType_DOUBLE:
+//       PowImpl<B, double>(context);
+//       break;
+//     default:
+//       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
+//                           DataTypeImpl::ToString(Y.DataType()));
+//   }
+//   return s;
+// }
 
+template <typename TSrc, typename TDst>
+struct Dispatcher {
+  void operator()(OpKernelContext& context) {
+    PowImpl<TSrc, TDst>(context);
+  }
+};
+
+template <typename TSrc>
+struct SrcDispatcher {
+  void operator()(OpKernelContext& context, const Tensor& exp) {
+    // TODO: Whilst we have per-opset type lists, the config file doesn't specify an opset
+    // so the types specified end up applying to all opsets. Due to that, we can use the
+    // Pow12 types even if this is Pow7
+    utils::MLTypeCallDispatcherFromTypeList<EnabledPow12ExpTypes> dispatcher{exp.GetElementType()};
+    dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context);
+  }
+};
 }  // namespace pow_internal
 
 Status
@@ -574,29 +591,10 @@ Pow::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
   const Tensor& Y = *context->Input<Tensor>(1);
 
-  namespace on = ONNX_NAMESPACE;
-  using namespace pow_internal;
+  utils::MLTypeCallDispatcherFromTypeList<EnabledPow12BaseTypes> dispatcher{X.GetElementType()};
+  dispatcher.Invoke<pow_internal::SrcDispatcher>(*context, Y);
 
-  Status s;
-  // Switch on base type first
-  switch (X.GetElementType()) {
-    case on::TensorProto_DataType_INT32:
-      s = DispatchOnBase<int32_t>(*context, Y);
-      break;
-    case on::TensorProto_DataType_INT64:
-      s = DispatchOnBase<int64_t>(*context, Y);
-      break;
-    case on::TensorProto_DataType_FLOAT:
-      s = DispatchOnBase<float>(*context, Y);
-      break;
-    case on::TensorProto_DataType_DOUBLE:
-      s = DispatchOnBase<double>(*context, Y);
-      break;
-    default:
-      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
-                          DataTypeImpl::ToString(X.DataType()));
-  }
-  return s;
+  return Status::OK();
 }
 
 template <typename T>
