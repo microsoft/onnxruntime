@@ -829,5 +829,5 @@ build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_whe
 #### Linux
 
 ```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --parallel --use_azure
+./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --use_azure
 ```
