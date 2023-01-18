@@ -279,7 +279,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is negative infinity",
+        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0,
                "query",
@@ -353,7 +353,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(Decoder_Attention_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is negative infinity",
+        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
         .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
