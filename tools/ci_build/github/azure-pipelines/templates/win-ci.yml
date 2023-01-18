@@ -279,6 +279,7 @@ jobs:
           msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
           excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
+      # TODO: continueOnError: true is a temporary workaround for Windows_Packaging_CPU_x86_default
       - task: PostAnalysis@2
         inputs:
           GdnBreakAllTools: false
