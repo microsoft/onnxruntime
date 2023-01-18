@@ -497,7 +497,7 @@ void DumpNodeInputs(
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // this could happen with an empty Optional input...
+        // this could happen with an empty Optional input
         std::cout << " was missing data type\n";
       }
     } else {
@@ -568,7 +568,7 @@ void DumpNodeOutputs(
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // should never happen with a valid model...
+        // should never happen in a successful run
         std::cout << "missing data type\n";
       }
     } else {
