@@ -8,8 +8,10 @@
 #include "core/framework/error_code_helper.h"
 #include <cstring>
 #include <cassert>
+#include <sstream>
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
+#include "api_utils.h"
 
 OrtSessionOptions::~OrtSessionOptions() = default;
 
@@ -211,6 +213,33 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
   return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _Out_ int* out) {
+  API_IMPL_BEGIN
+  auto value_opt = options->value.config_options.GetConfigEntry(config_key);
+  *out = static_cast<int>(value_opt.has_value());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size) {
+  API_IMPL_BEGIN
+  auto value_opt = options->value.config_options.GetConfigEntry(config_key);
+
+  if (!value_opt) {
+    std::ostringstream err_msg;
+    err_msg << "Session config entry '" << config_key << "' was not found.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.str().c_str());
+  }
+
+  auto status = CopyStringToOutputArg(*value_opt, "Output buffer is not large enough for session config entry", config_value,
+                                      size);
+
+  return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
