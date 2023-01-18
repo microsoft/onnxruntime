@@ -40,7 +40,7 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mRsqrtHeadSize(mup_scale != 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
+        mRsqrtHeadSize(mup_scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
                        : mup_scale / static_cast<float>(headSize)),
         mHasCausalMask(causal_mask) {
   }
