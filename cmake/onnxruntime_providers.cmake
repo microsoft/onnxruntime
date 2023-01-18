@@ -1477,6 +1477,10 @@ if (onnxruntime_USE_TVM)
     add_definitions(-DUSE_TVM_HASH=1)
   endif()
 
+  if ( CMAKE_COMPILER_IS_GNUCC )
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
+  endif()
+
   if (onnxruntime_TVM_USE_HASH)
     file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
