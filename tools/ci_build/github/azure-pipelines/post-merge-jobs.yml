@@ -1,34 +1,6 @@
-# these parameters are provided to selectively enable build configurations when running manually
-# all build configurations should be enabled by default
-
-parameters:
-- name: EnableMimalloc
-  displayName: Enable Mimalloc build?
-  type: boolean
-  default: true
-
-- name: EnableNoAbseil
-  displayName: Enable no Abseil build?
-  type: boolean
-  default: true
-
-- name: EnableMinimalWithNoExceptions
-  displayName: Enable minimal build with no exceptions?
-  type: boolean
-  default: true
-
-- name: EnableDebugNodeIo
-  displayName: Enable build with debug node I/O?
-  type: boolean
-  default: true
-
-- name: EnableCodeCoverage
-  displayName: Enable code coverage build?
-  type: boolean
-  default: true
-
-jobs:
-- ${{ if parameters.EnableMimalloc }}:
+stages:
+- stage: Mimalloc
+  jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
@@ -46,7 +18,8 @@ jobs:
       EnablePython: false
       MachinePool: 'Win-CPU-2021'
 
-- ${{ if parameters.EnableNoAbseil }}:
+- stage: NoAbseil
+  jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
@@ -64,7 +37,8 @@ jobs:
       EnablePython: false
       MachinePool: 'Win-CPU-2021'
 
-- ${{ if parameters.EnableMinimalWithNoExceptions }}:
+- stage: MinimalBuildWithNoExceptions
+  jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
@@ -82,7 +56,8 @@ jobs:
       EnablePython: false
       MachinePool: 'Win-CPU-2021'
 
-- ${{ if parameters.EnableDebugNodeIo }}:
+- stage: DebugNodeInputsOutputs
+  jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
@@ -100,7 +75,8 @@ jobs:
       EnablePython: false
       MachinePool: 'Win-CPU-2021'
 
-- ${{ if parameters.EnableCodeCoverage }}:
+- stage: CodeCoverage
+  jobs:
   - job: CodeCoverage
     workspace:
       clean: all
