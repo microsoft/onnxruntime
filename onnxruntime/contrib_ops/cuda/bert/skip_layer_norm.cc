@@ -37,6 +37,13 @@ using namespace ONNX_NAMESPACE;
 template <typename T, bool Simplified>
 SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+
+  int64_t bias_paired_with_skip_input_value = 0;
+
+  if (op_kernel_info.GetAttr<int64_t>("bias_paired_with_skip_input", &bias_paired_with_skip_input_value).IsOK()) {
+    bias_paired_with_skip_input_ = (bias_paired_with_skip_input_value == 1);
+  }
+
   ORT_ENFORCE(epsilon_ >= 0);
 }
 
