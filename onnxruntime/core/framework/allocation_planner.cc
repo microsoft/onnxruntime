@@ -4,6 +4,7 @@
 #include "core/framework/allocation_planner.h"
 #include <list>
 #include <algorithm>
+#include <deque>
 #include <sstream>
 #include <ctime>
 #include <iomanip>
