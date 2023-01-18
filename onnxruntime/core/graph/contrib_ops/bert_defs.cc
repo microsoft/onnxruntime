@@ -204,7 +204,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("norm_factor",
-              "If use mup scaling, norm_factor = head_size / norm_factor, otherwise sqrt(head_size). Default value is 0.0f",
+              "Custom norm_factor will be used otherwise norm_factor = sqrt(head_size). Default value is 0.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Input(0,
