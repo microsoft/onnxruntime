@@ -125,6 +125,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>mask_filter_value</tt> : float</dt>
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
+<dt><tt>norm_factor</tt> : float</dt>
+<dd>Custom norm_factor will be used otherwise norm_factor = sqrt(head_size). Default value is 0.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>past_present_share_buffer</tt> : int</dt>
@@ -970,7 +972,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>mask_filter_value</tt> : float</dt>
-<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2125,7 +2127,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>mask_filter_value</tt> : float</dt>
-<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
