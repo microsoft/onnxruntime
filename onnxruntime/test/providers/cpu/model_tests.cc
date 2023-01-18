@@ -675,6 +675,8 @@ TEST_P(ModelTest, Run) {
     for (ExecutionMode execution_mode : execution_modes) {
       OrtSessionOptions* ortso;
       ASSERT_ORT_STATUS_OK(OrtApis::CreateSessionOptions(&ortso));
+      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
+          ortso, &OrtApis::ReleaseSessionOptions);
       if (!is_single_thread) {
         ASSERT_ORT_STATUS_OK(OrtApis::DisablePerSessionThreads(ortso));
       } else {
@@ -769,8 +771,6 @@ TEST_P(ModelTest, Run) {
         continue;
       }
 #endif  // !USE_DNNL
-      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
-          ortso, &OrtApis::ReleaseSessionOptions);
       // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
