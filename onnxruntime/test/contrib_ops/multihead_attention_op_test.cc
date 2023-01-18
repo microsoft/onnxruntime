@@ -74,7 +74,7 @@ static void RunMultiHeadAttentionTest(
 
       constexpr float rel_error = 0.0f;
       constexpr float abs_error = 0.05f;
-      tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data), /*sort*/false, rel_error, abs_error);
+      tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data), /*sort*/ false, rel_error, abs_error);
     } else {
       tester.AddInput<float>("query", query_dims, query_data);
       tester.AddInput<float>("key", key_dims, key_data);
@@ -94,7 +94,7 @@ static void RunMultiHeadAttentionTest(
 
       constexpr float rel_error = 0.0f;
       constexpr float abs_error = 0.02f;
-      tester.AddOutput<float>("output", output_dims, output_data, /*sort*/false, rel_error, abs_error);
+      tester.AddOutput<float>("output", output_dims, output_data, /*sort*/ false, rel_error, abs_error);
     }
 
     if (enable_cuda) {
@@ -124,7 +124,7 @@ static void RunMultiHeadAttentionKernel(
     const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size]
     const std::vector<int32_t>& key_padding_mask_data,  // key_padding_mask: see below
     AttentionMaskType mask_type,                        // 1 for [batch_size], 2 for [batch_size, kv_sequence_length]
-    const std::vector<float>& output_data,             // output: [batch_size, sequence_length, v_hidden_size]
+    const std::vector<float>& output_data,              // output: [batch_size, sequence_length, v_hidden_size]
     int num_heads,
     int batch_size,
     int sequence_length,
@@ -136,7 +136,6 @@ static void RunMultiHeadAttentionKernel(
     bool disable_cpu = true,  // not supported in cpu right now.
     bool disable_cuda = false,
     bool disable_rocm = true) {
-
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
@@ -151,8 +150,7 @@ static void RunMultiHeadAttentionKernel(
     return;
   }
 
-  if (kernel_type == AttentionKernelType::AttentionKernel_Unfused)
-  {
+  if (kernel_type == AttentionKernelType::AttentionKernel_Unfused) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
@@ -166,8 +164,7 @@ static void RunMultiHeadAttentionKernel(
     return;
   }
 
-  if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedCrossAttention)
-  {
+  if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedCrossAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
@@ -181,8 +178,7 @@ static void RunMultiHeadAttentionKernel(
     return;
   }
 
-  if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention)
-  {
+  if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
@@ -196,8 +192,7 @@ static void RunMultiHeadAttentionKernel(
     return;
   }
 
-  if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention)
-  {
+  if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
@@ -233,9 +228,9 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
 
     kernel_type = AttentionKernelType::AttentionKernel_Default;
     RunMultiHeadAttentionKernel(
-          data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
-          data.fp32_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
-          data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
+        data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
+        data.fp32_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
+        data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
   }
 
   if (data.fp16_output_data.size() > 0) {
@@ -280,7 +275,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
   GetCrossAttentionData_HeadSize40(data);
   RunMultiHeadAttentionTests(data);
 }
-#endif
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding) {
   AttentionTestData data;
@@ -293,6 +287,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding) {
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
   RunMultiHeadAttentionTests(data);
 }
+#endif
 
 // This tests qk_head_size != k_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
@@ -306,7 +301,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
   GetCrossAttentionData_HeadSize16(data);
   RunMultiHeadAttentionTests(data);
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

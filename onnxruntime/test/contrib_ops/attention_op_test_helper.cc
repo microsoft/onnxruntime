@@ -1902,7 +1902,6 @@ void GetCrossAttentionData_HeadSize40(AttentionTestData& data) {
         1.2402344f, 2.2792969f, 0.33398438f, 2.2519531f, 0.67041016f, -0.55957031f, 0.20666504f, 1.3583984f, -1.9716797f, 2.6074219f, 2.2832031f, -2.0546875f, -2.4335938f, 0.53515625f, -0.15100098f, 1.9599609f, -0.51513672f, 0.31030273f, -0.49169922f, 1.4677734f, 2.234375f, 0.87451172f, 0.54736328f, -1.8681641f, -4.2265625f, -0.97509766f, -7.296875f, -1.3486328f, 1.3769531f, -1.8427734f, 3.1601562f, -2.4238281f, -0.82421875f, -2.7324219f, -0.52734375f, 2.2089844f, 0.66796875f, -0.42236328f, -3.03125f, -0.047302246f};
   }
 }
-#endif
 
 void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data) {
   data.hidden_size = 64;
@@ -2279,6 +2278,7 @@ void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& 
     data.fp16_output_data = data.fp32_output_data;
   }
 }
+#endif
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data) {
   data.hidden_size = 48;

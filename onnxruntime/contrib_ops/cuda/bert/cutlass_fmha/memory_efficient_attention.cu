@@ -5,6 +5,7 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
 #include "41_fused_multi_head_attention/kernel_forward.h"
