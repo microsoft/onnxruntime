@@ -20,6 +20,13 @@ Details on OS versions, compilers, language versions, dependent libraries, etc c
 * TOC placeholder
 {:toc}
 
+## Requirements
+
+* All builds require the English language package with `en_US.UTF-8` locale. On Linux, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
+by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
+
+* Windows builds require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads). The latest version is recommended. 
+ 
 ## Python Installs
 
 ### Install ONNX Runtime (ORT)
@@ -192,16 +199,9 @@ python -m torch_ort.configure
 
 ## Inference install table for all languages
 
-The table below lists the build variants available as officially supported packages. Others can be [built from source](../build/inferencing) from each release branch.
+The table below lists the build variants available as officially supported packages. Others can be [built from source](../build/inferencing) from each [release branch](https://github.com/microsoft/onnxruntime/tags).
 
-### Requirements
-
-* All builds require the English language package with `en_US.UTF-8` locale. On Linux, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
-by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
-
-* Windows builds require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
-
-* Please note additional requirements and dependencies in the table below:
+In addition to general [requirements](#requirements), please note additional requirements and dependencies in the table below:
 
 ||Official build|Nightly build|Reqs|
 |---|---|---|---|
