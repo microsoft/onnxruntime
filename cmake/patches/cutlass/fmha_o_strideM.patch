@@ -1,5 +1,5 @@
 diff --git a/examples/41_fused_multi_head_attention/kernel_forward.h b/examples/41_fused_multi_head_attention/kernel_forward.h
-index 3f85953b..b038541a 100644
+index 3f85953b..8ef1c38b 100644
 --- a/examples/41_fused_multi_head_attention/kernel_forward.h
 +++ b/examples/41_fused_multi_head_attention/kernel_forward.h
 @@ -162,8 +162,9 @@ struct AttentionKernel {
@@ -13,3 +13,12 @@ index 3f85953b..b038541a 100644
      }
  
      // Moves pointers to what we should process
+@@ -930,7 +931,7 @@ __global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
+ // Enable the right one based on __CUDA_ARCH__
+ #ifndef __CUDA_ARCH__
+ #elif __CUDA_ARCH__ < 500
+-#error "Need cuda arch at least 5.0"
++//#error "Need cuda arch at least 5.0"
+ #elif __CUDA_ARCH__ < 700
+ #undef INSTANTIATE_ATTENTION_KERNEL_FORWARD_SM50
+ #define INSTANTIATE_ATTENTION_KERNEL_FORWARD_SM50(...) \
