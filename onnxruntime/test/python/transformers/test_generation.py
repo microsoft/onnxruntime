@@ -7,9 +7,9 @@
 # --------------------------------------------------------------------------
 
 import os
-import onnx
 import unittest
 
+import onnx
 import pytest
 import torch
 from parity_utilities import find_transformers_source
