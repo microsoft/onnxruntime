@@ -170,7 +170,7 @@ Memory_LeakCheck::Memory_LeakCheck() noexcept {
   g_heap = HeapCreate(0, 0, 0);
 }
 
-// print debug message
+// print message to debug output and stdout
 // no trailing newline will be added
 static void DebugPrint(const char* message) {
   OutputDebugStringA(message);
