@@ -32,13 +32,13 @@ There are 2 steps to build ONNX Runtime Web:
   git clone --recursive https://github.com/Microsoft/onnxruntime
   cd onnxruntime
   ```
-- [Install](https://cmake.org/download/) cmake-3.18 or higher.
+- [Install](https://cmake.org/download/) cmake-3.24 or higher.
 
 - [Install](https://nodejs.org/) Node.js (16.0+)
 
   - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
-- Python (3.8+): https://www.python.org/downloads/
+- Python (3.9+): https://www.python.org/downloads/
   - python should be added to the PATH environment variable
 
 - Ninja: https://ninja-build.org/
