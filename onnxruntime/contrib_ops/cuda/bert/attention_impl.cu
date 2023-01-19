@@ -108,6 +108,7 @@ size_t GetAttentionWorkspaceSize(
   const size_t qkv_bytes = element_size * batch_size * num_heads *
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
+#if USE_FLASH_ATTENTION
   if (use_memory_efficient_attention) {
     size_t fmha_buffer_bytes = 0;
     if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
@@ -116,6 +117,9 @@ size_t GetAttentionWorkspaceSize(
 
     return qkv_bytes + fmha_buffer_bytes;
   }
+#else
+  ORT_UNUSED_PARAMETER(use_memory_efficient_attention);
+#endif
 
   if (fused_runner != nullptr) {
     size_t sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), true);
@@ -335,7 +339,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
           data.bias, data.query, data.key, data.value, qkv, true, kv_sequence_length);
 
       qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
-    } else if (use_memory_efficient_attention) {
+    }
+#if USE_FLASH_ATTENTION
+    else if (use_memory_efficient_attention) {
       LaunchAddBias(stream, max_threads_per_block,
                     batch_size, sequence_length, kv_sequence_length,
                     num_heads, qk_head_size, v_head_size,
@@ -345,7 +351,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       DUMP_ATTENTION_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
       DUMP_ATTENTION_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-    } else if (use_fused_kernel) {
+    }
+#endif
+    else if (use_fused_kernel) {
       assert(qk_head_size == v_head_size);
 
       // Q (BxSxNxH), K (BxSxNxH), V (BxSxNxH) => BxSxNx(H + H + H)
@@ -555,6 +563,7 @@ Status QkvToContext(
     return Status::OK();
   }
 
+#if USE_FLASH_ATTENTION
   if (use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
@@ -584,6 +593,7 @@ Status QkvToContext(
     DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
+#endif
 
   // The following are unfused attention.
   assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);

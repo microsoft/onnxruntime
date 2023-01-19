@@ -61,8 +61,8 @@ constexpr const char* kDisableFusedAttention = "ORT_DISABLE_FUSED_ATTENTION";
 // Environment variable to enable or disable fused cross attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATTENTION";
 
-// Environment variable to enable or disable flash attention. Default is 0 (enabled).
-constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+// Environment variable to enable or disable TRT flash attention. Default is 0 (enabled).
+constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTION";
 
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
 constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";

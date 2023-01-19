@@ -9,6 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+#if USE_FLASH_ATTENTION
 struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
@@ -36,10 +37,9 @@ struct MemoryEfficientAttentionParams {
 };
 
 common::Status run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
+#endif
 
-inline bool has_memory_efficient_attention(int32_t sm, bool is_half) {
-  return sm >= (is_half ? 53 : 50);
-}
+bool has_memory_efficient_attention(int32_t sm, bool is_half);
 
 }  // namespace cuda
 }  // namespace contrib

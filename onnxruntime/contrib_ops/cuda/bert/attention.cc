@@ -42,10 +42,14 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
-  enable_flash_attention_ = sizeof(T) == 2 &&
-                            !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+  enable_trt_flash_attention_ = sizeof(T) == 2 &&
+                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
+#if USE_FLASH_ATTENTION
   disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
+#else
+  disable_memory_efficient_attention_ = true;
+#endif
 }
 
 template <typename T>
@@ -105,12 +109,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                    parameters.hidden_size == parameters.v_hidden_size &&
                                    parameters.sequence_length == parameters.kv_sequence_length &&
                                    FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                      enable_flash_attention_, true);
+                                                                      enable_trt_flash_attention_, true);
     if (use_causal_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
         fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_flash_attention_));
+                                                          enable_trt_flash_attention_));
       }
 
       // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
@@ -125,13 +129,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             parameters.hidden_size == parameters.v_hidden_size &&
                             parameters.sequence_length == parameters.kv_sequence_length &&
                             FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                               enable_flash_attention_, false);
+                                                               enable_trt_flash_attention_, false);
 
     if (use_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
         fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_flash_attention_));
+                                                          enable_trt_flash_attention_));
       }
 
       // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -142,6 +146,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+#if USE_FLASH_ATTENTION
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         nullptr == mask_index &&  // TODO: support 1D mask
@@ -149,6 +154,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                         nullptr == present &&
                                         nullptr == extra_add_qk &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
+#else
+  constexpr bool use_memory_efficient_attention = false;
+#endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
 

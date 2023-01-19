@@ -2,30 +2,32 @@
 // Licensed under the MIT License.
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
+#if USE_FLASH_ATTENTION
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
-#include "41_fused_multi_head_attention/kernel_forward.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template<typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
+template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
   typename Attention::Params p;
-  { // set parameters
+  {  // set parameters
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
     p.key_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.key));
     p.value_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.value));
     p.cu_seqlens_q_ptr = params.cu_seqlens_q;
     p.cu_seqlens_k_ptr = params.cu_seqlens_k;
 
-    p.logsumexp_ptr = nullptr; // [num_heads, num_queries] for backward or nullptr for forward
+    p.logsumexp_ptr = nullptr;  // [num_heads, num_queries] for backward or nullptr for forward
     p.output_ptr = reinterpret_cast<T*>(params.output);
     if (Attention::kNeedsOutputAccumulatorBuffer) {
       using Acc = typename Attention::accum_t;
@@ -78,24 +80,21 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
 }
 
-
-template<typename T, typename ArchTag, int queries_per_block, int keys_per_block, bool single_value_iteration>
-void DispatchIsAligned(const MemoryEfficientAttentionParams& params){
-
+template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, bool single_value_iteration>
+void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
   using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, single_value_iteration>;
 
-   // Run a more efficient kernel with `isAligned=True` when memory is correctly aligned.
+  // Run a more efficient kernel with `isAligned=True` when memory is correctly aligned.
   bool is_aligned = params.qk_head_size % AlignedAK::kAlignmentQ == 0 &&
-                   params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
-                   params.v_head_size % AlignedAK::kAlignmentV == 0;
+                    params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
+                    params.v_head_size % AlignedAK::kAlignmentV == 0;
 
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
-    LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
-  }));
+                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
+                }));
 }
 
-
-template<typename T, typename ArchTag>
+template <typename T, typename ArchTag>
 void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
   if (params.v_head_size <= 64) {
     DispatchIsAligned<T, ArchTag, 64, 64, true>(params);
@@ -106,19 +105,18 @@ void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
   }
 }
 
-template<typename T>
+template <typename T>
 void DispatchArchTag(const MemoryEfficientAttentionParams& params) {
-  const int32_t &sm = params.sm;
+  const int32_t& sm = params.sm;
   if (sm >= 80) {
     DispatchBlockSize<T, cutlass::arch::Sm80>(params);
   } else if (sm >= 75) {
-      DispatchBlockSize<T, cutlass::arch::Sm75>(params);
-    } else if (sm >= 70) {
-      DispatchBlockSize<T, cutlass::arch::Sm70>(params);
-    } else if (sm >= 50) {
-      DispatchBlockSize<T, cutlass::arch::Sm50>(params);
-    } else {
-      ORT_ENFORCE(!"not implemented");
+    DispatchBlockSize<T, cutlass::arch::Sm75>(params);
+  } else if (sm >= 70) {
+    DispatchBlockSize<T, cutlass::arch::Sm70>(params);
+  } else if (sm >= 50) {
+    DispatchBlockSize<T, cutlass::arch::Sm50>(params);
+  } else {
   }
 }
 
@@ -133,10 +131,22 @@ common::Status run_memory_efficient_attention(const MemoryEfficientAttentionPara
   return Status::OK();
 }
 
+bool has_memory_efficient_attention(int32_t sm, bool is_half) {
+  return sm >= (is_half ? 53 : 50);
 }
-}
-}
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#endif
+
+#else  // NOT USE_FLASH_ATTENTION
+
+bool has_memory_efficient_attention(int32_t, bool) {
+  return false;
+}
+
 #endif

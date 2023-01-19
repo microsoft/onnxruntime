@@ -43,10 +43,14 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
-  enable_flash_attention_ = sizeof(T) == 2 &&
-                            !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+  enable_trt_flash_attention_ = sizeof(T) == 2 &&
+                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
+#if USE_FLASH_ATTENTION
   disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
+#else
+  disable_memory_efficient_attention_ = true;
+#endif
 
   disable_fused_cross_attention_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
 }
@@ -88,7 +92,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
-
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
@@ -111,13 +114,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
                           FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                             enable_flash_attention_, false);
+                                                             enable_trt_flash_attention_, false);
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
       fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
-          num_heads_, parameters.head_size, sm, is_unidirectional, enable_flash_attention_));
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_));
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -127,11 +130,15 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+#if USE_FLASH_ATTENTION
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         nullptr == key_padding_mask &&  // TODO: support 1D mask
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
+#else
+  constexpr bool use_memory_efficient_attention = false;
+#endif
 
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,

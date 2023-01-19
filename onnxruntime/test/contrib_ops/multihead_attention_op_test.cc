@@ -139,7 +139,7 @@ static void RunMultiHeadAttentionKernel(
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
@@ -153,7 +153,7 @@ static void RunMultiHeadAttentionKernel(
   if (kernel_type == AttentionKernelType::AttentionKernel_Unfused) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
@@ -167,7 +167,7 @@ static void RunMultiHeadAttentionKernel(
   if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedCrossAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
@@ -178,10 +178,11 @@ static void RunMultiHeadAttentionKernel(
     return;
   }
 
+#if USE_FLASH_ATTENTION
   if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
@@ -191,11 +192,12 @@ static void RunMultiHeadAttentionKernel(
         use_float16, disable_cpu, disable_cuda, disable_rocm);
     return;
   }
+#endif
 
   if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
@@ -218,6 +220,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
     }
 
+#if USE_FLASH_ATTENTION
     kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
@@ -225,6 +228,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.fp32_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
           data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
     }
+#endif
 
     kernel_type = AttentionKernelType::AttentionKernel_Default;
     RunMultiHeadAttentionKernel(
@@ -251,6 +255,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
     }
 
+#if USE_FLASH_ATTENTION
     kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
@@ -258,6 +263,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.fp16_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
           data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
     }
+#endif
 
     kernel_type = AttentionKernelType::AttentionKernel_Default;
     RunMultiHeadAttentionKernel(
