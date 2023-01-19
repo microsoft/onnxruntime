@@ -565,11 +565,11 @@ def create_gpt2_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_attent
         helper.make_node("Add", ["gather_0_out", "gather_1_out"], ["add_0_out"], "add_before_layernorm"),
         helper.make_node("Gather", ["token_embeddings_weight", "ids"], ["gather_2_out"], "gather_token_embeddings"),
         helper.make_node(
-            "SkipLayerNormalization", 
-            ["add_0_out", "gather_2_out", "layernorm_weight", "layernorm_bias"], 
-            ["skip_layernorm_out"], 
-            "skip_layernorm", 
-            domain="com.microsoft", 
+            "SkipLayerNormalization",
+            ["add_0_out", "gather_2_out", "layernorm_weight", "layernorm_bias"],
+            ["skip_layernorm_out"],
+            "skip_layernorm",
+            domain="com.microsoft",
             epsilon=epsilon,
         ),
     ]
@@ -580,26 +580,26 @@ def create_gpt2_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_attent
             helper.make_node("MatMul", ["skip_layernorm_out", "v_weight"], ["v_out"], "v_attn"),
             helper.make_node("Add", ["q_out", "k_out"], ["qk_out"], "qk_attn"),
             helper.make_node("Add", ["qk_out", "v_out"], ["qkv_out"], "qkv_attn"),
-        ] 
-        if not one_attention_node 
+        ]
+        if not one_attention_node
         else [
             helper.make_node(
-                "Attention", 
-                ["skip_layernorm_out", "qkv_weight", "qkv_bias", ""], 
-                ["qkv_out"], 
-                "qkv_attn", 
-                domain="com.microsoft", 
+                "Attention",
+                ["skip_layernorm_out", "qkv_weight", "qkv_bias", ""],
+                ["qkv_out"],
+                "qkv_attn",
+                domain="com.microsoft",
                 num_heads=num_heads,
             ),
         ]
     )
     nodes = [
         helper.make_node(
-            "SkipLayerNormalization", 
-            ["skip_layernorm_out", "qkv_out", "layernorm_weight", "layernorm_bias", "dense_bias"], 
-            ["output_0"], 
-            "attn_skip_layernorm", 
-            domain="com.microsoft", 
+            "SkipLayerNormalization",
+            ["skip_layernorm_out", "qkv_out", "layernorm_weight", "layernorm_bias", "dense_bias"],
+            ["output_0"],
+            "attn_skip_layernorm",
+            domain="com.microsoft",
             epsilon=epsilon,
         ),
     ]
@@ -619,8 +619,8 @@ def create_gpt2_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_attent
             helper.make_tensor("q_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("k_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("v_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
-        ] 
-        if not one_attention_node 
+        ]
+        if not one_attention_node
         else [
             helper.make_tensor("qkv_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("qkv_bias", TensorProto.FLOAT, [hidden_size], [1.0] * hidden_size),
@@ -650,21 +650,21 @@ def create_gpt2_fused_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_
     # Construct graph nodes
     embed_layernorm_nodes = [
         helper.make_node(
-            "EmbedLayerNormalization", 
+            "EmbedLayerNormalization",
             [
-                "ids", 
-                "ids", 
-                "word_embeddings_weight", 
-                "pos_embeddings_weight", 
-                "token_embeddings_weight", 
-                "layernorm_weight", 
-                "layernorm_bias", 
-                "", 
                 "ids",
-            ], 
-            ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index"], 
-            "EmbedLayerNormalization_0", 
-            domain="com.microsoft", 
+                "ids",
+                "word_embeddings_weight",
+                "pos_embeddings_weight",
+                "token_embeddings_weight",
+                "layernorm_weight",
+                "layernorm_bias",
+                "",
+                "ids",
+            ],
+            ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index"],
+            "EmbedLayerNormalization_0",
+            domain="com.microsoft",
             epsilon=epsilon,
         ),
     ]
@@ -675,26 +675,26 @@ def create_gpt2_fused_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_
             helper.make_node("MatMul", ["EmbedLayerNormalization_0_output", "v_weight"], ["v_out"], "v_attn"),
             helper.make_node("Add", ["q_out", "k_out"], ["qk_out"], "qk_attn"),
             helper.make_node("Add", ["qk_out", "v_out"], ["qkv_out"], "qkv_attn"),
-        ] 
-        if not one_attention_node 
+        ]
+        if not one_attention_node
         else [
             helper.make_node(
-                "Attention", 
-                ["EmbedLayerNormalization_0_output", "qkv_weight", "qkv_bias", ""], 
-                ["qkv_out"], 
-                "qkv_attn", 
-                domain="com.microsoft", 
+                "Attention",
+                ["EmbedLayerNormalization_0_output", "qkv_weight", "qkv_bias", ""],
+                ["qkv_out"],
+                "qkv_attn",
+                domain="com.microsoft",
                 num_heads=num_heads,
             ),
         ]
     )
     nodes = [
         helper.make_node(
-            "SkipLayerNormalization", 
-            ["EmbedLayerNormalization_0_output", "qkv_out", "layernorm_weight", "layernorm_bias", "dense_bias"], 
-            ["output_0"], 
-            "attn_skip_layernorm", 
-            domain="com.microsoft", 
+            "SkipLayerNormalization",
+            ["EmbedLayerNormalization_0_output", "qkv_out", "layernorm_weight", "layernorm_bias", "dense_bias"],
+            ["output_0"],
+            "attn_skip_layernorm",
+            domain="com.microsoft",
             epsilon=epsilon,
         ),
     ]
@@ -711,13 +711,13 @@ def create_gpt2_fused_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_
     ]
     attention_initializers = (
         [
-            helper.make_tensor("q_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1*hidden_size)),
-            helper.make_tensor("k_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1*hidden_size)),
-            helper.make_tensor("v_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1*hidden_size)),
+            helper.make_tensor("q_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
+            helper.make_tensor("k_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
+            helper.make_tensor("v_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
         ] 
         if not one_attention_node 
         else [
-            helper.make_tensor("qkv_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1*hidden_size)),
+            helper.make_tensor("qkv_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("qkv_bias", TensorProto.FLOAT, [hidden_size], [1.0] * hidden_size),
         ]
     )
