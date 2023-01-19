@@ -368,7 +368,9 @@ def run_pytorch(
                     device=device,
                 )
                 try:
-                    inference = torch.jit.trace(model, input_ids) if torchscript else torch.compile(model) if torch2 else model
+                    inference = (
+                        torch.jit.trace(model, input_ids) if torchscript else torch.compile(model) if torch2 else model
+                    )
                     inference(input_ids)
 
                     runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
