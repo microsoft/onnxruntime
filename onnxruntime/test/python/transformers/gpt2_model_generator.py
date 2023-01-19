@@ -714,8 +714,8 @@ def create_gpt2_fused_embedlayer(hidden_size=768, num_heads=4, epsilon=0.1, one_
             helper.make_tensor("q_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("k_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("v_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
-        ] 
-        if not one_attention_node 
+        ]
+        if not one_attention_node
         else [
             helper.make_tensor("qkv_weight", TensorProto.FLOAT, [hidden_size, 1], [1.0] * (1 * hidden_size)),
             helper.make_tensor("qkv_bias", TensorProto.FLOAT, [hidden_size], [1.0] * hidden_size),
