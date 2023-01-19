@@ -200,14 +200,10 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
+  data.fused_runner = fused_runner;
+  data.fused_cross_attention_kernel = nullptr;
 
-  return QkvToContext<CudaT>(
-      GetDeviceProp(),
-      cublas,
-      Stream(context),
-      parameters,
-      data,
-      fused_runner);
+  return QkvToContext<CudaT>(GetDeviceProp(), cublas, Stream(context), parameters, data);
 }
 
 }  // namespace cuda

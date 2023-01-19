@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CLOUD
+#ifdef USE_AZURE
 #include "http_client.h"
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
@@ -18,13 +18,13 @@ namespace onnxruntime {
 
 namespace tc = triton::client;
 
-const char* kCloudUri = "cloud.uri";
-const char* kCloudModelName = "cloud.model_name";
-const char* kCloudModelVer = "cloud.model_version";
-const char* kCloudVerbose = "cloud.verbose";
-const char* kCloudEndpointType = "cloud.endpoint_type";
-const char* kCloudAuthKey = "cloud.auth_key";
-const char* kCloudTriton = "triton";
+const char* kAzureUri = "azure.uri";
+const char* kAzureModelName = "azure.model_name";
+const char* kAzureModelVer = "azure.model_version";
+const char* kAzureVerbose = "azure.verbose";
+const char* kAzureEndpointType = "azure.endpoint_type";
+const char* kAzureAuthKey = "azure.auth_key";
+const char* kAzureTriton = "triton";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
@@ -33,9 +33,9 @@ CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
   }
 }
 
-class TritonInvoker : public CloudEndPointInvoker {
+class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
-  TritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
+  AzureTritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
   onnxruntime::Status Send(const CloudEndPointConfig& run_options,
                            const InlinedVector<std::string>& input_names,
                            gsl::span<const OrtValue> ort_inputs,
@@ -53,7 +53,7 @@ class TritonInvoker : public CloudEndPointInvoker {
   std::unique_ptr<triton::client::InferenceServerHttpClient> triton_client_;
 };
 
-std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
+std::string AzureTritonInvoker::MapDataType(int32_t ort_data_type) {
   std::string triton_data_type;
   switch (ort_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -105,7 +105,7 @@ std::string TritonInvoker::MapDataType(int32_t ort_data_type) {
   return triton_data_type;
 }
 
-onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type, const onnxruntime::VectorInt64& dim) const {
+onnxruntime::TensorPtr AzureTritonInvoker::CreateTensor(const std::string& data_type, const onnxruntime::VectorInt64& dim) const {
   if (data_type == "FP32") {
     return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), TensorShape{dim}, allocator_);
   } else if (data_type == "UINT8") {
@@ -137,12 +137,12 @@ onnxruntime::TensorPtr TritonInvoker::CreateTensor(const std::string& data_type,
   }
 }
 
-TritonInvoker::TritonInvoker(const CloudEndPointConfig& config,
+AzureTritonInvoker::AzureTritonInvoker(const CloudEndPointConfig& config,
                              const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
-  ReadConfig(kCloudUri, uri_);
-  ReadConfig(kCloudModelName, model_name_);
-  ReadConfig(kCloudModelVer, model_ver_, false);
-  ReadConfig(kCloudVerbose, verbose_, false);
+  ReadConfig(kAzureUri, uri_);
+  ReadConfig(kAzureModelName, model_name_);
+  ReadConfig(kAzureModelVer, model_ver_, false);
+  ReadConfig(kAzureVerbose, verbose_, false);
 
   auto err = tc::InferenceServerHttpClient::Create(&triton_client_, uri_, verbose_ != "0");
   if (!err.IsOk()) {
@@ -150,12 +150,12 @@ TritonInvoker::TritonInvoker(const CloudEndPointConfig& config,
   }
 }
 
-onnxruntime::Status TritonInvoker::Send(const CloudEndPointConfig& run_options,
+onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_options,
                                         const InlinedVector<std::string>& input_names,
                                         gsl::span<const OrtValue> ort_inputs,
                                         const InlinedVector<std::string>& output_names,
                                         std::vector<OrtValue>& ort_outputs) const {
-  const auto auth_key_iter = run_options.find(kCloudAuthKey);
+  const auto auth_key_iter = run_options.find(kAzureAuthKey);
   if (run_options.end() == auth_key_iter) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "auth key must be specified for triton client");
@@ -282,15 +282,15 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
                                            std::unique_ptr<CloudEndPointInvoker>& invoker) {
   auto status = Status::OK();
   ORT_TRY {
-    const auto iter = config.find(kCloudEndpointType);
+    const auto iter = config.find(kAzureEndpointType);
     if (config.end() != iter) {
-      if (iter->second == kCloudTriton) {
-        invoker = std::make_unique<TritonInvoker>(config, allocator);
+      if (iter->second == kAzureTriton) {
+        invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
         return status;
       } // else other endpoint types ...
     }
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot create cloud invoker due to missed or mismatched endpoint type.");
+                             "Cannot create azure invoker due to missed or mismatched endpoint type.");
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

@@ -117,7 +117,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
 #ifdef ENABLE_TRAINING
-    // the partial execution mode for training need special handle for barrier
+    // the partial execution mode for training needs special handling for barrier
     virtual bool IsBarrier() const { return false; }
 #endif
   };
