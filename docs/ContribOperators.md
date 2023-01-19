@@ -125,14 +125,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>mask_filter_value</tt> : float</dt>
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
-<dt><tt>norm_factor</tt> : float</dt>
-<dd>Custom norm_factor will be used otherwise norm_factor = sqrt(head_size). Default value is 0.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>past_present_share_buffer</tt> : int</dt>
 <dd>Corresponding past and present are same tensor, its size is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
 <dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>softmax_scale</tt> : float</dt>
+<dd>Custom softmax_scale will be used otherwise softmax_scale = 1/sqrt(head_size). Default value is 0.0f</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
