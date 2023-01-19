@@ -49,7 +49,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 
 #ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
-#include "orttraining/training_api/include/ort_training_apis.h"
+#include "orttraining/training_api/ort_training_apis.h"
 #endif
 
 #ifdef USE_CANN
