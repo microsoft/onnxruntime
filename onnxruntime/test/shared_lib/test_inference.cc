@@ -2678,6 +2678,7 @@ TEST(CApiTest, GH_11717) {
 }
 #endif
 
+#ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   Ort::SessionOptions session_options{};
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
@@ -2704,3 +2705,4 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
   ASSERT_TRUE(output_dims == expected_output_dims);
 }
+#endif
