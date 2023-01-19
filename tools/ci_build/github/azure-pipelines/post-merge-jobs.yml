@@ -1,5 +1,6 @@
 stages:
 - stage: Mimalloc
+  dependsOn: []
   jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
@@ -19,6 +20,7 @@ stages:
       MachinePool: 'Win-CPU-2021'
 
 - stage: NoAbseil
+  dependsOn: []
   jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
@@ -38,6 +40,7 @@ stages:
       MachinePool: 'Win-CPU-2021'
 
 - stage: MinimalBuildWithNoExceptions
+  dependsOn: []
   jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
@@ -57,6 +60,7 @@ stages:
       MachinePool: 'Win-CPU-2021'
 
 - stage: DebugNodeInputsOutputs
+  dependsOn: []
   jobs:
   - template: templates/win-ci-vs-2019.yml
     parameters:
@@ -76,6 +80,7 @@ stages:
       MachinePool: 'Win-CPU-2021'
 
 - stage: CodeCoverage
+  dependsOn: []
   jobs:
   - job: CodeCoverage
     workspace:
