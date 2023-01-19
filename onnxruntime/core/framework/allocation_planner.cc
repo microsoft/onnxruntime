@@ -1792,7 +1792,7 @@ class PlannerImpl {
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
-    std::map<NodeIndex, std::vector<std::pair<WaitNotificationFn, NotificationIndex>>> node_to_wait;
+    std::map<NodeIndex, std::map<NodeIndex, WaitNotificationFn>> node_to_wait;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -1821,7 +1821,7 @@ class PlannerImpl {
                   // 1. the consumer is not in the same stream
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
-                  //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
+                  //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
                   WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
                   if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU)
@@ -1831,10 +1831,11 @@ class PlannerImpl {
                       plan_.notification_owners.push_back(i);
                     }
 
-                    if (node_to_wait.find(it->Index()) == node_to_wait.end()) {
-                      node_to_wait[it->Index()] = std::vector<std::pair<WaitNotificationFn, NotificationIndex>>{std::make_pair(wait_handle, node_to_notification[node_index])};
-                    } else {
-                      node_to_wait[it->Index()].push_back(std::make_pair(wait_handle, node_to_notification[node_index]));
+                    auto wait_it = node_to_wait.find(it->Index());
+                    if (wait_it == node_to_wait.end()) {
+                      node_to_wait[it->Index()] = std::map<NodeIndex, WaitNotificationFn>{{node_index, wait_handle}};
+                    } else if (wait_it->second.find(node_index) == wait_it->second.end()) {
+                      wait_it->second.insert({node_index, wait_handle});
                     }
                   }
                 }
@@ -1866,7 +1867,12 @@ class PlannerImpl {
           dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
         }
         auto* node = graph_viewer_.GetNode(node_index);
+        std::unordered_set<NodeIndex> visited;  // TODO(leca): See the bug description in PlannerTest.MultiStreamMultiOutput. Can remove this variable once this bug is fixed
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+          if (visited.find(it->Index()) != visited.end()) {
+            continue;
+          }
+          visited.insert(it->Index());
           //  check whether we need to add barrier
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
             // find the trigger_point_id
@@ -1887,8 +1893,8 @@ class PlannerImpl {
 
         auto wait_it = node_to_wait.find(node_index);
         if (wait_it != node_to_wait.end()) {
-          for (auto wait_param = wait_it->second.begin(); wait_param != wait_it->second.end(); wait_param++) {
-            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param->first, wait_param->second));
+          for (auto wait_param : wait_it->second) {
+            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second, node_to_notification[wait_param.first]));
 #ifdef ENABLE_TRAINING
             execution_plan[i]->step_pc.push_back(node_index);
 #endif  // ENABLE_TRAINING
