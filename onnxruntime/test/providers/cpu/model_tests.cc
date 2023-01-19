@@ -48,10 +48,11 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-#define ASSERT_ORT_STATUS_OK(function)                                        \
-  do {                                                                        \
-    OrtStatus* _tmp_status = (function);                                      \
-    ASSERT_EQ(_tmp_status, nullptr) << OrtApis::GetErrorMessage(_tmp_status); \
+#define ASSERT_ORT_STATUS_OK(status)                                                      \
+  do {                                                                                    \
+    std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> _rel_status{            \
+        (status), &OrtApis::ReleaseStatus};                                               \
+    ASSERT_EQ(_rel_status.get(), nullptr) << OrtApis::GetErrorMessage(_rel_status.get()); \
   } while (false)
 
 using namespace onnxruntime::common;
