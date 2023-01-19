@@ -1114,7 +1114,11 @@ static void MsftQuantizedModels() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"coreml_Resnet50_ImageNet-dq.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
-  LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
+
+  auto device = LearningModelDevice(LearningModelDeviceKind::DirectX);
+  device.as<IMetacommandsController>()->SetMetacommandsEnabled(false);
+
+  LearningModelSession session(model, device);
   // create a binding set
   LearningModelBinding binding(session);
   // bind the input and the output buffers by name
@@ -1525,7 +1529,7 @@ static void BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind kind) {
   buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(red));
   buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(green));
   buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(blue));
-  
+
   // Bind input
   binding.Bind(model.InputFeatures().First().Current().Name(), buffers);
 
@@ -1627,7 +1631,7 @@ static void BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind kind) {
   red_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&red_bytes));
   green_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&green_bytes));
   blue_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&blue_bytes));
-  
+
   // Verify the output by comparing with the benchmark image
   SoftwareBitmap benchmark_bitmap = FileHelpers::GetSoftwareBitmapFromFile(bmImagePath);
   benchmark_bitmap = SoftwareBitmap::Convert(benchmark_bitmap, BitmapPixelFormat::Bgra8);
@@ -1638,7 +1642,7 @@ static void BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind kind) {
   wf::IMemoryBufferReference benchmark_reference = benchmark_bitmap_buffer.CreateReference();
   auto benchmark_byte_access = benchmark_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
   benchmark_byte_access->GetBuffer(&benchmark_data, &benchmark_size);
-  
+
   // hard code, might need to be modified later.
   const float cMaxErrorRate = 0.06f;
   byte epsilon = 20;

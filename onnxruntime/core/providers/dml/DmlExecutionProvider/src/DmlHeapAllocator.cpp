@@ -214,6 +214,16 @@ absl::optional<Allocation> D3D12HeapAllocator::TryCreateUntiledAllocation(uint64
     return allocation;
 }
 
+uint64_t D3D12HeapAllocator::ComputeRequiredSize(size_t size)
+{
+    const uint64_t resource_size_in_tiles =
+        1 + (size - 1) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+    const uint64_t resource_size_in_bytes =
+        resource_size_in_tiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+
+    return resource_size_in_bytes;
+}
+
 Microsoft::WRL::ComPtr<DmlResourceWrapper> D3D12HeapAllocator::Alloc(size_t size_in_bytes)
 {
     if (size_in_bytes == 0)

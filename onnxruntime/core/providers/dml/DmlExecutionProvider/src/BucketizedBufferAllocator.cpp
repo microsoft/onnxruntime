@@ -84,15 +84,17 @@ namespace Dml
 
         ComPtr<DmlResourceWrapper> resourceWrapper;
         uint64_t resourceId = 0;
-        uint64_t bucketSize = 0;
+
+        // Find the bucket for this allocation size
+        gsl::index bucketIndex = GetBucketIndexFromSize(size);
+
+        // Some sub allocators have their own rounding mechanisms or alignment requirements of resources
+        uint64_t bucketSize = m_subAllocator->ComputeRequiredSize(GetBucketSizeFromIndex(bucketIndex));
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == bucketSize)
         {
             Bucket* bucket = nullptr;
-
-            // Find the bucket for this allocation size
-            gsl::index bucketIndex = GetBucketIndexFromSize(size);
 
             if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
             {
@@ -101,7 +103,6 @@ namespace Dml
             }
 
             bucket = &m_pool[bucketIndex];
-            bucketSize = GetBucketSizeFromIndex(bucketIndex);
 
             if (bucket->resources.empty())
             {
@@ -120,12 +121,13 @@ namespace Dml
         else
         {
             // The allocation will not be pooled.  Construct a new one
-            bucketSize = (size + 3) & ~3;
+            bucketSize = m_subAllocator->ComputeRequiredSize(size);
             resourceWrapper = m_subAllocator->Alloc(bucketSize);
             resourceId = ++m_currentResourceId;
         }
 
         assert(resourceWrapper != nullptr);
+        assert(resourceWrapper->GetResourceInUavState()->GetDesc().Width == bucketSize);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
             this,
@@ -183,31 +185,10 @@ namespace Dml
         {
             // Free the underlying allocation once queued work has completed.
 #ifdef _GAMING_XBOX
-            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResourceInUavState()).Get());
-
-            if (allocInfo->GetResourceInCopySrcState() != nullptr)
-            {
-                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResourceInCopySrcState()).Get());
-            }
-
-            if (allocInfo->GetResourceInCopyDstState() != nullptr)
-            {
-                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResourceInCopyDstState()).Get());
-            }
+            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->DetachResourceWrapper().Get()).Get());
 #else
-            m_context->QueueReference(allocInfo->GetResourceInUavState());
-
-            if (allocInfo->GetResourceInCopySrcState() != nullptr)
-            {
-                m_context->QueueReference(allocInfo->GetResourceInCopySrcState());
-            }
-
-            if (allocInfo->GetResourceInCopyDstState() != nullptr)
-            {
-                m_context->QueueReference(allocInfo->GetResourceInCopyDstState());
-            }
+            m_context->QueueReference(allocInfo->DetachResourceWrapper().Get());
 #endif
-            allocInfo->DetachResourceWrapper();
         }
 
     #if _DEBUG

@@ -15,7 +15,7 @@ namespace Dml
         : m_queue(std::make_shared<CommandQueue>(queue))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
     {
-        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));        
+        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
 
     void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
@@ -55,15 +55,15 @@ namespace Dml
         m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
 
         // Reset barrier state
-        if (!barriers.empty())
+        for (auto& barrier : barriers)
         {
-            for (auto& barrier : barriers)
-            {
-                std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-            }
-
-            m_dmlRecorder.ResourceBarrier(barriers);
+            std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
         }
+
+        // Since this copy may write to GPU memory, we also need to perform an
+        // aliasing barrier
+        barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
+        m_dmlRecorder.ResourceBarrier(barriers);
     }
 
     void ExecutionContext::FillBufferWithPattern(
@@ -78,14 +78,14 @@ namespace Dml
         ID3D12GraphicsCommandList* commandList,
         _Outptr_ ID3D12Fence** fence,
         _Out_ uint64_t* completionValue
-        ) 
+        )
     {
         assert(!m_closed);
 
         SetCommandRecorder(&m_dmlRecorder);
         m_dmlRecorder.ExecuteCommandList(commandList, fence, completionValue);
     }
-       
+
     void ExecutionContext::InitializeOperator(
         IDMLCompiledOperator* op,
         const DML_BINDING_DESC& persistentResourceBinding,
@@ -110,7 +110,7 @@ namespace Dml
     }
 
     void ExecutionContext::AddUAVBarrier()
-    {        
+    {
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
@@ -173,9 +173,9 @@ namespace Dml
         m_currentRecorder = nullptr;
         SetCommandRecorder(&m_dmlRecorder);
     }
-    
-    void ExecutionContext::QueueReference(IUnknown* object) 
-    {              
+
+    void ExecutionContext::QueueReference(IUnknown* object)
+    {
         assert(!m_closed);
         // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
         // value is the one to signal completion.
@@ -186,14 +186,14 @@ namespace Dml
     void ExecutionContext::Close()
     {
         assert(!m_closed);
-        
+
         // Discard unflushed work and clear queued references.  This prevents the circular reference:
         // Kernel --> ProviderImpl -->  Context --> QueuedRefs --> Kernel
         m_queue->Close();
         m_currentRecorder = nullptr;
         m_closed = true;
     }
-    
+
     GpuEvent ExecutionContext::GetCurrentCompletionEvent()
     {
         assert(!m_closed);

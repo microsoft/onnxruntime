@@ -89,6 +89,7 @@ class D3D12HeapAllocator : public DmlSubAllocator
         uint64_t size_in_bytes);
 
     Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size_in_bytes) final;
+    uint64_t ComputeRequiredSize(size_t size) final;
     void Free(void* ptr, uint64_t size_in_bytes);
     bool TilingEnabled() const { return tiling_enabled_; };
 

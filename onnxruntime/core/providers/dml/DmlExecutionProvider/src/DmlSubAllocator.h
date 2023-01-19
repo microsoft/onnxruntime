@@ -11,6 +11,7 @@ namespace Dml
     {
     public:
         virtual Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size) = 0;
+        virtual uint64_t ComputeRequiredSize(size_t size) = 0;
         virtual ~DmlSubAllocator(){}
     };
 }
