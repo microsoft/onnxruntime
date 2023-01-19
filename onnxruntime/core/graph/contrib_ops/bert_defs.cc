@@ -199,6 +199,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size)",
@@ -271,9 +275,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is negative infinity",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
+               "Query with shape (batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1,
                "key",
@@ -343,6 +349,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(Decoder_Attention_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is negative infinity",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
         .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
         .Input(2, "q_weight", "2D input tensor with shape (hidden_size, hidden_size)", "T")
@@ -450,14 +458,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-            propagateElemTypeFromInputToOutput(ctx, 0, 0);
-            auto& bias_table_shape = getInputShape(ctx, 0);
-            TensorShapeProto output_shape;
-            output_shape.add_dim()->set_dim_value(1);
-            *output_shape.add_dim() = bias_table_shape.dim(1);
-            output_shape.add_dim();
-            output_shape.add_dim();
-            updateOutputShape(ctx, 0, output_shape);
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          auto& bias_table_shape = getInputShape(ctx, 0);
+          TensorShapeProto output_shape;
+          output_shape.add_dim()->set_dim_value(1);
+          *output_shape.add_dim() = bias_table_shape.dim(1);
+          output_shape.add_dim();
+          output_shape.add_dim();
+          updateOutputShape(ctx, 0, output_shape);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(

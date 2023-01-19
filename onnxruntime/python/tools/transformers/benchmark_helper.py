@@ -541,7 +541,13 @@ def measure_memory(is_gpu, func):
 
 def get_ort_environment_variables():
     # Environment variables might impact ORT performance on transformer models. Note that they are for testing only.
-    env_names = ["ORT_DISABLE_FUSED_ATTENTION", "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS"]
+    env_names = [
+        "ORT_DISABLE_FUSED_ATTENTION",
+        "ORT_DISABLE_FUSED_CROSS_ATTENTION",
+        "ORT_DISABLE_FLASH_ATTENTION",
+        "ORT_TRANSFORMER_OPTIONS",
+        "ORT_CUDA_GEMM_OPTIONS",
+    ]
     env = ""
     for name in env_names:
         value = os.getenv(name)

@@ -1459,6 +1459,31 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
 endif()
 
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
+                                                                        onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+  onnxruntime_add_shared_library_module(custom_op_openvino_wrapper_library
+                                        ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.cc
+                                        ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/openvino_wrapper.cc)
+  target_include_directories(custom_op_openvino_wrapper_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(custom_op_openvino_wrapper_library PRIVATE openvino::runtime)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.def")
+  endif()
+
+  set_property(TARGET custom_op_openvino_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
+endif()
+
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
