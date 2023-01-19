@@ -28,7 +28,7 @@ constexpr int kMinSequenceLengthFlashAttention = 385;
 // Multi-Head Attention runner
 class MHARunner {
  public:
-  MHARunner(const int numHeads, const int headSize, const int wordSize, bool causal_mask, const float norm_factor)
+  MHARunner(const int numHeads, const int headSize, const int wordSize, bool causal_mask, const float softmax_scale)
       : mS(0),
         mB(0),
         mOmatSize(0),
@@ -40,8 +40,8 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mRsqrtHeadSize(norm_factor == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
-                       : 1.0f / norm_factor),
+        mSoftmaxScale(softmax_scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
+                      : softmax_scale),
         mHasCausalMask(causal_mask) {
   }
 
@@ -84,7 +84,7 @@ class MHARunner {
   int mLdOut;
   int mStrideOut;
 
-  float mRsqrtHeadSize;
+  float mSoftmaxScale;
   bool mHasCausalMask;
 };
 
@@ -95,7 +95,7 @@ class FusedMHARunnerFP16v2 : public MHARunner {
                        const int sm,
                        bool causal_mask,
                        bool enable_flash_attention,
-                       const float norm_factor);
+                       const float softmax_scale);
   ~FusedMHARunnerFP16v2() = default;  // for pimpl
 
   virtual void setup(const int S, const int B) override;

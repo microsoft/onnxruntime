@@ -203,8 +203,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
-        .Attr("norm_factor",
-              "Custom norm_factor will be used otherwise norm_factor = sqrt(head_size). Default value is 0.0f",
+        .Attr("softmax_scale",
+              "Custom softmax_scale will be used otherwise softmax_scale = 1/sqrt(head_size). Default value is 0.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Input(0,

@@ -100,7 +100,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     // The number of xmmas in the M dimension. We use one uint32_t per XMMA in the M dimension.
     xmmas_m = (S + 16 * warps_m - 1) / (16 * warps_m);
 
-    const float scale_bmm1 = interface->mRsqrtHeadSize;
+    const float scale_bmm1 = interface->mSoftmaxScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
 
@@ -121,7 +121,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
   }
 
   void setup_causal_masked_fmha(const int S, const int B) {
-    const float scale_bmm1 = interface->mRsqrtHeadSize;
+    const float scale_bmm1 = interface->mSoftmaxScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
 
@@ -224,8 +224,8 @@ FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads,
                                            const int sm,
                                            bool causal_mask,
                                            bool enable_flash_attention,
-                                           const float norm_factor)
-    : MHARunner(numHeads, headSize, 2, causal_mask, norm_factor),
+                                           const float softmax_scale)
+    : MHARunner(numHeads, headSize, 2, causal_mask, softmax_scale),
       mSm(sm),
       mEnableFlashAttention(enable_flash_attention),
       pimpl(new mhaImpl(this)) {

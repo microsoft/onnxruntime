@@ -130,7 +130,7 @@ class AttentionCPUBase : public AttentionBase {
       }
 
       const int loop_len = batch_size * num_heads_;
-      const float alpha = norm_factor_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : 1.0f / norm_factor_;
+      const float alpha = softmax_scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : softmax_scale_;
 
       // The cost of Gemm
       const double cost = static_cast<double>(head_size) * sequence_length * total_sequence_length;

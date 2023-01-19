@@ -540,10 +540,9 @@ Status QkvToContext(
   float zero = 0.f;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
-  const float norm_factor = parameters.norm_factor;
-  const float rsqrt_head_size = norm_factor == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
-                                : 1.0f / norm_factor;
-  float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
+  const float softmax_scale = parameters.softmax_scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                              : parameters.softmax_scale;
+  float alpha = use_raw_attention_mask ? one : softmax_scale;
 
   cublasSetStream(cublas, stream);
 
@@ -572,7 +571,7 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
                                      mask_index, nullptr, data.extra_add_qk, scratch1, scratch2,
-                                     parameters.is_unidirectional, rsqrt_head_size, mask_dimension,
+                                     parameters.is_unidirectional, softmax_scale, mask_dimension,
                                      parameters.max_sequence_length, use_persistent_softmax,
                                      persistent_softmax_workspace, mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index

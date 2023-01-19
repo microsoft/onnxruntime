@@ -50,7 +50,7 @@ struct AttentionParameters {
   bool is_unidirectional;
   bool past_present_share_buffer;
   float mask_filter_value;
-  float norm_factor;
+  float softmax_scale;
   AttentionMaskType mask_type;
 };
 
