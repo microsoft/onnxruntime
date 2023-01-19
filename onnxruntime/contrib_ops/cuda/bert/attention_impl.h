@@ -45,17 +45,18 @@ struct AttentionData {
   T* workspace;
   T* output;
   T* present;
+
+  void* fused_runner;
+  const void* fused_cross_attention_kernel;
 };
 
 template <typename T>
 Status QkvToContext(
-    const cudaDeviceProp& prop,
+    const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
-    AttentionData<T>& data,
-    void* fused_runner,
-    int past_present_share_buffer = 0);
+    AttentionData<T>& data);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
@@ -71,6 +72,7 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,              // Whether use cache or not
     const bool has_layer_state,       // Whether output cache or not
     const bool has_key_padding_mask,  // Whether use key_padding_mask or not
+    const float mask_filter_value,    // Mask filter value
     const void* gemm_query_buffer,    // Query buffer
     const void* gemm_kv_buffer,       // Key and value buffer
     const bool* key_padding_mask,     // Key padding mask

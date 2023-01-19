@@ -6,6 +6,7 @@
 #include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -21,9 +22,12 @@ class MultiHeadAttention final : public CudaKernel {
 
  protected:
   int num_heads_;  // number of attention heads
+  float mask_filter_value_;
   bool disable_fused_runner_;
   bool enable_flash_attention_;
+  bool disable_fused_cross_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
+  mutable const FusedMultiHeadCrossAttentionKernel* fused_fp16_cross_attention_kernel_;
 };
 
 }  // namespace cuda

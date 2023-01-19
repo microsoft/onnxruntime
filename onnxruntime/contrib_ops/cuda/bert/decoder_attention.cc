@@ -167,6 +167,8 @@ DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(inf
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
+
+  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 }
 
 template <typename T>
@@ -375,6 +377,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       use_past_,
       has_layer_state_,
       has_key_padding_mask_,
+      mask_filter_value_,
       nullptr == gemm_query_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_query_buffer_p.get()),
       nullptr == gemm_kv_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_kv_buffer_p.get()),
       nullptr == key_padding_mask ? nullptr : key_padding_mask->Data<bool>(),

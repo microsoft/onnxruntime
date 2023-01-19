@@ -75,7 +75,12 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   }
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
-      /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+      /*cb=*/nullptr, /*allow_exceptions=*/true
+      // Comment support is added in 3.9.0 with breaking change to default behavior.
+      #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
+      , /*ignore_comments=*/true
+      #endif
+    );
   overrides_json["atol_overrides"].get_to(absolute_overrides);
   overrides_json["rtol_overrides"].get_to(relative_overrides);
   return TestTolerances(
