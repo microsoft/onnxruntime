@@ -1001,13 +1001,12 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Xnnpack as an execution backend. Needs to list all options here if a new option
+     * Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
      * supported. current supported options: {}
-     * The maximum number of provider options is set to 128 (see addExecutionProvider's comment
-     * or ONNXRuntime PR #14076 for the reason). This number is controlled by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128
-     * is not enough, please increase it or implementing an incremental way to add more options.
-     * 
+     * The maximum number of provider options is set to 128 (see addExecutionProvider's
+     * comment). This number is controlled by ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in
+     * ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is not enough, please increase
+     * it or implementing an incremental way to add more options.
      * Pseudocode for incremental way to add more options:
      *  auto ep = addExecutionProvider("XNNPACK");
      *  ep.add_option("key1", "value1");
