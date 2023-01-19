@@ -21,6 +21,11 @@ if(MSVC AND onnxruntime_ENABLE_EAGER_MODE)
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_ops.cpp" PROPERTIES COMPILE_FLAGS "/wd4100")
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_util.cpp" PROPERTIES COMPILE_FLAGS "/wd4100")
 endif()
+
+if ( CMAKE_COMPILER_IS_GNUCC )
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+endif()
+
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/eager  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 onnxruntime_add_include_to_target(onnxruntime_eager onnxruntime_common onnxruntime_framework onnxruntime_optimizer onnxruntime_graph onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 if(onnxruntime_ENABLE_INSTRUMENT)
@@ -32,5 +37,3 @@ set_target_properties(onnxruntime_eager PROPERTIES FOLDER "ONNXRuntime")
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
-
-
