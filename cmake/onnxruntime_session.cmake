@@ -10,6 +10,7 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
 if (onnxruntime_ENABLE_TRAINING_APIS)
   file(GLOB_RECURSE training_api_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/training_api/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_api/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/checkpoint_common.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/checkpoint_common.h"
   )
